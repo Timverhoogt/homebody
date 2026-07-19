@@ -47,6 +47,7 @@ class BluetoothDevice:
     address: str
     name: str
     paired: bool = False
+    bonded: bool = False
     connected: bool = False
 
 
@@ -154,11 +155,20 @@ class BluetoothGamepadService:
                     if "Connected: yes" in self._run(["info", address], timeout=6.0):
                         connected[address] = name
             known.update(connected)
+            bonded: set[str] = set()
+            for address in paired.keys() | connected.keys():
+                try:
+                    if self._device_properties(address).get("bonded") == "yes":
+                        bonded.add(address)
+                except RuntimeError:
+                    if strict:
+                        raise
             devices = {
                 address: BluetoothDevice(
                     address=address,
                     name=name,
                     paired=address in paired,
+                    bonded=address in bonded,
                     connected=address in connected,
                 )
                 for address, name in known.items()
@@ -225,6 +235,11 @@ class BluetoothGamepadService:
     def pair(self, address: str) -> dict[str, object]:
         address = _validate_address(address)
         with self._bluez_lock:
+            existing = self._device_properties(address)
+            if existing.get("paired") == "yes" and existing.get("bonded") != "yes":
+                # BlueZ can retain Paired=yes without a link key. The resulting
+                # ACL connection is rejected by the input profile as !bonded.
+                self._run(["remove", address], timeout=10.0)
             pair_error: Exception | None = None
             try:
                 # Register an explicit headless agent for this bounded pairing
@@ -239,6 +254,10 @@ class BluetoothGamepadService:
                 properties = self._device_properties(address)
                 if properties.get("paired") != "yes":
                     raise RuntimeError(f"BlueZ did not confirm pairing for {address}") from pair_error
+                if properties.get("bonded") != "yes":
+                    raise RuntimeError(
+                        f"BlueZ did not create a bond for {address}; put the controller in pairing mode and try again"
+                    ) from pair_error
                 self._run(["trust", address], timeout=8.0)
                 properties = self._device_properties(address)
                 if properties.get("trusted") != "yes":
@@ -261,8 +280,12 @@ class BluetoothGamepadService:
             self._run(["trust", address], timeout=8.0)
             self._run(["connect", address], timeout=15.0)
             properties = self._device_properties(address)
-            if properties.get("trusted") != "yes" or properties.get("connected") != "yes":
-                raise RuntimeError(f"BlueZ did not confirm a trusted connection for {address}")
+            if (
+                properties.get("bonded") != "yes"
+                or properties.get("trusted") != "yes"
+                or properties.get("connected") != "yes"
+            ):
+                raise RuntimeError(f"BlueZ did not confirm a bonded, trusted connection for {address}")
             return self._refresh_locked(strict=True)
 
     def disconnect(self, address: str) -> dict[str, object]:

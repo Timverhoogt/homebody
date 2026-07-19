@@ -849,7 +849,10 @@ function renderBluetooth(state) {
     devices.forEach((device) => {
       const option = document.createElement("option");
       option.value = device.address;
-      const flags = [device.connected ? "connected" : "", device.paired ? "paired" : ""]
+      const flags = [
+        device.connected ? "connected" : "",
+        device.bonded ? "bonded" : device.paired ? "unbonded" : "",
+      ]
         .filter(Boolean).join(", ");
       option.textContent = `${device.name} · ${device.address}${flags ? ` · ${flags}` : ""}`;
       select.appendChild(option);
@@ -867,11 +870,11 @@ function renderBluetooth(state) {
   $("gamepad-enabled").checked = Boolean(state.gamepad_enabled);
   $("gamepad-enabled").disabled = false;
   $("bluetooth-scan-button").disabled = !state.adapter_available || Boolean(state.scan_active);
-  $("bluetooth-pair-button").disabled = !selected || Boolean(selected.paired);
-  $("bluetooth-connect-button").disabled = !selected || Boolean(selected.connected);
+  $("bluetooth-pair-button").disabled = !selected || Boolean(selected.bonded);
+  $("bluetooth-connect-button").disabled = !selected || !selected.bonded || Boolean(selected.connected);
   $("bluetooth-disconnect-button").disabled = !selected || !selected.connected;
-  $("bluetooth-remove-button").disabled = !selected || !selected.paired;
-  const connected = devices.some((device) => device.connected);
+  $("bluetooth-remove-button").disabled = !selected || !(selected.paired || selected.connected);
+  const connected = devices.some((device) => device.connected && device.bonded);
   $("bluetooth-badge").textContent = state.gamepad_connected
     ? "Controller ready" : connected ? "Bluetooth connected" : state.adapter_available ? "Ready" : "Unavailable";
   const message = $("bluetooth-message");

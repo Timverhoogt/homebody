@@ -34,6 +34,7 @@ def test_refresh_combines_known_paired_and_connected_devices() -> None:
             ("show",): "Controller AA:BB\n Powered: yes\n",
             ("devices", "Paired"): "Device AA:BB:CC:DD:EE:FF Wireless Controller\n",
             ("devices", "Connected"): "Device AA:BB:CC:DD:EE:FF Wireless Controller\n",
+            ("info", "AA:BB:CC:DD:EE:FF"): "Paired: yes\nBonded: yes\nConnected: yes\n",
             ("devices",): (
                 "Device AA:BB:CC:DD:EE:FF Wireless Controller\n"
                 "Device 11:22:33:44:55:66 Other Gamepad\n"
@@ -49,6 +50,7 @@ def test_refresh_combines_known_paired_and_connected_devices() -> None:
     device_items = cast(list[dict[str, object]], status["devices"])
     devices = {str(item["address"]): item for item in device_items}
     assert devices["AA:BB:CC:DD:EE:FF"]["paired"] is True
+    assert devices["AA:BB:CC:DD:EE:FF"]["bonded"] is True
     assert devices["AA:BB:CC:DD:EE:FF"]["connected"] is True
     assert devices["11:22:33:44:55:66"]["paired"] is False
 
@@ -68,14 +70,14 @@ def test_pair_uses_one_bounded_bluetoothctl_session_and_validates_mac() -> None:
         elif arguments == ["devices"]:
             output = "Device AA:BB:CC:DD:EE:FF Wireless Controller"
         elif arguments == ["info", "AA:BB:CC:DD:EE:FF"]:
-            output = "Paired: yes\nTrusted: yes\nConnected: yes"
+            output = "Paired: yes\nBonded: yes\nTrusted: yes\nConnected: yes"
         else:
             output = "Pairing successful\nConnection successful"
         return FakeResult(returncode=0, stdout=output)
 
     service = BluetoothGamepadService(lambda *_args: None, command_runner=runner, adapter_available=True)
     status = service.pair("aa:bb:cc:dd:ee:ff")
-    pair_call = calls[0]
+    pair_call = next(call for call in calls if "pair" in call[0])
     assert pair_call[0] == [
         "bluetoothctl", "--timeout", "35", "--agent", "NoInputNoOutput",
         "pair", "AA:BB:CC:DD:EE:FF",
@@ -85,6 +87,7 @@ def test_pair_uses_one_bounded_bluetoothctl_session_and_validates_mac() -> None:
     assert ["bluetoothctl", "connect", "AA:BB:CC:DD:EE:FF"] in [call[0] for call in calls]
     paired_devices = cast(list[dict[str, object]], status["devices"])
     assert paired_devices[0]["connected"] is True
+    assert paired_devices[0]["bonded"] is True
 
     with pytest.raises(ValueError, match="MAC address"):
         service.pair("not-a-mac")
@@ -102,6 +105,31 @@ def test_pair_requires_positive_bluez_properties_before_trust() -> None:
     service = BluetoothGamepadService(lambda *_args: None, command_runner=runner, adapter_available=True)
     with pytest.raises(RuntimeError, match="did not confirm pairing"):
         service.pair("AA:BB:CC:DD:EE:FF")
+    assert not any(call[1:2] == ["trust"] for call in calls)
+
+
+def test_pair_removes_stale_unbonded_device_and_requires_a_real_bond() -> None:
+    calls: list[list[str]] = []
+    info_calls = 0
+
+    def runner(command: list[str], _input: str | None, _timeout: float):
+        nonlocal info_calls
+        calls.append(command)
+        if command[1:2] == ["info"]:
+            info_calls += 1
+            return FakeResult(returncode=0, stdout="Paired: yes\nBonded: no\nConnected: yes")
+        return FakeResult(returncode=0, stdout="Command successful")
+
+    service = BluetoothGamepadService(lambda *_args: None, command_runner=runner, adapter_available=True)
+    with pytest.raises(RuntimeError, match="did not create a bond"):
+        service.pair("AA:BB:CC:DD:EE:FF")
+
+    assert info_calls == 2
+    assert calls[1] == ["bluetoothctl", "remove", "AA:BB:CC:DD:EE:FF"]
+    assert calls[2] == [
+        "bluetoothctl", "--timeout", "35", "--agent", "NoInputNoOutput",
+        "pair", "AA:BB:CC:DD:EE:FF",
+    ]
     assert not any(call[1:2] == ["trust"] for call in calls)
 
 
@@ -138,6 +166,7 @@ def test_scan_failure_propagates_and_retains_error() -> None:
             "address": "AA:BB:CC:DD:EE:FF",
             "name": "Wireless Controller",
             "paired": False,
+            "bonded": False,
             "connected": False,
         }
     ]
@@ -235,7 +264,7 @@ def test_gamepad_mapping_is_allowlisted_debounced_and_stoppable() -> None:
     ]
 
 
-def test_bluetooth_ui_exposes_pairing_mapping_and_v21_assets() -> None:
+def test_bluetooth_ui_exposes_pairing_mapping_and_v22_assets() -> None:
     static = Path(__file__).resolve().parents[1] / "reachy_mini_hermes" / "static"
     html = (static / "index.html").read_text(encoding="utf-8")
     script = (static / "main.js").read_text(encoding="utf-8")
@@ -258,4 +287,4 @@ def test_bluetooth_ui_exposes_pairing_mapping_and_v21_assets() -> None:
     assert "/api/bluetooth/scan" in script
     assert "/api/bluetooth/gamepad" in script
     assert "if (body.last_error) throw new Error(body.last_error);" in script
-    assert "reachy-hermes-shell-v21" in worker
+    assert "reachy-hermes-shell-v22" in worker
