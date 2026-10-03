@@ -75,7 +75,11 @@ def test_public_experience_documents_and_architecture_are_linked() -> None:
 
     ET.parse(ROOT / "docs/assets/architecture.svg")
     ET.parse(ROOT / "docs/assets/lite-pi-overview.svg")
-    assert "Capability and setup matrix" in readme
+    assert "Supported setups" in readme
+    assert "docs/hardware-setups.md" in readme
+    setups = (ROOT / "docs/hardware-setups.md").read_text(encoding="utf-8")
+    for setup in ("Lite + PC or Mac", "Lite + Raspberry Pi", "Lite + NVIDIA Jetson Orin Nano", "Reachy Mini Wireless"):
+        assert setup in setups
     assert "What can I expect?" in readme
     assert "community" in (ROOT / "docs/lite-raspberry-pi-4.md").read_text(encoding="utf-8").lower()
 

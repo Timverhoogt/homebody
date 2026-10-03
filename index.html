@@ -45,7 +45,7 @@
       <article>
         <p class="number">01 / CONNECT</p>
         <h2>Bring Reachy and an app host</h2>
-        <p>Use Wireless, a Lite connected to a normal computer, or Tim's community Lite + Pi 4 reference pattern. The Pi pattern is not an official Wireless conversion.</p>
+        <p>Use Wireless, or a Lite driven by a PC, Mac, Raspberry Pi or NVIDIA Jetson. The app shows only what that host can drive. Tim's community Lite + Pi 4 is the reference setup, not an official Wireless conversion.</p>
       </article>
       <article>
         <p class="number">02 / CHECK SAFETY</p>
@@ -63,7 +63,7 @@
       <div class="section-heading">
         <p class="eyebrow">VERIFIED VS GATED</p>
         <h2>Choose only what you need.</h2>
-        <p>✅ means reference-tested. ◐ means implemented but still requires per-install or final hardware acceptance. Experimental features are not presented as production-ready.</p>
+        <p>✅ means reference-tested. ◐ means implemented but still requires per-install or final hardware acceptance. 🧪 means implemented but not yet run on that hardware. See the <a href="https://github.com/Timverhoogt/reachy-mini-hermes/blob/main/docs/hardware-setups.md" target="_blank" rel="noopener noreferrer" aria-label="Read the hardware setups and support guide (opens in a new tab)">hardware setups guide ↗</a> for every setup.</p>
       </div>
       <div class="matrix-wrap" role="region" aria-label="Capability and setup matrix" tabindex="0">
         <table>
@@ -73,7 +73,9 @@
             <tr><th>Local live camera</th><td>✅</td><td>✅</td><td>Optional</td><td>Explicit opt-in; trusted UI only</td></tr>
             <tr><th>Voice, announcements and one-frame model vision</th><td>—</td><td>—</td><td>◐</td><td>Private bridge + configured providers</td></tr>
             <tr><th>Supervised Kids Mode and personal agent tools</th><td>—</td><td>—</td><td>◐</td><td>Adult supervision; progressively gated</td></tr>
-            <tr><th>Sony Bluetooth controller</th><td>—</td><td>—</td><td>Optional</td><td>Wireless only; final hardware acceptance pending</td></tr>
+            <tr><th>Local vision model (Jetson, GPU PC, Mac)</th><td>🧪</td><td>Via LAN server</td><td>Optional</td><td>Frames stay on your network; only text reaches the model</td></tr>
+            <tr><th>Physical green/red GPIO buttons</th><td>Pi / Jetson</td><td>◐</td><td>Optional</td><td>Off by default; two-button acceptance pending</td></tr>
+            <tr><th>Sony Bluetooth controller</th><td>Linux hosts</td><td>◐</td><td>Optional</td><td>Needs Bluetooth on Linux; final hardware acceptance pending</td></tr>
           </tbody>
         </table>
       </div>

@@ -239,7 +239,7 @@ Treat tracebacks, `Reachy voice runtime failed`, repeated WebSocket closures, an
 
 ## Bluetooth and controller checks
 
-This procedure applies only to **Reachy Mini Wireless**. Reachy Mini Lite and wired-only installations do not expose this Bluetooth controller feature as supported hardware.
+This procedure needs a Linux host with a Bluetooth radio: Reachy Mini Wireless, or a Lite driven by a Raspberry Pi, a Jetson or a Linux PC. The app hides the controller card when a Mac or Windows PC drives Reachy.
 
 1. Verify the adapter and BlueZ service:
 
