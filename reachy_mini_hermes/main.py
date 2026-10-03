@@ -34,6 +34,7 @@ class SettingsUpdate(BaseModel):
 
     bridge_url: str | None = None
     api_key: str | None = None
+    current_api_key: str | None = Field(default=None, max_length=4096)
     model: str | None = None
     conversation_mode: str | None = None
     language: str | None = None
@@ -88,6 +89,24 @@ class SettingsUpdate(BaseModel):
     realtime_model: str | None = None
     realtime_voice: str | None = None
     realtime_reasoning_effort: str | None = None
+
+
+def _authorize_credential_change(current: AppConfig, merged: AppConfig, provided: str | None) -> None:
+    """Require the existing bridge key before the unauthenticated UI can redirect or replace it.
+
+    Without this, any LAN client could swap in its own key (unlocking bearer-protected
+    routes such as the camera snapshot) or point the bridge URL at a host it controls
+    and receive the real key on the next authenticated bridge call.
+    """
+    if not current.api_key:
+        return
+    if merged.bridge_url == current.bridge_url and merged.api_key == current.api_key:
+        return
+    if not provided or not secrets.compare_digest(provided.strip(), current.api_key):
+        raise HTTPException(
+            status_code=403,
+            detail="Enter the current API key to change the bridge URL or API key",
+        )
 
 
 class PresenceSignalRequest(BaseModel):
@@ -429,7 +448,9 @@ class ReachyMiniHermes(ReachyMiniApp):
             try:
                 current = load_config()
                 changes = update.model_dump(exclude_none=True)
+                provided_key = changes.pop("current_api_key", None)
                 merged = merge_config(current, changes)
+                _authorize_credential_change(current, merged, provided_key)
                 path = save_config(merged)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
