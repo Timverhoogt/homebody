@@ -26,7 +26,7 @@ from .gpio_buttons import ButtonEvent, ButtonName, GpioButtonService
 from .hermes_client import HermesBridgeClient
 from .kids_mode import KidsProfile
 from .local_vision import LocalVisionClient, LocalVisionError
-from .mcp_oauth import OAuthServer
+from .mcp_oauth import OAuthError, OAuthServer
 from .mcp_public import PublicAgentListener, build_public_app
 from .mcp_server import PROTOCOL_VERSIONS, McpServer, new_token, token_digest, token_matches
 from .platform_info import host
@@ -249,6 +249,13 @@ class McpTokenRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     current_api_key: str = Field(default="", max_length=4096)
+
+
+class McpOAuthDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_api_key: str = Field(default="", max_length=4096)
+    pending_id: str = Field(min_length=1, max_length=64)
 
 
 _MCP_MAX_BODY_BYTES = 64 * 1024
@@ -1118,13 +1125,26 @@ class Homebody(ReachyMiniApp):
                     raise HTTPException(status_code=500, detail=f"Could not revoke the token: {exc}") from exc
             return {"ok": True, "token_configured": False}
 
-        @self.settings_app.post("/api/mcp/approval-code")
-        def mcp_approval_code(request: McpTokenRequest) -> dict[str, object]:
-            """A one-time code the owner types on the consent page to let a hosted agent connect."""
+        @self.settings_app.post("/api/mcp/oauth/approve")
+        def mcp_oauth_approve(request: McpOAuthDecisionRequest) -> dict[str, object]:
+            """Approve one specific hosted-agent request; its consent page then lets the agent continue."""
             config = _require_owner(request.current_api_key)
             if not (config.mcp_enabled and config.mcp_oauth_enabled):
                 raise HTTPException(status_code=409, detail="Turn on agent access and agent sign-in first")
-            return {"ok": True, "code": self._oauth.new_approval_code(), "expires_in": 600}
+            try:
+                self._oauth.owner_decide(request.pending_id, approve=True)
+            except OAuthError as exc:
+                raise HTTPException(status_code=409, detail=exc.description) from exc
+            return {"ok": True, **self._oauth.public_status()}
+
+        @self.settings_app.post("/api/mcp/oauth/deny")
+        def mcp_oauth_deny(request: McpOAuthDecisionRequest) -> dict[str, object]:
+            _require_owner(request.current_api_key)
+            try:
+                self._oauth.owner_decide(request.pending_id, approve=False)
+            except OAuthError as exc:
+                raise HTTPException(status_code=409, detail=exc.description) from exc
+            return {"ok": True, **self._oauth.public_status()}
 
         @self.settings_app.post("/api/mcp/oauth/disconnect")
         def mcp_oauth_disconnect(request: McpTokenRequest) -> dict[str, object]:

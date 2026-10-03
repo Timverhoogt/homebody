@@ -126,12 +126,14 @@ def build_public_app(
             if target is None:
                 return HTMLResponse(consent_page(None), status_code=400, headers=CONSENT_HEADERS)
             return RedirectResponse(target, status_code=303, headers=CONSENT_HEADERS)
+        # Nothing submitted here can grant access: the owner approves this exact request in Settings.
         try:
-            target = oauth.approve(pending_id, form.get("approval_code", ""))
+            target = oauth.complete(pending_id)
         except OAuthError as exc:
             pending = oauth.pending(pending_id)
             html = consent_page(pending, error=exc.description, vision=config.mcp_vision_enabled)
-            return HTMLResponse(html, status_code=400, headers=CONSENT_HEADERS)
+            status = 200 if exc.error == "authorization_pending" else 400
+            return HTMLResponse(html, status_code=status, headers=CONSENT_HEADERS)
         return RedirectResponse(target, status_code=303, headers=CONSENT_HEADERS)
 
     @app.post("/oauth/token")

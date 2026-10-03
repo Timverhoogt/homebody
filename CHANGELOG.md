@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Hosted agents are now approved per request in Settings on the home network instead of with a shared approval code typed on the public consent page. Settings shows the agent's name, return address, registration age and a match code that the consent page repeats, so a phishing sign-in link cannot borrow an approval meant for another agent, and strangers can no longer burn the owner's code by guessing.
+- The OAuth store validates every record on load and drops malformed or orphaned ones instead of raising errors later.
 - Hosted-agent sign-in moved to its own listener (default `127.0.0.1:8043`) serving only `/mcp` (OAuth tokens only) and the OAuth endpoints. Before, these shared the dashboard port behind a `Host`-header check, and a proxy that rewrites `Host` (nginx's default `proxy_pass`, `ngrok --host-header=rewrite`, `cloudflared httpHostHeader`) exposed the dashboard API and accepted the static token through the tunnel. Point the tunnel at the new listener.
 - Open authorization requests are capped (50 in total, 5 per client, oldest evicted), so an unauthenticated flood no longer grows memory and CPU without bound.
 - Never-approved client registrations expire after an hour and are evicted when the 20 slots are full, so strangers can no longer lock the owner out of connecting an agent.
