@@ -69,3 +69,19 @@ BSD 3-Clause license terms:
 > SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 The original license notices remain intact at the top of the distributed JavaScript bundle.
+
+## Dashboard fonts
+
+The browser dashboard bundles two typefaces as subset WOFF2 files in
+`homebody/static/`, so the page needs no font requests to any outside server:
+
+- **Instrument Serif** (`InstrumentSerif-Regular.woff2`, `InstrumentSerif-Italic.woff2`)
+  Copyright 2022 The Instrument Serif Project Authors
+  (https://github.com/Instrument/instrument-serif). SIL Open Font License 1.1.
+- **DM Mono** (`DMMono-Regular.woff2`, `DMMono-Medium.woff2`)
+  Copyright 2020 The DM Mono Project Authors (https://github.com/googlefonts/dm-mono).
+  SIL Open Font License 1.1.
+
+Both were subset to Latin, Latin Extended-A, general punctuation and arrow ranges
+with fontTools and are redistributed under the OFL; the full licence text is at
+https://openfontlicense.org. The fonts are not sold on their own.

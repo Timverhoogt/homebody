@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#17121f" />
+  <meta name="theme-color" content="#121014" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -12,15 +12,26 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=55">
+  <link rel="stylesheet" href="/static/style.css?v=56">
 </head>
 <body>
   <main>
     <header>
-      <div class="orb" aria-hidden="true"><span></span></div>
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" focusable="false">
+          <path class="mark-antenna mark-antenna-left" d="M23 19 17 8" fill="none" stroke="#f3eee6" stroke-width="3" stroke-linecap="round" />
+          <path class="mark-antenna mark-antenna-right" d="M41 19 47 8" fill="none" stroke="#f3eee6" stroke-width="3" stroke-linecap="round" />
+          <circle class="mark-tip" cx="16.5" cy="7" r="2.6" fill="#f3eee6" />
+          <circle class="mark-tip" cx="47.5" cy="7" r="2.6" fill="#f3eee6" />
+          <rect class="mark-head" x="11" y="17" width="42" height="38" rx="16" />
+          <rect class="mark-visor" x="16.5" y="26" width="31" height="19" rx="9.5" />
+          <circle class="mark-eye mark-eye-left" cx="26" cy="35.5" r="3.6" />
+          <circle class="mark-eye mark-eye-right" cx="38" cy="35.5" r="3.6" />
+        </svg>
+      </div>
       <div>
-        <p class="eyebrow">REACHY MINI × YOUR AGENT</p>
-        <h1>Hey Homebody</h1>
+        <p class="eyebrow">Reachy Mini × your agent</p>
+        <h1>Hey <em>Homebody</em></h1>
         <p class="subtitle">Voice, privacy, and physical control for your always-on home companion.</p>
       </div>
     </header>
@@ -831,7 +842,7 @@
     </div>
   </main>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=55"></script>
-  <script src="/static/main.js?v=55"></script>
+  <script src="/static/camera.js?v=56"></script>
+  <script src="/static/main.js?v=56"></script>
 </body>
 </html>

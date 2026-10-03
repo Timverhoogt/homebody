@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Redesigned the dashboard away from the glowing-orb, gradient and glass look: a warm matte panel with one signal colour, Instrument Serif headings, DM Mono labels and readouts, numbered tabs, LED-style status dots, and a Reachy face in the header whose eyes and antennas follow the runtime state (open when awake, half-closed in Standby, shut in Sleep, drooped on error). Both fonts are bundled as subset WOFF2 files, so the page still makes no outside requests; PWA shell v56.
 - Renamed the app from Reachy Mini Hermes to **Homebody**: package `reachy-mini-homebody` 0.4.0, module `homebody`, Reachy app `reachy_mini_homebody`, class `Homebody` and CLI `homebody`. Hermes Agent remains the reference agent backend alongside OpenClaw.
 - The dashboard screenshots in `docs/assets` were retaken with the Homebody header using the new, reproducible `docs/tools/capture_ui_screenshots.py`.
 - New defaults `~/.local/share/homebody/config.json`, `~/.cache/homebody/`, `HOMEBODY_CONFIG` and `HOMEBODY_MODEL_DIR`. Pre-rename config, caches and `REACHY_MINI_HERMES_*` variables are still used when present, and `reachy-mini-hermes` remains a CLI alias. See OPERATIONS.md for the upgrade steps.

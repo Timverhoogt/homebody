@@ -547,6 +547,8 @@ function updateStatus(payload) {
   const state = runtime.state || "unknown";
   $("runtime-state").textContent = state.replaceAll("_", " ");
   $("runtime-detail").textContent = runtime.detail || "";
+  // The header face reads this to open, half-close or shut Reachy's eyes.
+  document.body.dataset.runtimeState = state;
   $("last-transcript").textContent = runtime.transcript || "—";
   $("last-response").textContent = runtime.response_preview || "—";
   const powerMode = runtime.power_mode || "unknown";
@@ -964,6 +966,7 @@ async function refreshStatus() {
     }
     $("runtime-state").textContent = "Disconnected";
     $("runtime-detail").textContent = String(error);
+    document.body.dataset.runtimeState = "disconnected";
     $("status-dot").className = "status-dot error";
     $("robot-mode-badge").textContent = "offline";
     $("motor-state").textContent = "Motor state unavailable";
