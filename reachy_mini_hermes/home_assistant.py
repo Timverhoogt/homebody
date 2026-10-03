@@ -20,6 +20,7 @@ import shutil
 import socket
 import threading
 import time
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -157,7 +158,8 @@ def default_device_identity(*, machine_id_path: Path = Path("/etc/machine-id")) 
     try:
         raw = machine_id_path.read_text(encoding="utf-8").strip().lower()
     except OSError:
-        raw = ""
+        # macOS and Windows have no machine-id; the hardware address keeps hosts distinct in HA.
+        raw = f"{uuid.getnode():012x}"
     hexadecimal = "".join(char for char in raw if char in "0123456789abcdef")
     mac = (hexadecimal[:12] or "000000000000").ljust(12, "0")
     suffix = mac[-6:].upper()

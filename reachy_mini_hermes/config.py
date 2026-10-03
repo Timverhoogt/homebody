@@ -191,8 +191,9 @@ class AppConfig:
         if not re.fullmatch(r"/dev/gpiochip[0-9]{1,2}", str(self.gpio_chip)):
             raise ValueError("gpio_chip must be a /dev/gpiochipN device")
         pins = [pin for pin in (self.gpio_green_pin, self.gpio_red_pin) if pin is not None]
-        if any(isinstance(pin, bool) or not isinstance(pin, int) or not 0 <= pin <= 53 for pin in pins):
-            raise ValueError("GPIO button pins must be BCM numbers between 0 and 53")
+        # Raspberry Pi header pins are BCM 0-27; Jetson header lines sit at higher chip offsets.
+        if any(isinstance(pin, bool) or not isinstance(pin, int) or not 0 <= pin <= 1023 for pin in pins):
+            raise ValueError("GPIO button pins must be line numbers between 0 and 1023")
         if len(set(pins)) != len(pins):
             raise ValueError("The green and red buttons need different GPIO pins")
         if not 0.5 <= float(self.gpio_long_press_seconds) <= 10.0:

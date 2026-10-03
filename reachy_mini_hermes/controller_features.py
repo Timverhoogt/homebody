@@ -455,7 +455,7 @@ class PlayStationEvdevFeatures:
                 import fcntl
 
                 access_mode = fcntl.fcntl(device.fd, fcntl.F_GETFL) & os.O_ACCMODE
-            except (OSError, AttributeError):
+            except (OSError, AttributeError, ImportError):
                 pass
             return (
                 self._evdev.ecodes.EV_FF in capabilities
