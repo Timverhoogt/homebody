@@ -31,6 +31,7 @@ from aiohttp import ClientSession, ClientTimeout, FormData, web
 
 try:
     from companion.agent_backends import OpenClawBackend, OpenClawConfig, OpenClawConfigError
+    from companion.llm_providers import LLMProviderConfigError, TextModelProvider
     from companion.reachy_agent_broker import (
         BrokerRequest,
         BrokerUnavailableError,
@@ -48,6 +49,7 @@ except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.pa
         OpenClawConfig,
         OpenClawConfigError,
     )
+    from llm_providers import LLMProviderConfigError, TextModelProvider  # type: ignore[no-redef]
     from reachy_agent_broker import (  # type: ignore[no-redef]
         BrokerRequest,
         BrokerUnavailableError,
@@ -710,8 +712,10 @@ def _ensure_hermes_imports() -> None:
 
 
 
-def _ispy_vision_request(openai_key: str) -> tuple[str, dict[str, str], dict[str, object]]:
-    """Return where I Spy sends its five frames: a local vision server when configured, else OpenAI.
+def _ispy_vision_request(
+    llm: TextModelProvider, provider_key: str
+) -> tuple[str, dict[str, str], dict[str, object]]:
+    """Return where I Spy sends its five frames: a local vision server when configured, else the text provider.
 
     ``REACHY_ISPY_VISION_URL`` points at any OpenAI-compatible server (Ollama, llama.cpp, vLLM),
     for example a Jetson next to Reachy, so the camera frames never leave the home network. The
@@ -720,9 +724,9 @@ def _ispy_vision_request(openai_key: str) -> tuple[str, dict[str, str], dict[str
     base = os.getenv("REACHY_ISPY_VISION_URL", "").strip().rstrip("/")
     if not base:
         return (
-            "https://api.openai.com/v1/chat/completions",
-            {"Authorization": f"Bearer {openai_key}"},
-            {"model": os.getenv("REACHY_ISPY_MODEL", "gpt-4.1-mini"), "max_completion_tokens": 700, "store": False},
+            llm.chat_url,
+            {"Authorization": f"Bearer {provider_key}"},
+            llm.request({"model": llm.model("ispy"), "max_completion_tokens": 700, "store": False}),
         )
     parsed = urlparse(base)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -743,6 +747,7 @@ class Bridge:
         profile: str | None = None,
         backends: tuple[str, ...] = ("hermes",),
         openclaw: OpenClawConfig | None = None,
+        llm: TextModelProvider | None = None,
     ) -> None:
         unknown = set(backends) - {"hermes", "openclaw"}
         if not backends or unknown:
@@ -755,6 +760,8 @@ class Bridge:
         self.backends = tuple(dict.fromkeys(backends))
         self.hermes_enabled = "hermes" in self.backends
         self.openclaw = OpenClawBackend(openclaw) if "openclaw" in self.backends and openclaw else None
+        # The bridge's own text-model calls (Agent Mode, Kids chat, I Spy): OpenAI or an EU router.
+        self.llm = llm or TextModelProvider.from_env(lambda name: _resolve_secret(name, profile))
         self.http: ClientSession | None = None
         self._kids_sessions: dict[str, dict[str, Any]] = {}
         self._kids_speech_approvals: dict[str, dict[str, Any]] = {}
@@ -970,6 +977,15 @@ class Bridge:
             }
         return web.json_response({"ok": True, "state": state, "kids_live": self.kids_session_live()})
 
+    def _llm_key(self) -> str:
+        return self.llm.api_key(lambda name: _resolve_secret(name, self.profile))
+
+    def _llm_headers(self, unavailable: str) -> dict[str, str]:
+        key = self._llm_key()
+        if not key:
+            raise web.HTTPServiceUnavailable(text=unavailable)
+        return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
     def _require_hermes_speech(self) -> None:
         """The configured/local speech providers are Hermes Agent tools; say so plainly without Hermes."""
         if not self.hermes_enabled:
@@ -1030,8 +1046,11 @@ class Bridge:
                 "agent_api": agent_ok,
                 "agent_backends": backends,
                 "realtime_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
-                "kids_chat_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
-                "kids_ispy_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
+                # Kids Mode needs the text provider plus OpenAI moderation.
+                "kids_chat_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile) and self._llm_key()),
+                "kids_ispy_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile) and self._llm_key()),
+                "agent_model_available": bool(self._llm_key()),
+                "text_provider": self.llm.public_status(),
                 "kids_ispy_vision": "local" if os.getenv("REACHY_ISPY_VISION_URL", "").strip() else "openai",
                 "kids_tts_streaming_available": bool(_resolve_secret("ELEVENLABS_API_KEY", self.profile)),
                 "realtime_model": "gpt-realtime-2.1",
@@ -1212,10 +1231,10 @@ class Bridge:
             f"singular/plural. Language: {language}. Target: {target['object_name']}. Guess: {guess}."
         )
         async with self.http.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {openai_key}"},
-            json={
-                "model": os.getenv("REACHY_ISPY_MODEL", "gpt-4.1-mini"),
+            self.llm.chat_url,
+            headers=self._llm_headers("I Spy model access is not configured"),
+            json=self.llm.request({
+                "model": self.llm.model("ispy"),
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {
                     "type": "json_schema",
@@ -1223,7 +1242,7 @@ class Bridge:
                 },
                 "max_completion_tokens": 40,
                 "store": False,
-            },
+            }),
         ) as response:
             result = await response.json(content_type=None)
             if response.status != 200:
@@ -1255,10 +1274,10 @@ class Bridge:
             "sensitive target. Return only the strict schema."
         )
         async with self.http.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {openai_key}"},
-            json={
-                "model": os.getenv("REACHY_ISPY_MODEL", "gpt-4.1-mini"),
+            self.llm.chat_url,
+            headers=self._llm_headers("I Spy model access is not configured"),
+            json=self.llm.request({
+                "model": self.llm.model("ispy"),
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {
                     "type": "json_schema",
@@ -1270,7 +1289,7 @@ class Bridge:
                 },
                 "max_completion_tokens": 60,
                 "store": False,
-            },
+            }),
         ) as response:
             result = await response.json(content_type=None)
             if response.status != 200:
@@ -1295,6 +1314,8 @@ class Bridge:
             raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
         openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
         if not openai_key:
+            raise web.HTTPServiceUnavailable(text="Kids Mode safety screening (OpenAI moderation) is not configured")
+        if not self._llm_key():
             raise web.HTTPServiceUnavailable(text="Kids Mode model access is not configured")
         try:
             payload = await request.json()
@@ -1369,11 +1390,11 @@ class Bridge:
                 })
             return web.json_response(safety_payload)
 
-        model = os.getenv("REACHY_KIDS_MODEL", "gpt-5-mini").strip() or "gpt-5-mini"
+        model = self.llm.model("kids")
         ispy_next_action = ""
         ispy_role = ""
         if activity == "ispy":
-            model = os.getenv("REACHY_ISPY_MODEL", "gpt-4.1-mini")
+            model = self.llm.model("ispy")
             ispy_role = str(child_session.get("ispy_role") or "reachy_picker")
             if ispy_role == "reachy_picker":
                 target = child_session.get("ispy_target")
@@ -1493,9 +1514,9 @@ class Bridge:
                 language=language,
             )
             async with self.http.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {openai_key}"},
-                json={
+                self.llm.chat_url,
+                headers=self._llm_headers("Kids Mode model access is not configured"),
+                json=self.llm.request({
                     "model": model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
@@ -1505,7 +1526,7 @@ class Bridge:
                     "max_completion_tokens": 800,
                     "reasoning_effort": "minimal",
                     "store": False,
-                },
+                }),
             ) as response:
                 result = await response.json(content_type=None)
                 if response.status != 200:
@@ -1598,7 +1619,7 @@ class Bridge:
             "type": "image_url",
             "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(frame).decode('ascii')}", "detail": "low"},
         } for frame in frames)
-        vision_url, vision_headers, vision_body = _ispy_vision_request(openai_key)
+        vision_url, vision_headers, vision_body = _ispy_vision_request(self.llm, self._llm_key())
         async with self.http.post(
             vision_url,
             headers=vision_headers,
@@ -1924,8 +1945,8 @@ class Bridge:
         """Use one fixed model loop whose only tools are bounded broker capabilities."""
         if self.http is None:
             raise RuntimeError("Bridge HTTP client is not ready")
-        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
-        if not openai_key:
+        provider_key = self._llm_key()
+        if not provider_key:
             raise BrokerUnavailableError("Agent Mode model access is not configured")
         tools = [
             {
@@ -1969,8 +1990,8 @@ class Bridge:
             },
             {"role": "user", "content": text[:2_000]},
         ]
-        model = os.getenv("REACHY_AGENT_MODEL", "gpt-5-mini").strip() or "gpt-5-mini"
-        headers = {"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"}
+        model = self.llm.model("agent")
+        headers = {"Authorization": f"Bearer {provider_key}", "Content-Type": "application/json"}
         used_capabilities: set[str] = set()
         has_evidence = False
         verified_side_effects: set[str] = set()
@@ -1982,9 +2003,9 @@ class Bridge:
             raise BrokerValidationError("invalid Agent Mode generation")
         for round_index in range(4):
             async with self.http.post(
-                "https://api.openai.com/v1/chat/completions",
+                self.llm.chat_url,
                 headers=headers,
-                json={
+                json=self.llm.request({
                     "model": model,
                     "messages": messages,
                     "tools": tools,
@@ -2014,7 +2035,7 @@ class Bridge:
                             },
                         },
                     },
-                },
+                }),
             ) as response:
                 body = await response.json(content_type=None)
                 response_status = response.status
@@ -2210,8 +2231,8 @@ class Bridge:
         """Ask the model for one exact bounded tool batch without executing it."""
         if self.http is None:
             raise RuntimeError("Bridge HTTP client is not ready")
-        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
-        if not openai_key:
+        provider_key = self._llm_key()
+        if not provider_key:
             raise BrokerUnavailableError("Agent Mode model access is not configured")
         manifest = self.agent_broker.manifest()
         tools = [
@@ -2226,12 +2247,12 @@ class Bridge:
             }
             for capability in manifest
         ]
-        model = os.getenv("REACHY_AGENT_MODEL", "gpt-5-mini").strip() or "gpt-5-mini"
-        headers = {"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"}
+        model = self.llm.model("agent")
+        headers = {"Authorization": f"Bearer {provider_key}", "Content-Type": "application/json"}
         async with self.http.post(
-            "https://api.openai.com/v1/chat/completions",
+            self.llm.chat_url,
             headers=headers,
-            json={
+            json=self.llm.request({
                 "model": model,
                 "messages": [
                     {
@@ -2258,7 +2279,7 @@ class Bridge:
                 "tool_choice": "required",
                 "parallel_tool_calls": True,
                 "max_completion_tokens": 1_200,
-            },
+            }),
         ) as response:
             body = await response.json(content_type=None)
             status = response.status
@@ -3016,8 +3037,16 @@ def create_app(
     profile: str | None = None,
     backends: tuple[str, ...] = ("hermes",),
     openclaw: OpenClawConfig | None = None,
+    llm: TextModelProvider | None = None,
 ) -> web.Application:
-    bridge = Bridge(api_key=api_key, hermes_url=hermes_url, profile=profile, backends=backends, openclaw=openclaw)
+    bridge = Bridge(
+        api_key=api_key,
+        hermes_url=hermes_url,
+        profile=profile,
+        backends=backends,
+        openclaw=openclaw,
+        llm=llm,
+    )
     app = web.Application(
         client_max_size=_MAX_AUDIO_BYTES + 1024 * 1024,
         middlewares=[bridge.kids_latch_middleware],
@@ -3098,6 +3127,12 @@ def main() -> None:
             )
         except OpenClawConfigError as exc:
             parser.error(str(exc))
+    try:
+        llm = TextModelProvider.from_env(lambda name: _resolve_secret(name, args.profile))
+    except LLMProviderConfigError as exc:
+        parser.error(str(exc))
+    if not llm.api_key(lambda name: _resolve_secret(name, args.profile)):
+        _LOGGER.warning("%s has no API key yet; Agent Mode, Kids chat and I Spy stay unavailable", llm.label)
     api_key = _resolve_api_key(args.api_key, args.profile)
     if not api_key:
         parser.error("No bridge API key found. Pass --api-key or set API_SERVER_KEY (Hermes profile .env or env)")
@@ -3108,6 +3143,7 @@ def main() -> None:
             profile=args.profile,
             backends=backends,
             openclaw=openclaw,
+            llm=llm,
         ),
         host=args.host,
         port=args.port,
