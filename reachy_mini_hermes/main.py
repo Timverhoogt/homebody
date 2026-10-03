@@ -22,6 +22,7 @@ from .contextual_offers import ContextualOffer
 from .gpio_buttons import ButtonEvent, ButtonName, GpioButtonService
 from .hermes_client import HermesBridgeClient
 from .kids_mode import KidsProfile
+from .platform_info import host
 from .presence import PresenceObservation
 from .robot_tools import robot_control_options
 from .runtime import HermesVoiceRuntime
@@ -221,8 +222,8 @@ class GpioButtonsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: StrictBool
-    green_pin: int | None = Field(default=17, ge=0, le=53)
-    red_pin: int | None = Field(default=None, ge=0, le=53)
+    green_pin: int | None = Field(default=17, ge=0, le=1023)
+    red_pin: int | None = Field(default=None, ge=0, le=1023)
     long_press_seconds: float = Field(default=2.0, ge=0.5, le=10.0)
 
 
@@ -423,6 +424,7 @@ class ReachyMiniHermes(ReachyMiniApp):
                 "config": config_payload,
                 "config_error": config_error,
                 "runtime": runtime_payload,
+                "host": host().as_dict(),
             }
 
         @self.settings_app.post("/api/presence/signal")
@@ -1287,6 +1289,11 @@ class ReachyMiniHermes(ReachyMiniApp):
         def shutdown(request: ConfirmationRequest) -> dict[str, object]:
             if request.confirm.strip().lower() != "shutdown":
                 raise HTTPException(status_code=400, detail="Confirmation must be 'shutdown'")
+            if not host().shutdown_supported:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Reachy will not power off this {host().label}; shut it down from the computer itself",
+                )
             if self._runtime is not None:
                 try:
                     self._runtime.set_power_mode("sleep")
@@ -1301,7 +1308,7 @@ class ReachyMiniHermes(ReachyMiniApp):
                         timeout=10,
                     )
                 except Exception:
-                    _LOGGER.exception("Could not shut down Reachy Pi")
+                    _LOGGER.exception("Could not shut down the Reachy host")
 
             threading.Timer(0.8, poweroff).start()
             return {"ok": True, "state": "shutting_down"}

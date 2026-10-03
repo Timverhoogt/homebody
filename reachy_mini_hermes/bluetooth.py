@@ -494,7 +494,7 @@ class BluetoothGamepadService:
             request = 0x80006A13 + (len(buffer) << 16)
             fcntl.ioctl(fd, request, buffer)
             return bytes(buffer).split(b"\0", 1)[0].decode("utf-8", "replace").strip() or Path(path).name
-        except OSError:
+        except (OSError, ImportError):
             return Path(path).name
 
     @staticmethod

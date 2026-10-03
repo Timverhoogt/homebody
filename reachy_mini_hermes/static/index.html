@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=49">
+  <link rel="stylesheet" href="/static/style.css?v=50">
 </head>
 <body>
   <main>
@@ -544,7 +544,7 @@
           <span id="bluetooth-badge" class="badge">Checking…</span>
         </summary>
         <p class="muted">Pair a Sony DualShock 4 or DualSense controller through Reachy Pi's BlueZ adapter. Other controller layouts are rejected until they have a separately validated mapping. Controller actions use the same bounded movement queue, Kids lock, and Meeting/Sleep safety gates as this tab.</p>
-        <p class="hardware-scope-note"><strong>Reachy Mini Wireless only.</strong> This tool requires the Wireless model's Raspberry Pi Bluetooth radio; it is not supported on Reachy Mini Lite or wired-only installations.</p>
+        <p class="hardware-scope-note"><strong>Linux host with Bluetooth only.</strong> Works on Reachy Mini Wireless and on a Lite driven by a Raspberry Pi or Jetson. Not available when a Mac or Windows PC drives Reachy.</p>
         <div class="bluetooth-status-grid">
           <div><span class="label">Adapter</span><strong id="bluetooth-adapter-state">Checking…</strong></div>
           <div><span class="label">Controller input</span><strong id="gamepad-state">Disabled</strong></div>
@@ -589,11 +589,11 @@
           <div><span class="label">Last press</span><strong id="gpio-last-event">—</strong></div>
         </div>
         <div class="gpio-pin-grid">
-          <label>Green pin (BCM)
-            <input type="number" id="gpio-green-pin" min="0" max="53" step="1" inputmode="numeric" placeholder="None" />
+          <label>Green line (BCM on a Pi)
+            <input type="number" id="gpio-green-pin" min="0" max="1023" step="1" inputmode="numeric" placeholder="None" />
           </label>
-          <label>Red pin (BCM)
-            <input type="number" id="gpio-red-pin" min="0" max="53" step="1" inputmode="numeric" placeholder="None" />
+          <label>Red line (BCM on a Pi)
+            <input type="number" id="gpio-red-pin" min="0" max="1023" step="1" inputmode="numeric" placeholder="None" />
           </label>
           <label>Hold for (seconds)
             <input type="number" id="gpio-long-press" min="0.5" max="10" step="0.5" inputmode="decimal" />
@@ -772,16 +772,17 @@
       <section class="card danger-zone">
         <p class="label">Danger zone</p>
         <h2>App and host lifecycle</h2>
-        <p class="muted">Stopping the app requires Reachy Control to start it again. Shutting down the Pi disconnects this page until Reachy is powered back on.</p>
+        <p class="muted">Stopping the app requires Reachy Control to start it again. Shutting down the robot computer disconnects this page until it is powered back on.</p>
+        <p class="muted compact-note">Running on: <strong id="host-summary">Checking…</strong></p>
         <div class="actions danger-actions">
           <button type="button" id="app-off-button" class="secondary">Stop voice app</button>
-          <button type="button" id="shutdown-button" class="danger">Shut down Pi</button>
+          <button type="button" id="shutdown-button" class="danger" hidden>Shut down robot computer</button>
         </div>
       </section>
     </div>
   </main>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=49"></script>
-  <script src="/static/main.js?v=49"></script>
+  <script src="/static/camera.js?v=50"></script>
+  <script src="/static/main.js?v=50"></script>
 </body>
 </html>

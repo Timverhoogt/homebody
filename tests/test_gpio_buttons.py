@@ -211,7 +211,7 @@ def test_no_configured_pins_reports_instead_of_requesting_lines() -> None:
     "updates",
     [
         {"gpio_green_pin": 17, "gpio_red_pin": 17},
-        {"gpio_red_pin": 54},
+        {"gpio_red_pin": 1024},
         {"gpio_red_pin": -1},
         {"gpio_red_pin": True},
         {"gpio_long_press_seconds": 0.1},
@@ -449,7 +449,7 @@ def test_gpio_route_persists_then_opens_the_lines(monkeypatch: pytest.MonkeyPatc
     "payload",
     [
         {"enabled": True, "green_pin": 17, "red_pin": 17},
-        {"enabled": True, "red_pin": 60},
+        {"enabled": True, "red_pin": 1024},
         {"enabled": "yes"},
         {"enabled": True, "long_press_seconds": 0.1},
         {"enabled": True, "chip": "/etc/passwd"},

@@ -336,7 +336,26 @@ function toggleModePanels() {
 $("conversation_mode").addEventListener("change", toggleModePanels);
 $("home_assistant_enabled").addEventListener("change", () => toggleHomeAssistantOptions(true));
 
+let hostShutdownLabel = "robot computer";
+
+function renderHost(hostInfo) {
+  if (!hostInfo || typeof hostInfo !== "object") return;
+  const acceleration = hostInfo.accelerated
+    ? (hostInfo.onnx_providers || []).find((name) => name !== "CPUExecutionProvider" && name !== "AzureExecutionProvider")
+    : "";
+  const model = hostInfo.model && hostInfo.model !== hostInfo.label ? ` (${hostInfo.model})` : "";
+  $("host-summary").textContent = `${hostInfo.label || "Computer"}${model} · local AI on ${
+    acceleration ? acceleration.replace("ExecutionProvider", "") : "CPU"}`;
+  hostShutdownLabel = hostInfo.label || "robot computer";
+  $("shutdown-button").hidden = !hostInfo.shutdown_supported;
+  $("shutdown-button").textContent = `Shut down ${hostShutdownLabel}`;
+  // Only offer hardware cards the host can actually drive.
+  document.querySelector(".bluetooth-card").hidden = !hostInfo.bluetooth_controller_supported;
+  document.querySelector(".gpio-card").hidden = !hostInfo.gpio_supported;
+}
+
 function updateStatus(payload) {
+  renderHost(payload.host);
   const runtime = payload.runtime || {};
   const state = runtime.state || "unknown";
   $("runtime-state").textContent = state.replaceAll("_", " ");
@@ -1699,7 +1718,7 @@ async function saveGpioSettings() {
     });
     const body = await response.json();
     if (!response.ok) {
-      const detail = Array.isArray(body.detail) ? "Check the pin numbers (0–53) and hold time (0.5–10 s)." : body.detail;
+      const detail = Array.isArray(body.detail) ? "Check the line numbers (0–1023) and hold time (0.5–10 s)." : body.detail;
       throw new Error(detail || `HTTP ${response.status}`);
     }
     gpioFormDirty = false;
@@ -2104,13 +2123,13 @@ $("app-off-button").addEventListener("click", async () => {
 });
 
 $("shutdown-button").addEventListener("click", async () => {
-  if (window.prompt("Type SHUTDOWN to safely power off the Pi") !== "SHUTDOWN") return;
+  if (window.prompt(`Type SHUTDOWN to safely power off the ${hostShutdownLabel}`) !== "SHUTDOWN") return;
   try {
     const response = await fetchWithTimeout("/api/shutdown", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: "shutdown" }),
     });
     if (!response.ok) throw new Error(await responseDetail(response));
-    setPowerMessage("Pi is shutting down safely", "ok");
+    setPowerMessage(`${hostShutdownLabel} is shutting down safely`, "ok");
   } catch (error) {
     setPowerMessage(`Shutdown was not started: ${error.message || error}`, "error");
   }
