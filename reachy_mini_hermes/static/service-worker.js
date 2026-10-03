@@ -1,11 +1,11 @@
-const CACHE_NAME = "reachy-hermes-shell-v47";
+const CACHE_NAME = "reachy-hermes-shell-v48";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
-  "/static/style.css?v=47",
+  "/static/style.css?v=48",
   "/static/gstwebrtc-api.js",
-  "/static/camera.js?v=47",
-  "/static/main.js?v=47",
+  "/static/camera.js?v=48",
+  "/static/main.js?v=48",
   "/static/icon-192.png",
   "/static/icon-512.png",
   "/static/icon-maskable-512.png",

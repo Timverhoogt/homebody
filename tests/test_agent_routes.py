@@ -581,7 +581,7 @@ def test_agent_05_trusted_ui_exposes_preview_budget_progress_and_control() -> No
     assert "/api/agent/run/status" in script
     assert "/api/agent/run/current" in script
     assert "Approve this exact step once?" in script
-    assert "reachy-hermes-shell-v47" in worker
+    assert "reachy-hermes-shell-v48" in worker
 
 
 def test_settings_require_current_key_to_change_bridge_credentials(monkeypatch) -> None:
@@ -632,3 +632,50 @@ def test_settings_reject_unbounded_strings_and_report_save_failures(monkeypatch)
     response = client.post("/api/settings", json={"language": "nl"})
     assert response.status_code == 500
     assert response.json()["detail"] == "Settings could not be saved on Reachy"
+
+
+def test_initiative_preference_routes_require_adult_ui_and_update_status(monkeypatch) -> None:
+    _app, runtime, client, _saved = build_client(monkeypatch)
+    adult = {"X-Reachy-Adult-UI": "unlocked"}
+
+    weather_off = {"category": "weather", "disabled": True}
+    assert client.post("/api/initiative/preferences", json=weather_off).status_code == 403
+    assert client.post(
+        "/api/initiative/preferences", headers=adult, json={"category": "shell", "disabled": True}
+    ).status_code == 422
+    assert client.post(
+        "/api/initiative/preferences", headers=adult, json={"category": "weather", "disabled": "yes"}
+    ).status_code == 422
+
+    disabled = client.post("/api/initiative/preferences", headers=adult, json=weather_off)
+    assert disabled.status_code == 200
+    rows = {row["category"]: row for row in disabled.json()["preferences"]}
+    assert rows["weather"]["state"] == "disabled"
+    assert runtime._initiative.preferences.suppression_reason("weather") == "category_disabled"
+
+    runtime._initiative.preferences.record("calendar", "dismissed")
+    reset_one = client.post("/api/initiative/preferences/reset", headers=adult, json={"category": "calendar"})
+    rows = {row["category"]: row for row in reset_one.json()["preferences"]}
+    assert rows["calendar"]["dismissed"] == 0
+    assert rows["weather"]["state"] == "disabled"
+
+    reset_all = client.post("/api/initiative/preferences/reset", headers=adult, json={})
+    assert all(row["state"] == "normal" for row in reset_all.json()["preferences"])
+    assert client.post("/api/initiative/preferences/reset", json={}).status_code == 403
+
+
+def test_contextual_offer_route_accepts_later(monkeypatch) -> None:
+    _app, runtime, client, _saved = build_client(monkeypatch)
+    calls: list[tuple[int, str]] = []
+    runtime.respond_to_contextual_offer = lambda token, response: calls.append((token, response)) or {  # type: ignore[method-assign]
+        "ok": True
+    }
+
+    response = client.post(
+        "/api/initiative/offers/respond",
+        headers={"X-Reachy-Adult-UI": "unlocked"},
+        json={"token": 3, "response": "later"},
+    )
+
+    assert response.status_code == 200
+    assert calls == [(3, "later")]
