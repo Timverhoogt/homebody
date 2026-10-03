@@ -1,35 +1,71 @@
 ---
-title: Reachy Mini Hermes
-emoji: 🪽
+title: Homebody
+emoji: 🏡
 colorFrom: indigo
 colorTo: yellow
 sdk: static
 pinned: false
-short_description: Reachy Mini companion app with optional Hermes integration
+short_description: Always-on home companion for Reachy Mini
 suggested_storage: medium
 tags:
   - reachy_mini
   - reachy_mini_python_app
   - voice-assistant
   - hermes-agent
+  - openclaw
   - openai-realtime
   - camera
   - home-assistant
   - kids-mode
+  - privacy
   - elevenlabs
 ---
 
-# Reachy Mini Hermes
+# Homebody for Reachy Mini
 
-An extensible, all-in-one companion and control app for Reachy Mini: local wake phrases, guarded movement, visible privacy states, opt-in camera controls, announcements, supervised Kids experiences and optional Sony controller support. Connect [Hermes Agent](https://github.com/NousResearch/hermes-agent) when you want voice pipelines, memory, skills and tools; it is the reference agent backend, not a prerequisite for understanding the local control surface.
+**Homebody gives Reachy Mini a home.** It is an always-on companion for your office or living room. It connects to the agent you already trust, keeps the household safe and private, and welcomes the games, stories and skills the community builds.
 
-[**Explore the app page ↗**](https://huggingface.co/spaces/Timbo89/reachy_mini_hermes) · [**Hardware setups and support**](docs/hardware-setups.md) · [**Lite + Raspberry Pi 4 guide**](docs/lite-raspberry-pi-4.md) · [**Privacy and security**](SECURITY.md) · [**Operations and troubleshooting**](OPERATIONS.md)
+[**Explore the app page ↗**](https://huggingface.co/spaces/Timbo89/reachy_mini_hermes) · [**Contribute**](CONTRIBUTING.md) · [**Hardware setups**](docs/hardware-setups.md) · [**Lite + Raspberry Pi 4 guide**](docs/lite-raspberry-pi-4.md) · [**Privacy and security**](SECURITY.md) · [**Operations**](OPERATIONS.md)
 
 ![An actual Reachy Mini on a desk raising its antennas in an official Pollen Robotics demonstration](docs/assets/hero-reachy.webp)
 
 *Actual Reachy Mini. Official Pollen Robotics source, converted to a static metadata-free WebP under Apache-2.0. [Image credits and immutable sources](docs/IMAGE_CREDITS.md).*
 
-> **Status: early alpha.** Automated, bridge, network, camera, deployment and physical power-state checks have passed on Tim's reference Reachy Mini Lite + Raspberry Pi 4 setup. This is not a production-readiness or broad hardware-compatibility claim. Every installation still needs the documented physical, spoken wake-word, acoustic barge-in, camera/privacy and safe-fold acceptance checks.
+> **Status: early alpha, mid-rename.** This project was called *Reachy Mini Hermes*. The package, entry point, CLI and Space URL still use `reachy_mini_hermes` until the rename lands, so the commands below are unchanged. Automated, bridge, network, camera, deployment and physical power-state checks have passed on Tim's reference Reachy Mini Lite + Raspberry Pi 4 setup. This is not a production-readiness or broad hardware-compatibility claim. Every installation still needs the documented physical, spoken wake-word, acoustic barge-in, camera/privacy and safe-fold acceptance checks.
+
+## Why Homebody
+
+I wanted a Reachy Mini that could stay on all day, in my office or in the living room, rather than one I start up for a demo. I already run [Hermes Agent](https://github.com/NousResearch/hermes-agent) for home automation, work and hobby projects, so the robot should be able to reach all of that by voice. And it should be fun for my kids: games, stories and conversations they can have on their own terms, with me still in charge.
+
+A robot that runs all the time in a family home needs a lot of quiet, unglamorous care: power states, safe folding, privacy everyone can trust, different rules for adults and children, and recovering by itself after a reboot or a Wi-Fi drop. Homebody is that foundation. The Reachy Mini community already makes wonderful focused apps, games and agent bridges, and many of them inspired this one. Homebody does not try to replace them. It tries to be the home where a robot lives between them, and an open place where new experiences can be added.
+
+## One robot, three roles
+
+| Role | What it does |
+|---|---|
+| **Desk** | Work companion through your agent: questions, notes, reminders and announcements. Meeting mode stops the microphone and wake detection while you are on a call. |
+| **Home** | The household's voice and face for home automation, through your agent or the [Home Assistant](#home-assistant) bridge. Allowlists keep it to what you have explicitly shared. |
+| **Play** | Supervised Kids Mode: buddy chat, stories, quizzes, riddles, calm-down time and I Spy, with adult controls and moderation. |
+
+## Bring your own brain
+
+Homebody owns the body: movement, safety, privacy, presence and the browser UI. Your agent provides the brain: memory, skills and tools. They talk through a private, authenticated bridge, and provider credentials stay on the agent host.
+
+- **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** is the reference backend.
+- **[OpenClaw](companion/README.md#use-openclaw-instead-of-or-besides-hermes)** works instead of Hermes or alongside it.
+- **More to come.** Grok, Muse Spark, dots and local models are possible next connectors, and adding one is a good [first contribution](CONTRIBUTING.md#brains-agent-connectors).
+
+Homebody also works without any agent: the local dashboard, power and privacy states, guarded movement and camera controls run on their own.
+
+## Household promises
+
+These hold for everything that runs inside Homebody, including future contributions. [CONTRIBUTING.md](CONTRIBUTING.md#household-promises) explains how they apply to new code.
+
+1. **Sleep and Meeting mean it.** Microphone capture and wake detection stop. The camera stays off unless someone opts in.
+2. **Stop always works.** Movement stays within bounded, allowlisted motions, and Reachy folds before torque goes off.
+3. **Kids play supervised.** Kids Mode has its own prompts, moderation and adult controls.
+4. **You approve what matters.** Agent capabilities start from empty allowlists, and consequential actions need exact approval on your phone.
+5. **Your data stays home where it can.** Local wake words, local vision when available, and nothing crosses to an outside provider unless you enabled it.
 
 ## What can I expect?
 
@@ -456,11 +492,13 @@ reachy-mini-app-assistant check .
 
 The automated suite is validated against Raspberry Pi SDK 1.9 during release checks; run `uv run pytest` for the current test count.
 
-The implementation plan and status are in [`plan.md`](plan.md). Changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
+New here? [`CONTRIBUTING.md`](CONTRIBUTING.md) explains where contributions fit and the household promises they keep. The implementation plan and status are in [`plan.md`](plan.md). Changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Credits
 
 Built by [Tim Verhoogt](https://github.com/Timverhoogt) with development and testing assistance from [Hermes Agent](https://github.com/NousResearch/hermes-agent) by [Nous Research](https://nousresearch.com/).
+
+Homebody stands on the work of the Reachy Mini community: [Pollen Robotics](https://www.pollen-robotics.com/)' SDK, daemon and official apps, and the many community apps whose ideas shaped this one. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the specific code and models it builds on.
 
 ## Third-party model
 
