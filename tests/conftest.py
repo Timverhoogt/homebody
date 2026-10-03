@@ -1,7 +1,14 @@
 import sys
+from pathlib import Path
 from types import ModuleType
 
 from fastapi import FastAPI
+
+# The bridge tests import ``companion.*`` from the checkout. The editable install maps that folder to
+# ``homebody.bridge`` through an import hook, which does not put the repository root on sys.path.
+_ROOT = str(Path(__file__).resolve().parents[1])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 # Mock the entire reachy_mini SDK and its submodules so we don't need
 # GStreamer or native libraries to run unit tests.
