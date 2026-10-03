@@ -70,7 +70,14 @@ The app manager may report `running` several seconds before the settings server 
 
 ## Companion bridge deployment
 
-The bridge normally runs directly from the checked-out repository. After bridge code or Hermes-host credentials change:
+**Agent-led setups** (Settings → Connect your agent, see [docs/agent-setup.md](docs/agent-setup.md)) keep a copy of the bridge next to the agent:
+
+- Hermes: `~/.hermes/homebody-bridge/`, running with `--profile reachy`;
+- OpenClaw: `~/.openclaw/homebody-bridge/`, in its own venv with `bridge.env`.
+
+The bridge service is called `homebody-bridge`. After upgrading Homebody, create a new setup message and send it to the agent: the guide is safe to repeat. The agent keeps the existing profile or agent, downloads the bridge that matches the new version, restarts it and pairs again. To move the bridge to another computer, do the same from that computer.
+
+Manually deployed bridges normally run directly from the checked-out repository. After bridge code or Hermes-host credentials change:
 
 ```bash
 systemctl --user restart hermes-reachy-bridge.service

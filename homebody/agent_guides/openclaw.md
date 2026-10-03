@@ -124,7 +124,7 @@ set -a; . "$B/bridge.env"; set +a
 "$B/venv/bin/python" "$B/hermes_reachy_bridge.py" --agent-backends openclaw --host 0.0.0.0 --port 8643
 ```
 
-Make it a service so it survives reboots.
+Make it a service so it survives reboots. If a `homebody-bridge` service already runs from an earlier setup, for example before a Homebody upgrade, restart it with the new files (`systemctl --user restart homebody-bridge`) instead of starting a second copy.
 
 **Linux:** write `~/.config/systemd/user/homebody-bridge.service`:
 

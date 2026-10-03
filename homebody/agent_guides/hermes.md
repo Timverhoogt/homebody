@@ -137,7 +137,7 @@ The bridge uses the `reachy` profile's `API_SERVER_KEY` as the key between Reach
   --profile reachy --hermes-url http://127.0.0.1:8652 --host 0.0.0.0 --port 8643
 ```
 
-Make it a service so it survives reboots.
+Make it a service so it survives reboots. If a `homebody-bridge` service already runs from an earlier setup, for example before a Homebody upgrade, restart it with the new files (`systemctl --user restart homebody-bridge`) instead of starting a second copy.
 
 **Linux:** write `~/.config/systemd/user/homebody-bridge.service`:
 
@@ -208,7 +208,14 @@ This lets **your own** profile, not `reachy`, use Reachy: say something aloud, s
 "$HERMES_PY" -c "import mcp.client.streamable_http as m; m.streamablehttp_client" 2>/dev/null || "$HERMES_PY" -m pip install "mcp<2"
 R="$HOME/.hermes/homebody-bridge/pair-reply.json"
 umask 077
-"$HERMES_PY" -c "import json; print('HOMEBODY_MCP_TOKEN=' + json.load(open('$R'))['mcp']['headers']['Authorization'].split(' ', 1)[1])" >> ~/.hermes/.env
+"$HERMES_PY" - "$R" <<'PY'
+import json, pathlib, sys
+env = pathlib.Path.home() / ".hermes" / ".env"
+token = json.load(open(sys.argv[1]))["mcp"]["headers"]["Authorization"].split(" ", 1)[1]
+lines = [line for line in env.read_text().splitlines() if not line.startswith("HOMEBODY_MCP_TOKEN=")] if env.exists() else []
+env.write_text("\n".join(lines + [f"HOMEBODY_MCP_TOKEN={token}"]) + "\n")
+env.chmod(0o600)
+PY
 hermes config set mcp_servers.homebody.url "$("$HERMES_PY" -c "import json; print(json.load(open('$R'))['mcp']['url'])")"
 hermes config set mcp_servers.homebody.headers.Authorization 'Bearer ${HOMEBODY_MCP_TOKEN}'
 hermes mcp test homebody

@@ -13,6 +13,7 @@ tags:
   - voice-assistant
   - hermes-agent
   - openclaw
+  - mcp
   - openai-realtime
   - camera
   - home-assistant
@@ -23,7 +24,7 @@ tags:
 
 # Homebody for Reachy Mini
 
-**Homebody gives Reachy Mini a home.** It is an always-on companion for your office or living room. It connects to the agent you already trust, keeps the household safe and private, and welcomes the games, stories and skills the community builds.
+**Homebody gives Reachy Mini a home.** It is an always-on companion for your office or living room. It connects to the agent you already trust, keeps the household safe and private, and welcomes the games, stories and skills the community builds. **Your agent even sets itself up:** paste one message from Homebody to Hermes Agent or OpenClaw, and it connects Reachy for you.
 
 [**Explore the app page ↗**](https://huggingface.co/spaces/Timbo89/reachy_mini_homebody) · [**Contribute**](CONTRIBUTING.md) · [**Hardware setups**](docs/hardware-setups.md) · [**Lite + Raspberry Pi 4 guide**](docs/lite-raspberry-pi-4.md) · [**Privacy and security**](SECURITY.md) · [**Operations**](OPERATIONS.md)
 
@@ -53,11 +54,41 @@ Homebody owns the body: movement, safety, privacy, presence and the browser UI. 
 
 - **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** is the reference backend.
 - **[OpenClaw](companion/README.md#use-openclaw-instead-of-or-besides-hermes)** works instead of Hermes or alongside it.
+- Both can **[connect themselves](#your-agent-sets-itself-up)**: you paste one message, and they install the bridge, restrict their Reachy profile and pair.
 - **More to come.** Grok, Muse Spark, dots and local models are possible next connectors, and adding one is a good [first contribution](CONTRIBUTING.md#brains-agent-connectors).
 
 Homebody also works without any agent: the local dashboard, power and privacy states, guarded movement and camera controls run on their own.
 
 **Agents can also call Reachy.** With [agent access (MCP)](docs/agent-access-mcp.md) turned on, any MCP-capable agent can ask Reachy to speak a reminder, show an emotion, or describe what it sees through your local vision model. Hermes Agent, OpenClaw and Claude Code are examples. Every request follows the same Meeting, Sleep, privacy and Kids Mode rules as voice. It is off by default, needs a token, and never wakes Reachy for a gesture. Hosted agents such as ChatGPT dots and Grok Bot can sign in through OAuth over an HTTPS tunnel, and you approve each one in Settings on your home network.
+
+## Your agent sets itself up
+
+Connecting a robot to an agent usually means installing a bridge, creating keys, restricting tools and typing addresses into two places. With Homebody, **your agent does that part**. Hermes Agent and OpenClaw can already run commands on their own computer, so Homebody gives them a guide and a one-time code:
+
+1. In Homebody → Settings → **Connect your agent**, choose Hermes Agent or OpenClaw and press **Create setup message**.
+2. Paste the message to your agent, in the chat you already use with it.
+3. The agent explains its plan and waits for your OK, then does the work. Settings shows its progress live, then *Connected*. Say **"Hey Homebody"**.
+
+![Homebody's Connect your agent card with a one-time setup message for Hermes Agent, waiting for the agent](docs/assets/ui-agent-setup.webp)
+
+*Real Homebody UI with an example message: the stock `reachy-mini.local` name and a made-up code.*
+
+What the agent does on its computer:
+
+- reads a setup guide that **the robot itself serves**, matching your Homebody version;
+- downloads the bridge from the robot and checks every file against its SHA-256 list;
+- creates a **separate, tool-restricted** Reachy profile (Hermes) or agent (OpenClaw), so a room full of voices never reaches its terminal, files or admin tools;
+- starts the bridge and pairs.
+
+Your own agent keeps all its tools. Tick **Also let my agent use Reachy**, and your agent also gets Reachy as an [MCP tool](docs/agent-access-mcp.md): announce, show an emotion, check status.
+
+Handing this to an agent is safe by design:
+
+- The code is your permission, created in Settings. It lasts 30 minutes and works once.
+- **Reachy saves nothing until it has tested the connection.** It reaches the bridge with the agent's key and checks that the agent behind it is ready and restricted.
+- If anything is off, the agent is told exactly what to fix and can retry with the same code.
+
+Tested with Claude Code standing in for your agent, given only the pasted message, against fresh installs of Hermes Agent 0.19 and OpenClaw 2026.9.8. The full walkthrough, the safety model and troubleshooting are in **[Let your agent connect Reachy](docs/agent-setup.md)**.
 
 ## Household promises
 
@@ -74,7 +105,7 @@ These hold for everything that runs inside Homebody, including future contributi
 1. **Bring supported hardware.** Use Reachy Mini Wireless, or a Lite driven by a PC, Mac, Raspberry Pi or NVIDIA Jetson. The app detects which one and shows only the features that host can drive. Tim's self-built Lite + Pi 4 is the reference setup and a community adaptation, not an official Wireless conversion. See [hardware setups](docs/hardware-setups.md) for what each setup supports.
 2. **Start locally and safely.** The browser UI exposes Standby, Awake, Meeting and Sleep; guarded wake/fold; bounded movement; Stop; announcements; and opt-in camera controls. Meeting and Sleep stop microphone capture and wake detection. Camera sharing is off by default.
 3. **Try the short demo.** With clear space around Reachy, open the Dashboard, confirm folded Standby and released torque, wake from the Robot tab, try one bounded look, press Stop, return to Standby, and confirm fold-before-torque-off. Only then enable one camera or voice path at a time.
-4. **Add your agent when wanted.** A private authenticated bridge connects Reachy to Hermes Agent, to [OpenClaw](companion/README.md#use-openclaw-instead-of-or-besides-hermes), or to both. It enables speech, provider routing, personal memory, skills and progressively gated tools while keeping provider credentials on the agent host.
+4. **Add your agent when wanted.** A private authenticated bridge connects Reachy to Hermes Agent, to [OpenClaw](companion/README.md#use-openclaw-instead-of-or-besides-hermes), or to both. It enables speech, provider routing, personal memory, skills and progressively gated tools while keeping provider credentials on the agent host. You don't have to set it up yourself: **Settings → Connect your agent** gives you a message for your agent, and [the agent connects itself](#your-agent-sets-itself-up).
 5. **Treat advanced features as gated.** Kids Mode requires adult supervision. Agent Mode uses empty-by-default allowlists, reversible actions, and exact phone approval for consequential work. Bluetooth controller management needs a Linux host with Bluetooth and still needs final physical controller acceptance.
 
 ## Supported setups
@@ -101,6 +132,7 @@ The [hardware setups guide](docs/hardware-setups.md) has the full feature-by-set
 | Camera-feed thumb joystick | ◐ Off by default with gesture-bound anti-replay, release-to-hold, explicit Center and Stop; supervised physical acceptance is still required. |
 | One-frame visual request | ◐ Requires camera opt-in and an active Realtime session. With a local vision model the frame is answered on your network and only text reaches the model. |
 | Local vision model | 🧪 Any OpenAI-compatible vision server (Ollama, llama.cpp, vLLM), on the robot computer or elsewhere on the LAN. |
+| Agent-led setup (Hermes Agent, OpenClaw) | ◐ The agent installs and restricts its side and pairs with a one-time code; Reachy saves only a tested connection. Verified with an agent following only the pasted message against fresh Hermes Agent 0.19 and OpenClaw 2026.9.8 installs; a run with your own agent and model is still open. |
 | Announcements and adult voice conversation | ◐ Requires configured private bridge and speech/model providers. |
 | Supervised Kids Mode | ◐ Automated and reference acceptance exists; adult supervision and provider terms still apply. |
 | Hermes memory, skills and tools | ◐ Conversation profile plus progressively gated Agent capabilities. |
@@ -211,6 +243,7 @@ Pipeline mode supports selectable STT, TTS, agent model, voice, and continued co
 - Optional wake-time microphone-array direction finding so Reachy turns once toward the speaker locally.
 - Privacy-preserving cameras: one JPEG is captured only when a visual request needs it, while an independent opt-in UI viewer connects directly to Reachy's local WebRTC feed.
 - Optional supervised camera-feed joystick: each pointer or keyboard gesture receives a fresh random server session, bounded pan/tilt uses small cancellable head steps with base assistance near the yaw edge, release holds the measured view, Center is explicit, and Stop/privacy/power/Kids/feed transitions invalidate delayed commands. The overlay remains off until both live camera and camera movement controls are enabled.
+- **Agent-led setup:** a one-time code lets Hermes Agent or OpenClaw install the bridge from the robot (SHA-256 checked), create a tool-restricted Reachy profile or agent, and pair. Reachy saves only a connection it has tested, and can also hand your agent an MCP token.
 - Selectable ElevenLabs Scribe/TTS models and account voices without storing provider keys on Reachy.
 - Full announcement console with typed TTS, per-announcement provider/model/voice overrides, quick templates, repeat/pause controls, a bounded queue, independent Stop, and voice-only or safe wake/fold behavior.
 - Supervised **Kids Mode** with six age-aware activities—including I Spy—English/Dutch profiles, 15–60 minute parent-selected sessions, automatic safe folding, optional gentle voice-state motion, and a dedicated moderated no-agent pipeline that removes personal memory, files, messaging, devices, purchases, and power controls.
@@ -349,7 +382,7 @@ Open the settings page:
 http://REACHY_HOST:8042
 ```
 
-Enter:
+Under **Connect your agent**, create a setup message and send it to Hermes Agent or OpenClaw; the agent fills in the bridge for you ([how it works](docs/agent-setup.md)). To set it up by hand instead, enter:
 
 - **Bridge URL:** `http://HERMES_HOST:8643`
 - **API key:** the same `API_SERVER_KEY` as in the `reachy` profile's `.env`

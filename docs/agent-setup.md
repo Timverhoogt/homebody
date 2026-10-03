@@ -9,6 +9,8 @@ Hermes Agent and OpenClaw can run commands on the computer they live on, so they
 
 This replaces the manual steps in [`companion/README.md`](../companion/README.md). Those steps remain the reference if you prefer doing it by hand.
 
+![Homebody's Connect your agent card with a one-time setup message for Hermes Agent, waiting for the agent](assets/ui-agent-setup.webp)
+
 ## How to use it
 
 1. Install Homebody on Reachy and open its Settings page (`http://<reachy-address>:8042`).
