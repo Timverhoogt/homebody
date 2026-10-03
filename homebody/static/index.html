@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#121014" />
+  <meta name="theme-color" content="#f1ebe0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Homebody" />
   <title>Homebody</title>
   <link rel="manifest" href="/manifest.webmanifest" />
@@ -16,63 +16,66 @@
 </head>
 <body>
   <main>
-    <header>
-      <div class="mark" aria-hidden="true">
+    <header class="topbar">
+      <div class="wordmark" aria-hidden="true">
         <svg viewBox="0 0 64 64" focusable="false">
-          <path class="mark-antenna mark-antenna-left" d="M23 19 17 8" fill="none" stroke="#f3eee6" stroke-width="3" stroke-linecap="round" />
-          <path class="mark-antenna mark-antenna-right" d="M41 19 47 8" fill="none" stroke="#f3eee6" stroke-width="3" stroke-linecap="round" />
-          <circle class="mark-tip" cx="16.5" cy="7" r="2.6" fill="#f3eee6" />
-          <circle class="mark-tip" cx="47.5" cy="7" r="2.6" fill="#f3eee6" />
-          <rect class="mark-head" x="11" y="17" width="42" height="38" rx="16" />
-          <rect class="mark-visor" x="16.5" y="26" width="31" height="19" rx="9.5" />
-          <circle class="mark-eye mark-eye-left" cx="26" cy="35.5" r="3.6" />
-          <circle class="mark-eye mark-eye-right" cx="38" cy="35.5" r="3.6" />
+          <path d="M23 19 17 8M41 19 47 8" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" />
+          <circle cx="16.5" cy="7" r="2.8" fill="currentColor" /><circle cx="47.5" cy="7" r="2.8" fill="currentColor" />
+          <rect x="11" y="17" width="42" height="38" rx="16" fill="currentColor" />
+          <rect x="16.5" y="26" width="31" height="19" rx="9.5" class="wordmark-visor" />
+          <circle cx="26" cy="35.5" r="3.6" fill="#ff6b2c" /><circle cx="38" cy="35.5" r="3.6" fill="#8c7bff" />
         </svg>
+        <span>Homebody</span>
       </div>
-      <div>
-        <p class="eyebrow">Reachy Mini × your agent</p>
-        <h1>Hey <em>Homebody</em></h1>
-        <p class="subtitle">Voice, privacy, and physical control for your always-on home companion.</p>
-      </div>
+      <nav class="tabs" role="tablist" aria-label="Homebody controls">
+        <button type="button" class="tab-button active" id="tab-dashboard" role="tab" aria-selected="true" aria-controls="panel-dashboard" data-tab="dashboard">Home</button>
+        <button type="button" class="tab-button" id="tab-agent" role="tab" aria-selected="false" aria-controls="panel-agent" data-tab="agent">Agent</button>
+        <button type="button" class="tab-button" id="tab-kids" role="tab" aria-selected="false" aria-controls="panel-kids" data-tab="kids">Kids</button>
+        <button type="button" class="tab-button" id="tab-announce" role="tab" aria-selected="false" aria-controls="panel-announce" data-tab="announce">Announce</button>
+        <button type="button" class="tab-button" id="tab-robot" role="tab" aria-selected="false" aria-controls="panel-robot" data-tab="robot">Robot</button>
+        <button type="button" class="tab-button" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings">Settings</button>
+      </nav>
     </header>
 
-    <section class="card status-card">
-      <div>
-        <p class="label">Current state</p>
-        <h2 id="runtime-state">Connecting…</h2>
-        <p id="runtime-detail" class="muted">Reading app status</p>
+    <section class="display hero status-card" aria-label="Current state">
+      <div class="hero-face" aria-hidden="true">
+        <span class="hero-ring"></span>
+        <svg viewBox="0 0 160 170" focusable="false">
+          <path class="mark-antenna mark-antenna-left" d="M54 50 40 18" fill="none" stroke="#f4ede1" stroke-width="5" stroke-linecap="round" />
+          <path class="mark-antenna mark-antenna-right" d="M106 50 120 18" fill="none" stroke="#f4ede1" stroke-width="5" stroke-linecap="round" />
+          <circle class="mark-tip mark-tip-left" cx="39" cy="15" r="5.5" fill="#f4ede1" /><circle class="mark-tip mark-tip-right" cx="121" cy="15" r="5.5" fill="#f4ede1" />
+          <rect class="mark-head" x="26" y="44" width="108" height="92" rx="40" />
+          <rect class="mark-visor" x="40" y="66" width="80" height="46" rx="23" />
+          <circle class="mark-eye mark-eye-left" cx="64" cy="89" r="8.5" /><circle class="mark-eye mark-eye-right" cx="96" cy="89" r="8.5" />
+          <path d="M58 140h44" stroke="#f4ede1" stroke-width="6" stroke-linecap="round" opacity=".55" />
+          <path d="M46 160c0-9 15-14 34-14s34 5 34 14" fill="none" stroke="#f4ede1" stroke-width="3" opacity=".35" />
+        </svg>
       </div>
-      <span id="status-dot" class="status-dot" aria-label="Runtime status"></span>
-    </section>
-
-    <nav class="tabs" role="tablist" aria-label="Homebody controls">
-      <button type="button" class="tab-button active" id="tab-dashboard" role="tab" aria-selected="true" aria-controls="panel-dashboard" data-tab="dashboard">Home</button>
-      <button type="button" class="tab-button" id="tab-agent" role="tab" aria-selected="false" aria-controls="panel-agent" data-tab="agent">Agent</button>
-      <button type="button" class="tab-button" id="tab-kids" role="tab" aria-selected="false" aria-controls="panel-kids" data-tab="kids">Kids</button>
-      <button type="button" class="tab-button" id="tab-announce" role="tab" aria-selected="false" aria-controls="panel-announce" data-tab="announce">Announce</button>
-      <button type="button" class="tab-button" id="tab-robot" role="tab" aria-selected="false" aria-controls="panel-robot" data-tab="robot">Robot</button>
-      <button type="button" class="tab-button" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings">Settings</button>
-    </nav>
-
-    <div id="panel-dashboard" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboard" data-panel="dashboard">
-      <section class="card">
-        <div class="section-heading">
-          <div><p class="label">Operating state</p><h2>Power and privacy</h2></div>
-          <span id="power-mode-badge" class="badge">—</span>
-        </div>
-        <p class="muted">Standby keeps local wake detection active. Meeting and Sleep stop voice capture; Reachy folds safely before torque is released.</p>
-        <div class="actions power-actions">
+      <div class="hero-copy">
+        <p class="label hero-label"><span id="status-dot" class="status-dot" aria-label="Runtime status"></span>Current state <span id="power-mode-badge" class="hero-mode">—</span></p>
+        <h1 id="runtime-state">Connecting…</h1>
+        <p id="runtime-detail" class="hero-detail">Reading app status</p>
+        <div class="actions power-actions" role="group" aria-label="Power state">
           <button type="button" data-power="standby">Standby</button>
           <button type="button" data-power="awake" class="secondary">Awake</button>
           <button type="button" data-power="meeting" data-minutes="60" class="secondary">Meeting · 60 min</button>
           <button type="button" data-power="sleep" class="secondary">Sleep</button>
         </div>
         <p id="power-message" class="message" role="status"></p>
-      </section>
+      </div>
+      <ul class="tele" aria-label="Live status">
+        <li><i id="tele-mic-led" aria-hidden="true"></i><span>Microphone</span><strong id="tele-mic">—</strong></li>
+        <li><i id="tele-camera-led" aria-hidden="true"></i><span>Camera</span><strong id="tele-camera">—</strong></li>
+        <li><i id="tele-motors-led" aria-hidden="true"></i><span>Motors</span><strong id="tele-motors">—</strong></li>
+        <li><i id="tele-agent-led" aria-hidden="true"></i><span>Agent</span><strong id="tele-agent">—</strong></li>
+      </ul>
+    </section>
 
+    <div id="panel-dashboard" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboard" data-panel="dashboard">
       <section class="card conversation-card">
         <div><p class="label">Last heard</p><p id="last-transcript" class="quote">—</p></div>
         <div><p class="label">Last response</p><p id="last-response" class="quote">—</p></div>
+        <p class="muted compact-note power-note">Standby keeps local wake detection active. Meeting and Sleep stop voice capture; Reachy folds safely before torque is released.</p>
       </section>
 
       <details id="install-card" class="card install-card disclosure-card">
@@ -93,7 +96,7 @@
     </div>
 
     <div id="panel-agent" class="tab-panel" role="tabpanel" aria-labelledby="tab-agent" data-panel="agent" hidden>
-      <section class="card agent-card">
+      <section class="card agent-card display">
         <div class="agent-hero">
           <div>
             <p class="label">Owner-controlled workspace</p>
@@ -275,7 +278,7 @@
     </div>
 
     <div id="panel-kids" class="tab-panel kids-panel" role="tabpanel" aria-labelledby="tab-kids" data-panel="kids" hidden>
-      <section class="card kids-hero">
+      <section class="card kids-hero display">
         <div class="kids-hero-copy">
           <p class="label">Supervised play</p>
           <h2>Kids Mode</h2>
@@ -401,7 +404,7 @@
         <p id="announcement-message" class="message" role="status" aria-live="polite"></p>
       </section>
 
-      <section class="card announcement-status-card">
+      <section class="card announcement-status-card display">
         <div class="section-heading">
           <div><p class="label">Playback queue</p><h2>Announcement status</h2></div>
           <span id="announcement-queue-badge" class="badge">0 queued</span>
@@ -423,7 +426,7 @@
         </div>
         <p class="muted">Use bounded semantic poses and authentic Reachy moves—never raw joints or motor calibration. Meeting and Sleep always block movement.</p>
 
-        <div class="motor-command-bar">
+        <div class="motor-command-bar display">
           <div class="motor-state-summary">
             <span id="motor-state-dot" class="motor-state-dot" aria-hidden="true"></span>
             <div>

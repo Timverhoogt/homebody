@@ -70,7 +70,7 @@ def main() -> None:
         context.route("**/*", _serve)
         page = context.new_page()
         page.goto("http://homebody.invalid/#dashboard")
-        page.wait_for_function("document.getElementById('runtime-state').textContent === 'standby'")
+        page.wait_for_function("document.body.dataset.runtimeState === 'standby'")
         page.wait_for_timeout(500)
         captures = {"ui-dashboard": Path(tmp) / "dashboard.png"}
         page.screenshot(path=str(captures["ui-dashboard"]))
