@@ -60,7 +60,7 @@ class HomeAssistantVoiceMixin:
         temporary_path = ""
         maximum_bytes = 15 * 1024 * 1024
         try:
-            with tempfile.NamedTemporaryFile(prefix="reachy-ha-", suffix=suffix, delete=False) as temporary:
+            with tempfile.NamedTemporaryFile(prefix="homebody-ha-", suffix=suffix, delete=False) as temporary:
                 temporary_path = temporary.name
                 total = 0
                 with httpx.stream("GET", validated, timeout=20.0, follow_redirects=True) as response:
