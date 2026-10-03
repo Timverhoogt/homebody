@@ -12,6 +12,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Protocol
 
+POWER_MODES = frozenset({"standby", "awake", "meeting", "sleep"})
+
 # Status states that mean the voice runtime is not healthy enough for proactive behaviour.
 FAULT_STATES = frozenset({"starting", "stopping", "configuration_error", "power_transition_error"})
 IDLE_STATE = "waiting_for_wake_word"
