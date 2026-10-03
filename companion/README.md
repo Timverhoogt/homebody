@@ -83,6 +83,50 @@ Bridge URL: http://<hermes-host-LAN-IP>:8643
 API key:    the same API_SERVER_KEY
 ```
 
+## Warm Hermes agents (optional)
+
+Hermes' API server builds a new agent for every request. Each spoken turn therefore pays again for provider resolution, tool discovery, memory start-up and a freshly assembled system prompt. The bridge can instead keep one warm Hermes agent per conversation, the way Hermes' own messaging gateway does, for the two routes someone is waiting on:
+
+- `pipeline`: the Hermes pipeline mode's `/v1/chat/completions` turns;
+- `realtime`: Realtime `ask_hermes` delegations.
+
+It is off by default. To turn it on, add this to the bridge's environment and restart it:
+
+```bash
+REACHY_HERMES_WARM_AGENTS=1
+```
+
+Warm agents run inside the bridge, so the bridge must run from Hermes Agent's own virtualenv, as shown above. They use the same configuration, toolsets, session store and memory scope as the API server. The API server stays the fallback: when Hermes cannot be imported, an agent cannot be built, or a request is anything other than the plain Reachy shape (the default model alias, system messages and one user message, plus a session id), the request goes over HTTP as before. A turn that has already started is never retried over HTTP, because it may have used tools.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `REACHY_HERMES_WARM_ROUTES` | `pipeline,realtime` | Which routes may use warm agents. |
+| `REACHY_HERMES_WARM_MODELS` | `hermes-agent` | Model aliases that mean "the configured Hermes agent". Other model ids keep the API server's routing. |
+| `REACHY_HERMES_WARM_IDLE_SECONDS` | `600` | Close an agent after this long without a turn (30–3600). |
+| `REACHY_HERMES_WARM_MAX_AGE_SECONDS` | `3600` | Rebuild an agent after this long (300–86400). |
+| `REACHY_HERMES_WARM_MAX_TURNS` | `40` | Rebuild after this many turns (1–200). |
+| `REACHY_HERMES_WARM_MAX_AGENTS` | `4` | Most warm agents at once; the least recently used idle one goes first (1–16). |
+| `REACHY_HERMES_WARM_QUEUE_SECONDS` | `30` | How long a second turn for the same conversation waits before HTTP 429 (1–120). |
+
+How it stays safe:
+
+- **One turn at a time per conversation.** Turns for the same session queue; different sessions and routes never share an agent.
+- **Cache signatures.** Before every turn the bridge fingerprints the model, provider, a hash of the credential, the enabled toolsets, the system prompt, the memory scope and the Hermes `config.yaml`, `.env` and `SOUL.md`. Any change rebuilds the agent first.
+- **The tool boundary still applies.** The API server's `/v1/toolsets` check runs before each turn, and every new agent's actual tool list is checked too. An agent with `terminal`, `read_file` or another broad tool is closed unused.
+- **Lifecycle.** A failed, timed-out or cancelled turn interrupts and retires its agent. Starting a Kids session closes every warm agent. Shutdown closes them all, and an agent mid-turn is closed only when its turn has finished.
+- **Default profile only.** With `--profile` the bridge keeps the per-request API server path, because in-process Hermes reads its home directory once at import.
+
+Owner status and controls:
+
+```bash
+curl -s -H "Authorization: Bearer $API_SERVER_KEY" http://127.0.0.1:8643/v1/warm-agents
+curl -s -X DELETE -H "Authorization: Bearer $API_SERVER_KEY" http://127.0.0.1:8643/v1/warm-agents
+```
+
+The status shows per-route turns, warm hits, cold builds, rebuild and eviction reasons, fallbacks, build and turn seconds, and token use. Sessions appear only as short hashes, with no prompts, transcripts or credentials. Pipeline responses also carry `X-Reachy-Warm-Agent: hit`, or the reason the agent was built (`cold`, `signature`, `idle`, `age`, `turns`).
+
+Warm agents use internal Hermes Agent interfaces that can change between releases. After a Hermes update, check `/v1/warm-agents` reports `"available": true`, and time a few pipeline and `ask_hermes` turns against the plain API server before relying on it.
+
 ## Use OpenClaw instead of, or besides, Hermes
 
 The bridge can send Reachy's conversations to an [OpenClaw](https://docs.openclaw.ai) agent through the Gateway's OpenAI-compatible endpoint. Use it on its own, or next to Hermes Agent and switch between them in Reachy's Settings.
@@ -232,6 +276,8 @@ Authorization: Bearer <API_SERVER_KEY>
 || `POST /v1/agent/approve-pending` | One-shot execution of the unchanged pending draft |
 || `POST /v1/agent/ask` | Bounded model loop using only broker tools |
 | `POST /v1/agent/cancel/{request_id}` | Cancel an in-flight broker/Agent request |
+| `GET /v1/warm-agents` | Sanitized warm-agent state and per-route usage |
+| `DELETE /v1/warm-agents` | Close every warm agent now |
 
 The Realtime client sends an initial `session.start` envelope containing model, voice, reasoning effort, Hermes agent route, stable memory scope, system prompt, and the camera/robot-tool feature flags. The bridge then creates the OpenAI GA Realtime session and exposes `ask_hermes`, the always-available local `set_reachy_power_mode` tool, and only the enabled camera/motion tools. Sleep and Meeting are applied on Reachy itself; no privileged credential is sent to the robot.
 
