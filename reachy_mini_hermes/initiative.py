@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
+from .adaptation import CATEGORIES, PreferenceLedger
+
 InitiativeMode = Literal["quiet", "balanced", "engaged"]
 InitiativeOutcome = Literal["remain_silent", "physical_acknowledgement", "offer_candidate"]
 RequestedInitiative = Literal["physical_acknowledgement", "offer_candidate"]
@@ -31,8 +33,12 @@ class InitiativeCandidate:
     confidence: float
     attentive: bool = False
     fingerprint: str = ""
+    # Personal-adaptation category; "" keeps the candidate outside learned preferences.
+    category: str = ""
 
     def __post_init__(self) -> None:
+        if self.category and self.category not in CATEGORIES:
+            raise ValueError("Unsupported initiative category")
         if not _TOPIC_RE.fullmatch(self.topic):
             raise ValueError("Initiative topic must be a bounded machine label")
         if self.requested_outcome not in _REQUESTED_OUTCOMES:
@@ -92,6 +98,32 @@ class _CommittedInitiative:
     fingerprint: str
 
 
+# Plain-language answers to "Why did Reachy do that?" for the latest decision.
+_REASON_EXPLANATIONS = {
+    "eligible": "Reachy found a high-confidence moment that fits your settings.",
+    "committed": "Reachy took this initiative because it fit your settings and learned preferences.",
+    "disabled": "Initiative is turned off.",
+    "quiet_hours": "It is within your quiet hours.",
+    "quiet_mode": "Quiet mode only allows attentive, silent acknowledgements.",
+    "low_confidence": "The moment was not clear enough to act on.",
+    "hourly_budget": "This hour's initiative budget is used up.",
+    "daily_budget": "Today's initiative budget is used up.",
+    "dismissal_backoff": "You recently declined this topic, so Reachy is backing off.",
+    "topic_cooldown": "Reachy already brought this up recently.",
+    "duplicate": "This was the same moment as one Reachy already handled.",
+    "category_disabled": "You turned this kind of initiative off.",
+    "snoozed": "You said “later”, so Reachy is waiting before trying again.",
+    "learned_quiet_time": "You often declined this at this time of day, so Reachy stays quiet now.",
+    "none": "Nothing has happened yet.",
+}
+
+
+def explain_reason(reason: str) -> str:
+    return _REASON_EXPLANATIONS.get(
+        reason, "Something else needed Reachy's attention, so it stayed silent."
+    )
+
+
 def _parse_clock_time(value: str) -> int:
     match = re.fullmatch(r"(\d{2}):(\d{2})", value)
     if match is None:
@@ -121,7 +153,9 @@ class InitiativePolicy:
         *,
         monotonic_clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], datetime] = datetime.now,
+        preferences: PreferenceLedger | None = None,
     ) -> None:
+        self.preferences = preferences or PreferenceLedger(wall_clock=wall_clock)
         self._monotonic_clock = monotonic_clock
         self._wall_clock = wall_clock
         self._lock = threading.RLock()
@@ -196,16 +230,24 @@ class InitiativePolicy:
                     decision.mode,
                 )
 
-    def record_dismissal(self, topic: str, settings: InitiativeSettings) -> None:
+    def record_dismissal(self, topic: str, settings: InitiativeSettings, *, category: str = "") -> None:
         if not _TOPIC_RE.fullmatch(topic):
             raise ValueError("Initiative topic must be a bounded machine label")
+        if category:
+            self.preferences.record(category, "dismissed")
         with self._lock:
             count = min(self._dismissal_counts.get(topic, 0) + 1, 6)
             self._dismissal_counts[topic] = count
             delay = min(float(settings.dismissal_backoff_seconds) * (2 ** (count - 1)), 86400.0)
             self._dismissed_until[topic] = self._monotonic_clock() + delay
 
-    def record_welcomed(self, topic: str) -> None:
+    def record_snoozed(self, category: str) -> None:
+        """'Later' only delays the category; it is not a dismissal and adds no topic backoff."""
+        self.preferences.record(category, "snoozed")
+
+    def record_welcomed(self, topic: str, *, category: str = "") -> None:
+        if category:
+            self.preferences.record(category, "welcomed")
         with self._lock:
             self._dismissal_counts.pop(topic, None)
             self._dismissed_until.pop(topic, None)
@@ -225,6 +267,7 @@ class InitiativePolicy:
                 and _inside_quiet_hours(now_wall, settings.quiet_hours_start, settings.quiet_hours_end),
                 "latest_outcome": self._latest.outcome if settings.enabled else "remain_silent",
                 "latest_reason": self._latest.reason if settings.enabled else "disabled",
+                "latest_explanation": explain_reason(self._latest.reason if settings.enabled else "disabled"),
                 "latest_topic": (
                     self._latest.topic if settings.enabled and self._latest.topic != "none" else None
                 ),
@@ -233,6 +276,7 @@ class InitiativePolicy:
                 "initiatives_today": daily,
                 "daily_budget": settings.daily_budget,
                 "speech_enabled": False,
+                "preferences": self.preferences.public_status(),
             }
 
     def _suppression_reason(
@@ -251,6 +295,10 @@ class InitiativePolicy:
             now_wall, settings.quiet_hours_start, settings.quiet_hours_end
         ):
             return "quiet_hours"
+        if candidate.category:
+            learned = self.preferences.suppression_reason(candidate.category)
+            if learned:
+                return learned
         if settings.mode == "quiet" and candidate.requested_outcome == "offer_candidate":
             return "quiet_mode"
         if (
@@ -278,9 +326,13 @@ class InitiativePolicy:
         dismissed_until = self._dismissed_until.get(candidate.topic, 0.0)
         if dismissed_until > now_mono:
             return "dismissal_backoff"
+        topic_cooldown = float(settings.topic_cooldown_seconds)
+        if candidate.category:
+            # Learned preference only stretches or shortens timing; budgets above still cap volume.
+            topic_cooldown *= self.preferences.cooldown_multiplier(candidate.category)
         for item in reversed(self._committed):
             age = now_mono - item.monotonic_at
-            if item.topic == candidate.topic and age < float(settings.topic_cooldown_seconds):
+            if item.topic == candidate.topic and age < topic_cooldown:
                 return "topic_cooldown"
             if candidate.fingerprint and item.fingerprint == candidate.fingerprint and age < float(
                 settings.duplicate_window_seconds

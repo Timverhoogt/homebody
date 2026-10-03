@@ -14,6 +14,7 @@ import time
 from dataclasses import replace
 from typing import cast
 
+from .adaptation import PreferenceLedger
 from .announcements import Announcement
 from .audio import encode_wav
 from .config import AppConfig
@@ -39,7 +40,7 @@ class ProactiveMixin:
     def _init_proactive_state(self) -> None:
         self._presence = PresenceState()
         self._presence_action_active = threading.Event()
-        self._initiative = InitiativePolicy()
+        self._initiative = InitiativePolicy(preferences=PreferenceLedger(self._preferences_path))
         self._contextual_offers = ContextualOfferState()
         self._presentation_lock = threading.RLock()
         self._presentation_generation = 0
@@ -395,6 +396,7 @@ class ProactiveMixin:
         return self._initiative.evaluate(
             InitiativeCandidate(
                 topic="office_presence",
+                category="presence",
                 requested_outcome="physical_acknowledgement",
                 confidence=observation.confidence,
                 attentive=observation.attentive,
@@ -434,6 +436,7 @@ class ProactiveMixin:
         decision = self._initiative.evaluate(
             InitiativeCandidate(
                 topic=offer.topic,
+                category=offer.source,
                 requested_outcome="offer_candidate",
                 confidence=offer.confidence,
                 fingerprint=offer.fingerprint,
@@ -480,10 +483,12 @@ class ProactiveMixin:
         offer = self._contextual_offers.current_offer(token)
         config = self.config_loader()
         if response == "yes":
-            self._initiative.record_welcomed(offer.topic)
+            self._initiative.record_welcomed(offer.topic, category=offer.source)
             self.queue_announcement(str(result["accepted_text"]), behavior="voice_only")
+        elif response == "later":
+            self._initiative.record_snoozed(offer.source)
         else:
-            self._initiative.record_dismissal(offer.topic, self._initiative_settings(config))
+            self._initiative.record_dismissal(offer.topic, self._initiative_settings(config), category=offer.source)
         return {"ok": True, "token": token, "response": response, "action_executed": False}
 
     def cancel_contextual_offer(self, reason: str = "disabled") -> bool:

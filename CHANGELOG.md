@@ -110,6 +110,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   4. Stop app and Shut down report failures instead of claiming success.
   5. Kids-locked tabs can't be reached with the keyboard or the URL #hash, and countdowns no longer re-announce to screen readers every 1.5 seconds.
   PWA shell advanced to v47.
+- Agent 0.6.5 personal adaptation core. A transparent preference ledger learns only coarse per-category signals: welcomed, dismissed, snoozed and disabled, decaying with a two-week half-life. It adapts timing only: the topic cooldown is scaled between 0.5× and 4×, snoozes are honoured, and Reachy stays quiet in a part of the day where you often declined. Confidence thresholds, budgets, permissions and risk tiers are unchanged. "Not now" and "later" now snooze a category instead of declining it. Initiative status includes a plain-language explanation of the latest decision and every learned preference. Preferences persist as small counters next to the app config.
 
 ### Build
 

@@ -199,6 +199,10 @@ def test_public_status_is_sanitized_and_never_enables_speech() -> None:
     decision = engine.evaluate(candidate(fingerprint="private-detail"), configured)
     assert engine.commit(decision)
     status = engine.public_status(configured)
+    preferences = status.pop("preferences")
+    assert status.pop("latest_explanation").startswith("Reachy took this initiative")
+    assert {row["category"] for row in preferences} >= {"presence", "calendar"}
+    assert all(row["state"] == "normal" for row in preferences)
     assert status == {
         "enabled": True,
         "mode": "balanced",

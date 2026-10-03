@@ -1185,7 +1185,12 @@ class ReachyMiniHermes(ReachyMiniApp):
         if current.capability_profile != "conversation":
             save_config(merge_config(current, {"capability_profile": "conversation"}))
         audit = AgentAuditLog(default_config_path().with_name("agent-audit.jsonl"))
-        self._runtime = HermesVoiceRuntime(reachy_mini, stop_event, agent_audit=audit)
+        self._runtime = HermesVoiceRuntime(
+            reachy_mini,
+            stop_event,
+            agent_audit=audit,
+            preferences_path=default_config_path().parent / "initiative-preferences.json",
+        )
         try:
             if load_config().gamepad_enabled:
                 self._bluetooth.set_gamepad_enabled(True)

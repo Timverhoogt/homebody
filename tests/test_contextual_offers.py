@@ -118,9 +118,14 @@ def test_yes_response_parser(text: str) -> None:
     assert parse_offer_response(text) == "yes"
 
 
-@pytest.mark.parametrize("text", ["no", "no thanks", "not now", "nee", "liever niet"])
+@pytest.mark.parametrize("text", ["no", "no thanks", "nee", "liever niet"])
 def test_no_response_parser(text: str) -> None:
     assert parse_offer_response(text) == "no"
+
+
+@pytest.mark.parametrize("text", ["not now", "later", "maybe later", "nu niet", "straks"])
+def test_later_response_parser_snoozes_instead_of_declining(text: str) -> None:
+    assert parse_offer_response(text) == "later"
 
 
 @pytest.mark.parametrize("text", ["maybe", "what is it", "yesterday", "nobody"])
