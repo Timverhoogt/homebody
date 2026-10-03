@@ -64,6 +64,8 @@ from .wakeword import WAKE_PROMPT as _WAKE_PROMPT
 from .wakeword import HeyHermesSpotter, ensure_kws_model
 
 _LOGGER = logging.getLogger(__name__)
+# A failed voice turn stops suppressing proactive behaviour after this long back at wake.
+_TURN_ERROR_GRACE_SECONDS = 60.0
 _WAKE_PHRASES_TEXT = "Hey Hermes · Okay Nabu · Hey Reachy"
 
 
@@ -200,6 +202,7 @@ class HermesVoiceRuntime(
         self._agent_audit = agent_audit
         self._status = RuntimeStatus()
         self._status_lock = threading.RLock()
+        self._turn_error: tuple[str, float] | None = None
         self._noise = NoiseFloor()
         self._sample_rate = 16000
         self._output_sample_rate = 48000
@@ -383,6 +386,23 @@ class HermesVoiceRuntime(
             else:
                 self._status.robot_action_last_error = str(result.get("error") or "Robot action failed")
 
+    def _expire_turn_error(self) -> None:
+        """Clear a failed voice turn's error once Reachy has been back at wake for a while.
+
+        last_error suppresses presence, presentation and offers; a transient turn failure
+        (for example one bridge timeout) should not silence them until the next good wake.
+        Errors from other sources, such as power transitions, are left untouched.
+        """
+        if self._turn_error is None:
+            return
+        message, clear_at = self._turn_error
+        if time.monotonic() < clear_at:
+            return
+        self._turn_error = None
+        with self._status_lock:
+            if self._status.last_error == message:
+                self._status.last_error = ""
+
     def _set_status(self, state: str, detail: str = "", **updates: object) -> None:
         with self._status_lock:
             self._status.state = state
@@ -392,131 +412,142 @@ class HermesVoiceRuntime(
                     setattr(self._status, key, value)
 
     def run(self) -> None:
-        self._runtime_started = True
-        self._control_ready.clear()
-        self._set_status("starting", "Preparing the local wake-word model")
-        config = self.config_loader()
-        self._motion = VoiceMotion(self.robot, enabled=config.motion_enabled)
-        self._actions = ReachyRobotActions(
-            self.robot,
-            self.stop_event,
-            before_action=self._before_robot_action,
-            after_action=self._after_robot_action,
-            on_result=self._on_robot_action_result,
-        )
-        self._actions.start()
-        model_directory = ensure_kws_model()
-        self._spotter = HeyHermesSpotter(
-            model_directory,
-            self.assets / "keywords.txt",
-            score=config.wake_keyword_score,
-            threshold=config.wake_keyword_threshold,
-        )
-        self._set_status("starting", "Starting Reachy audio", model_ready=True)
+        try:
+            self._runtime_started = True
+            self._control_ready.clear()
+            self._set_status("starting", "Preparing the local wake-word model")
+            config = self.config_loader()
+            self._motion = VoiceMotion(self.robot, enabled=config.motion_enabled)
+            self._actions = ReachyRobotActions(
+                self.robot,
+                self.stop_event,
+                before_action=self._before_robot_action,
+                after_action=self._after_robot_action,
+                on_result=self._on_robot_action_result,
+            )
+            self._actions.start()
+            model_directory = ensure_kws_model()
+            self._spotter = HeyHermesSpotter(
+                model_directory,
+                self.assets / "keywords.txt",
+                score=config.wake_keyword_score,
+                threshold=config.wake_keyword_threshold,
+            )
+            self._set_status("starting", "Starting Reachy audio", model_ready=True)
 
-        self.robot.media.start_recording()
-        self._recording = True
-        self.robot.media.start_playing()
-        time.sleep(0.8)
-        detected_rate = int(self.robot.media.get_input_audio_samplerate())
-        if detected_rate <= 0:
-            raise RuntimeError("Reachy audio input did not report a valid sample rate")
-        self._sample_rate = detected_rate
-        output_rate = int(self.robot.media.get_output_audio_samplerate())
-        if output_rate > 0:
-            self._output_sample_rate = output_rate
-        self._audio_ready = True
-        self._announcement_worker = threading.Thread(
-            target=self._run_announcement_worker,
-            name="reachy-hermes-announcements",
-            daemon=True,
-        )
-        self._announcement_worker.start()
-        _LOGGER.info(
-            "Reachy Hermes audio ready: input=%s Hz output=%s Hz",
-            self._sample_rate,
-            self._output_sample_rate,
-        )
-        self._head_safely_folded = self._read_head_safely_folded()
-        self._apply_power_mode()
-        self._control_ready.set()
-        self._gesture_stop_requested.clear()
-        self._gesture_worker = threading.Thread(
-            target=self._run_gesture_worker,
-            name="reachy-hermes-gestures",
-            daemon=True,
-        )
-        self._gesture_worker.start()
-        if config.home_assistant_enabled:
-            try:
-                provider = HermesHomeAssistantProvider(self, config_loader=self.config_loader)
-                self._home_assistant_bridge = HomeAssistantBridge(provider, config=config)
-                self._home_assistant_bridge.start()
-                self._home_assistant_error = ""
-                _LOGGER.info(
-                    "Home Assistant ESPHome bridge ready as %s on port %s",
-                    self._home_assistant_bridge.identity.name,
-                    config.home_assistant_port,
-                )
-            except Exception as exc:
-                self._home_assistant_error = str(exc)
-                self._home_assistant_bridge = None
-                _LOGGER.exception("Home Assistant bridge did not start; Hermes voice remains available")
+            self.robot.media.start_recording()
+            self._recording = True
+            self.robot.media.start_playing()
+            time.sleep(0.8)
+            detected_rate = int(self.robot.media.get_input_audio_samplerate())
+            if detected_rate <= 0:
+                raise RuntimeError("Reachy audio input did not report a valid sample rate")
+            self._sample_rate = detected_rate
+            output_rate = int(self.robot.media.get_output_audio_samplerate())
+            if output_rate > 0:
+                self._output_sample_rate = output_rate
+            self._audio_ready = True
+            self._announcement_worker = threading.Thread(
+                target=self._run_announcement_worker,
+                name="reachy-hermes-announcements",
+                daemon=True,
+            )
+            self._announcement_worker.start()
+            _LOGGER.info(
+                "Reachy Hermes audio ready: input=%s Hz output=%s Hz",
+                self._sample_rate,
+                self._output_sample_rate,
+            )
+            self._head_safely_folded = self._read_head_safely_folded()
+            self._apply_power_mode()
+            self._control_ready.set()
+            self._gesture_stop_requested.clear()
+            self._gesture_worker = threading.Thread(
+                target=self._run_gesture_worker,
+                name="reachy-hermes-gestures",
+                daemon=True,
+            )
+            self._gesture_worker.start()
+            if config.home_assistant_enabled:
+                try:
+                    provider = HermesHomeAssistantProvider(self, config_loader=self.config_loader)
+                    self._home_assistant_bridge = HomeAssistantBridge(provider, config=config)
+                    self._home_assistant_bridge.start()
+                    self._home_assistant_error = ""
+                    _LOGGER.info(
+                        "Home Assistant ESPHome bridge ready as %s on port %s",
+                        self._home_assistant_bridge.identity.name,
+                        config.home_assistant_port,
+                    )
+                except Exception as exc:
+                    self._home_assistant_error = str(exc)
+                    self._home_assistant_bridge = None
+                    _LOGGER.exception("Home Assistant bridge did not start; Hermes voice remains available")
 
+        except BaseException:
+            # A failed start (wake model download, audio rate, ...) must not leave the actions
+            # thread, recording, playback, or announcement worker running.
+            self._teardown_runtime()
+            self._runtime_started = False
+            raise
         try:
             self._listen_for_wake_word()
         finally:
-            bridge, self._home_assistant_bridge = self._home_assistant_bridge, None
-            if bridge is not None:
-                try:
-                    bridge.close()
-                except Exception:
-                    _LOGGER.exception("Home Assistant bridge did not close cleanly")
-            self._control_ready.clear()
-            self._set_status("stopping")
-            with self._kids_lock:
-                kids_timer, self._kids_timer = self._kids_timer, None
-                kids_warning_timer, self._kids_warning_timer = self._kids_warning_timer, None
-                self._kids_active = False
-            if kids_timer is not None:
-                kids_timer.cancel()
-            if kids_warning_timer is not None:
-                kids_warning_timer.cancel()
-            self._audio_ready = False
-            self._cancel_announcements(clear_queue=True)
-            self._gesture_stop_requested.set()
-            gesture_worker = self._gesture_worker
-            if gesture_worker is not None and gesture_worker.is_alive():
-                gesture_worker.join(timeout=5.0)
-                if gesture_worker.is_alive():
-                    _LOGGER.warning("Gesture worker did not exit before camera teardown")
-            worker = self._announcement_worker
-            if worker is not None and worker.is_alive():
-                worker.join(timeout=5.0)
-                if worker.is_alive():
-                    _LOGGER.warning("Announcement worker did not exit before media teardown")
-            with self._status_lock:
-                self._status.announcement_current_preview = ""
-                self._status.announcement_last_text = ""
-            self._face_tracking_desired = False
-            self._set_face_tracking(False)
-            if self._actions is not None:
-                self._actions.close()
+            self._teardown_runtime()
+
+    def _teardown_runtime(self) -> None:
+        """Stop every runtime worker and media stream; safe after a partial start."""
+        bridge, self._home_assistant_bridge = self._home_assistant_bridge, None
+        if bridge is not None:
             try:
-                if self._recording:
-                    self.robot.media.stop_recording()
-                    self._recording = False
+                bridge.close()
             except Exception:
-                _LOGGER.debug("Audio recording was already stopped", exc_info=True)
+                _LOGGER.exception("Home Assistant bridge did not close cleanly")
+        self._control_ready.clear()
+        self._set_status("stopping")
+        with self._kids_lock:
+            kids_timer, self._kids_timer = self._kids_timer, None
+            kids_warning_timer, self._kids_warning_timer = self._kids_warning_timer, None
+            self._kids_active = False
+        if kids_timer is not None:
+            kids_timer.cancel()
+        if kids_warning_timer is not None:
+            kids_warning_timer.cancel()
+        self._audio_ready = False
+        self._cancel_announcements(clear_queue=True)
+        self._gesture_stop_requested.set()
+        gesture_worker = self._gesture_worker
+        if gesture_worker is not None and gesture_worker.is_alive():
+            gesture_worker.join(timeout=5.0)
+            if gesture_worker.is_alive():
+                _LOGGER.warning("Gesture worker did not exit before camera teardown")
+        worker = self._announcement_worker
+        if worker is not None and worker.is_alive():
+            worker.join(timeout=5.0)
+            if worker.is_alive():
+                _LOGGER.warning("Announcement worker did not exit before media teardown")
+        with self._status_lock:
+            self._status.announcement_current_preview = ""
+            self._status.announcement_last_text = ""
+        self._face_tracking_desired = False
+        self._set_face_tracking(False)
+        if self._actions is not None:
+            self._actions.close()
+        try:
+            if self._recording:
+                self.robot.media.stop_recording()
+                self._recording = False
+        except Exception:
+            _LOGGER.debug("Audio recording was already stopped", exc_info=True)
+        try:
+            self.robot.media.stop_playing()
+        except Exception:
+            _LOGGER.debug("Audio playback was already stopped", exc_info=True)
+        if self._motion is not None:
             try:
-                self.robot.media.stop_playing()
+                self._motion.close()
             except Exception:
-                _LOGGER.debug("Audio playback was already stopped", exc_info=True)
-            if self._motion is not None:
-                try:
-                    self._motion.close()
-                except Exception:
-                    _LOGGER.exception("Could not disable voice wobbling after audio teardown")
+                _LOGGER.exception("Could not disable voice wobbling after audio teardown")
 
     def _listen_for_wake_word(self) -> None:
         assert self._spotter is not None
@@ -563,6 +594,7 @@ class HermesVoiceRuntime(
                 continue
 
             detail = "Local wake detection only" if mode == "standby" else _WAKE_PROMPT
+            self._expire_turn_error()
             self._set_status("waiting_for_wake_word", detail)
             frame = self._read_16k_frame()
             if frame is None:
@@ -639,6 +671,7 @@ class HermesVoiceRuntime(
             except Exception as exc:
                 _LOGGER.exception("Reachy Hermes voice turn failed")
                 self._set_status("error", str(exc), last_error=str(exc))
+                self._turn_error = (str(exc), time.monotonic() + _TURN_ERROR_GRACE_SECONDS)
                 self._signal_error()
                 self.stop_event.wait(0.4)
             finally:

@@ -23,6 +23,9 @@ from .home_assistant import HermesHomeAssistantProvider
 # Keep the runtime logger name so existing log filters still match these lines.
 _LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
 
+_HA_MEDIA_VOICE_WAIT_SECONDS = 30.0
+
+
 class HomeAssistantVoiceMixin:
     """Stream locally woken turns through Home Assistant Assist and play bounded HA media."""
 
@@ -122,9 +125,15 @@ class HomeAssistantVoiceMixin:
 
         def play() -> None:
             try:
-                with self._voice_activity_lock:
+                # Never queue an unbounded number of blocked threads behind a long conversation;
+                # media that cannot start soon is stale for Home Assistant anyway.
+                if not self._voice_activity_lock.acquire(timeout=_HA_MEDIA_VOICE_WAIT_SECONDS):
+                    raise RuntimeError("Home Assistant media was skipped because Reachy stayed busy")
+                try:
                     for item in urls:
                         self._play_home_assistant_media(provider, item)
+                finally:
+                    self._voice_activity_lock.release()
                 if announcement and self._home_assistant_bridge is not None:
                     self._home_assistant_bridge.voice_announcement_finished()
             except Exception as exc:

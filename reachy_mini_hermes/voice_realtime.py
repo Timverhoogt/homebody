@@ -184,11 +184,16 @@ class RealtimeVoiceMixin:
         agent_request_id = ""
         if broker_context.capability_profile == "agent":
             agent_request_id, broker_context = self._begin_agent_request("Realtime Agent session")
-        session = self._new_realtime_session(
-            config,
-            agent_context=broker_context,
-            agent_request_id=agent_request_id,
-        )
+        try:
+            session = self._new_realtime_session(
+                config,
+                agent_context=broker_context,
+                agent_request_id=agent_request_id,
+            )
+        except Exception:
+            if agent_request_id:
+                self._finish_agent_request(agent_request_id, broker_context.session_generation, succeeded=False)
+            raise
         transcript_parts: list[str] = []
         response_parts: list[str] = []
         last_activity = time.monotonic()
@@ -200,15 +205,15 @@ class RealtimeVoiceMixin:
         handled_power_call_ids: set[str] = set()
         active_response_id = ""
         interrupted_response_ids: set[str] = set()
-        self._play_asset("listening.wav")
-        self._discard_audio(0.34)
-        self._set_status(
-            "connecting_realtime",
-            "Opening private GPT Realtime session",
-            bridge_healthy=True,
-            last_error="",
-        )
         try:
+            self._play_asset("listening.wav")
+            self._discard_audio(0.34)
+            self._set_status(
+                "connecting_realtime",
+                "Opening private GPT Realtime session",
+                bridge_healthy=True,
+                last_error="",
+            )
             session.start()
         except Exception:
             if agent_request_id:
@@ -222,6 +227,7 @@ class RealtimeVoiceMixin:
         self._set_status("listening", "Realtime session active")
         if self._motion is not None:
             self._motion.listening()
+        session_completed = False
         try:
             while not self.stop_event.is_set() and not self._turn_stop_requested():
                 if self._effective_power_mode() in {"meeting", "sleep"}:
@@ -426,8 +432,13 @@ class RealtimeVoiceMixin:
                     self._set_status("listening", "Waiting for a follow-up")
                     if self._motion is not None:
                         self._motion.listening()
+            session_completed = True
         finally:
             session.close()
             self._clear_streamed_audio()
             if agent_request_id:
-                self._finish_agent_request(agent_request_id, broker_context.session_generation, succeeded=True)
+                self._finish_agent_request(
+                    agent_request_id,
+                    broker_context.session_generation,
+                    succeeded=session_completed,
+                )
