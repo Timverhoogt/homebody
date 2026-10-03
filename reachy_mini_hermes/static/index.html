@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=48">
+  <link rel="stylesheet" href="/static/style.css?v=49">
 </head>
 <body>
   <main>
@@ -572,6 +572,43 @@
         <p id="bluetooth-message" class="message" role="status" aria-live="polite"></p>
       </details>
 
+      <details class="card gpio-card disclosure-card">
+        <summary class="section-heading">
+          <div><p class="label">Optional hardware</p><h2>Physical buttons</h2><p class="muted compact-note">Green and red push buttons on the Pi's GPIO header</p></div>
+          <span id="gpio-badge" class="badge">Checking…</span>
+        </summary>
+        <p class="muted">Momentary buttons wired between a GPIO pin and ground. Reachy enables the internal pull-up and debounces each press. A button held while the app starts does nothing until it is released, and a button held for 30 seconds is ignored as stuck.</p>
+        <p class="hardware-scope-note"><strong>Raspberry Pi host only.</strong> Needs the <code>gpiod</code> library and the app user in the <code>gpio</code> group.</p>
+        <ul class="gpio-gestures">
+          <li><span class="gpio-dot gpio-dot-red" aria-hidden="true"></span><span><strong>Red</strong> press: stop everything (voice, Kids Mode, announcements, movement) · hold: stop and Sleep</span></li>
+          <li><span class="gpio-dot gpio-dot-green" aria-hidden="true"></span><span><strong>Green</strong> press: listen now, or Awake from Sleep/Meeting · hold: Standby</span></li>
+        </ul>
+        <div class="bluetooth-status-grid">
+          <div><span class="label">Buttons</span><strong id="gpio-state">Off</strong></div>
+          <div><span class="label">Pins</span><strong id="gpio-pins">—</strong></div>
+          <div><span class="label">Last press</span><strong id="gpio-last-event">—</strong></div>
+        </div>
+        <div class="gpio-pin-grid">
+          <label>Green pin (BCM)
+            <input type="number" id="gpio-green-pin" min="0" max="53" step="1" inputmode="numeric" placeholder="None" />
+          </label>
+          <label>Red pin (BCM)
+            <input type="number" id="gpio-red-pin" min="0" max="53" step="1" inputmode="numeric" placeholder="None" />
+          </label>
+          <label>Hold for (seconds)
+            <input type="number" id="gpio-long-press" min="0.5" max="10" step="0.5" inputmode="decimal" />
+          </label>
+        </div>
+        <label class="checkbox-row bluetooth-enable-row">
+          <input type="checkbox" id="gpio-enabled" />
+          <span><strong>Enable physical buttons</strong><small>Leave a pin empty to leave that button out. Saving re-opens the GPIO lines with the new pins.</small></span>
+        </label>
+        <div class="actions">
+          <button type="button" id="gpio-save-button" class="secondary">Save button settings</button>
+        </div>
+        <p id="gpio-message" class="message" role="status" aria-live="polite"></p>
+      </details>
+
       <section class="card camera-card">
         <div class="section-heading">
           <div><p class="label">Private local viewer</p><h2>Reachy camera</h2></div>
@@ -744,7 +781,7 @@
     </div>
   </main>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=48"></script>
-  <script src="/static/main.js?v=48"></script>
+  <script src="/static/camera.js?v=49"></script>
+  <script src="/static/main.js?v=49"></script>
 </body>
 </html>

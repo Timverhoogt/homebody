@@ -217,6 +217,15 @@ class GamepadEnabledRequest(BaseModel):
     enabled: bool
 
 
+class GpioButtonsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: StrictBool
+    green_pin: int | None = Field(default=17, ge=0, le=53)
+    red_pin: int | None = Field(default=None, ge=0, le=53)
+    long_press_seconds: float = Field(default=2.0, ge=0.5, le=10.0)
+
+
 class PowerRequest(BaseModel):
     mode: str
     duration_minutes: float = Field(default=60, ge=1, le=480)
@@ -288,6 +297,7 @@ class ReachyMiniHermes(ReachyMiniApp):
         self._bluetooth = BluetoothGamepadService(self._handle_gamepad_action)
         self._gamepad_config_lock = threading.Lock()
         self._gpio_buttons = GpioButtonService(self._handle_button_event)
+        self._gpio_config_lock = threading.Lock()
         self._register_settings_routes()
 
     def _handle_gamepad_action(self, kind: str, action: str, value: str) -> bool:
@@ -327,8 +337,22 @@ class ReachyMiniHermes(ReachyMiniApp):
         else:
             runtime.set_power_mode("standby")
 
+    def _gpio_status(self, config: AppConfig | None = None) -> dict[str, object]:
+        config = config or load_config()
+        return {
+            **self._gpio_buttons.status(),
+            "configured": {
+                "enabled": config.gpio_buttons_enabled,
+                "chip": config.gpio_chip,
+                "green_pin": config.gpio_green_pin,
+                "red_pin": config.gpio_red_pin,
+                "long_press_seconds": config.gpio_long_press_seconds,
+            },
+        }
+
     def _start_gpio_buttons(self, config: AppConfig) -> None:
         if not config.gpio_buttons_enabled:
+            self._gpio_buttons.stop()
             return
         pins: dict[ButtonName, int] = {}
         if config.gpio_green_pin is not None:
@@ -1056,6 +1080,34 @@ class ReachyMiniHermes(ReachyMiniApp):
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except RuntimeError as exc:
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        @self.settings_app.get("/api/gpio/status")
+        def gpio_status() -> dict[str, object]:
+            try:
+                return {"ok": True, **self._gpio_status()}
+            except ValueError as exc:
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        @self.settings_app.post("/api/gpio/buttons")
+        def gpio_buttons(request: GpioButtonsRequest) -> dict[str, object]:
+            updates = {
+                "gpio_buttons_enabled": request.enabled,
+                "gpio_green_pin": request.green_pin,
+                "gpio_red_pin": request.red_pin,
+                "gpio_long_press_seconds": request.long_press_seconds,
+            }
+            with self._gpio_config_lock:
+                try:
+                    with config_transaction():
+                        config = merge_config(load_config(), updates)
+                        save_config(config)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                except OSError as exc:
+                    raise HTTPException(status_code=500, detail=f"Could not persist button setting: {exc}") from exc
+                # Persist first: a reboot then matches what the owner chose, even if the lines are busy now.
+                self._start_gpio_buttons(config)
+                return {"ok": True, **self._gpio_status(config)}
 
         @self.settings_app.post("/api/bluetooth/gamepad")
         def bluetooth_gamepad(request: GamepadEnabledRequest) -> dict[str, object]:

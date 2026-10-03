@@ -158,7 +158,7 @@ These are deployment observations, not service-level guarantees. Hermes pipeline
 
 ## Deferred work
 
-- Add a Robot-tab GPIO button card (status, enable switch) and run the two-button hardware acceptance in `OPERATIONS.md`.
+- Run the two-button GPIO hardware acceptance in `OPERATIONS.md` on the Reachy Pi.
 - Persist parent lock/session recovery policy across process restarts if the deployment requires crash continuity.
 - Add phrase-specific real-room acoustic acceptance recordings and tune per-keyword score/threshold only from measured false-positive/false-negative data.
 - Replace the raw watchdog TCP media probe with a WebSocket-aware check to remove benign handshake warnings.

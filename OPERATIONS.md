@@ -267,7 +267,7 @@ journalctl -u bluetooth -n 100 --no-pager
 
 ## Physical GPIO buttons
 
-Optional green/red momentary buttons wired between a BCM GPIO pin and ground. The app enables the Pi's internal pull-up, so no resistor is needed. The feature is off by default. Until the settings card ships, enable it in `~/.local/share/reachy_mini_hermes/config.json` and restart the app:
+Optional green/red momentary buttons wired between a BCM GPIO pin and ground. The app enables the Pi's internal pull-up, so no resistor is needed. The feature is off by default. Enable it in **Robot → Physical buttons** (pins, hold time, on/off; saving re-opens the lines without a restart), or in `~/.local/share/reachy_mini_hermes/config.json` followed by an app restart:
 
 ```json
 "gpio_buttons_enabled": true,

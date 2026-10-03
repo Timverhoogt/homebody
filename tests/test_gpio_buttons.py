@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from fastapi.testclient import TestClient
 from test_voice_session_lifecycle import make_runtime
 
+import reachy_mini_hermes.main as main_module
 from reachy_mini_hermes.config import AppConfig
 from reachy_mini_hermes.gpio_buttons import (
     STUCK_SECONDS,
@@ -373,3 +377,114 @@ def test_wake_loop_starts_a_turn_from_a_button_press_without_a_wake_word() -> No
 
     assert not worker.is_alive()
     assert started == ["button"]
+
+
+class FakeGpioService:
+    def __init__(self) -> None:
+        self.starts: list[dict[str, object]] = []
+        self.stops = 0
+        self.running = False
+
+    def start(self, *, chip: str, pins: dict[str, int], long_press_seconds: float) -> None:
+        self.starts.append({"chip": chip, "pins": dict(pins), "long": long_press_seconds})
+        self.running = True
+
+    def stop(self) -> None:
+        self.stops += 1
+        self.running = False
+
+    close = stop
+
+    def status(self) -> dict[str, object]:
+        return {
+            "enabled": self.running,
+            "available": self.running,
+            "pins": {},
+            "last_event": "",
+            "last_error": "",
+            "stuck": [],
+        }
+
+
+def gpio_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, FakeGpioService, list[AppConfig]]:
+    app = ReachyMiniHermes(False)
+    service = FakeGpioService()
+    app._gpio_buttons = service  # type: ignore[assignment]
+    app.settings_app.extra["hermes"] = app
+    stored = [AppConfig()]
+    monkeypatch.setattr(main_module, "load_config", lambda: stored[-1])
+    monkeypatch.setattr(main_module, "save_config", lambda config: stored.append(config))
+    return TestClient(app.settings_app), service, stored
+
+
+def test_gpio_route_persists_then_opens_the_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+    client, service, stored = gpio_client(monkeypatch)
+
+    initial = client.get("/api/gpio/status").json()
+    assert initial["enabled"] is False
+    assert initial["configured"] == {
+        "enabled": False,
+        "chip": "/dev/gpiochip0",
+        "green_pin": 17,
+        "red_pin": None,
+        "long_press_seconds": 2.0,
+    }
+
+    enabled = client.post(
+        "/api/gpio/buttons",
+        json={"enabled": True, "green_pin": 17, "red_pin": 27, "long_press_seconds": 3.0},
+    )
+    assert enabled.status_code == 200
+    assert enabled.json()["available"] is True
+    assert stored[-1].gpio_buttons_enabled is True and stored[-1].gpio_red_pin == 27
+    assert service.starts == [{"chip": "/dev/gpiochip0", "pins": {"green": 17, "red": 27}, "long": 3.0}]
+
+    disabled = client.post("/api/gpio/buttons", json={"enabled": False, "green_pin": 17, "red_pin": 27})
+    assert disabled.status_code == 200
+    assert stored[-1].gpio_buttons_enabled is False
+    assert service.running is False
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"enabled": True, "green_pin": 17, "red_pin": 17},
+        {"enabled": True, "red_pin": 60},
+        {"enabled": "yes"},
+        {"enabled": True, "long_press_seconds": 0.1},
+        {"enabled": True, "chip": "/etc/passwd"},
+    ],
+)
+def test_gpio_route_rejects_invalid_settings_without_touching_lines(
+    monkeypatch: pytest.MonkeyPatch, payload: dict[str, object]
+) -> None:
+    client, service, stored = gpio_client(monkeypatch)
+
+    response = client.post("/api/gpio/buttons", json=payload)
+
+    assert response.status_code in {400, 422}
+    assert len(stored) == 1
+    assert service.starts == []
+
+
+def test_gpio_settings_are_parent_controls_while_kids_mode_is_locked(monkeypatch: pytest.MonkeyPatch) -> None:
+    client, service, stored = gpio_client(monkeypatch)
+    app = client.app.extra["hermes"]
+    app._runtime = SimpleNamespace(kids_controls_locked=True)
+
+    assert client.post("/api/gpio/buttons", json={"enabled": True}).status_code == 423
+    assert client.get("/api/gpio/status").status_code == 423
+    assert service.starts == [] and len(stored) == 1
+
+
+def test_robot_tab_has_the_physical_button_card_wired_to_the_gpio_routes() -> None:
+    static = Path(main_module.__file__).parent / "static"
+    html = (static / "index.html").read_text(encoding="utf-8")
+    script = (static / "main.js").read_text(encoding="utf-8")
+
+    assert '<details class="card gpio-card disclosure-card">' in html
+    for element in ("gpio-enabled", "gpio-green-pin", "gpio-red-pin", "gpio-long-press", "gpio-save-button"):
+        assert f'id="{element}"' in html
+    assert '"/api/gpio/status"' in script and '"/api/gpio/buttons"' in script
+    # Status text is rendered with textContent, never as HTML.
+    assert "gpio-last-event\").innerHTML" not in script
