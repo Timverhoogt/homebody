@@ -28,6 +28,8 @@ Gesture = Literal["short", "long"]
 
 DEBOUNCE_SECONDS = 0.03
 STUCK_SECONDS = 30.0
+# How long start() waits for a previous monitor that is still finishing a dispatched action.
+RESTART_WAIT_SECONDS = 10.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +96,13 @@ class PressClassifier:
             return []
         if state.long_sent:
             return []
+        # Classify by the edge timestamps, not by whether poll() ran in between: a press and its
+        # release can arrive in one batch after the thread was busy dispatching an earlier action.
+        held = sample.timestamp - state.pressed_at
+        if held >= STUCK_SECONDS:
+            return []
+        if held >= self._long:
+            return [ButtonEvent(self._names[sample.offset], "long")]
         return [ButtonEvent(self._names[sample.offset], "short")]
 
     def poll(self, now: float) -> list[ButtonEvent]:
@@ -187,6 +196,7 @@ class GpioButtonService:
         self._clock = clock
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
+        # Each monitor thread gets its own stop event, so a restart can never revive an old one.
         self._stop = threading.Event()
         self._status: dict[str, object] = {"enabled": False, "available": False, "pins": {}}
         self._last_event = ""
@@ -194,7 +204,18 @@ class GpioButtonService:
         self._classifier: PressClassifier | None = None
 
     def start(self, *, chip: str, pins: dict[ButtonName, int], long_press_seconds: float) -> None:
-        self.stop()
+        previous = self._stop_thread()
+        if previous is not None and previous.is_alive():
+            # The old monitor still holds the lines until its current action returns.
+            previous.join(timeout=RESTART_WAIT_SECONDS)
+            if previous.is_alive():
+                self._set_status(
+                    enabled=True,
+                    available=False,
+                    pins=dict(pins),
+                    error="The previous button monitor is still finishing an action; save again to retry",
+                )
+                return
         if not pins:
             self._set_status(enabled=True, available=False, pins={}, error="No GPIO button pins are configured")
             return
@@ -212,28 +233,41 @@ class GpioButtonService:
             _LOGGER.warning("GPIO buttons unavailable: %s", exc)
             self._set_status(enabled=True, available=False, pins=dict(pins), error=_describe(exc))
             return
-        self._classifier = PressClassifier(
+        classifier = PressClassifier(
             offsets,
             long_press_seconds=long_press_seconds,
             initially_pressed=pressed,
             now=self._clock(),
         )
-        self._stop.clear()
+        stop = threading.Event()
         self._set_status(enabled=True, available=True, pins=dict(pins), error="")
         if pressed:
             held = ", ".join(offsets[offset] for offset in sorted(pressed))
             _LOGGER.info("GPIO %s held at start; it will act after its first release", held)
-        thread = threading.Thread(target=self._run, args=(reader,), name="reachy-gpio-buttons", daemon=True)
+        thread = threading.Thread(
+            target=self._run,
+            args=(reader, classifier, stop),
+            name="reachy-gpio-buttons",
+            daemon=True,
+        )
         with self._lock:
+            self._classifier = classifier
+            self._stop = stop
             self._thread = thread
         thread.start()
 
-    def stop(self) -> None:
+    def _stop_thread(self) -> threading.Thread | None:
+        """Signal the current monitor to stop and wait briefly; return it for callers that must wait."""
         with self._lock:
             thread, self._thread = self._thread, None
-        self._stop.set()
+            stop = self._stop
+        stop.set()
         if thread is not None and thread.is_alive():
             thread.join(timeout=2.0)
+        return thread
+
+    def stop(self) -> None:
+        self._stop_thread()
         self._set_status(enabled=False, available=False, pins={}, error=self._last_error)
 
     close = stop
@@ -247,16 +281,17 @@ class GpioButtonService:
         status["stuck"] = classifier.stuck_buttons() if classifier is not None and status["available"] else []
         return status
 
-    def _run(self, reader: LineReader) -> None:
-        classifier = self._classifier
-        assert classifier is not None
+    def _run(self, reader: LineReader, classifier: PressClassifier, stop: threading.Event) -> None:
         try:
-            while not self._stop.is_set():
+            while not stop.is_set():
                 events: list[ButtonEvent] = []
                 for sample in reader.wait_edges(0.05):
                     events.extend(classifier.edge(sample))
                 events.extend(classifier.poll(self._clock()))
                 for event in events:
+                    if stop.is_set():
+                        # Settings changed while an earlier action ran; queued presses are stale.
+                        break
                     self._handle(event)
         except Exception as exc:
             _LOGGER.exception("GPIO button monitoring stopped")
