@@ -599,9 +599,9 @@ def test_kids_tab_has_activities_direct_controls_disclosures_and_end_button() ->
     assert 'fetch("/api/kids/stop"' in main
     assert 'kidsCameraActive ? "Camera search"' in main
     assert '$("kids-stop-button").disabled = !kidsActive;' in main
-    assert "reachy-hermes-kids-profile" in main
+    assert "homebody-kids-profile" in main
     persisted_profile = main.split(
-        'window.localStorage.setItem("reachy-hermes-kids-profile"',
+        'window.localStorage.setItem("homebody-kids-profile"',
         1,
     )[1].split(";", 1)[0]
     assert "camera_consent" not in persisted_profile
@@ -614,10 +614,10 @@ def test_kids_tab_has_activities_direct_controls_disclosures_and_end_button() ->
 def test_kids_static_assets_advance_pwa_cache_together() -> None:
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     worker = (STATIC / "service-worker.js").read_text(encoding="utf-8")
-    assert "homebody-shell-v51" in worker
+    assert "homebody-shell-v52" in worker
     for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=51" in html
-        assert f'"/static/{asset}?v=51"' in worker
+        assert f"/static/{asset}?v=52" in html
+        assert f'"/static/{asset}?v=52"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

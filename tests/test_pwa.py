@@ -129,7 +129,7 @@ def test_v44_ui_uses_dedicated_agent_workspace_and_contextual_offers() -> None:
     assert '"X-Reachy-Adult-UI": "unlocked"' in script
     assert 'if (!initiativeEditActive)' in script
     assert '$("initiative-badge").textContent = "Offline"' in script
-    assert 'homebody-shell-v51' in worker
+    assert 'homebody-shell-v52' in worker
 
 
 def test_shell_versions_agree_between_page_and_service_worker() -> None:
@@ -248,3 +248,46 @@ def test_initiative_card_explains_decisions_and_exposes_learned_preferences_safe
     renderer = renderer[: renderer.index("async function updateInitiativePreferences")]
     assert "innerHTML" not in renderer
     assert "textContent" in renderer
+
+
+def test_pre_rename_browser_storage_is_carried_over_once() -> None:
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        import pytest
+
+        pytest.skip("node is not installed")
+    main = (STATIC / "main.js").read_text(encoding="utf-8")
+    start = main.index("// Carry browser settings saved before the Homebody rename")
+    block = main[start : main.index("let agentRunId = ", start)]
+    harness = r"""
+const vm = require("vm");
+function fakeStorage(entries) {
+  const data = new Map(Object.entries(entries));
+  return {
+    getItem: (key) => (data.has(key) ? data.get(key) : null),
+    setItem: (key, value) => { data.set(key, String(value)); },
+    removeItem: (key) => { data.delete(key); },
+    dump: () => Object.fromEntries(data),
+  };
+}
+const window = {
+  localStorage: fakeStorage({
+    "reachy-hermes-tab": "robot",
+    "reachy-hermes-kids-profile": "{\"activity\":\"story\"}",
+    "homebody-tab": "settings",
+  }),
+  sessionStorage: fakeStorage({ "reachy-hermes-announcement-draft": "Dinner is ready" }),
+};
+vm.runInNewContext(process.argv[1], { window });
+process.stdout.write(JSON.stringify({ local: window.localStorage.dump(), session: window.sessionStorage.dump() }));
+"""
+    result = subprocess.run([node, "-e", harness, block], capture_output=True, text=True, check=True)
+    stored = json.loads(result.stdout)
+
+    # A value saved under the new key wins; the old keys are always dropped.
+    assert stored["local"] == {"homebody-tab": "settings", "homebody-kids-profile": '{"activity":"story"}'}
+    assert stored["session"] == {"homebody-announcement-draft": "Dinner is ready"}
+    assert '"reachy-hermes-' not in main[: start] + main[main.index("let agentRunId = ", start) :]
