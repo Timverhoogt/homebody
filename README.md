@@ -23,7 +23,7 @@ tags:
 
 An extensible, all-in-one companion and control app for Reachy Mini: local wake phrases, guarded movement, visible privacy states, opt-in camera controls, announcements, supervised Kids experiences and optional Sony controller support. Connect [Hermes Agent](https://github.com/NousResearch/hermes-agent) when you want voice pipelines, memory, skills and tools; it is the reference agent backend, not a prerequisite for understanding the local control surface.
 
-[**Explore the app page ↗**](https://huggingface.co/spaces/Timbo89/reachy_mini_hermes) · [**Lite + Raspberry Pi 4 guide**](docs/lite-raspberry-pi-4.md) · [**Privacy and security**](SECURITY.md) · [**Operations and troubleshooting**](OPERATIONS.md)
+[**Explore the app page ↗**](https://huggingface.co/spaces/Timbo89/reachy_mini_hermes) · [**Hardware setups and support**](docs/hardware-setups.md) · [**Lite + Raspberry Pi 4 guide**](docs/lite-raspberry-pi-4.md) · [**Privacy and security**](SECURITY.md) · [**Operations and troubleshooting**](OPERATIONS.md)
 
 ![An actual Reachy Mini on a desk raising its antennas in an official Pollen Robotics demonstration](docs/assets/hero-reachy.webp)
 
@@ -33,37 +33,49 @@ An extensible, all-in-one companion and control app for Reachy Mini: local wake 
 
 ## What can I expect?
 
-1. **Bring supported hardware.** Use Reachy Mini Wireless, or a Lite connected to a computer. Tim's self-built Lite + Pi 4 arrangement is documented as a community adaptation—not an official Wireless conversion.
+1. **Bring supported hardware.** Use Reachy Mini Wireless, or a Lite driven by a PC, Mac, Raspberry Pi or NVIDIA Jetson. The app detects which one and shows only the features that host can drive. Tim's self-built Lite + Pi 4 is the reference setup and a community adaptation, not an official Wireless conversion. See [hardware setups](docs/hardware-setups.md) for what each setup supports.
 2. **Start locally and safely.** The browser UI exposes Standby, Awake, Meeting and Sleep; guarded wake/fold; bounded movement; Stop; announcements; and opt-in camera controls. Meeting and Sleep stop microphone capture and wake detection. Camera sharing is off by default.
 3. **Try the short demo.** With clear space around Reachy, open the Dashboard, confirm folded Standby and released torque, wake from the Robot tab, try one bounded look, press Stop, return to Standby, and confirm fold-before-torque-off. Only then enable one camera or voice path at a time.
 4. **Add Hermes when wanted.** A private authenticated bridge enables speech, provider routing, personal memory, skills and progressively gated tools while keeping provider credentials on the Hermes host.
-5. **Treat advanced features as gated.** Kids Mode requires adult supervision. Agent Mode uses empty-by-default allowlists, reversible actions, and exact phone approval for consequential work. Bluetooth controller management remains Wireless-only and still needs final physical controller acceptance on that hardware.
+5. **Treat advanced features as gated.** Kids Mode requires adult supervision. Agent Mode uses empty-by-default allowlists, reversible actions, and exact phone approval for consequential work. Bluetooth controller management needs a Linux host with Bluetooth and still needs final physical controller acceptance.
 
-## Capability and setup matrix
+## Supported setups
 
-**Legend:** ✅ verified on the named reference setup · ◐ implemented/automated but requires per-install or final hardware acceptance · — not available in that mode · 🧪 planned/experimental
+**Legend:** ✅ reference-tested on real hardware · ◐ supported: implemented and tested automatically, physical acceptance pending on that setup · 🧪 experimental: implemented, not yet run on that hardware · — not available
 
-| Capability | Reachy + app host | Lite + Pi 4 companion host | Hermes connected | Status / boundary |
-|---|:---:|:---:|:---:|---|
-| Local dashboard, privacy/power states and app lifecycle | ✅ | ✅ | optional | Reference-tested on Lite + Pi 4; each robot needs physical acceptance. |
-| Guarded wake, bounded movement, Stop and fold-before-torque-off | ✅ | ✅ | optional | ✅ Reference-tested; clear-space and fold checks remain mandatory. |
-| Local live camera viewer | ✅ | ✅ | optional | ✅ Explicit opt-in, trusted local UI, no Hermes/OpenAI route. |
-| Home Assistant ESPHome device bridge | ◐ | ◐ | optional | Off by default; preserves the existing Reachy device/entity identity on TCP 6053. Telemetry is read-only unless separate local controls/camera opt-ins are enabled. Assist voice requires supervised acceptance. |
-| On-device hand gestures and reactions | ◐ | ◐ | optional | Off by default; local-only HaGRID inference, repeated-frame confirmation, cooldowns, no automatic wake, and Kids/privacy/action-busy gates. Physical per-room acceptance is required. |
-| Camera-feed thumb joystick | ✅ | ✅ | optional | ◐ Implemented off by default with gesture-bound anti-replay, release-to-hold, explicit Center and Stop; supervised physical acceptance is still required. |
-| One-frame visual request | — | — | ✅ | ◐ Requires camera opt-in, an active Realtime session and provider acceptance. |
-| Announcements and adult voice conversation | — | — | ✅ | ◐ Requires configured private bridge and speech/model providers. |
-| Supervised Kids Mode | — | — | ✅ | ◐ Automated and reference acceptance exists; adult supervision and provider terms still apply. |
-| Hermes memory, skills and tools | — | — | ✅ | ◐ Conversation profile plus progressively gated Agent capabilities. |
-| DualShock 4 / DualSense basic controller mapping | — | — | optional | ◐ **Reachy Mini Wireless only**; final real controller mapping acceptance is pending. |
-| DS4 rumble, gyro and touchpad extensions | — | — | optional | 🧪 Guarded DS4-only implementation; final Wireless hardware acceptance pending. |
-| Lite + Pi mounted as a Wireless-equivalent robot | — | — | — | **Not claimed.** Battery, IMU, enclosure and electrical/mechanical equivalence are out of scope. |
+| Setup | Status | What you get |
+|---|:---:|---|
+| Reachy Mini Lite + Raspberry Pi 4 | ✅ | The reference build: dashboard, power states, guarded motion, camera, voice, Kids Mode, physical GPIO buttons, Bluetooth controller. CPU-only AI; can use a vision server elsewhere on the LAN. |
+| Reachy Mini Wireless | ◐ | Same feature set as the Pi, on the official untethered robot. No GPIO buttons. |
+| Reachy Mini Lite + Linux or Windows PC | ◐ | Full app. GPU PCs can run a local vision model and accelerated gesture detection. No GPIO buttons; Bluetooth controller on Linux only; no remote power-off. |
+| Reachy Mini Lite + Mac | ◐ | Full app. Apple Silicon can run a local vision model (Ollama) and Core ML gesture detection. No GPIO buttons, Bluetooth controller or remote power-off. |
+| Reachy Mini Lite + NVIDIA Jetson Orin Nano | 🧪 | Local vision model on the device's GPU, so camera questions never leave home; TensorRT/CUDA gesture detection; GPIO buttons; Bluetooth controller. Not yet run on Jetson hardware. |
+
+The [hardware setups guide](docs/hardware-setups.md) has the full feature-by-setup matrix, where Hermes and local AI can run, and setup notes for each option.
+
+| Capability | Status / boundary |
+|---|---|
+| Local dashboard, privacy/power states and app lifecycle | ✅ on Lite + Pi 4; each robot needs physical acceptance. |
+| Guarded wake, bounded movement, Stop and fold-before-torque-off | ✅ on Lite + Pi 4; clear-space and fold checks remain mandatory. |
+| Local live camera viewer | ✅ Explicit opt-in, trusted local UI, no Hermes/OpenAI route. |
+| Home Assistant ESPHome device bridge | ◐ Off by default; preserves the existing Reachy device/entity identity on TCP 6053. Telemetry is read-only unless separate local controls/camera opt-ins are enabled. Assist voice requires supervised acceptance. |
+| On-device hand gestures and reactions | ◐ Off by default; local HaGRID inference on the CPU or, when available, TensorRT/CUDA/Core ML/DirectML; repeated-frame confirmation, cooldowns, no automatic wake, and Kids/privacy/action-busy gates. |
+| Camera-feed thumb joystick | ◐ Off by default with gesture-bound anti-replay, release-to-hold, explicit Center and Stop; supervised physical acceptance is still required. |
+| One-frame visual request | ◐ Requires camera opt-in and an active Realtime session. With a local vision model the frame is answered on your network and only text reaches the model. |
+| Local vision model | 🧪 Any OpenAI-compatible vision server (Ollama, llama.cpp, vLLM), on the robot computer or elsewhere on the LAN. |
+| Announcements and adult voice conversation | ◐ Requires configured private bridge and speech/model providers. |
+| Supervised Kids Mode | ◐ Automated and reference acceptance exists; adult supervision and provider terms still apply. |
+| Hermes memory, skills and tools | ◐ Conversation profile plus progressively gated Agent capabilities. |
+| Physical green/red GPIO buttons | ◐ Raspberry Pi (GPIO17 electrically verified), 🧪 Jetson; two-button acceptance pending. |
+| DualShock 4 / DualSense controller | ◐ Linux hosts with Bluetooth; final real controller mapping acceptance is pending. DS4 rumble, gyro and touchpad extensions are 🧪. |
+| Lite + Pi mounted as a Wireless-equivalent robot | **Not claimed.** Battery, IMU, enclosure and electrical/mechanical equivalence are out of scope. |
 
 ## Choose a path
 
 - **Reachy Mini Wireless:** use Pollen Robotics' [official Wireless setup](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini/get_started), then install this app and complete the local acceptance checks.
-- **Reachy Mini Lite on a normal computer:** follow Pollen's [official Lite setup](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini_lite/get_started). The Lite is wall-powered and uses USB data to the computer.
+- **Reachy Mini Lite on a PC or Mac:** follow Pollen's [official Lite setup](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini_lite/get_started). The Lite is wall-powered and uses USB data to the computer. Linux, Windows and macOS hosts are supported; see the [PC and Mac notes](docs/hardware-setups.md#lite--pc-or-mac).
 - **Reachy Mini Lite + spare Raspberry Pi 4:** follow the [community companion-host guide](docs/lite-raspberry-pi-4.md). Separate supplies, cable strain relief, ventilation and motor clearance are mandatory; several reference-build details remain explicitly TBD.
+- **Reachy Mini Lite + NVIDIA Jetson Orin Nano (experimental):** for local vision models on the device. Follow the [Jetson notes](docs/hardware-setups.md#lite--nvidia-jetson-orin-nano-experimental) and start with the Reachy SDK smoke test.
 - **Hardware and privacy visuals:** see the official-source image set below and the [image credits](docs/IMAGE_CREDITS.md). Tim-owned photos of the actual external-Pi reference build remain optional and are governed by the [shot list and rights checklist](docs/public-image-shot-list.md).
 
 ## Architecture and visual guide
@@ -87,6 +99,19 @@ An extensible, all-in-one companion and control app for Reachy Mini: local wake 
 | Real project UI with synthetic status text; not a live-robot claim. | Real project UI with synthetic status text; movement still requires physical acceptance. |
 
 The [official Lite assembly preview](docs/assets/lite-assembly.webp) is also included for setup context. These official images are explanatory hardware references, not evidence that this app passed acceptance on every robot. The UI captures use sanitized demo status and do not imply a live hardware connection. See [image credits, modifications and license notes](docs/IMAGE_CREDITS.md).
+
+## Local AI on your own hardware
+
+Reachy can answer camera questions with a vision model on hardware you own instead of a cloud model. This is optional and off by default.
+
+- **Local vision model.** Point Settings → *Local vision and AI acceleration* at any OpenAI-compatible vision server: Ollama, llama.cpp or vLLM.
+  - The server can run on the robot computer itself (a Jetson Orin Nano, a GPU PC or an Apple Silicon Mac) or elsewhere on your LAN.
+  - With it on, Realtime camera requests and the camera card's **Ask** box send the frame only to that server. The conversation model receives just the text answer.
+  - Changing the server URL requires the current API key.
+- **Accelerated gesture detection.** The on-device hand-gesture models use TensorRT or CUDA on a Jetson, Core ML on a Mac, or DirectML on Windows when the installed onnxruntime offers them. They fall back to the CPU automatically.
+- **Kids I Spy.** The bridge host can send I Spy's frames to a local vision server (`REACHY_ISPY_VISION_URL`). Strict target validation and moderation still apply. See [companion/README.md](companion/README.md).
+
+Model suggestions and Jetson steps are in [hardware setups](docs/hardware-setups.md).
 
 ## Home Assistant
 
@@ -164,7 +189,7 @@ Pipeline mode supports selectable STT, TTS, agent model, voice, and continued co
 ## Baseline requirements
 
 - Reachy Mini SDK **1.9.0 or newer** and Python 3.11 or newer on the computer hosting the app.
-- Reachy Mini Wireless, or Reachy Mini Lite with its supplied wall power and USB data connection to the app host.
+- Reachy Mini Wireless, or Reachy Mini Lite with its supplied wall power and USB data connection to the app host: a Linux, Windows or macOS computer, a Raspberry Pi, or an NVIDIA Jetson. See [hardware setups](docs/hardware-setups.md).
 - A trusted local management network, clear movement space and completion of the safe wake/fold acceptance sequence.
 - Hermes is optional for local dashboard evaluation. Voice conversation, announcements, Kids speech, one-frame model vision and personal agent capabilities require the private bridge and relevant providers below.
 
@@ -306,7 +331,7 @@ The [Reachy Mini I Spy](https://github.com/Timverhoogt/reachy-mini-i-spy) projec
 
 ### Bluetooth controllers
 
-> **Hardware scope:** Bluetooth controller management is supported only on **Reachy Mini Wireless**, using its Raspberry Pi Bluetooth radio. It is not supported on Reachy Mini Lite or wired-only installations.
+> **Hardware scope:** Bluetooth controller management needs a **Linux host with a Bluetooth radio**: Reachy Mini Wireless, or a Lite driven by a Raspberry Pi, a Jetson or a Linux PC. It is hidden when a Mac or Windows PC drives Reachy.
 
 The Robot tab can pair and manage Sony DualShock 4 and DualSense controllers through Reachy Pi's BlueZ adapter. Other controller identities and layouts—including Xbox, Switch, and generic USB gamepads—are rejected until they have a separately validated mapping. Put a DualShock 4 into pairing mode with **Share + PS**, or a DualSense with **Create + PS**, then use **Scan**, **Pair & connect**, and **Enable controller movement**. Controller movement is opt-in and uses the same allow-listed action queue as the browser. The richer evdev features (rumble, calibrated gyro, and multitouch) are deliberately restricted to the validated Bluetooth DualShock 4 identity `054c:09cc`; other Sony controllers retain the basic joydev mapping until separately accepted:
 

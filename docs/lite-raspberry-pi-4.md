@@ -210,4 +210,4 @@ Before this guide can claim a reproducible reference build, capture and approve:
 - cooling parts and measured idle/load temperature plus throttling result;
 - daemon installation/startup method and any service unit names;
 - app launch/service account and boot behavior;
-- whether Bluetooth controller support will remain Wireless-only (current supported scope) for this external-Pi Lite adaptation.
+- final DualShock 4 / DualSense pairing and mapping acceptance on this external-Pi Lite adaptation (BlueZ and `input` group access are verified).
