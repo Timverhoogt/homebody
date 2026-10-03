@@ -143,10 +143,10 @@ def test_home_assistant_ui_exposes_nested_opt_ins_and_v44_assets() -> None:
         assert element_id in script
     assert "dedicated Awake switch to run guarded wake/standby transitions" in html
     assert "toggleHomeAssistantOptions" in script
-    assert "reachy-hermes-shell-v50" in worker
+    assert "homebody-shell-v51" in worker
     for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=50" in html
-        assert f'"/static/{asset}?v=50"' in worker
+        assert f"/static/{asset}?v=51" in html
+        assert f'"/static/{asset}?v=51"' in worker
 
 
 def test_runtime_provider_maps_native_daemon_telemetry_without_enabling_controls() -> None:

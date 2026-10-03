@@ -56,7 +56,7 @@ except importlib.metadata.PackageNotFoundError:
 try:
     _APP_VERSION = importlib.metadata.version("reachy-mini-homebody")
 except importlib.metadata.PackageNotFoundError:
-    _APP_VERSION = "0.3.0"
+    from . import __version__ as _APP_VERSION
 
 
 def _normalize_camera_jpeg_for_home_assistant(jpeg: bytes) -> bytes:

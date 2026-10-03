@@ -129,7 +129,7 @@ def test_v44_ui_uses_dedicated_agent_workspace_and_contextual_offers() -> None:
     assert '"X-Reachy-Adult-UI": "unlocked"' in script
     assert 'if (!initiativeEditActive)' in script
     assert '$("initiative-badge").textContent = "Offline"' in script
-    assert 'reachy-hermes-shell-v50' in worker
+    assert 'homebody-shell-v51' in worker
 
 
 def test_shell_versions_agree_between_page_and_service_worker() -> None:
@@ -137,7 +137,7 @@ def test_shell_versions_agree_between_page_and_service_worker() -> None:
 
     html = (STATIC / "index.html").read_text()
     worker = (STATIC / "service-worker.js").read_text()
-    cache_version = re.search(r'reachy-hermes-shell-v(\d+)"', worker)
+    cache_version = re.search(r'homebody-shell-v(\d+)"', worker)
     assert cache_version is not None
     page_versions = set(re.findall(r'/static/[\w.-]+\?v=(\d+)', html))
     worker_versions = set(re.findall(r'/static/[\w.-]+\?v=(\d+)', worker))
