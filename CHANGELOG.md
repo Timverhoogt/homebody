@@ -83,6 +83,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Kids Mode moved out of `runtime.py` into `reachy_mini_hermes/kids_runtime.py` as `KidsModeMixin`. This covers the start/stop lifecycle, timers, I Spy rounds, the Kids voice policy, bridge session reporting and moderated Kids speech streaming. The 17 methods moved unchanged. Kids bridge calls create their client through `HermesVoiceRuntime._new_bridge_client`, so tests that patch `reachy_mini_hermes.runtime.HermesBridgeClient` still reach Kids paths. `runtime.py` shrinks by about 560 lines.
 
+- Announcements moved out of `runtime.py` into `reachy_mini_hermes/announcements.py` as `AnnouncementsMixin`, together with the `Announcement` dataclass and its limits. This covers the queue, cancellation, worker and playback. The 9 methods moved unchanged and create bridge clients through `_new_bridge_client`. `runtime.py` still re-exports `Announcement`, and the shared wake prompt now lives in `wakeword.WAKE_PROMPT`. `runtime.py` shrinks by about another 320 lines.
+
 ### Build
 
 - The CI example is now an active GitHub Actions workflow with a complete dependency set. The old list was missing `aioesphomeapi`, `onnxruntime`, `sherpa-onnx` and others, so 18 test modules failed to import. The workflow runs ruff, JavaScript syntax checks, the full suite on Python 3.11 and 3.12, and the package build.
