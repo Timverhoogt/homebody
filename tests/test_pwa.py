@@ -129,7 +129,7 @@ def test_v44_ui_uses_dedicated_agent_workspace_and_contextual_offers() -> None:
     assert '"X-Reachy-Adult-UI": "unlocked"' in script
     assert 'if (!initiativeEditActive)' in script
     assert '$("initiative-badge").textContent = "Offline"' in script
-    assert 'homebody-shell-v52' in worker
+    assert 'homebody-shell-v53' in worker
 
 
 def test_shell_versions_agree_between_page_and_service_worker() -> None:

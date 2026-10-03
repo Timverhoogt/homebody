@@ -57,6 +57,8 @@ Homebody owns the body: movement, safety, privacy, presence and the browser UI. 
 
 Homebody also works without any agent: the local dashboard, power and privacy states, guarded movement and camera controls run on their own.
 
+**Agents can also call Reachy.** With [agent access (MCP)](docs/agent-access-mcp.md) turned on, any MCP-capable agent can ask Reachy to speak a reminder, show an emotion, or describe what it sees through your local vision model. Hermes Agent, OpenClaw and Claude Code are examples. Every request follows the same Meeting, Sleep, privacy and Kids Mode rules as voice. It is off by default, needs a token, and never wakes Reachy for a gesture.
+
 ## Household promises
 
 These hold for everything that runs inside Homebody, including future contributions. [CONTRIBUTING.md](CONTRIBUTING.md#household-promises) explains how they apply to new code.
