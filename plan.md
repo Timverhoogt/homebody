@@ -1,8 +1,8 @@
-# Reachy Mini Hermes — implementation plan and status
+# Homebody — implementation plan and status
 
 ## Goal
 
-Ship a public Reachy Mini Python app that wakes locally on **“Hey Hermes”**, **“Okay Nabu”**, or **“Hey Reachy”**, supports low-latency embodied conversation, preserves the user's Hermes identity and tools in normal mode, and provides a separate supervised Kids Mode with materially reduced capabilities.
+Ship a public Reachy Mini Python app that wakes locally on **“Hey Homebody”**, **“Hey Hermes”**, **“Okay Nabu”**, or **“Hey Reachy”**, supports low-latency embodied conversation, preserves the user's Hermes identity and tools in normal mode, and provides a separate supervised Kids Mode with materially reduced capabilities.
 
 ## Product principles
 
@@ -149,8 +149,8 @@ These are deployment observations, not service-level guarantees. Hermes pipeline
 
 ## Packaging and release scope
 
-- Package and app entry point: `reachy_mini_hermes` / `ReachyMiniHermes`.
-- Current release line: **0.2.x early alpha**.
+- Package, module and app entry point: `reachy-mini-homebody` / `homebody` / `reachy_mini_homebody` (class `Homebody`); previously `reachy_mini_hermes` / `ReachyMiniHermes`.
+- Current release line: **0.4.x early alpha**.
 - Reachy settings UI: port `8042`.
 - Companion bridge: port `8643`, loopback by default.
 - License: Apache-2.0 with retained third-party notices.

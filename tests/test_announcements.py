@@ -430,11 +430,11 @@ def test_announcement_ui_exposes_full_tts_controls_and_private_routes() -> None:
     assert 'value="wake_and_stay"' in html
     assert 'fetch("/api/announcements"' in main
     assert 'fetch("/api/announcements/stop"' in main
-    assert "reachy-hermes-announcement-draft" in main
+    assert "homebody-announcement-draft" in main
     assert "window.sessionStorage" in main
-    assert "window.localStorage.setItem(\"reachy-hermes-announcement-draft\"" not in main
+    assert "window.localStorage.setItem(\"homebody-announcement-draft\"" not in main
     assert 'id="announcement-live"' in html
     assert 'role="alert"' in html
     assert "Voice only · do not change power state" in html
-    assert "homebody-shell-v53" in worker
-    assert "/static/main.js?v=53" in html
+    assert "homebody-shell-v54" in worker
+    assert "/static/main.js?v=54" in html

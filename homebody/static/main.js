@@ -42,7 +42,24 @@ let currentContextualOfferToken = 0;
 let presentationRequestPending = false;
 let presentationEditActive = false;
 let currentAgentRun = null;
-let agentRunId = window.sessionStorage.getItem("reachy-hermes-agent-run-id") || "";
+
+// Carry browser settings saved before the Homebody rename over once, then drop the old keys.
+[
+  ["localStorage", "reachy-hermes-tab", "homebody-tab"],
+  ["localStorage", "reachy-hermes-kids-profile", "homebody-kids-profile"],
+  ["sessionStorage", "reachy-hermes-agent-run-id", "homebody-agent-run-id"],
+  ["sessionStorage", "reachy-hermes-announcement-draft", "homebody-announcement-draft"],
+].forEach(([area, legacyKey, key]) => {
+  try {
+    const storage = window[area];
+    const legacy = storage.getItem(legacyKey);
+    if (legacy !== null && storage.getItem(key) === null) storage.setItem(key, legacy);
+    storage.removeItem(legacyKey);
+  } catch (error) {
+    // Storage can be unavailable (private mode, blocked site data); nothing to migrate then.
+  }
+});
+let agentRunId = window.sessionStorage.getItem("homebody-agent-run-id") || "";
 
 function renderAgentRun() {
   const run = currentAgentRun;
@@ -126,7 +143,7 @@ const kidsActivityLabels = {
 };
 
 const announcementText = $("announcement-text");
-announcementText.value = window.sessionStorage.getItem("reachy-hermes-announcement-draft") || "";
+announcementText.value = window.sessionStorage.getItem("homebody-announcement-draft") || "";
 $("announcement-count").textContent = `${announcementText.value.length.toLocaleString()} / 15,000`;
 
 document.querySelectorAll(".manual-control, [data-power]").forEach((button) => { button.disabled = true; });
@@ -154,7 +171,7 @@ let gpioRefreshPending = false;
 let gpioFormDirty = false;
 
 try {
-  const savedKidsProfile = JSON.parse(window.localStorage.getItem("reachy-hermes-kids-profile") || "{}");
+  const savedKidsProfile = JSON.parse(window.localStorage.getItem("homebody-kids-profile") || "{}");
   if (kidsActivityLabels[savedKidsProfile.activity]) selectedKidsActivity = savedKidsProfile.activity;
   if (typeof savedKidsProfile.nickname === "string") $("kids-nickname").value = savedKidsProfile.nickname.slice(0, 32);
   if (["4-6", "7-9", "10-12"].includes(savedKidsProfile.age_band)) $("kids-age-band").value = savedKidsProfile.age_band;
@@ -162,7 +179,7 @@ try {
   if (["en", "nl"].includes(savedKidsProfile.language)) $("kids-language").value = savedKidsProfile.language;
   if (typeof savedKidsProfile.motion_enabled === "boolean") $("kids-motion-enabled").checked = savedKidsProfile.motion_enabled;
 } catch (error) {
-  window.localStorage.removeItem("reachy-hermes-kids-profile");
+  window.localStorage.removeItem("homebody-kids-profile");
 }
 $("local-vision-test-button").addEventListener("click", async () => {
   const button = $("local-vision-test-button");
@@ -313,7 +330,7 @@ function activateTab(name, focus = false, recordHistory = false) {
   document.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== target.dataset.tab;
   });
-  window.localStorage.setItem("reachy-hermes-tab", target.dataset.tab);
+  window.localStorage.setItem("homebody-tab", target.dataset.tab);
   if (recordHistory && window.location.hash !== `#${target.dataset.tab}`) {
     window.history.pushState(null, "", `#${target.dataset.tab}`);
   }
@@ -341,7 +358,7 @@ tabButtons.forEach((button, index) => {
     activateTab(visible[next].dataset.tab, true, true);
   });
 });
-const initialTab = window.location.hash.slice(1) || window.localStorage.getItem("reachy-hermes-tab") || "dashboard";
+const initialTab = window.location.hash.slice(1) || window.localStorage.getItem("homebody-tab") || "dashboard";
 activateTab(initialTab);
 window.addEventListener("popstate", () => activateTab(window.location.hash.slice(1) || "dashboard"));
 
@@ -975,7 +992,7 @@ async function refreshAgentRun() {
       if (response.status >= 400 && response.status < 500) {
         currentAgentRun = null;
         agentRunId = "";
-        window.sessionStorage.removeItem("reachy-hermes-agent-run-id");
+        window.sessionStorage.removeItem("homebody-agent-run-id");
         renderAgentRun();
       }
       return;
@@ -984,7 +1001,7 @@ async function refreshAgentRun() {
     currentAgentRun = body.run || null;
     if (currentAgentRun?.run_id) {
       agentRunId = String(currentAgentRun.run_id);
-      window.sessionStorage.setItem("reachy-hermes-agent-run-id", agentRunId);
+      window.sessionStorage.setItem("homebody-agent-run-id", agentRunId);
     }
     renderAgentRun();
   } catch (error) {
@@ -998,7 +1015,7 @@ async function refreshAgentActivity() {
     pendingAgentApproval = null;
     currentAgentRun = null;
     agentRunId = "";
-    window.sessionStorage.removeItem("reachy-hermes-agent-run-id");
+    window.sessionStorage.removeItem("homebody-agent-run-id");
     $("agent-approval-sheet").hidden = true;
     renderAgentActivity();
     renderAgentRun();
@@ -1435,7 +1452,7 @@ $("kids-start-button").addEventListener("click", async () => {
   kidsRequestPending = true;
   const savedProfile = { ...profile };
   delete savedProfile.camera_consent;
-  window.localStorage.setItem("reachy-hermes-kids-profile", JSON.stringify(savedProfile));
+  window.localStorage.setItem("homebody-kids-profile", JSON.stringify(savedProfile));
   message.textContent = "Starting the private, time-boxed child session…";
   message.className = "message";
   if (window.ReachyCamera?.isActive()) window.ReachyCamera.stop("Camera stopped before Kids Mode.");
@@ -1481,7 +1498,7 @@ $("kids-stop-button").addEventListener("click", async () => {
 $("announcement-provider").addEventListener("change", refreshAnnouncementSpeechControls);
 announcementText.addEventListener("input", () => {
   $("announcement-count").textContent = `${announcementText.value.length.toLocaleString()} / 15,000`;
-  window.sessionStorage.setItem("reachy-hermes-announcement-draft", announcementText.value);
+  window.sessionStorage.setItem("homebody-announcement-draft", announcementText.value);
 });
 announcementText.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -2030,7 +2047,7 @@ async function previewAgentRun() {
     if (!response.ok || !body.run) throw new Error(body.detail || `HTTP ${response.status}`);
     currentAgentRun = body.run;
     agentRunId = String(body.run.run_id || "");
-    window.sessionStorage.setItem("reachy-hermes-agent-run-id", agentRunId);
+    window.sessionStorage.setItem("homebody-agent-run-id", agentRunId);
     message.textContent = "Plan ready. Review every step and exact argument, then press Start.";
     message.className = "message ok";
   } catch (error) {
