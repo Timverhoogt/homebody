@@ -10,9 +10,10 @@ import subprocess
 import threading
 from pathlib import Path
 from typing import Literal
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import Header, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 from reachy_mini import ReachyMini, ReachyMiniApp
 from starlette.concurrency import run_in_threadpool
@@ -25,6 +26,7 @@ from .gpio_buttons import ButtonEvent, ButtonName, GpioButtonService
 from .hermes_client import HermesBridgeClient
 from .kids_mode import KidsProfile
 from .local_vision import LocalVisionClient, LocalVisionError
+from .mcp_oauth import CONSENT_HEADERS, OAuthError, OAuthServer, consent_page
 from .mcp_server import PROTOCOL_VERSIONS, McpServer, new_token, token_digest, token_matches
 from .platform_info import host
 from .presence import PresenceObservation
@@ -101,6 +103,8 @@ class SettingsUpdate(BaseModel):
     local_ai_accelerator: Literal["auto", "cpu"] | None = None
     mcp_enabled: bool | None = None
     mcp_vision_enabled: bool | None = None
+    mcp_oauth_enabled: bool | None = None
+    mcp_public_url: str | None = Field(default=None, max_length=300)
 
 
 def _authorize_credential_change(current: AppConfig, merged: AppConfig, provided: str | None) -> None:
@@ -117,12 +121,15 @@ def _authorize_credential_change(current: AppConfig, merged: AppConfig, provided
         and merged.api_key == current.api_key
         # Camera frames go to the vision server, so redirecting it is as sensitive as the bridge.
         and merged.local_vision_url == current.local_vision_url
+        # Publishing agent sign-in to the internet is an owner decision.
+        and merged.mcp_public_url == current.mcp_public_url
+        and merged.mcp_oauth_enabled == current.mcp_oauth_enabled
     ):
         return
     if not provided or not secrets.compare_digest(provided.strip(), current.api_key):
         raise HTTPException(
             status_code=403,
-            detail="Enter the current API key to change the bridge URL, API key, or vision server URL",
+            detail="Enter the current API key to change the bridge URL, API key, vision server URL or agent sign-in",
         )
 
 
@@ -242,6 +249,21 @@ class McpTokenRequest(BaseModel):
 _MCP_MAX_BODY_BYTES = 64 * 1024
 
 
+_PUBLIC_PATH_PREFIXES = ("/mcp", "/oauth/", "/.well-known/oauth-")
+
+
+def _public_host(config: AppConfig) -> str:
+    return urlparse(config.mcp_public_url).netloc.lower() if config.mcp_public_url else ""
+
+
+def _arrived_on_public_host(request: Request, config: AppConfig) -> bool:
+    public = _public_host(config)
+    if not public:
+        return False
+    hosts = {request.headers.get("host", "").lower(), request.headers.get("x-forwarded-host", "").lower()}
+    return public in hosts
+
+
 def _same_origin(origin: str, request: Request) -> bool:
     """MCP over HTTP must reject foreign browser origins (DNS-rebinding protection)."""
     host = request.headers.get("host", "")
@@ -344,6 +366,7 @@ class Homebody(ReachyMiniApp):
         self._gpio_buttons = GpioButtonService(self._handle_button_event)
         self._gpio_config_lock = threading.Lock()
         self._mcp = McpServer(lambda: self._runtime)
+        self._oauth = OAuthServer(default_config_path().with_name("mcp-oauth.json"))
         self._register_settings_routes()
 
     def _handle_gamepad_action(self, kind: str, action: str, value: str) -> bool:
@@ -414,6 +437,13 @@ class Homebody(ReachyMiniApp):
         @self.settings_app.middleware("http")
         async def lock_management_routes(request: Request, call_next):  # type: ignore[no-untyped-def]
             """Fail closed on management APIs while the child-facing UI is locked."""
+            try:
+                public_request = _arrived_on_public_host(request, load_config())
+            except Exception:
+                public_request = False
+            # Through the public tunnel only agent sign-in and MCP exist; the dashboard never does.
+            if public_request and not request.url.path.startswith(_PUBLIC_PATH_PREFIXES):
+                return JSONResponse(status_code=404, content={"detail": "Not found"})
             allowed = {
                 "/api/status",
                 "/api/kids/stop",
@@ -1015,17 +1045,38 @@ class Homebody(ReachyMiniApp):
         async def mcp_endpoint(request: Request) -> Response:
             """Model Context Protocol over Streamable HTTP, answered with plain JSON (stateless)."""
             config = load_config()
-            if not config.mcp_enabled or not config.mcp_token_sha256:
+            oauth_on = config.mcp_oauth_enabled and bool(config.mcp_public_url)
+            if not config.mcp_enabled or not (config.mcp_token_sha256 or oauth_on):
                 return JSONResponse(status_code=404, content={"detail": "Agent access (MCP) is turned off"})
             origin = request.headers.get("origin", "")
             if origin and not _same_origin(origin, request):
                 return JSONResponse(status_code=403, content={"detail": "Cross-origin MCP requests are not allowed"})
             scheme, _, token = request.headers.get("authorization", "").partition(" ")
-            if scheme.lower() != "bearer" or not token_matches(token.strip(), config.mcp_token_sha256):
+            token = token.strip()
+            # The never-expiring static token works on the home network only; through the public
+            # tunnel agents must sign in with OAuth.
+            static_ok = not _arrived_on_public_host(request, config) and token_matches(
+                token, config.mcp_token_sha256
+            )
+            authorized = scheme.lower() == "bearer" and (
+                static_ok
+                or (
+                    oauth_on
+                    and self._oauth.validate_access_token(
+                        token, resource=OAuthServer.resource_url(config.mcp_public_url)
+                    )
+                )
+            )
+            if not authorized:
+                challenge = 'Bearer realm="homebody"'
+                if oauth_on:
+                    # Tells MCP clients where to start the OAuth flow (RFC 9728).
+                    metadata = f"{config.mcp_public_url}/.well-known/oauth-protected-resource/mcp"
+                    challenge += f', resource_metadata="{metadata}"'
                 return JSONResponse(
                     status_code=401,
                     content={"detail": "A valid Homebody MCP token is required"},
-                    headers={"WWW-Authenticate": 'Bearer realm="homebody"'},
+                    headers={"WWW-Authenticate": challenge},
                 )
             version = request.headers.get("mcp-protocol-version", "")
             if version and version not in PROTOCOL_VERSIONS:
@@ -1069,6 +1120,9 @@ class Homebody(ReachyMiniApp):
                 "vision_enabled": config.mcp_vision_enabled,
                 "token_configured": bool(config.mcp_token_sha256),
                 "endpoint_path": "/mcp",
+                "oauth_enabled": config.mcp_oauth_enabled,
+                "public_url": config.mcp_public_url,
+                "oauth": self._oauth.public_status(),
                 **self._mcp.status(),
             }
 
@@ -1099,6 +1153,104 @@ class Homebody(ReachyMiniApp):
                 except (OSError, ValueError) as exc:
                     raise HTTPException(status_code=500, detail=f"Could not revoke the token: {exc}") from exc
             return {"ok": True, "token_configured": False}
+
+        @self.settings_app.post("/api/mcp/approval-code")
+        def mcp_approval_code(request: McpTokenRequest) -> dict[str, object]:
+            """A one-time code the owner types on the consent page to let a hosted agent connect."""
+            config = _require_owner(request.current_api_key)
+            if not (config.mcp_enabled and config.mcp_oauth_enabled):
+                raise HTTPException(status_code=409, detail="Turn on agent access and agent sign-in first")
+            return {"ok": True, "code": self._oauth.new_approval_code(), "expires_in": 600}
+
+        @self.settings_app.post("/api/mcp/oauth/disconnect")
+        def mcp_oauth_disconnect(request: McpTokenRequest) -> dict[str, object]:
+            _require_owner(request.current_api_key)
+            self._oauth.disconnect_all()
+            return {"ok": True, **self._oauth.public_status()}
+
+        def _oauth_config() -> AppConfig:
+            config = load_config()
+            if not (config.mcp_enabled and config.mcp_oauth_enabled and config.mcp_public_url):
+                raise HTTPException(status_code=404, detail="Not found")
+            return config
+
+        def _oauth_error(exc: OAuthError) -> JSONResponse:
+            return JSONResponse(status_code=exc.status, content=exc.body(), headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.get("/.well-known/oauth-protected-resource", include_in_schema=False)
+        @self.settings_app.get("/.well-known/oauth-protected-resource/mcp", include_in_schema=False)
+        def oauth_resource_metadata() -> dict[str, object]:
+            return OAuthServer.protected_resource_metadata(_oauth_config().mcp_public_url)
+
+        @self.settings_app.get("/.well-known/oauth-authorization-server", include_in_schema=False)
+        def oauth_server_metadata() -> dict[str, object]:
+            return OAuthServer.authorization_server_metadata(_oauth_config().mcp_public_url)
+
+        @self.settings_app.post("/oauth/register", include_in_schema=False)
+        async def oauth_register(request: Request) -> JSONResponse:
+            _oauth_config()
+            body = await request.body()
+            if len(body) > 16 * 1024:
+                return JSONResponse(status_code=413, content={"error": "invalid_client_metadata"})
+            try:
+                payload = json.loads(body or b"{}")
+                return JSONResponse(status_code=201, content=self._oauth.register(payload))
+            except ValueError:
+                return JSONResponse(status_code=400, content={"error": "invalid_client_metadata"})
+            except OAuthError as exc:
+                return _oauth_error(exc)
+
+        @self.settings_app.get("/oauth/authorize", include_in_schema=False)
+        def oauth_authorize(request: Request) -> HTMLResponse:
+            config = _oauth_config()
+            params = {key: value for key, value in request.query_params.items()}
+            try:
+                pending = self._oauth.start_authorization(
+                    params, resource=OAuthServer.resource_url(config.mcp_public_url)
+                )
+            except OAuthError as exc:
+                # Never redirect to an unverified URI; show the problem instead.
+                html = consent_page(None, error=exc.description)
+                return HTMLResponse(html, status_code=400, headers=CONSENT_HEADERS)
+            return HTMLResponse(consent_page(pending, vision=config.mcp_vision_enabled), headers=CONSENT_HEADERS)
+
+        @self.settings_app.post("/oauth/authorize", include_in_schema=False)
+        async def oauth_authorize_decision(request: Request) -> Response:
+            config = _oauth_config()
+            body = await request.body()
+            form = {key: values[0] for key, values in parse_qs(body.decode("utf-8", "replace")[:4096]).items()}
+            pending_id = form.get("pending_id", "")
+            if form.get("action") == "deny":
+                target = self._oauth.deny(pending_id)
+                if target is None:
+                    return HTMLResponse(consent_page(None), status_code=400, headers=CONSENT_HEADERS)
+                return RedirectResponse(target, status_code=303, headers=CONSENT_HEADERS)
+            try:
+                target = self._oauth.approve(pending_id, form.get("approval_code", ""))
+            except OAuthError as exc:
+                pending = self._oauth.pending(pending_id)
+                html = consent_page(pending, error=exc.description, vision=config.mcp_vision_enabled)
+                return HTMLResponse(html, status_code=400, headers=CONSENT_HEADERS)
+            return RedirectResponse(target, status_code=303, headers=CONSENT_HEADERS)
+
+        @self.settings_app.post("/oauth/token", include_in_schema=False)
+        async def oauth_token(request: Request) -> JSONResponse:
+            config = _oauth_config()
+            body = await request.body()
+            form = {key: values[0] for key, values in parse_qs(body.decode("utf-8", "replace")[:8192]).items()}
+            try:
+                tokens = self._oauth.exchange(form, resource=OAuthServer.resource_url(config.mcp_public_url))
+            except OAuthError as exc:
+                return _oauth_error(exc)
+            return JSONResponse(tokens, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+        @self.settings_app.post("/oauth/revoke", include_in_schema=False)
+        async def oauth_revoke(request: Request) -> Response:
+            _oauth_config()
+            body = await request.body()
+            form = {key: values[0] for key, values in parse_qs(body.decode("utf-8", "replace")[:4096]).items()}
+            self._oauth.revoke_token(form.get("token", ""))
+            return Response(status_code=200)
 
         @self.settings_app.post("/api/vision/describe")
         def describe_camera_view(

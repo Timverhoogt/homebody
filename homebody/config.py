@@ -109,6 +109,8 @@ class AppConfig:
     mcp_enabled: bool = False
     mcp_vision_enabled: bool = False
     mcp_token_sha256: str = ""
+    mcp_oauth_enabled: bool = False
+    mcp_public_url: str = ""
     agent_tools_enabled: bool = True
     power_tools_enabled: bool = True
     kids_mode_enabled: bool = False
@@ -137,6 +139,7 @@ class AppConfig:
         self.realtime_reasoning_effort = self.realtime_reasoning_effort.strip().lower() or "low"
         self.camera_controls_handedness = self.camera_controls_handedness.strip().lower() or "right"
         self.local_vision_url = self.local_vision_url.strip().rstrip("/")
+        self.mcp_public_url = self.mcp_public_url.strip().rstrip("/")
         self.local_vision_model = self.local_vision_model.strip()
         self.kids_session_id = self.kids_session_id.strip()
         self.kids_age_band = self.kids_age_band.strip()
@@ -221,6 +224,16 @@ class AppConfig:
             raise ValueError("local_vision_model must be 1-200 characters")
         if self.mcp_token_sha256 and not re.fullmatch(r"[0-9a-f]{64}", str(self.mcp_token_sha256)):
             raise ValueError("mcp_token_sha256 must be a SHA-256 hex digest")
+        public = str(self.mcp_public_url).strip()
+        if public:
+            parsed = urlparse(public)
+            https = parsed.scheme == "https"
+            local_http = parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
+            bare_origin = parsed.netloc and not parsed.query and not parsed.fragment and parsed.path in {"", "/"}
+            if not bare_origin or not (https or local_http):
+                raise ValueError("mcp_public_url must be an https:// origin such as https://reachy.example.com")
+        if self.mcp_oauth_enabled and not public:
+            raise ValueError("Set the public HTTPS address before turning on agent sign-in (OAuth)")
         if self.local_ai_accelerator not in {"auto", "cpu"}:
             raise ValueError("local_ai_accelerator must be 'auto' or 'cpu'")
         if not 0.5 <= float(self.gpio_long_press_seconds) <= 10.0:
