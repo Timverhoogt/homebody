@@ -184,7 +184,7 @@ Updated 2026-10-03. Agent Mode 0.1–0.6 and warm Hermes agents have shipped; se
 
 ### Hardware and acoustics
 
-- Run the two-button GPIO hardware acceptance in `OPERATIONS.md` on the Reachy Pi.
+- Run the two-button GPIO hardware acceptance on the Reachy Pi with `tools/gpio_acceptance.py` (`preflight`, `wiring`, then `run --stuck`; see `OPERATIONS.md`). Attach the three reports. The tool is verified end to end against the real button service with simulated lines and robot; the physical run is what remains.
 - Pair a DualShock controller with the Reachy Mini Wireless and verify the mapping.
 - Verify **Hey Homebody** with live microphone input (so far checked only against the KWS vocabulary).
 - Add phrase-specific real-room acoustic acceptance recordings and tune per-keyword score/threshold only from measured false-positive/false-negative data.

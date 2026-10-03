@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import timedelta
@@ -28,6 +29,7 @@ Gesture = Literal["short", "long"]
 
 DEBOUNCE_SECONDS = 0.03
 STUCK_SECONDS = 30.0
+RECENT_EVENTS = 12
 # How long start() waits for a previous monitor that is still finishing a dispatched action.
 RESTART_WAIT_SECONDS = 10.0
 
@@ -48,7 +50,7 @@ class EdgeSample:
 
 
 class _ButtonState:
-    __slots__ = ("pressed", "pressed_at", "last_change", "long_sent", "armed", "stuck")
+    __slots__ = ("pressed", "pressed_at", "last_change", "long_sent", "armed", "stuck", "presses", "ignored")
 
     def __init__(self, *, initially_pressed: bool, now: float) -> None:
         self.pressed = initially_pressed
@@ -58,6 +60,9 @@ class _ButtonState:
         self.long_sent = False
         # Startup ownership: a button already held at start must be released before it counts.
         self.armed = not initially_pressed
+        # Debounced presses seen, and releases deliberately ignored (held at start, or stuck).
+        self.presses = 0
+        self.ignored = 0
         self.stuck = False
 
 
@@ -88,9 +93,11 @@ class PressClassifier:
         if sample.pressed:
             state.pressed_at = sample.timestamp
             state.long_sent = False
+            state.presses += 1
             return []
         # Release.
         if not state.armed or state.stuck:
+            state.ignored += 1
             state.armed = True
             state.stuck = False
             return []
@@ -124,6 +131,18 @@ class PressClassifier:
 
     def stuck_buttons(self) -> list[ButtonName]:
         return [self._names[offset] for offset, state in self._states.items() if state.stuck]
+
+    def counts(self) -> dict[str, dict[str, object]]:
+        """Per button since the lines were opened: presses seen, ignored releases, and live state."""
+        return {
+            self._names[offset]: {
+                "presses": state.presses,
+                "ignored": state.ignored,
+                "held": state.pressed,
+                "armed": state.armed,
+            }
+            for offset, state in self._states.items()
+        }
 
 
 class LineReader(Protocol):
@@ -202,6 +221,9 @@ class GpioButtonService:
         self._last_event = ""
         self._last_error = ""
         self._classifier: PressClassifier | None = None
+        # Acceptance checks need to tell two identical presses apart, so every gesture gets a number.
+        self._event_count = 0
+        self._recent: deque[dict[str, object]] = deque(maxlen=RECENT_EVENTS)
 
     def start(self, *, chip: str, pins: dict[ButtonName, int], long_press_seconds: float) -> None:
         previous = self._stop_thread()
@@ -277,8 +299,12 @@ class GpioButtonService:
             status = dict(self._status)
             status["last_event"] = self._last_event
             status["last_error"] = self._last_error
+            status["event_count"] = self._event_count
+            status["recent_events"] = [dict(record) for record in self._recent]
             classifier = self._classifier
-        status["stuck"] = classifier.stuck_buttons() if classifier is not None and status["available"] else []
+        live = classifier is not None and status["available"]
+        status["stuck"] = classifier.stuck_buttons() if live else []
+        status["buttons"] = classifier.counts() if live else {}
         return status
 
     def _run(self, reader: LineReader, classifier: PressClassifier, stop: threading.Event) -> None:
@@ -308,15 +334,20 @@ class GpioButtonService:
         label = f"{event.button} {event.gesture}"
         with self._lock:
             self._last_event = label
+            self._event_count += 1
+            record: dict[str, object] = {"seq": self._event_count, "event": label, "at": time.time(), "result": ""}
+            self._recent.append(record)
         try:
             self._dispatch(event)
         except Exception as exc:
             _LOGGER.warning("GPIO %s press was not applied: %s", label, exc)
             with self._lock:
                 self._last_error = f"{label}: {exc}"[:200]
+                record["result"] = f"error: {exc}"[:200]
         else:
             with self._lock:
                 self._last_error = ""
+                record["result"] = "applied"
 
     def _set_status(self, *, enabled: bool, available: bool, pins: dict[ButtonName, int], error: str) -> None:
         with self._lock:
