@@ -616,3 +616,19 @@ def test_settings_require_current_key_to_change_bridge_credentials(monkeypatch) 
     assert rotated.status_code == 200
     assert saved[-1].bridge_url == "http://hermes.local:8643"
     assert saved[-1].api_key == "sk-rotated"
+
+
+def test_settings_reject_unbounded_strings_and_report_save_failures(monkeypatch) -> None:
+    _app, _runtime, client, saved = build_client(monkeypatch)
+
+    assert client.post("/api/settings", json={"system_prompt": "x" * 16001}).status_code == 422
+    assert client.post("/api/settings", json={"language": "x" * 13}).status_code == 422
+    assert saved == []
+
+    def failing_save(_value: AppConfig) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(main_module, "save_config", failing_save)
+    response = client.post("/api/settings", json={"language": "nl"})
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Settings could not be saved on Reachy"

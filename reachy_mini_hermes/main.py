@@ -17,7 +17,7 @@ from reachy_mini import ReachyMini, ReachyMiniApp
 
 from .agent_audit import AgentAuditLog
 from .bluetooth import BluetoothGamepadService
-from .config import AppConfig, default_config_path, load_config, merge_config, save_config
+from .config import AppConfig, config_transaction, default_config_path, load_config, merge_config, save_config
 from .contextual_offers import ContextualOffer
 from .hermes_client import HermesBridgeClient
 from .kids_mode import KidsProfile
@@ -32,18 +32,18 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 class SettingsUpdate(BaseModel):
     """A deliberately bounded settings payload for the app UI."""
 
-    bridge_url: str | None = None
-    api_key: str | None = None
+    bridge_url: str | None = Field(default=None, max_length=2048)
+    api_key: str | None = Field(default=None, max_length=4096)
     current_api_key: str | None = Field(default=None, max_length=4096)
-    model: str | None = None
-    conversation_mode: str | None = None
-    language: str | None = None
-    stt_provider: str | None = None
-    stt_model: str | None = None
-    tts_provider: str | None = None
-    tts_model: str | None = None
-    tts_voice: str | None = None
-    system_prompt: str | None = None
+    model: str | None = Field(default=None, max_length=200)
+    conversation_mode: str | None = Field(default=None, max_length=32)
+    language: str | None = Field(default=None, max_length=12)
+    stt_provider: str | None = Field(default=None, max_length=64)
+    stt_model: str | None = Field(default=None, max_length=200)
+    tts_provider: str | None = Field(default=None, max_length=64)
+    tts_model: str | None = Field(default=None, max_length=200)
+    tts_voice: str | None = Field(default=None, max_length=200)
+    system_prompt: str | None = Field(default=None, max_length=16000)
     continuous_conversation: bool | None = None
     conversation_timeout_seconds: float | None = Field(default=None, ge=30, le=3600)
     initial_speech_timeout_seconds: float | None = Field(default=None, ge=1, le=30)
@@ -86,9 +86,9 @@ class SettingsUpdate(BaseModel):
     home_assistant_camera_enabled: bool | None = None
     home_assistant_assist_enabled: bool | None = None
     home_assistant_port: int | None = Field(default=None, ge=1024, le=65535)
-    realtime_model: str | None = None
-    realtime_voice: str | None = None
-    realtime_reasoning_effort: str | None = None
+    realtime_model: str | None = Field(default=None, max_length=200)
+    realtime_voice: str | None = Field(default=None, max_length=64)
+    realtime_reasoning_effort: str | None = Field(default=None, max_length=32)
 
 
 def _authorize_credential_change(current: AppConfig, merged: AppConfig, provided: str | None) -> None:
@@ -446,14 +446,18 @@ class ReachyMiniHermes(ReachyMiniApp):
         @self.settings_app.post("/api/settings")
         def update_settings(update: SettingsUpdate) -> dict[str, object]:
             try:
-                current = load_config()
-                changes = update.model_dump(exclude_none=True)
-                provided_key = changes.pop("current_api_key", None)
-                merged = merge_config(current, changes)
-                _authorize_credential_change(current, merged, provided_key)
-                path = save_config(merged)
+                with config_transaction():
+                    current = load_config()
+                    changes = update.model_dump(exclude_none=True)
+                    provided_key = changes.pop("current_api_key", None)
+                    merged = merge_config(current, changes)
+                    _authorize_credential_change(current, merged, provided_key)
+                    path = save_config(merged)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except OSError as exc:
+                _LOGGER.error("Could not save Reachy Hermes settings: %s", exc)
+                raise HTTPException(status_code=500, detail="Settings could not be saved on Reachy") from exc
             _LOGGER.info("Reachy Hermes settings updated at %s (secret values redacted)", path)
             if self._runtime is not None and (
                 not merged.camera_feed_enabled or not merged.camera_controls_enabled
@@ -491,8 +495,8 @@ class ReachyMiniHermes(ReachyMiniApp):
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
             try:
                 agent = self._runtime.set_capability_profile(update.profile, adult_ui_unlocked=True)
-                current = load_config()
-                save_config(merge_config(current, {"capability_profile": update.profile}))
+                with config_transaction():
+                    save_config(merge_config(load_config(), {"capability_profile": update.profile}))
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except RuntimeError as exc:
@@ -910,7 +914,9 @@ class ReachyMiniHermes(ReachyMiniApp):
             try:
                 profile = KidsProfile(**request.model_dump())
                 kids_mode = self._runtime.start_kids_mode(profile)
-                save_config(merge_config(config, {"capability_profile": "conversation"}))
+                # Re-read: `config` was loaded before the bridge health check and Kids start.
+                with config_transaction():
+                    save_config(merge_config(load_config(), {"capability_profile": "conversation"}))
                 return {"ok": True, "kids_mode": kids_mode}
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -979,18 +985,19 @@ class ReachyMiniHermes(ReachyMiniApp):
         @self.settings_app.post("/api/bluetooth/gamepad")
         def bluetooth_gamepad(request: GamepadEnabledRequest) -> dict[str, object]:
             with self._gamepad_config_lock:
-                current = load_config()
                 try:
                     if request.enabled:
                         status = self._bluetooth.set_gamepad_enabled(True)
                         try:
-                            save_config(merge_config(current, {"gamepad_enabled": True}))
+                            with config_transaction():
+                                save_config(merge_config(load_config(), {"gamepad_enabled": True}))
                         except Exception:
                             self._bluetooth.set_gamepad_enabled(False)
                             raise
                     else:
                         # Persist the fail-safe disabled state before stopping the reader.
-                        save_config(merge_config(current, {"gamepad_enabled": False}))
+                        with config_transaction():
+                            save_config(merge_config(load_config(), {"gamepad_enabled": False}))
                         status = self._bluetooth.set_gamepad_enabled(False)
                     return {"ok": True, **status}
                 except ValueError as exc:

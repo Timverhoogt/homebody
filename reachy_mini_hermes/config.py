@@ -6,6 +6,8 @@ import json
 import os
 import threading
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from urllib.parse import urlparse
@@ -212,6 +214,14 @@ class AppConfig:
         payload.pop("kids_age_band", None)
         payload.pop("kids_activity", None)
         return payload
+
+
+@contextmanager
+def config_transaction() -> Iterator[None]:
+    """Hold the config lock across a whole load -> merge -> save so concurrent writers cannot
+    overwrite each other's changes. load_config and save_config may be called inside."""
+    with _CONFIG_LOCK:
+        yield
 
 
 def load_config(path: Path | None = None) -> AppConfig:
