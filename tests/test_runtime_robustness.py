@@ -9,11 +9,11 @@ import numpy as np
 import pytest
 from test_voice_session_lifecycle import make_runtime
 
-from reachy_mini_hermes import runtime as runtime_module
-from reachy_mini_hermes import voice_ha
-from reachy_mini_hermes.audio import EndpointResult
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.hermes_client import HermesBridgeClient, SpeechAudio
+from homebody import runtime as runtime_module
+from homebody import voice_ha
+from homebody.audio import EndpointResult
+from homebody.config import AppConfig
+from homebody.hermes_client import HermesBridgeClient, SpeechAudio
 
 
 def test_realtime_agent_lease_is_released_when_session_setup_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -26,7 +26,7 @@ def test_realtime_agent_lease_is_released_when_session_setup_fails(monkeypatch: 
         def __init__(self, *_args: object, **_kwargs: object) -> None:
             raise OSError("bridge unreachable")
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.RealtimeBridgeSession", BrokenSession)
+    monkeypatch.setattr("homebody.runtime.RealtimeBridgeSession", BrokenSession)
 
     with pytest.raises(OSError):
         runtime._run_realtime_conversation(AppConfig(conversation_mode="realtime"))
@@ -60,7 +60,7 @@ def test_realtime_agent_request_reports_failure_when_the_session_loop_raises(
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.RealtimeBridgeSession", FailingSession)
+    monkeypatch.setattr("homebody.runtime.RealtimeBridgeSession", FailingSession)
     runtime._read_16k_frame = lambda: None  # type: ignore[method-assign]
 
     with pytest.raises(RuntimeError, match="socket dropped"):
@@ -168,7 +168,7 @@ def test_empty_transcript_is_a_no_speech_turn(monkeypatch: pytest.MonkeyPatch) -
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.HermesBridgeClient", Client)
+    monkeypatch.setattr("homebody.runtime.HermesBridgeClient", Client)
     runtime._record_utterance = lambda config: EndpointResult(  # type: ignore[method-assign]
         np.ones(160, dtype=np.float32), True, "end_silence", 0.01
     )

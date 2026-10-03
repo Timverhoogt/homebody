@@ -3,9 +3,9 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "reachy_mini_hermes"
-version = "0.3.0"
-description = "Extensible Reachy Mini companion app with local controls and optional Hermes Agent integration"
+name = "reachy-mini-homebody"
+version = "0.4.0"
+description = "Homebody: an always-on, privacy-first home companion app for Reachy Mini with pluggable agent backends"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -25,7 +25,7 @@ dependencies = [
     "sherpa-onnx>=1.13.4,<2",
     "websockets>=15,<17",
 ]
-keywords = ["reachy-mini-app", "hermes-agent", "voice-assistant", "robotics", "kids-mode"]
+keywords = ["reachy-mini-app", "homebody", "hermes-agent", "openclaw", "voice-assistant", "robotics", "kids-mode"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
@@ -39,10 +39,12 @@ Repository = "https://github.com/Timverhoogt/reachy-mini-hermes"
 "Standalone I Spy" = "https://github.com/Timverhoogt/reachy-mini-i-spy"
 
 [project.scripts]
-reachy-mini-hermes = "reachy_mini_hermes.main:run_cli"
+homebody = "homebody.main:run_cli"
+# Pre-rename command, kept so existing scripts and services keep working.
+reachy-mini-hermes = "homebody.main:run_cli"
 
 [project.entry-points."reachy_mini_apps"]
-reachy_mini_hermes = "reachy_mini_hermes.main:ReachyMiniHermes"
+reachy_mini_homebody = "homebody.main:Homebody"
 
 [dependency-groups]
 dev = [
@@ -58,10 +60,10 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["reachy_mini_hermes*"]
+include = ["homebody*"]
 
 [tool.setuptools.package-data]
-reachy_mini_hermes = ["assets/*", "assets/gesture_models/*", "static/*"]
+homebody = ["assets/*", "assets/gesture_models/*", "static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

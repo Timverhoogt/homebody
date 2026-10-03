@@ -7,13 +7,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.contextual_offers import ContextualOffer
-from reachy_mini_hermes.hermes_client import SpeechAudio
-from reachy_mini_hermes.runtime import Announcement, HermesVoiceRuntime
+from homebody.config import AppConfig
+from homebody.contextual_offers import ContextualOffer
+from homebody.hermes_client import SpeechAudio
+from homebody.runtime import Announcement, HermesVoiceRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = ROOT / "reachy_mini_hermes" / "static"
+STATIC = ROOT / "homebody" / "static"
 
 
 class FakeAudio:
@@ -154,7 +154,7 @@ def test_stop_generation_invalidates_item_already_dequeued(monkeypatch: pytest.M
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.HermesBridgeClient", FailingClient)
+    monkeypatch.setattr("homebody.runtime.HermesBridgeClient", FailingClient)
     worker = threading.Thread(target=runtime._run_announcement_worker, daemon=True)
     runtime._announcement_worker = worker
     worker.start()
@@ -238,7 +238,7 @@ def test_shutdown_cancellation_prevents_post_shutdown_restore(monkeypatch: pytes
         runtime._power_mode = mode
         return runtime.status()
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.HermesBridgeClient", BlockingClient)
+    monkeypatch.setattr("homebody.runtime.HermesBridgeClient", BlockingClient)
     runtime.set_power_mode = fake_power  # type: ignore[method-assign]
     worker = threading.Thread(target=runtime._run_announcement_worker, daemon=True)
     runtime._announcement_worker = worker
@@ -293,7 +293,7 @@ def test_wake_and_return_restoration_preserves_following_queue(monkeypatch: pyte
         runtime._power_mode = mode
         return runtime.status()
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.HermesBridgeClient", FakeClient)
+    monkeypatch.setattr("homebody.runtime.HermesBridgeClient", FakeClient)
     runtime.set_power_mode = fake_power  # type: ignore[method-assign]
     runtime._play_announcement_audio = lambda item, speech, text: played.append(text)  # type: ignore[method-assign]
     runtime._announcement_worker = object()  # type: ignore[assignment]
@@ -335,7 +335,7 @@ def test_worker_synthesizes_once_and_repeats_serially(monkeypatch: pytest.Monkey
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.HermesBridgeClient", FakeClient)
+    monkeypatch.setattr("homebody.runtime.HermesBridgeClient", FakeClient)
     runtime._play_announcement_audio = lambda item, speech, text: played.append(text)  # type: ignore[method-assign]
     worker = threading.Thread(target=runtime._run_announcement_worker, daemon=True)
     runtime._announcement_worker = worker
@@ -385,7 +385,7 @@ def test_privacy_transition_wins_over_wake_and_return(monkeypatch: pytest.Monkey
         runtime._privacy_requested.set()
         entered_meeting.set()
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.HermesBridgeClient", FakeClient)
+    monkeypatch.setattr("homebody.runtime.HermesBridgeClient", FakeClient)
     runtime.set_power_mode = fake_power  # type: ignore[method-assign]
     runtime._play_announcement_audio = enter_meeting  # type: ignore[method-assign]
     worker = threading.Thread(target=runtime._run_announcement_worker, daemon=True)

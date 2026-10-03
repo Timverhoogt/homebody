@@ -21,7 +21,7 @@ from .config import AppConfig
 from .home_assistant import HermesHomeAssistantProvider
 
 # Keep the runtime logger name so existing log filters still match these lines.
-_LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
+_LOGGER = logging.getLogger("homebody.runtime")
 
 _HA_MEDIA_VOICE_WAIT_SECONDS = 30.0
 

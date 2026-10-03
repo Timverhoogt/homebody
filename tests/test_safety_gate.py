@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from reachy_mini_hermes import safety_gate as gate
-from reachy_mini_hermes.safety_gate import SafetyGate
+from homebody import safety_gate as gate
+from homebody.safety_gate import SafetyGate
 
 
 @dataclass

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from reachy_mini_hermes.agent_approvals import ApprovalStore, canonical_arguments
-from reachy_mini_hermes.agent_policy import CapabilityId, RiskTier
+from homebody.agent_approvals import ApprovalStore, canonical_arguments
+from homebody.agent_policy import CapabilityId, RiskTier
 
 
 def test_canonical_arguments_are_order_independent_and_reject_nan() -> None:

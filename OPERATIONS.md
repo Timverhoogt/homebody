@@ -7,7 +7,7 @@ This runbook covers private Reachy Mini deployments using the Reachy daemon, a H
 | Component | Default location | Port/service |
 |---|---|---|
 | Reachy daemon | Reachy/Pi | `8000`, `reachy-mini-daemon.service` |
-| Reachy Hermes settings | Reachy app process | `8042` |
+| Homebody settings | Reachy app process | `8042` |
 | Home Assistant ESPHome bridge | Reachy app process | `6053`, optional/trusted LAN only |
 | Hermes API Server | Hermes host | `8642`, Hermes gateway |
 | Reachy companion bridge | Hermes host | `8643`, `hermes-reachy-bridge.service` |
@@ -42,13 +42,13 @@ curl -X POST http://REACHY_HOST:8000/api/apps/stop-current-app
 Copy the wheel to Reachy, then install it into the same Python environment used by the Reachy daemon:
 
 ```bash
-scp dist/reachy_mini_hermes-*.whl REACHY_HOST:/tmp/
+scp dist/reachy_mini_homebody-*.whl REACHY_HOST:/tmp/
 
 uv pip install \
   --python /path/to/reachy_mini/.venv/bin/python \
   --reinstall \
   --no-deps \
-  /tmp/reachy_mini_hermes-*.whl
+  /tmp/reachy_mini_homebody-*.whl
 ```
 
 `--no-deps` is appropriate only after verifying that the Reachy environment already satisfies the package requirements. In particular, Realtime mode needs `websockets>=15,<17`.
@@ -56,7 +56,7 @@ uv pip install \
 Start the app:
 
 ```bash
-curl -X POST http://REACHY_HOST:8000/api/apps/start-app/reachy_mini_hermes
+curl -X POST http://REACHY_HOST:8000/api/apps/start-app/reachy_mini_homebody
 ```
 
 Wait for both conditions:
@@ -197,7 +197,7 @@ Source tests and browser simulation do not constitute physical acceptance. Recor
 ### Home Assistant ESPHome acceptance
 
 1. Stop the old Reachy Home Assistant app so only one process can bind TCP `6053`.
-2. Enable only **ESPHome device bridge**, restart Reachy Hermes, and keep Assist, camera, and robot controls disabled.
+2. Enable only **ESPHome device bridge**, restart Homebody, and keep Assist, camera, and robot controls disabled.
 3. Confirm `runtime.home_assistant.ready=true`, `connected=true`, device name `Reachy Mini E79627`, and no bridge error. Verify `runtime.home_assistant.bind_address` is Reachy's RFC1918 LAN address and `ss -ltn` shows `LAN_IP:6053`, never `0.0.0.0:6053`, a public address or the Tailscale/CGNAT address. Restrict inbound TCP `6053` to Home Assistant with the host/network firewall.
 4. Verify Home Assistant reconnects the existing device rather than creating a duplicate and that live daemon, pose and system entities update. IMU, gesture, face-detection and Look At entities must remain unavailable when their source or guarded implementation is absent—never fake zero.
 5. With controls disabled, send number/select/switch commands and verify no robot movement. Then locally enable controls, put Reachy Awake with clear space and supervision, and test only one ≤10-unit relative pose change. Standby, Kids, Meeting, Sleep, busy motion, camera control and >10-unit jumps must fail closed.
@@ -232,7 +232,7 @@ Expected startup milestones include:
 
 - app process started;
 - settings server listening on `8042`;
-- Reachy Hermes audio input/output rates logged;
+- Homebody audio input/output rates logged;
 - motors disabled when entering Standby.
 
 Treat tracebacks, `Reachy voice runtime failed`, repeated WebSocket closures, and increasing daemon restarts as failures. Hardware GPU-device discovery warnings from ONNX Runtime may be harmless on a Pi when CPU inference continues successfully.
@@ -267,7 +267,7 @@ journalctl -u bluetooth -n 100 --no-pager
 
 ## Physical GPIO buttons
 
-Optional green/red momentary buttons wired between a BCM GPIO pin and ground. The app enables the Pi's internal pull-up, so no resistor is needed. The feature is off by default. Enable it in **Robot → Physical buttons** (pins, hold time, on/off; saving re-opens the lines without a restart), or in `~/.local/share/reachy_mini_hermes/config.json` followed by an app restart:
+Optional green/red momentary buttons wired between a BCM GPIO pin and ground. The app enables the Pi's internal pull-up, so no resistor is needed. The feature is off by default. Enable it in **Robot → Physical buttons** (pins, hold time, on/off; saving re-opens the lines without a restart), or in `~/.local/share/homebody/config.json` followed by an app restart:
 
 ```json
 "gpio_buttons_enabled": true,
@@ -294,7 +294,7 @@ Safety behaviour:
 Acceptance:
 
 1. Confirm the app's service user can open the chip: `ls -l /dev/gpiochip0` (group `gpio`), and `groups` lists `gpio`. Restart the Reachy daemon after changing groups.
-2. Confirm no other process owns the lines: `gpioinfo | grep -E "line +(17|27):"` shows them unused before the app starts and `consumer="reachy-mini-hermes"` afterwards.
+2. Confirm no other process owns the lines: `gpioinfo | grep -E "line +(17|27):"` shows them unused before the app starts and `consumer="homebody"` afterwards.
 3. In Standby, press green briefly: Reachy wakes and listens. Press red briefly during the answer: speech and movement stop.
 4. Hold red for 2 s: Reachy stops and goes to Sleep. Press green briefly: Reachy returns to Awake.
 5. Start Kids Mode and press red briefly: the session ends with a safe fold.
@@ -379,6 +379,20 @@ Before declaring a deployment stable:
 - confirm zero new runtime tracebacks;
 - verify the final power state and motor mode.
 
+## Upgrading from Reachy Mini Hermes
+
+Version 0.4.0 renamed the app to Homebody. The Python package is now `reachy-mini-homebody`, the module `homebody` and the Reachy app `reachy_mini_homebody`, so the Reachy daemon sees it as a new app.
+
+1. Stop the running app: `curl -X POST http://REACHY_HOST:8000/api/apps/stop-current-app`.
+2. Remove the old package from the Reachy environment: `uv pip uninstall --python /path/to/reachy_mini/.venv/bin/python reachy_mini_hermes`.
+3. Install the new wheel and start `reachy_mini_homebody` as described in [Wheel deployment](#wheel-deployment).
+4. Settings carry over. Without a `~/.local/share/homebody/config.json`, the app keeps using `~/.local/share/reachy_mini_hermes/config.json` in place, and it reuses the verified wake-word model and compiled ONNX engines in `~/.cache/reachy_mini_hermes/`. `REACHY_MINI_HERMES_CONFIG` and `REACHY_MINI_HERMES_MODEL_DIR` are still honoured; `HOMEBODY_CONFIG` and `HOMEBODY_MODEL_DIR` take precedence.
+5. The `reachy-mini-hermes` command still works as an alias for `homebody`.
+6. Home Assistant keeps the same ESPHome device and entities. Only the displayed model and manufacturer change to Homebody.
+7. Run the usual post-maintenance acceptance checks below before leaving Reachy unattended.
+
+To roll back to a pre-rename release, uninstall `reachy-mini-homebody`, reinstall the previous `reachy_mini_hermes` wheel and start `reachy_mini_hermes`.
+
 ## Rollback
 
 Keep the previous known-good wheel until acceptance passes.
@@ -386,8 +400,8 @@ Keep the previous known-good wheel until acceptance passes.
 ```bash
 curl -X POST http://REACHY_HOST:8000/api/apps/stop-current-app
 uv pip install --python /path/to/reachy_mini/.venv/bin/python \
-  --reinstall --no-deps /path/to/previous/reachy_mini_hermes.whl
-curl -X POST http://REACHY_HOST:8000/api/apps/start-app/reachy_mini_hermes
+  --reinstall --no-deps /path/to/previous/reachy_mini_homebody-*.whl
+curl -X POST http://REACHY_HOST:8000/api/apps/start-app/reachy_mini_homebody
 ```
 
-The user configuration is stored separately from the wheel, so rollback normally preserves settings. If a future release changes the configuration schema incompatibly, back up `~/.local/share/reachy_mini_hermes/config.json` before deployment.
+The user configuration is stored separately from the wheel, so rollback normally preserves settings. If a future release changes the configuration schema incompatibly, back up `~/.local/share/homebody/config.json` before deployment.

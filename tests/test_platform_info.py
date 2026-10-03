@@ -3,12 +3,12 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-import reachy_mini_hermes.main as main_module
-from reachy_mini_hermes import platform_info
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.home_assistant import default_device_identity
-from reachy_mini_hermes.main import ReachyMiniHermes
-from reachy_mini_hermes.platform_info import detect_host
+import homebody.main as main_module
+from homebody import platform_info
+from homebody.config import AppConfig
+from homebody.home_assistant import default_device_identity
+from homebody.main import Homebody
+from homebody.platform_info import detect_host
 
 
 def test_raspberry_pi_is_detected_with_gpio_bluetooth_and_shutdown() -> None:
@@ -64,7 +64,7 @@ def test_status_reports_the_host_and_shutdown_refuses_on_a_desktop(monkeypatch: 
     monkeypatch.setattr(main_module, "load_config", lambda: AppConfig())
     ran: list[object] = []
     monkeypatch.setattr(main_module.subprocess, "run", lambda *args, **kwargs: ran.append(args))
-    client = TestClient(ReachyMiniHermes(False).settings_app)
+    client = TestClient(Homebody(False).settings_app)
 
     status = client.get("/api/status").json()
     assert status["host"]["kind"] == "macos" and status["host"]["shutdown_supported"] is False

@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Reachy Mini Hermes",
-  "short_name": "Reachy Hermes",
+  "name": "Homebody",
+  "short_name": "Homebody",
   "description": "Voice, privacy, and physical control for your embodied Hermes Agent.",
   "start_url": "/#dashboard",
   "scope": "/",

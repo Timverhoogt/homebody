@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import evdev
 
-from reachy_mini_hermes.controller_features import ControllerFeatureInterpreter, PlayStationEvdevFeatures
+from homebody.controller_features import ControllerFeatureInterpreter, PlayStationEvdevFeatures
 
 
 def test_gyro_requires_l2_calibration_and_emits_bounded_debounced_head_nudges() -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE = ROOT / "reachy_mini_hermes"
+PACKAGE = ROOT / "homebody"
 
 
 def test_bundled_wake_phrases_use_verified_gigaspeech_bpe_tokens() -> None:

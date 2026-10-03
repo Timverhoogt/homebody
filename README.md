@@ -31,7 +31,7 @@ tags:
 
 *Actual Reachy Mini. Official Pollen Robotics source, converted to a static metadata-free WebP under Apache-2.0. [Image credits and immutable sources](docs/IMAGE_CREDITS.md).*
 
-> **Status: early alpha, mid-rename.** This project was called *Reachy Mini Hermes*. The package, entry point, CLI and Space URL still use `reachy_mini_hermes` until the rename lands, so the commands below are unchanged. Automated, bridge, network, camera, deployment and physical power-state checks have passed on Tim's reference Reachy Mini Lite + Raspberry Pi 4 setup. This is not a production-readiness or broad hardware-compatibility claim. Every installation still needs the documented physical, spoken wake-word, acoustic barge-in, camera/privacy and safe-fold acceptance checks.
+> **Status: early alpha.** Homebody was previously called *Reachy Mini Hermes*; see [upgrading from Reachy Mini Hermes](OPERATIONS.md#upgrading-from-reachy-mini-hermes). The Space URL and GitHub repository keep their old names for now. Automated, bridge, network, camera, deployment and physical power-state checks have passed on Tim's reference Reachy Mini Lite + Raspberry Pi 4 setup. This is not a production-readiness or broad hardware-compatibility claim. Every installation still needs the documented physical, spoken wake-word, acoustic barge-in, camera/privacy and safe-fold acceptance checks.
 
 ## Why Homebody
 
@@ -131,7 +131,7 @@ The [hardware setups guide](docs/hardware-setups.md) has the full feature-by-set
 
 | Sanitized Dashboard | Sanitized Robot controls |
 |---|---|
-| ![Reachy Mini Hermes dashboard showing sanitized Standby, folded and torque-released demo status with power and privacy controls](docs/assets/ui-dashboard.webp) | ![Reachy Mini Hermes Robot tab showing sanitized folded motor status, guarded wake, fold and Stop controls](docs/assets/ui-robot.webp) |
+| ![Homebody dashboard showing sanitized Standby, folded and torque-released demo status with power and privacy controls](docs/assets/ui-dashboard.webp) | ![Homebody Robot tab showing sanitized folded motor status, guarded wake, fold and Stop controls](docs/assets/ui-robot.webp) |
 | Real project UI with synthetic status text; not a live-robot claim. | Real project UI with synthetic status text; movement still requires physical acceptance. |
 
 The [official Lite assembly preview](docs/assets/lite-assembly.webp) is also included for setup context. These official images are explanatory hardware references, not evidence that this app passed acceptance on every robot. The UI captures use sanitized demo status and do not imply a live hardware connection. See [image credits, modifications and license notes](docs/IMAGE_CREDITS.md).
@@ -151,7 +151,7 @@ Model suggestions and Jetson steps are in [hardware setups](docs/hardware-setups
 
 ## Home Assistant
 
-Reachy Mini Hermes can expose the same stable `Reachy Mini <machine-id suffix>` ESPHome device used by the community Reachy Home Assistant app. Enable **ESPHome device bridge** in the local adult Settings page and restart the Reachy app. Home Assistant connects to TCP `6053` directly or discovers `_esphomelib._tcp.local` over mDNS.
+Homebody can expose the same stable `Reachy Mini <machine-id suffix>` ESPHome device used by the community Reachy Home Assistant app. Enable **ESPHome device bridge** in the local adult Settings page and restart the Reachy app. Home Assistant connects to TCP `6053` directly or discovers `_esphomelib._tcp.local` over mDNS.
 
 The bridge is deliberately layered:
 
@@ -318,7 +318,7 @@ Wheel deployment:
 
 ```bash
 uv build --wheel
-uv pip install --reinstall --no-deps dist/reachy_mini_hermes-*.whl
+uv pip install --reinstall --no-deps dist/reachy_mini_homebody-*.whl
 ```
 
 Validate the public app structure when the Reachy app assistant is available:
@@ -330,7 +330,7 @@ reachy-mini-app-assistant check /path/to/reachy_mini_hermes
 Start through the Reachy dashboard, or:
 
 ```bash
-curl -X POST http://REACHY_HOST:8000/api/apps/start-app/reachy_mini_hermes
+curl -X POST http://REACHY_HOST:8000/api/apps/start-app/reachy_mini_homebody
 ```
 
 Open the settings page:
@@ -363,7 +363,7 @@ Remote motor controls expose the confirmed torque/fold state and keep **Wake & e
 
 Kids Mode is deliberately separate from the normal Hermes agent session. A user selects an optional nickname, age band (4–6, 7–9, or 10–12), English or Dutch, a 15/30/45/60-minute limit, and one of Buddy chat, Story maker, Quiz quest, Riddle box, Calm corner, or **I Spy**. I Spy is the only Kids activity that can use the camera: it requires fresh camera opt-in for each session, visibly performs a bounded five-frame desk search at `0° / −60° / −120° / +60° / +120°` with non-capturing transit waypoints, and revokes camera access before returning the base to neutral and before the child starts guessing. Its strict bridge schema accepts only a stable, child-safe target visible across frames; local game state controls approved hints and reveals the answer by the sixth incorrect guess. After that round, roles alternate: the child chooses a safe household object and supplies one clue at a time, Reachy makes up to six schema-bounded guesses, and a confirmed answer or reveal automatically starts Reachy's next consented search round. Reachy's own search uses the rotating base and head across left/centre/right poses; on the child's choosing turn each new Reachy guess gets a small bounded base-and-head thinking turn without camera capture. Starting the mode directly from the trusted local dashboard opens a fresh, bounded child pipeline through the private `/v1/kids/chat` route, with pre/post moderation and no normal Hermes memory or tool session. Outside the explicitly consented I Spy search, camera, agent/delegation tools, files, messaging, Home Assistant, purchases, power tools, and explicit robot actions remain unavailable. Normalized, approved complete responses receive separate short-lived, single-use bridge capabilities for streaming and configured-TTS fallback, each bound to the child session and exact text, then stream through fixed-policy ElevenLabs Flash v2.5 as 24 kHz PCM—unmoderated model tokens are never sent directly to speech. Optional motion is limited to gentle local listening/thinking/speaking cues, except for I Spy's fixed bounded base-and-head search poses and its small camera-free player-turn guessing poses. Starting Kids Mode closes any prior conversation; ending it immediately invalidates the child session and deletes any I Spy target state; synchronous STT/chat/provider HTTP calls are not transport-aborted and may run until their bounded timeout, but their returned output is discarded. Ending also interrupts active streaming TTS and audio playback, cancels movement, clears queued speech, and runs the verified safe fold before torque release. A monotonic server timer enforces the limit and gives a five-minute warning. This is a supervised beta feature, not a babysitter, therapist, medical service, or emergency service; generative replies can still be wrong. Child audio goes to the configured STT provider, moderated child text and consented I Spy frames go to OpenAI, and approved reply text goes to ElevenLabs; the optional nickname is included in the deterministic ElevenLabs greeting. I Spy frame bytes are discarded after target selection and are not retained in child session state. Exclusion from Hermes memory is not a provider-retention guarantee—review each provider's data controls before use.
 
-The [Reachy Mini I Spy](https://github.com/Timverhoogt/reachy-mini-i-spy) project originated as a focused extraction of the I Spy experience developed here and is now its own complete app and project. It has an independent Reachy entry point, UI, dedicated three-frame provider broker, safety contract, releases, issue tracker, and physical-acceptance lifecycle; it does not require the full Reachy Mini Hermes app. This repository retains a separate integrated five-frame Kids Mode implementation. The projects share some target-selection lineage but keep camera, moderation, cancellation, motion, speech, release, and acceptance authority independent. A shared policy change should be reviewed against the standalone [safety contract](https://github.com/Timverhoogt/reachy-mini-i-spy/blob/main/docs/SAFETY_CONTRACT.md) and each affected project’s own regression suite.
+The [Reachy Mini I Spy](https://github.com/Timverhoogt/reachy-mini-i-spy) project originated as a focused extraction of the I Spy experience developed here and is now its own complete app and project. It has an independent Reachy entry point, UI, dedicated three-frame provider broker, safety contract, releases, issue tracker, and physical-acceptance lifecycle; it does not require the full Homebody app. This repository retains a separate integrated five-frame Kids Mode implementation. The projects share some target-selection lineage but keep camera, moderation, cancellation, motion, speech, release, and acceptance authority independent. A shared policy change should be reviewed against the standalone [safety contract](https://github.com/Timverhoogt/reachy-mini-i-spy/blob/main/docs/SAFETY_CONTRACT.md) and each affected project’s own regression suite.
 
 ### Bluetooth controllers
 
@@ -429,15 +429,17 @@ An authenticated `POST /api/camera/snapshot` route can return one current JPEG f
 Default path:
 
 ```text
-~/.local/share/reachy_mini_hermes/config.json
+~/.local/share/homebody/config.json
 ```
 
 Managed-installation overrides:
 
 ```bash
-REACHY_MINI_HERMES_CONFIG=/path/to/config.json
-REACHY_MINI_HERMES_MODEL_DIR=/path/to/model-cache
+HOMEBODY_CONFIG=/path/to/config.json
+HOMEBODY_MODEL_DIR=/path/to/model-cache
 ```
+
+Installations from before the rename keep working: if `~/.local/share/homebody/config.json` does not exist, the app keeps using `~/.local/share/reachy_mini_hermes/config.json` in place, and the old `REACHY_MINI_HERMES_CONFIG` and `REACHY_MINI_HERMES_MODEL_DIR` variables are still honoured.
 
 The configuration file is written with permissions `0600`. It contains the bridge bearer token, but no OpenAI, ElevenLabs, or other provider credential.
 
@@ -502,7 +504,7 @@ Homebody stands on the work of the Reachy Mini community: [Pollen Robotics](http
 
 ## Third-party model
 
-The app downloads sherpa-onnx's GigaSpeech 3.3M open-vocabulary KWS model from its official GitHub release and verifies SHA-256 before extraction. Upstream model metadata declares Apache-2.0. See [`reachy_mini_hermes/assets/THIRD_PARTY_MODELS.md`](reachy_mini_hermes/assets/THIRD_PARTY_MODELS.md).
+The app downloads sherpa-onnx's GigaSpeech 3.3M open-vocabulary KWS model from its official GitHub release and verifies SHA-256 before extraction. Upstream model metadata declares Apache-2.0. See [`homebody/assets/THIRD_PARTY_MODELS.md`](homebody/assets/THIRD_PARTY_MODELS.md).
 
 ## License
 

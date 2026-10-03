@@ -10,16 +10,16 @@ import pytest
 from fastapi.testclient import TestClient
 from test_voice_session_lifecycle import make_runtime
 
-import reachy_mini_hermes.main as main_module
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.gpio_buttons import (
+import homebody.main as main_module
+from homebody.config import AppConfig
+from homebody.gpio_buttons import (
     STUCK_SECONDS,
     ButtonEvent,
     EdgeSample,
     GpioButtonService,
     PressClassifier,
 )
-from reachy_mini_hermes.main import ReachyMiniHermes
+from homebody.main import Homebody
 
 GREEN, RED = 17, 27
 
@@ -258,7 +258,7 @@ class RecordingRuntime:
     ],
 )
 def test_button_gestures_map_to_runtime_actions(event: ButtonEvent, calls: list[str]) -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = RecordingRuntime()
     app._runtime = runtime  # type: ignore[assignment]
 
@@ -268,7 +268,7 @@ def test_button_gestures_map_to_runtime_actions(event: ButtonEvent, calls: list[
 
 
 def test_red_stop_works_while_the_runtime_is_still_starting_but_other_gestures_wait() -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = RecordingRuntime(ready=False)
     app._runtime = runtime  # type: ignore[assignment]
 
@@ -285,7 +285,7 @@ def test_red_long_press_still_sleeps_when_part_of_stop_fails() -> None:
             self.calls.append("stop")
             raise RuntimeError("robot: Robot action controller is not ready")
 
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = PartlyBrokenRuntime()
     app._runtime = runtime  # type: ignore[assignment]
 
@@ -340,7 +340,7 @@ def test_green_press_is_taken_once_and_expires(monkeypatch: pytest.MonkeyPatch) 
 
     runtime.request_button_wake()
     later = time.monotonic() + 5.0
-    monkeypatch.setattr("reachy_mini_hermes.manual_control.time.monotonic", lambda: later)
+    monkeypatch.setattr("homebody.manual_control.time.monotonic", lambda: later)
     assert runtime._take_button_wake() is False
 
 
@@ -407,7 +407,7 @@ class FakeGpioService:
 
 
 def gpio_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, FakeGpioService, list[AppConfig]]:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     service = FakeGpioService()
     app._gpio_buttons = service  # type: ignore[assignment]
     app.settings_app.extra["hermes"] = app

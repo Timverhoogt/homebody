@@ -309,7 +309,7 @@ class AgentReminderDeliveryRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2_000)
 
 
-class ReachyMiniHermes(ReachyMiniApp):
+class Homebody(ReachyMiniApp):
     """Embodied voice frontend for a user's own Hermes Agent."""
 
     custom_app_url: str | None = "http://0.0.0.0:8042"
@@ -441,7 +441,7 @@ class ReachyMiniHermes(ReachyMiniApp):
                 config_payload = {}
                 config_error = "Configuration is unavailable" if child_locked else str(exc)
             return {
-                "app": "reachy_mini_hermes",
+                "app": "homebody",
                 "wake_phrase": "Hey Hermes",
                 "wake_phrases": ["Hey Hermes", "Okay Nabu", "Hey Reachy"],
                 "config": config_payload,
@@ -580,9 +580,9 @@ class ReachyMiniHermes(ReachyMiniApp):
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except OSError as exc:
-                _LOGGER.error("Could not save Reachy Hermes settings: %s", exc)
+                _LOGGER.error("Could not save Homebody settings: %s", exc)
                 raise HTTPException(status_code=500, detail="Settings could not be saved on Reachy") from exc
-            _LOGGER.info("Reachy Hermes settings updated at %s (secret values redacted)", path)
+            _LOGGER.info("Homebody settings updated at %s (secret values redacted)", path)
             if self._runtime is not None and (
                 not merged.camera_feed_enabled or not merged.camera_controls_enabled
             ):
@@ -1388,7 +1388,7 @@ def run_cli() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    app = ReachyMiniHermes()
+    app = Homebody()
     try:
         app.wrapped_run()
     except KeyboardInterrupt:

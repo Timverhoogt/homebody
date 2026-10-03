@@ -4,12 +4,12 @@ from dataclasses import replace
 
 import pytest
 
-from reachy_mini_hermes.contextual_offers import (
+from homebody.contextual_offers import (
     ContextualOffer,
     ContextualOfferState,
     parse_offer_response,
 )
-from reachy_mini_hermes.initiative import InitiativeSettings
+from homebody.initiative import InitiativeSettings
 
 
 def offer(**changes: object) -> ContextualOffer:

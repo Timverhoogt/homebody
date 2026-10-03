@@ -1,6 +1,6 @@
 # Hardware setups: what runs where, and what is supported
 
-Reachy Mini Hermes runs on the computer that drives Reachy. This guide lists the setups you can use, which features each one offers, and how well each combination is proven. Read it before buying hardware.
+Homebody runs on the computer that drives Reachy. This guide lists the setups you can use, which features each one offers, and how well each combination is proven. Read it before buying hardware.
 
 > [!IMPORTANT]
 > Reachy Mini Lite and Reachy Mini Wireless are different products. A Lite driven by a Raspberry Pi is a community setup, not a Wireless conversion: the Lite stays wall-powered, connects over USB data, and has no battery or onboard Wi-Fi. See Pollen Robotics' [Lite](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini_lite/get_started) and [Wireless](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini/get_started) documentation.
@@ -99,7 +99,7 @@ A Jetson Orin Nano gives you a GPU next to Reachy, so camera questions can be an
 6. **Gesture acceleration (optional):**
    1. Install an `onnxruntime-gpu` build that matches your JetPack and Python version. NVIDIA's Jetson AI Lab package index provides them.
    2. Leave *On-device AI accelerator* on *Automatic*. Danger zone then shows *local AI on TensorRT* or *CUDA*.
-   3. The first start builds TensorRT engines into `~/.cache/reachy_mini_hermes/onnx`.
+   3. The first start builds TensorRT engines into `~/.cache/homebody/onnx`.
    4. If no matching build exists, everything still works on the CPU.
 7. **GPIO buttons:**
    1. The Jetson header lines have higher numbers than the Pi's BCM pins. Find yours with `gpioinfo`, and enter those line numbers under Robot → *Physical buttons*.

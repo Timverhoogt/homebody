@@ -4,7 +4,7 @@ Thanks for wanting to help Reachy Mini feel at home. Homebody is the always-on f
 
 You don't need to be a robotics expert. Some of the most useful contributions are a hardware report, a translation or a bug found while living with the robot.
 
-> **Mid-rename note:** the project was called *Reachy Mini Hermes*. Until the rename lands, the Python package, entry point and CLI are still `reachy_mini_hermes`.
+> Homebody was previously called *Reachy Mini Hermes*. The Python package is `reachy-mini-homebody` and the module is `homebody`; the GitHub repository keeps its old name for now.
 
 ## Ways to contribute
 
@@ -20,13 +20,13 @@ Homebody owns the body and your agent provides the brain. Hermes Agent is the re
 
 Games, stories, quizzes and calm-down activities make Homebody a robot children want to talk to.
 
-- Kids activities live in [`reachy_mini_hermes/kids_mode.py`](reachy_mini_hermes/kids_mode.py), currently buddy, story, quiz, riddles, calm and I Spy.
+- Kids activities live in [`homebody/kids_mode.py`](homebody/kids_mode.py), currently buddy, story, quiz, riddles, calm and I Spy.
 - Every Play experience runs under the [household promises](#household-promises), especially supervision, moderation and the privacy states.
 - Have a bigger idea? An experience can also grow into its own project. [Reachy Mini I Spy](https://github.com/Timverhoogt/reachy-mini-i-spy) started here and now runs standalone with its own [safety contract](https://github.com/Timverhoogt/reachy-mini-i-spy/blob/main/docs/SAFETY_CONTRACT.md). Both paths are welcome.
 
 ### Home: home automation integrations
 
-Homebody already speaks to Home Assistant through an ESPHome device bridge ([`reachy_mini_hermes/home_assistant.py`](reachy_mini_hermes/home_assistant.py)). Other systems are good additions: Homey, openHAB, MQTT, Matter and others. Keep them off by default, allowlist-based and honest. A value Homebody can't measure is reported as unavailable, never made up.
+Homebody already speaks to Home Assistant through an ESPHome device bridge ([`homebody/home_assistant.py`](homebody/home_assistant.py)). Other systems are good additions: Homey, openHAB, MQTT, Matter and others. Keep them off by default, allowlist-based and honest. A value Homebody can't measure is reported as unavailable, never made up.
 
 ### Setups: hardware reports
 

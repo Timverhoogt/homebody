@@ -8,8 +8,8 @@ import pytest
 from test_initiative import Clock, settings
 from test_presence_runtime import contextual_offer, make_runtime
 
-from reachy_mini_hermes.adaptation import HALF_LIFE_SECONDS, SNOOZE_SECONDS, PreferenceLedger
-from reachy_mini_hermes.initiative import InitiativeCandidate, InitiativePolicy
+from homebody.adaptation import HALF_LIFE_SECONDS, SNOOZE_SECONDS, PreferenceLedger
+from homebody.initiative import InitiativeCandidate, InitiativePolicy
 
 
 class LedgerClock:

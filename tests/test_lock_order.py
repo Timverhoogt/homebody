@@ -4,7 +4,7 @@ import threading
 
 from test_camera_joystick import ready_runtime
 
-from reachy_mini_hermes.runtime import HermesVoiceRuntime
+from homebody.runtime import HermesVoiceRuntime
 
 
 class OrderedLock:

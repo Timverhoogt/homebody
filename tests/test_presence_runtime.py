@@ -9,11 +9,11 @@ from typing import cast
 
 import pytest
 
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.contextual_offers import ContextualOffer
-from reachy_mini_hermes.initiative import InitiativeCandidate, InitiativePolicy
-from reachy_mini_hermes.presence import PresenceObservation
-from reachy_mini_hermes.runtime import HermesVoiceRuntime
+from homebody.config import AppConfig
+from homebody.contextual_offers import ContextualOffer
+from homebody.initiative import InitiativeCandidate, InitiativePolicy
+from homebody.presence import PresenceObservation
+from homebody.runtime import HermesVoiceRuntime
 
 
 class Motion:

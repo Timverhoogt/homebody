@@ -9,12 +9,12 @@ import pytest
 from fastapi.testclient import TestClient
 from test_gate_1r_3_realtime_lifecycle import make_runtime as make_realtime_runtime
 
-import reachy_mini_hermes.main as main_module
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.local_vision import LocalVisionClient, LocalVisionError
-from reachy_mini_hermes.main import ReachyMiniHermes
-from reachy_mini_hermes.realtime_client import RealtimeEvent
-from reachy_mini_hermes.voice_realtime import camera_call_purpose
+import homebody.main as main_module
+from homebody.config import AppConfig
+from homebody.local_vision import LocalVisionClient, LocalVisionError
+from homebody.main import Homebody
+from homebody.realtime_client import RealtimeEvent
+from homebody.voice_realtime import camera_call_purpose
 
 JPEG = b"\xff\xd8fake-jpeg\xff\xd9"
 
@@ -209,7 +209,7 @@ def test_realtime_camera_call_sends_a_local_description_instead_of_the_image(mon
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.RealtimeBridgeSession", CameraSession)
+    monkeypatch.setattr("homebody.runtime.RealtimeBridgeSession", CameraSession)
 
     def read_frame() -> np.ndarray:
         time.sleep(0.001)
@@ -242,11 +242,11 @@ def test_realtime_camera_call_sends_a_local_description_instead_of_the_image(mon
     assert vision.questions == ["what is on the table"]
 
 
-def build_client(monkeypatch: pytest.MonkeyPatch, config: AppConfig) -> tuple[ReachyMiniHermes, TestClient, list]:
+def build_client(monkeypatch: pytest.MonkeyPatch, config: AppConfig) -> tuple[Homebody, TestClient, list]:
     saved: list[AppConfig] = []
     monkeypatch.setattr(main_module, "load_config", lambda: config)
     monkeypatch.setattr(main_module, "save_config", lambda value: saved.append(value))
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     return app, TestClient(app.settings_app), saved
 
 

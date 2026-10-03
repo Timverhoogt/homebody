@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = ROOT / "reachy_mini_hermes" / "static"
+STATIC = ROOT / "homebody" / "static"
 
 
 def test_robot_tab_contains_explicit_local_live_camera_controls() -> None:
@@ -56,7 +56,7 @@ def test_camera_vision_overlay_is_visual_only_and_non_interactive() -> None:
 
 def test_live_camera_is_opt_in_and_stops_for_privacy_transitions() -> None:
     main = (STATIC / "main.js").read_text()
-    config = (ROOT / "reachy_mini_hermes" / "config.py").read_text()
+    config = (ROOT / "homebody" / "config.py").read_text()
     notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text()
     bundled_api = (STATIC / "gstwebrtc-api.js").read_text()[:1000]
 

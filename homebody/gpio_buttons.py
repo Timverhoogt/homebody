@@ -146,7 +146,7 @@ class _GpiodLineReader:
         self._offsets = offsets
         self._request = gpiod.request_lines(
             chip,
-            consumer="reachy-mini-hermes",
+            consumer="homebody",
             config={tuple(offsets): settings},
         )
         self._rising = gpiod.EdgeEvent.Type.RISING_EDGE

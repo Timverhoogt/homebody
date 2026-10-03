@@ -54,7 +54,7 @@ except importlib.metadata.PackageNotFoundError:
     _AIOESPHOMEAPI_VERSION = "unknown"
 
 try:
-    _APP_VERSION = importlib.metadata.version("reachy_mini_hermes")
+    _APP_VERSION = importlib.metadata.version("reachy-mini-homebody")
 except importlib.metadata.PackageNotFoundError:
     _APP_VERSION = "0.3.0"
 
@@ -528,7 +528,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             yield api_pb2.HelloResponse(
                 api_version_major=1,
                 api_version_minor=10,
-                server_info=f"Reachy Mini Hermes ({_AIOESPHOMEAPI_VERSION})",
+                server_info=f"Homebody ({_AIOESPHOMEAPI_VERSION})",
                 name=self.identity.name,
             )
             return
@@ -555,12 +555,13 @@ class ESPHomeProtocol(asyncio.Protocol):
                 uses_password=False,
                 name=self.identity.name,
                 friendly_name=self.identity.name,
+                # Kept from before the rename so Home Assistant sees the same ESPHome project.
                 project_name="Timverhoogt.reachy-mini-hermes",
                 project_version=_APP_VERSION,
                 esphome_version=_AIOESPHOMEAPI_VERSION,
                 mac_address=self.identity.mac_address,
-                manufacturer="Tim Verhoogt / Hermes Agent",
-                model="Reachy Mini Hermes",
+                manufacturer="Tim Verhoogt / Homebody",
+                model="Homebody",
                 voice_assistant_feature_flags=features,
             )
             return

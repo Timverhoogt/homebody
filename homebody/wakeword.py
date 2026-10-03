@@ -1,4 +1,4 @@
-"""Open-vocabulary local keyword spotting for Reachy Mini Hermes."""
+"""Open-vocabulary local keyword spotting for Homebody."""
 
 from __future__ import annotations
 
@@ -32,10 +32,16 @@ _REQUIRED_FILES = {
 
 
 def default_model_cache() -> Path:
-    root = os.getenv("REACHY_MINI_HERMES_MODEL_DIR", "").strip()
-    if root:
-        return Path(root).expanduser()
-    return Path.home() / ".cache" / "reachy_mini_hermes" / "kws"
+    for env in ("HOMEBODY_MODEL_DIR", "REACHY_MINI_HERMES_MODEL_DIR"):
+        root = os.getenv(env, "").strip()
+        if root:
+            return Path(root).expanduser()
+    path = Path.home() / ".cache" / "homebody" / "kws"
+    legacy = Path.home() / ".cache" / "reachy_mini_hermes" / "kws"
+    # Reuse a model verified before the rename instead of downloading it again.
+    if not path.exists() and legacy.exists():
+        return legacy
+    return path
 
 
 def _sha256(path: Path) -> str:

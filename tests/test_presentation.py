@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from reachy_mini_hermes.presentation import IntentionalPresentationGate
+from homebody.presentation import IntentionalPresentationGate
 
 
 def jpeg(*, center: int = 30, border: int = 30) -> bytes:

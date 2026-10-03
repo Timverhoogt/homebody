@@ -12,17 +12,17 @@ from typing import Any
 import numpy as np
 import pytest
 
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.ispy import validate_ispy_target
-from reachy_mini_hermes.kids_mode import (
+from homebody.config import AppConfig
+from homebody.ispy import validate_ispy_target
+from homebody.kids_mode import (
     KidsProfile,
     build_kids_prompt,
     kids_greeting,
 )
-from reachy_mini_hermes.runtime import HermesVoiceRuntime
+from homebody.runtime import HermesVoiceRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = ROOT / "reachy_mini_hermes" / "static"
+STATIC = ROOT / "homebody" / "static"
 
 
 class FakeMedia:
@@ -579,7 +579,7 @@ def test_kids_tab_has_activities_direct_controls_disclosures_and_end_button() ->
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     main = (STATIC / "main.js").read_text(encoding="utf-8")
     style = (STATIC / "style.css").read_text(encoding="utf-8")
-    backend = (ROOT / "reachy_mini_hermes" / "main.py").read_text(encoding="utf-8")
+    backend = (ROOT / "homebody" / "main.py").read_text(encoding="utf-8")
 
     assert 'data-tab="kids"' in html
     assert 'data-panel="kids"' in html
@@ -652,7 +652,7 @@ def test_kids_bridge_calls_use_the_runtime_client_factory(monkeypatch: pytest.Mo
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.HermesBridgeClient", RecordingClient)
+    monkeypatch.setattr("homebody.runtime.HermesBridgeClient", RecordingClient)
     runtime = HermesVoiceRuntime(FakeRobot(), threading.Event())
 
     runtime._notify_bridge_kids_session("kids-" + "e" * 32, True)

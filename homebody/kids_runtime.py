@@ -24,7 +24,7 @@ from .ispy import ISpyTarget
 from .kids_mode import KidsProfile, build_kids_prompt, kids_greeting
 
 # Keep the runtime logger name so existing log filters and dashboards still match Kids Mode lines.
-_LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
+_LOGGER = logging.getLogger("homebody.runtime")
 
 
 class KidsModeMixin:

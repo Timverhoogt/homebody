@@ -14,9 +14,9 @@ from aioesphomeapi import APIClient
 from aioesphomeapi.model import CameraState, VoiceAssistantEventType
 from PIL import Image
 
-from reachy_mini_hermes import home_assistant as home_assistant_module
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.home_assistant import (
+from homebody import home_assistant as home_assistant_module
+from homebody.config import AppConfig
+from homebody.home_assistant import (
     ENTITY_KEYS,
     DeviceIdentity,
     HermesHomeAssistantProvider,
@@ -25,7 +25,7 @@ from reachy_mini_hermes.home_assistant import (
     entity_specs,
     start_esphome_server,
 )
-from reachy_mini_hermes.runtime import HermesVoiceRuntime
+from homebody.runtime import HermesVoiceRuntime
 
 
 class FakeProvider(HomeAssistantStateProvider):
@@ -126,7 +126,7 @@ def test_entity_contract_preserves_existing_keys_but_narrows_motion_limits() -> 
 
 def test_home_assistant_ui_exposes_nested_opt_ins_and_v44_assets() -> None:
     root = Path(__file__).resolve().parents[1]
-    static = root / "reachy_mini_hermes" / "static"
+    static = root / "homebody" / "static"
     html = (static / "index.html").read_text(encoding="utf-8")
     script = (static / "main.js").read_text(encoding="utf-8")
     worker = (static / "service-worker.js").read_text(encoding="utf-8")
@@ -373,7 +373,7 @@ def test_assist_media_url_must_resolve_to_connected_home_assistant(monkeypatch) 
 
     provider = HermesHomeAssistantProvider(Runtime(), config_loader=lambda: AppConfig())
     monkeypatch.setattr(
-        "reachy_mini_hermes.home_assistant.socket.getaddrinfo",
+        "homebody.home_assistant.socket.getaddrinfo",
         lambda host, port: [
             (2, 1, 6, "", ("192.168.68.34" if host == "homeassistant.local" else "192.168.68.99", port))
         ],
@@ -517,8 +517,8 @@ def test_real_aioesphome_client_sees_compatible_device_entities_states_and_camer
             info = await client.device_info()
             assert info.name == "Reachy Mini E79627"
             assert info.mac_address == "1643b6e79627"
-            assert info.manufacturer == "Tim Verhoogt / Hermes Agent"
-            assert info.model == "Reachy Mini Hermes"
+            assert info.manufacturer == "Tim Verhoogt / Homebody"
+            assert info.model == "Homebody"
             assert info.voice_assistant_feature_flags == 0
 
             entities, services = await client.list_entities_services()

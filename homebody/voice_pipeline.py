@@ -20,7 +20,7 @@ from .config import AppConfig
 from .hermes_client import HermesBridgeError, SpeechAudio
 
 # Keep the runtime logger name so existing log filters still match these lines.
-_LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
+_LOGGER = logging.getLogger("homebody.runtime")
 
 _MEDIA_TAG = re.compile(r"(?m)^\s*(?:\[\[audio_as_voice\]\]\s*)?MEDIA:\S+\s*$")
 _MARKDOWN = re.compile(r"[`*_#>|]+")

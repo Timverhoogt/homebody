@@ -134,7 +134,7 @@ The app requires Python 3.11+ and Reachy Mini SDK 1.9+. From a checkout on the P
 uv sync --group dev
 uv run pytest
 uv build --wheel
-uv pip install --reinstall --no-deps dist/reachy_mini_hermes-*.whl
+uv pip install --reinstall --no-deps dist/reachy_mini_homebody-*.whl
 ```
 
 Use `--no-deps` only after confirming the target environment already satisfies `pyproject.toml`. For development, `uv pip install -e .` is also supported.
@@ -142,7 +142,7 @@ Use `--no-deps` only after confirming the target environment already satisfies `
 If the Reachy app manager is installed and owns the environment, follow [OPERATIONS.md](../OPERATIONS.md). On a plain Lite/Pi host, exact app-manager integration and boot service wiring are **TBD**. The CLI entry point is:
 
 ```bash
-reachy-mini-hermes
+homebody
 ```
 
 Keep the settings UI on the trusted network. Its default app port is `8042`.

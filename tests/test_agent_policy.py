@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from reachy_mini_hermes.agent_audit import AgentAuditLog
-from reachy_mini_hermes.agent_policy import (
+from homebody.agent_audit import AgentAuditLog
+from homebody.agent_policy import (
     AgentPolicy,
     CapabilityDefinition,
     CapabilityId,

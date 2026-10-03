@@ -5,7 +5,7 @@ import struct
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = ROOT / "reachy_mini_hermes" / "static"
+STATIC = ROOT / "homebody" / "static"
 
 
 def _png_size(path: Path) -> tuple[int, int]:
@@ -17,7 +17,7 @@ def _png_size(path: Path) -> tuple[int, int]:
 def test_pwa_manifest_declares_standalone_root_scoped_app_and_icons() -> None:
     manifest = json.loads((STATIC / "manifest.webmanifest").read_text())
 
-    assert manifest["name"] == "Reachy Mini Hermes"
+    assert manifest["name"] == "Homebody"
     assert manifest["start_url"] == "/#dashboard"
     assert manifest["scope"] == "/"
     assert manifest["display"] == "standalone"
@@ -45,7 +45,7 @@ def test_service_worker_caches_only_the_app_shell_and_bypasses_api() -> None:
 def test_dashboard_exposes_native_install_prompt_with_http_fallback() -> None:
     html = (STATIC / "index.html").read_text()
     javascript = (STATIC / "main.js").read_text()
-    backend = (ROOT / "reachy_mini_hermes" / "main.py").read_text()
+    backend = (ROOT / "homebody" / "main.py").read_text()
 
     assert 'rel="manifest" href="/manifest.webmanifest"' in html
     assert 'id="install-button"' in html

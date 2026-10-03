@@ -11,7 +11,7 @@ utils_module.create_head_pose = lambda **kwargs: kwargs  # type: ignore[attr-def
 sys.modules.setdefault("reachy_mini", reachy_module)
 sys.modules.setdefault("reachy_mini.utils", utils_module)
 
-from reachy_mini_hermes.motion import VoiceMotion  # noqa: E402
+from homebody.motion import VoiceMotion  # noqa: E402
 
 
 class FakeRobot:

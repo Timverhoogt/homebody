@@ -5,10 +5,10 @@ import time
 
 import pytest
 
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.gesture_detection import GestureReactionGate
-from reachy_mini_hermes.hermes_client import SpeechAudio
-from reachy_mini_hermes.runtime import (
+from homebody.config import AppConfig
+from homebody.gesture_detection import GestureReactionGate
+from homebody.hermes_client import SpeechAudio
+from homebody.runtime import (
     HermesVoiceRuntime,
     PowerModeToolCall,
     RealtimePlayback,
@@ -194,7 +194,7 @@ def test_robot_pose_fails_closed_on_missing_or_non_finite_daemon_fields(monkeypa
                 "body_yaw": float("nan"),
             }
 
-    monkeypatch.setattr("reachy_mini_hermes.manual_control.httpx.get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr("homebody.manual_control.httpx.get", lambda *args, **kwargs: Response())
     runtime = HermesVoiceRuntime(FakeRobot(), threading.Event())
 
     with pytest.raises(RuntimeError, match="head pose is incomplete"):
@@ -219,7 +219,7 @@ def test_robot_pose_converts_complete_daemon_state_to_ui_units(monkeypatch) -> N
                 "body_yaw": -0.4,
             }
 
-    monkeypatch.setattr("reachy_mini_hermes.manual_control.httpx.get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr("homebody.manual_control.httpx.get", lambda *args, **kwargs: Response())
     pose = HermesVoiceRuntime(FakeRobot(), threading.Event()).robot_pose()
 
     assert pose == {
@@ -303,8 +303,8 @@ def test_wake_timeout_after_confirmed_unfolded_pose_reports_success(monkeypatch)
         def json() -> dict[str, object]:
             return {"head_pose": {"z": 0.0, "pitch": 0.0}}
 
-    monkeypatch.setattr("reachy_mini_hermes.power.httpx.post", lambda *args, **kwargs: Response())
-    monkeypatch.setattr("reachy_mini_hermes.power.httpx.get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr("homebody.power.httpx.post", lambda *args, **kwargs: Response())
+    monkeypatch.setattr("homebody.power.httpx.get", lambda *args, **kwargs: Response())
     runtime = HermesVoiceRuntime(LateWakeRobot(), threading.Event())
 
     status = runtime.set_power_mode("awake")
@@ -326,7 +326,7 @@ def test_motor_daemon_failure_is_reported_instead_of_false_standby(monkeypatch) 
     def fail_post(*args, **kwargs):
         raise RuntimeError("daemon unavailable")
 
-    monkeypatch.setattr("reachy_mini_hermes.power.httpx.post", fail_post)
+    monkeypatch.setattr("homebody.power.httpx.post", fail_post)
 
     with pytest.raises(RuntimeError, match="disabling motor torque failed"):
         runtime.set_power_mode("standby")
@@ -347,7 +347,7 @@ def test_wake_failure_recovers_to_confirmed_folded_standby(monkeypatch) -> None:
         def raise_for_status() -> None:
             return None
 
-    monkeypatch.setattr("reachy_mini_hermes.power.httpx.post", lambda *args, **kwargs: Response())
+    monkeypatch.setattr("homebody.power.httpx.post", lambda *args, **kwargs: Response())
     runtime = HermesVoiceRuntime(FailingWakeRobot(), threading.Event())
     runtime._head_safely_folded = True
 
@@ -371,7 +371,7 @@ def test_disable_failure_after_folding_keeps_enabled_torque_visible(monkeypatch)
                 raise RuntimeError("disable rejected")
 
     monkeypatch.setattr(
-        "reachy_mini_hermes.power.httpx.post",
+        "homebody.power.httpx.post",
         lambda url, **kwargs: Response(url.endswith("/disabled")),
     )
     runtime = HermesVoiceRuntime(FakeRobot(), threading.Event())
@@ -685,7 +685,7 @@ def test_runtime_status_reports_confirmed_motor_and_fold_state(monkeypatch) -> N
         def raise_for_status() -> None:
             return None
 
-    monkeypatch.setattr("reachy_mini_hermes.power.httpx.post", lambda *args, **kwargs: Response())
+    monkeypatch.setattr("homebody.power.httpx.post", lambda *args, **kwargs: Response())
     runtime = HermesVoiceRuntime(FakeRobot(), threading.Event())
     runtime._head_safely_folded = False
 

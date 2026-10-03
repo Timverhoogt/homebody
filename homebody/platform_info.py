@@ -133,7 +133,11 @@ def is_linux() -> bool:
 
 def onnx_cache_dir() -> Path:
     """Where accelerators keep compiled engines (TensorRT) between runs."""
-    path = Path.home() / ".cache" / "reachy_mini_hermes" / "onnx"
+    path = Path.home() / ".cache" / "homebody" / "onnx"
+    legacy = Path.home() / ".cache" / "reachy_mini_hermes" / "onnx"
+    # Keep TensorRT engines compiled before the rename; rebuilding them is slow.
+    if not path.exists() and legacy.exists():
+        path = legacy
     try:
         path.mkdir(parents=True, exist_ok=True)
     except OSError:

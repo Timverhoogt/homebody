@@ -7,7 +7,7 @@ from typing import cast
 
 import pytest
 
-from reachy_mini_hermes.bluetooth import BluetoothGamepadService, _parse_devices
+from homebody.bluetooth import BluetoothGamepadService, _parse_devices
 
 
 @dataclass
@@ -563,7 +563,7 @@ def test_connect_cannot_resume_dispatch_inside_a_newer_disconnect_transition() -
 
 
 def test_bluetooth_ui_exposes_pairing_mapping_and_v35_assets() -> None:
-    static = Path(__file__).resolve().parents[1] / "reachy_mini_hermes" / "static"
+    static = Path(__file__).resolve().parents[1] / "homebody" / "static"
     html = (static / "index.html").read_text(encoding="utf-8")
     script = (static / "main.js").read_text(encoding="utf-8")
     worker = (static / "service-worker.js").read_text(encoding="utf-8")

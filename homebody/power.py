@@ -17,7 +17,7 @@ from .safety_gate import POWER_MODES as _POWER_MODES
 from .wakeword import WAKE_PROMPT as _WAKE_PROMPT
 
 # Keep the runtime logger name so existing log filters still match these lines.
-_LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
+_LOGGER = logging.getLogger("homebody.runtime")
 
 class PowerMixin:
     """Serialized power transitions, safe fold before torque release, and confirmed wake."""

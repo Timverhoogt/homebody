@@ -9,8 +9,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.runtime import HermesVoiceRuntime
+from homebody.config import AppConfig
+from homebody.runtime import HermesVoiceRuntime
 
 
 def jpeg(level: int) -> bytes:

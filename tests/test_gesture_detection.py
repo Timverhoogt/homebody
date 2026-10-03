@@ -5,7 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from reachy_mini_hermes.gesture_detection import (
+from homebody.gesture_detection import (
     GESTURE_MODEL_SHA256,
     GestureDetector,
     GestureReactionGate,
@@ -53,7 +53,7 @@ def test_reaction_gate_resets_on_low_confidence_or_changed_candidate() -> None:
 
 
 def test_bundled_gesture_models_have_pinned_hashes() -> None:
-    models = Path(__file__).resolve().parents[1] / "reachy_mini_hermes" / "assets" / "gesture_models"
+    models = Path(__file__).resolve().parents[1] / "homebody" / "assets" / "gesture_models"
     assert GESTURE_MODEL_SHA256 == {
         "crops_classifier.onnx": "12a02344f63a7c4f2a2ca90f8740ca10a08c17b683b5585d73c3e88323056762",
         "hand_detector.onnx": "a8ef73d466b61a8e8677be9c47008b217a11d1b265d95e36bf2521ff93329af6",
@@ -62,7 +62,7 @@ def test_bundled_gesture_models_have_pinned_hashes() -> None:
 
 
 def test_real_models_load_and_reject_a_blank_frame() -> None:
-    models = Path(__file__).resolve().parents[1] / "reachy_mini_hermes" / "assets" / "gesture_models"
+    models = Path(__file__).resolve().parents[1] / "homebody" / "assets" / "gesture_models"
     detector = GestureDetector(models)
     try:
         assert detector.active_provider == "CPUExecutionProvider"

@@ -1,4 +1,4 @@
-"""Wake-to-speech runtime for Reachy Mini Hermes."""
+"""Wake-to-speech runtime for Homebody."""
 
 from __future__ import annotations
 
@@ -463,7 +463,7 @@ class HermesVoiceRuntime(
             )
             self._announcement_worker.start()
             _LOGGER.info(
-                "Reachy Hermes audio ready: input=%s Hz output=%s Hz",
+                "Homebody audio ready: input=%s Hz output=%s Hz",
                 self._sample_rate,
                 self._output_sample_rate,
             )
@@ -681,7 +681,7 @@ class HermesVoiceRuntime(
                         self._set_face_tracking(True, weight=self._face_tracking_weight)
                     self._run_selected_voice_conversation(config, keyword)
             except Exception as exc:
-                _LOGGER.exception("Reachy Hermes voice turn failed")
+                _LOGGER.exception("Homebody voice turn failed")
                 self._set_status("error", str(exc), last_error=str(exc))
                 self._turn_error = (str(exc), time.monotonic() + _TURN_ERROR_GRACE_SECONDS)
                 self._signal_error()
