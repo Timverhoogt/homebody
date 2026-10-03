@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import queue
 import threading
 from dataclasses import asdict, dataclass
@@ -11,11 +12,18 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import numpy as np
-from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import ClientConnection, connect
 
 from .config import AppConfig
 from .hermes_client import AgentBrokerContext
+
+_LOGGER = logging.getLogger(__name__)
+_EVENT_QUEUE_LIMIT = 512
+
+
+def _is_audio_delta(event: RealtimeEvent) -> bool:
+    """Audio deltas are the only events safe to drop under backpressure."""
+    return event.type.endswith(".delta") and "audio" in event.type and "transcript" not in event.type
 
 
 class RealtimeBridgeError(RuntimeError):
@@ -31,7 +39,8 @@ class RealtimeEvent:
 def realtime_url(bridge_url: str) -> str:
     parsed = urlparse(bridge_url)
     scheme = "wss" if parsed.scheme == "https" else "ws"
-    return urlunparse((scheme, parsed.netloc, "/v1/realtime", "", "", ""))
+    # Keep any reverse-proxy path prefix, exactly like the HTTP client's f"{bridge_url}/v1/...".
+    return urlunparse((scheme, parsed.netloc, parsed.path.rstrip("/") + "/v1/realtime", "", "", ""))
 
 
 class RealtimeBridgeSession:
@@ -48,7 +57,7 @@ class RealtimeBridgeSession:
         self.agent_context = agent_context
         self.agent_request_id = agent_request_id
         self._socket: ClientConnection | None = None
-        self._events: queue.Queue[RealtimeEvent] = queue.Queue(maxsize=512)
+        self._events: queue.Queue[RealtimeEvent] = queue.Queue(maxsize=_EVENT_QUEUE_LIMIT)
         self._receiver: threading.Thread | None = None
         self._closed = threading.Event()
 
@@ -96,23 +105,38 @@ class RealtimeBridgeSession:
             for message in self._socket:
                 if not isinstance(message, str):
                     continue
-                payload = json.loads(message)
-                event = RealtimeEvent(str(payload.get("type") or "unknown"), payload)
                 try:
-                    self._events.put(event, timeout=0.5)
-                except queue.Full:
-                    self._events.get_nowait()
-                    self._events.put_nowait(event)
-        except ConnectionClosed as exc:
-            if not self._closed.is_set():
-                self._events.put_nowait(
-                    RealtimeEvent("bridge.error", {"type": "bridge.error", "error": str(exc)})
-                )
+                    payload = json.loads(message)
+                except ValueError:
+                    _LOGGER.warning("Ignoring a malformed Realtime bridge message")
+                    continue
+                if not isinstance(payload, dict):
+                    _LOGGER.warning("Ignoring a non-object Realtime bridge message")
+                    continue
+                self._enqueue(RealtimeEvent(str(payload.get("type") or "unknown"), payload))
         except Exception as exc:
             if not self._closed.is_set():
-                self._events.put_nowait(
-                    RealtimeEvent("bridge.error", {"type": "bridge.error", "error": str(exc)})
-                )
+                self._enqueue(RealtimeEvent("bridge.error", {"type": "bridge.error", "error": str(exc)}))
+
+    def _enqueue(self, event: RealtimeEvent) -> None:
+        """Queue an event; under backpressure shed audio deltas, never control or error events."""
+        try:
+            self._events.put(event, timeout=0.5)
+            return
+        except queue.Full:
+            pass
+        with self._events.mutex:
+            pending = self._events.queue
+            victim = next((item for item in pending if _is_audio_delta(item)), None)
+            if victim is None and _is_audio_delta(event):
+                return
+            if victim is None:
+                # Only control events are queued; keep the newest control state.
+                victim = pending[0]
+                _LOGGER.warning("Realtime event queue is full of control events; dropping the oldest")
+            pending.remove(victim)
+            pending.append(event)
+            self._events.not_empty.notify()
 
     def send_audio(self, samples_24k: np.ndarray) -> None:
         if self._socket is None:
@@ -142,8 +166,12 @@ class RealtimeBridgeSession:
         return pcm.astype(np.float32) / 32768.0
 
     def clear_output(self) -> None:
-        if self._socket is not None:
+        if self._socket is None:
+            return
+        try:
             self._socket.send(json.dumps({"type": "output_audio_buffer.clear"}))
+        except Exception as exc:
+            raise RealtimeBridgeError(f"Could not clear Realtime output audio: {exc}") from exc
 
     def truncate_audio(self, item_id: str, audio_end_ms: int) -> None:
         """Tell a WebSocket Realtime session how much audio was actually played."""

@@ -4,8 +4,10 @@ import base64
 import json
 
 import numpy as np
+import pytest
 
-from reachy_mini_hermes.realtime_client import RealtimeBridgeSession, RealtimeEvent, realtime_url
+from reachy_mini_hermes.config import AppConfig
+from reachy_mini_hermes.realtime_client import RealtimeBridgeError, RealtimeBridgeSession, RealtimeEvent, realtime_url
 
 
 def test_realtime_url_uses_private_bridge() -> None:
@@ -122,3 +124,61 @@ def test_power_tool_result_can_end_session_without_requesting_more_speech() -> N
             },
         }
     ]
+
+
+def _receiver_session(messages: list[object], *, closing_error: Exception | None = None) -> RealtimeBridgeSession:
+    """Build a session whose socket yields messages, then fails like a dropped connection."""
+
+    class Socket:
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            yield from messages
+            if closing_error is not None:
+                raise closing_error
+
+    session = RealtimeBridgeSession(AppConfig())
+    session._socket = Socket()  # type: ignore[assignment]
+    return session
+
+
+def test_realtime_url_keeps_reverse_proxy_path_prefix() -> None:
+    assert realtime_url("https://host.example/hermes") == "wss://host.example/hermes/v1/realtime"
+    assert realtime_url("http://host.example/hermes/") == "ws://host.example/hermes/v1/realtime"
+
+
+def test_receive_loop_skips_malformed_messages_and_reports_disconnect() -> None:
+    session = _receiver_session(
+        ["not json", "[1, 2]", json.dumps({"type": "response.done"})],
+        closing_error=RuntimeError("socket dropped"),
+    )
+
+    session._receive_loop()
+
+    events = session.events()
+    assert [event.type for event in events] == ["response.done", "bridge.error"]
+    assert "socket dropped" in events[-1].payload["error"]
+
+
+def test_full_queue_sheds_audio_and_keeps_control_and_error_events() -> None:
+    audio = json.dumps({"type": "response.output_audio.delta", "delta": ""})
+    session = _receiver_session(
+        [audio] * 512 + [json.dumps({"type": "response.function_call_arguments.done"})],
+        closing_error=RuntimeError("socket dropped"),
+    )
+
+    session._receive_loop()
+
+    types = [event.type for event in session.events()]
+    assert len(types) == 512
+    assert types[-2:] == ["response.function_call_arguments.done", "bridge.error"]
+
+
+def test_clear_output_wraps_socket_failures() -> None:
+    class Socket:
+        def send(self, _message: str) -> None:
+            raise OSError("connection reset")
+
+    session = RealtimeBridgeSession(AppConfig())
+    session._socket = Socket()  # type: ignore[assignment]
+
+    with pytest.raises(RealtimeBridgeError, match="clear Realtime output"):
+        session.clear_output()
