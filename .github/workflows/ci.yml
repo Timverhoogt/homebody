@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      # The Reachy Mini SDK needs GStreamer/PyGObject and is stubbed in tests/conftest.py,
+      # so install the package without dependencies and add every other runtime import.
+      - name: Install test environment
+        run: |
+          uv venv
+          uv pip install -e . --no-deps
+          uv pip install \
+            "aioesphomeapi>=45.6,<46" \
+            aiohttp \
+            "evdev==1.9.3" \
+            fastapi \
+            "httpx>=0.28,<1" \
+            "mutagen>=1.47,<2" \
+            "numpy>=1.26" \
+            "onnxruntime>=1.20,<2" \
+            "opencv-python-headless>=4.11,<6" \
+            "Pillow>=10,<13" \
+            pydantic \
+            pyyaml \
+            "sherpa-onnx>=1.13.4,<2" \
+            "websockets>=15,<17" \
+            build pytest ruff
+      - name: Lint
+        run: .venv/bin/ruff check .
+      - name: Check JavaScript syntax
+        run: |
+          for file in reachy_mini_hermes/static/*.js; do node --check "$file"; done
+      - name: Test
+        # Override the local --maxfail=1 default so CI reports every failure.
+        run: .venv/bin/pytest --maxfail=1000
+        env:
+          OPENAI_API_KEY: ""
+          ELEVENLABS_API_KEY: ""
+      - name: Build distributions
+        if: matrix.python-version == '3.11'
+        run: .venv/bin/python -m build
