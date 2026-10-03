@@ -146,6 +146,10 @@ renderAgentRun();
   "bluetooth-scan-button", "bluetooth-pair-button", "bluetooth-connect-button",
   "bluetooth-disconnect-button", "bluetooth-remove-button", "gamepad-enabled",
 ].forEach((id) => { $(id).disabled = true; });
+const GPIO_CONTROL_IDS = ["gpio-enabled", "gpio-green-pin", "gpio-red-pin", "gpio-long-press", "gpio-save-button"];
+GPIO_CONTROL_IDS.forEach((id) => { $(id).disabled = true; });
+let gpioRefreshPending = false;
+let gpioFormDirty = false;
 
 try {
   const savedKidsProfile = JSON.parse(window.localStorage.getItem("reachy-hermes-kids-profile") || "{}");
@@ -194,6 +198,7 @@ function activateTab(name, focus = false, recordHistory = false) {
   if (target.dataset.tab === "robot") {
     refreshRobotPose();
     refreshBluetooth();
+    refreshGpio();
   }
   if (focus) target.focus();
 }
@@ -1610,6 +1615,115 @@ $("gamepad-enabled").addEventListener("change", (event) => {
   );
 });
 
+function gpioPinLabel(name, pin) {
+  return pin === null || pin === undefined ? "" : `${name} GPIO${pin}`;
+}
+
+function renderGpio(state) {
+  const configured = state.configured || {};
+  const stuck = Array.isArray(state.stuck) ? state.stuck : [];
+  let label = "Off";
+  let badge = "Off";
+  if (state.enabled && state.available) {
+    label = stuck.length ? `Ignoring stuck ${stuck.join(" and ")}` : "Listening for presses";
+    badge = stuck.length ? "Check button" : "Ready";
+  } else if (configured.enabled) {
+    label = "Unavailable";
+    badge = "Unavailable";
+  }
+  $("gpio-state").textContent = label;
+  $("gpio-badge").textContent = badge;
+  const pins = [gpioPinLabel("Green", configured.green_pin), gpioPinLabel("Red", configured.red_pin)]
+    .filter(Boolean).join(" · ");
+  $("gpio-pins").textContent = pins || "None set";
+  const [button, gesture] = String(state.last_event || "").split(" ");
+  $("gpio-last-event").textContent = button
+    ? `${button[0].toUpperCase()}${button.slice(1)} ${gesture === "long" ? "hold" : "press"}`
+    : "—";
+  if (!gpioFormDirty) {
+    $("gpio-enabled").checked = Boolean(configured.enabled);
+    $("gpio-green-pin").value = configured.green_pin ?? "";
+    $("gpio-red-pin").value = configured.red_pin ?? "";
+    $("gpio-long-press").value = configured.long_press_seconds ?? 2;
+  }
+  GPIO_CONTROL_IDS.forEach((id) => { $(id).disabled = false; });
+  const message = $("gpio-message");
+  if (state.last_error) {
+    message.textContent = state.last_error;
+    message.className = "message error";
+  } else if (!message.classList.contains("ok")) {
+    message.textContent = "";
+    message.className = "message";
+  }
+}
+
+async function refreshGpio() {
+  if (gpioRefreshPending || $("panel-robot").hidden) return;
+  gpioRefreshPending = true;
+  try {
+    const response = await fetchWithTimeout("/api/gpio/status", { cache: "no-store" });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    renderGpio(body);
+  } catch (error) {
+    $("gpio-badge").textContent = "Unavailable";
+    $("gpio-message").textContent = String(error);
+    $("gpio-message").className = "message error";
+    GPIO_CONTROL_IDS.forEach((id) => { $(id).disabled = true; });
+  } finally {
+    gpioRefreshPending = false;
+  }
+}
+
+function gpioPinValue(id) {
+  const raw = $(id).value.trim();
+  return raw === "" ? null : Number(raw);
+}
+
+async function saveGpioSettings() {
+  const message = $("gpio-message");
+  const payload = {
+    enabled: $("gpio-enabled").checked,
+    green_pin: gpioPinValue("gpio-green-pin"),
+    red_pin: gpioPinValue("gpio-red-pin"),
+    long_press_seconds: Number($("gpio-long-press").value || 2),
+  };
+  message.textContent = payload.enabled ? "Opening the button lines…" : "Turning the buttons off…";
+  message.className = "message";
+  GPIO_CONTROL_IDS.forEach((id) => { $(id).disabled = true; });
+  try {
+    const response = await fetchWithTimeout("/api/gpio/buttons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      const detail = Array.isArray(body.detail) ? "Check the pin numbers (0–53) and hold time (0.5–10 s)." : body.detail;
+      throw new Error(detail || `HTTP ${response.status}`);
+    }
+    gpioFormDirty = false;
+    renderGpio(body);
+    if (body.last_error) throw new Error(body.last_error);
+    message.textContent = payload.enabled ? "Physical buttons are on." : "Physical buttons are off.";
+    message.className = "message ok";
+  } catch (error) {
+    gpioFormDirty = false;
+    await refreshGpio();
+    message.textContent = String(error.message || error);
+    message.className = "message error";
+  }
+}
+
+["gpio-green-pin", "gpio-red-pin", "gpio-long-press"].forEach((id) => {
+  $(id).addEventListener("input", () => { gpioFormDirty = true; });
+});
+$("gpio-enabled").addEventListener("change", () => {
+  gpioFormDirty = true;
+  saveGpioSettings();
+});
+$("gpio-save-button").addEventListener("click", saveGpioSettings);
+
 async function sendPrecisionRobotAction(axis, delta) {
   const message = $("robot-message");
   manualActionPending = true;
@@ -2053,5 +2167,8 @@ async function startUi() {
 startUi().finally(() => scheduleStatusPoll(1500));
 setInterval(refreshAgentActivity, 5000);
 setInterval(() => {
-  if (!$("panel-robot").hidden) refreshBluetooth();
+  if (!$("panel-robot").hidden) {
+    refreshBluetooth();
+    refreshGpio();
+  }
 }, 5000);

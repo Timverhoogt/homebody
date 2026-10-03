@@ -429,6 +429,14 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .bluetooth-pairing-grid { display: grid; grid-template-columns: minmax(240px, 1fr) 1.5fr; align-items: end; gap: 14px; }
 .bluetooth-actions { justify-content: flex-start; }
 .bluetooth-actions button { min-height: 44px; }
+.gpio-gestures { display: grid; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
+.gpio-gestures li { display: flex; align-items: flex-start; gap: 10px; color: var(--muted); line-height: 1.45; }
+.gpio-gestures strong { color: var(--text); }
+.gpio-dot { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 4px; border-radius: 50%; box-shadow: 0 0 0 3px #ffffff14; }
+.gpio-dot-red { background: #ef4444; }
+.gpio-dot-green { background: #22c55e; }
+.gpio-pin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.gpio-pin-grid input { width: 100%; }
 .bluetooth-enable-row { display: flex; align-items: flex-start; gap: 12px; margin: 18px 0; padding: 15px; border: 1px solid #7b61ff55; border-radius: 14px; background: #7b61ff0b; }
 .bluetooth-enable-row input { flex: 0 0 auto; width: 24px; min-height: 24px; margin-top: 2px; accent-color: var(--accent2); }
 .bluetooth-enable-row span { display: grid; gap: 4px; }
@@ -496,7 +504,7 @@ body.camera-app-fullscreen-active { overflow: hidden; }
   .tab-button { min-width: 0; min-height: 50px; padding: 0 3px; font-size: .68rem; letter-spacing: -.01em; }
   #panel-dashboard { grid-template-columns: 1fr; }
   #panel-dashboard .install-card { grid-column: auto; }
-  .grid-two, .conversation-card, .robot-control-grid, .announcement-status-grid, .precision-control-grid, .precision-toolbar, .kids-guide-grid, .bluetooth-status-grid, .bluetooth-pairing-grid { grid-template-columns: 1fr; }
+  .grid-two, .conversation-card, .robot-control-grid, .announcement-status-grid, .precision-control-grid, .precision-toolbar, .kids-guide-grid, .bluetooth-status-grid, .bluetooth-pairing-grid, .gpio-pin-grid { grid-template-columns: 1fr; }
   .kids-hero { grid-template-columns: 1fr; min-height: 0; }
   .kids-mascot { display: none; }
   .kids-activities { grid-template-columns: repeat(2, 1fr); }
