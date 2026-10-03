@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from .platform_info import create_onnx_session
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -166,20 +168,17 @@ class GestureReactionGate:
 class GestureDetector:
     """Run the bundled HaGRID hand detector and crop classifier locally."""
 
-    def __init__(self, models_directory: Path) -> None:
+    def __init__(self, models_directory: Path, *, providers: list[object] | None = None) -> None:
         import cv2
-        import onnxruntime as ort
 
         self._cv2 = cv2
         self._models_directory = Path(models_directory)
         self._verify_models()
-        providers = ["CPUExecutionProvider"]
-        self._detector = ort.InferenceSession(
-            str(self._models_directory / "hand_detector.onnx"), providers=providers
-        )
-        self._classifier = ort.InferenceSession(
-            str(self._models_directory / "crops_classifier.onnx"), providers=providers
-        )
+        chosen = providers if providers is not None else ["CPUExecutionProvider"]
+        self._detector = create_onnx_session(self._models_directory / "hand_detector.onnx", chosen)
+        self._classifier = create_onnx_session(self._models_directory / "crops_classifier.onnx", chosen)
+        # The provider that actually runs the detector, after any CPU fallback.
+        self.active_provider = str(self._detector.get_providers()[0])
         self._det_input = self._detector.get_inputs()[0].name
         self._det_outputs = [output.name for output in self._detector.get_outputs()]
         self._cls_input = self._classifier.get_inputs()[0].name

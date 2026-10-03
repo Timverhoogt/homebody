@@ -138,6 +138,19 @@ def completed_camera_call_id(kind: str, payload: dict[str, object]) -> str:
     return str(item.get("call_id") or "")
 
 
+def camera_call_purpose(payload: dict[str, object]) -> str:
+    """Return the model's stated reason for a camera call, used as the local vision question."""
+    item = payload.get("item")
+    if not isinstance(item, dict):
+        return ""
+    try:
+        arguments = json.loads(str(item.get("arguments") or "{}"))
+    except ValueError:
+        return ""
+    purpose = arguments.get("purpose") if isinstance(arguments, dict) else ""
+    return " ".join(str(purpose or "").split())[:300]
+
+
 class RealtimeVoiceMixin:
     """Run Realtime conversations, including power-mode and camera tool calls and interruptible playback."""
 
@@ -326,13 +339,29 @@ class RealtimeVoiceMixin:
                                 raise RuntimeError("Camera access is disabled in Reachy settings")
                             if self._effective_power_mode() in {"meeting", "sleep"}:
                                 raise RuntimeError("Camera capture is blocked in the current privacy mode")
-                            jpeg = self._capture_camera_jpeg()
-                            session.send_camera_frame(camera_call_id, jpeg)
-                            with self._status_lock:
-                                self._status.camera_captures += 1
-                                self._status.camera_last_error = ""
-                            _LOGGER.info("Sent on-demand Reachy camera frame: %s bytes", len(jpeg))
-                            self._set_status("thinking", "Hermes is looking at the fresh camera frame")
+                            if config.local_vision_enabled:
+                                # The frame is answered on this computer; only the text goes to the model.
+                                self._set_status("looking", "Asking the local vision model")
+                                question = camera_call_purpose(payload) or "Describe what you see."
+                                seen = self.describe_camera_view(question, config=config)
+                                session.send_tool_result(
+                                    camera_call_id,
+                                    {
+                                        "ok": True,
+                                        "image_attached": False,
+                                        "seen_by": "local vision model on Reachy's computer",
+                                        "description": seen["answer"],
+                                    },
+                                )
+                                self._set_status("thinking", "Hermes is answering from the local description")
+                            else:
+                                jpeg = self._capture_camera_jpeg()
+                                session.send_camera_frame(camera_call_id, jpeg)
+                                with self._status_lock:
+                                    self._status.camera_captures += 1
+                                    self._status.camera_last_error = ""
+                                _LOGGER.info("Sent on-demand Reachy camera frame: %s bytes", len(jpeg))
+                                self._set_status("thinking", "Hermes is looking at the fresh camera frame")
                         except Exception as exc:
                             message = str(exc)
                             _LOGGER.exception("Could not provide Reachy camera frame")

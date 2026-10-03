@@ -13,6 +13,8 @@ import time
 
 from .config import AppConfig
 from .gesture_detection import GestureDetector, GestureReactionGate
+from .local_vision import LocalVisionClient, LocalVisionError
+from .platform_info import onnx_cache_dir, onnx_session_providers
 from .presence import PresenceObservation
 from .safety_gate import CAMERA_CAPTURE_POLICY, GESTURE_POLICY
 
@@ -57,6 +59,33 @@ class VisionMixin:
             self._status.camera_captures += 1
             self._status.camera_last_error = ""
         return jpeg
+
+    def _new_local_vision_client(self, config: AppConfig) -> LocalVisionClient:
+        return LocalVisionClient(config.local_vision_url, config.local_vision_model)
+
+    def describe_camera_view(self, question: str, *, config: AppConfig | None = None) -> dict[str, object]:
+        """Answer a question about one fresh frame with the local vision model; the frame stays local."""
+        config = config or self.config_loader()
+        if not config.local_vision_enabled:
+            raise RuntimeError("Local vision is turned off in Reachy settings")
+        if not config.camera_enabled:
+            raise RuntimeError("Camera access is disabled in Reachy settings")
+        jpeg = self.camera_snapshot()
+        try:
+            with self._new_local_vision_client(config) as client:
+                result = client.describe(jpeg, question)
+        except LocalVisionError as exc:
+            with self._status_lock:
+                self._status.local_vision_last_error = str(exc)
+            raise RuntimeError(str(exc)) from exc
+        finally:
+            del jpeg
+        with self._status_lock:
+            self._status.local_vision_answers += 1
+            self._status.local_vision_last_latency_ms = int(result["latency_ms"])  # type: ignore[call-overload]
+            self._status.local_vision_last_error = ""
+        _LOGGER.info("Local vision answered in %s ms with %s", result["latency_ms"], result["model"])
+        return result
 
     def _capture_camera_jpeg(self, *, kids_generation: int | None = None) -> bytes:
         media = getattr(self.robot, "media", None)
@@ -178,10 +207,15 @@ class VisionMixin:
                         self._gesture_stop_requested.wait(min(0.25, next_model_attempt - started_at))
                         continue
                     try:
-                        detector = GestureDetector(self.assets / "gesture_models")
+                        detector = GestureDetector(
+                            self.assets / "gesture_models",
+                            providers=onnx_session_providers(config.local_ai_accelerator, cache_dir=onnx_cache_dir()),
+                        )
                         with self._status_lock:
                             self._status.gesture_last_error = ""
-                        _LOGGER.info("On-device gesture detector loaded")
+                            accelerator = detector.active_provider.replace("ExecutionProvider", "")
+                            self._status.gesture_accelerator = accelerator
+                        _LOGGER.info("On-device gesture detector loaded on %s", detector.active_provider)
                     except Exception as exc:
                         next_model_attempt = started_at + 10.0
                         with self._status_lock:

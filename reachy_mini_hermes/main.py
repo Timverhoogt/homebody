@@ -22,6 +22,7 @@ from .contextual_offers import ContextualOffer
 from .gpio_buttons import ButtonEvent, ButtonName, GpioButtonService
 from .hermes_client import HermesBridgeClient
 from .kids_mode import KidsProfile
+from .local_vision import LocalVisionClient, LocalVisionError
 from .platform_info import host
 from .presence import PresenceObservation
 from .robot_tools import robot_control_options
@@ -91,6 +92,10 @@ class SettingsUpdate(BaseModel):
     realtime_model: str | None = Field(default=None, max_length=200)
     realtime_voice: str | None = Field(default=None, max_length=64)
     realtime_reasoning_effort: str | None = Field(default=None, max_length=32)
+    local_vision_enabled: bool | None = None
+    local_vision_url: str | None = Field(default=None, max_length=2048)
+    local_vision_model: str | None = Field(default=None, max_length=200)
+    local_ai_accelerator: Literal["auto", "cpu"] | None = None
 
 
 def _authorize_credential_change(current: AppConfig, merged: AppConfig, provided: str | None) -> None:
@@ -102,12 +107,17 @@ def _authorize_credential_change(current: AppConfig, merged: AppConfig, provided
     """
     if not current.api_key:
         return
-    if merged.bridge_url == current.bridge_url and merged.api_key == current.api_key:
+    if (
+        merged.bridge_url == current.bridge_url
+        and merged.api_key == current.api_key
+        # Camera frames go to the vision server, so redirecting it is as sensitive as the bridge.
+        and merged.local_vision_url == current.local_vision_url
+    ):
         return
     if not provided or not secrets.compare_digest(provided.strip(), current.api_key):
         raise HTTPException(
             status_code=403,
-            detail="Enter the current API key to change the bridge URL or API key",
+            detail="Enter the current API key to change the bridge URL, API key, or vision server URL",
         )
 
 
@@ -216,6 +226,19 @@ class BluetoothScanRequest(BaseModel):
 
 class GamepadEnabledRequest(BaseModel):
     enabled: bool
+
+
+class VisionQuestionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(default="What do you see?", min_length=1, max_length=300)
+
+
+class LocalVisionTestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    local_vision_url: str | None = Field(default=None, max_length=2048)
+    local_vision_model: str | None = Field(default=None, max_length=200)
 
 
 class GpioButtonsRequest(BaseModel):
@@ -961,6 +984,29 @@ class ReachyMiniHermes(ReachyMiniApp):
                 media_type="image/jpeg",
                 headers={"Cache-Control": "no-store", "Content-Disposition": "inline"},
             )
+
+        @self.settings_app.post("/api/vision/describe")
+        def describe_camera_view(request: VisionQuestionRequest) -> dict[str, object]:
+            if self._runtime is None:
+                raise HTTPException(status_code=409, detail="Voice runtime has not started")
+            try:
+                return {"ok": True, **self._runtime.describe_camera_view(request.question)}
+            except RuntimeError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        @self.settings_app.post("/api/vision/test")
+        def test_local_vision(request: LocalVisionTestRequest) -> dict[str, object]:
+            # Test the values in the form before they are saved.
+            updates = {key: value for key, value in request.model_dump().items() if value is not None}
+            try:
+                config = merge_config(load_config(), updates)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            try:
+                with LocalVisionClient(config.local_vision_url, config.local_vision_model, timeout=10.0) as client:
+                    return {"ok": True, **client.health()}
+            except LocalVisionError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
 
         @self.settings_app.post("/api/announcements")
         def create_announcement(request: AnnouncementRequest) -> dict[str, object]:

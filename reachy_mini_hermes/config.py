@@ -93,6 +93,10 @@ class AppConfig:
     gpio_green_pin: int | None = 17
     gpio_red_pin: int | None = None
     gpio_long_press_seconds: float = 2.0
+    local_ai_accelerator: str = "auto"
+    local_vision_enabled: bool = False
+    local_vision_url: str = "http://127.0.0.1:11434/v1"
+    local_vision_model: str = "qwen2.5vl:3b"
     agent_tools_enabled: bool = True
     power_tools_enabled: bool = True
     kids_mode_enabled: bool = False
@@ -120,6 +124,8 @@ class AppConfig:
         self.realtime_voice = self.realtime_voice.strip() or "marin"
         self.realtime_reasoning_effort = self.realtime_reasoning_effort.strip().lower() or "low"
         self.camera_controls_handedness = self.camera_controls_handedness.strip().lower() or "right"
+        self.local_vision_url = self.local_vision_url.strip().rstrip("/")
+        self.local_vision_model = self.local_vision_model.strip()
         self.kids_session_id = self.kids_session_id.strip()
         self.kids_age_band = self.kids_age_band.strip()
         self.kids_activity = self.kids_activity.strip()
@@ -196,6 +202,13 @@ class AppConfig:
             raise ValueError("GPIO button pins must be line numbers between 0 and 1023")
         if len(set(pins)) != len(pins):
             raise ValueError("The green and red buttons need different GPIO pins")
+        vision = urlparse(str(self.local_vision_url))
+        if vision.scheme not in {"http", "https"} or not vision.netloc:
+            raise ValueError("local_vision_url must be an absolute http(s) URL")
+        if not 1 <= len(str(self.local_vision_model).strip()) <= 200:
+            raise ValueError("local_vision_model must be 1-200 characters")
+        if self.local_ai_accelerator not in {"auto", "cpu"}:
+            raise ValueError("local_ai_accelerator must be 'auto' or 'cpu'")
         if not 0.5 <= float(self.gpio_long_press_seconds) <= 10.0:
             raise ValueError("gpio_long_press_seconds must be between 0.5 and 10")
         if self.home_assistant_assist_enabled and not self.home_assistant_enabled:

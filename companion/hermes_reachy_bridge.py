@@ -25,7 +25,7 @@ import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from aiohttp import ClientSession, ClientTimeout, FormData, web
 
@@ -697,6 +697,31 @@ def _ensure_hermes_imports() -> None:
     )
 
 
+
+def _ispy_vision_request(openai_key: str) -> tuple[str, dict[str, str], dict[str, object]]:
+    """Return where I Spy sends its five frames: a local vision server when configured, else OpenAI.
+
+    ``REACHY_ISPY_VISION_URL`` points at any OpenAI-compatible server (Ollama, llama.cpp, vLLM),
+    for example a Jetson next to Reachy, so the camera frames never leave the home network. The
+    target is still validated by the bridge and its text still passes OpenAI moderation.
+    """
+    base = os.getenv("REACHY_ISPY_VISION_URL", "").strip().rstrip("/")
+    if not base:
+        return (
+            "https://api.openai.com/v1/chat/completions",
+            {"Authorization": f"Bearer {openai_key}"},
+            {"model": os.getenv("REACHY_ISPY_MODEL", "gpt-4.1-mini"), "max_completion_tokens": 700, "store": False},
+        )
+    parsed = urlparse(base)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise web.HTTPServiceUnavailable(text="REACHY_ISPY_VISION_URL must be an absolute http(s) URL")
+    headers: dict[str, str] = {}
+    local_key = os.getenv("REACHY_ISPY_VISION_API_KEY", "").strip()
+    if local_key:
+        headers["Authorization"] = f"Bearer {local_key}"
+    model = os.getenv("REACHY_ISPY_VISION_MODEL", "qwen2.5vl:3b").strip() or "qwen2.5vl:3b"
+    return f"{base}/chat/completions", headers, {"model": model, "max_tokens": 700, "temperature": 0.2}
+
 class Bridge:
     def __init__(self, *, api_key: str, hermes_url: str, profile: str | None = None) -> None:
         self.api_key = api_key
@@ -943,6 +968,7 @@ class Bridge:
                 "realtime_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
                 "kids_chat_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
                 "kids_ispy_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
+                "kids_ispy_vision": "local" if os.getenv("REACHY_ISPY_VISION_URL", "").strip() else "openai",
                 "kids_tts_streaming_available": bool(_resolve_secret("ELEVENLABS_API_KEY", self.profile)),
                 "realtime_model": "gpt-realtime-2.1",
                 **providers,
@@ -1482,18 +1508,17 @@ class Bridge:
             "type": "image_url",
             "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(frame).decode('ascii')}", "detail": "low"},
         } for frame in frames)
+        vision_url, vision_headers, vision_body = _ispy_vision_request(openai_key)
         async with self.http.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {openai_key}"},
+            vision_url,
+            headers=vision_headers,
             json={
-                "model": os.getenv("REACHY_ISPY_MODEL", "gpt-4.1-mini"),
+                **vision_body,
                 "messages": [{"role": "user", "content": content}],
                 "response_format": {
                     "type": "json_schema",
                     "json_schema": {"name": "kids_ispy_target", "strict": True, "schema": _ISPY_RESPONSE_SCHEMA},
                 },
-                "max_completion_tokens": 700,
-                "store": False,
             },
         ) as response:
             result = await response.json(content_type=None)

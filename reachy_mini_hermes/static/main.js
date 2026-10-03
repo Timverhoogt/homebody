@@ -6,6 +6,7 @@ const fields = [
   "doa_enabled", "robot_tools_enabled", "home_assistant_enabled", "home_assistant_controls_enabled",
   "home_assistant_camera_enabled", "home_assistant_assist_enabled", "home_assistant_port",
   "realtime_model", "realtime_voice", "realtime_reasoning_effort",
+  "local_vision_enabled", "local_vision_url", "local_vision_model", "local_ai_accelerator",
   "end_silence_seconds", "max_utterance_seconds", "vad_min_rms", "vad_noise_multiplier",
   "wake_keyword_threshold", "wake_keyword_score",
 ];
@@ -162,6 +163,60 @@ try {
 } catch (error) {
   window.localStorage.removeItem("reachy-hermes-kids-profile");
 }
+$("local-vision-test-button").addEventListener("click", async () => {
+  const button = $("local-vision-test-button");
+  const message = $("local-vision-message");
+  button.disabled = true;
+  message.textContent = "Contacting the vision server…";
+  message.className = "message";
+  try {
+    const response = await fetchWithTimeout("/api/vision/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        local_vision_url: $("local_vision_url").value.trim() || null,
+        local_vision_model: $("local_vision_model").value.trim() || null,
+      }),
+    }, 15000);
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    message.textContent = body.model_listed
+      ? `Connected. ${body.model} is available.`
+      : `Connected, but ${body.model} is not listed. Available: ${(body.models || []).join(", ") || "none"}.`;
+    message.className = body.model_listed ? "message ok" : "message error";
+  } catch (error) {
+    message.textContent = String(error.message || error);
+    message.className = "message error";
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("local-vision-ask").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = $("local-vision-ask-button");
+  const answer = $("local-vision-answer");
+  const question = $("local-vision-question").value.trim() || "What do you see?";
+  button.disabled = true;
+  answer.textContent = "Looking…";
+  answer.classList.remove("error");
+  try {
+    const response = await fetchWithTimeout("/api/vision/describe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    }, 90000);
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    answer.textContent = `${body.answer} (${body.model}, ${(body.latency_ms / 1000).toFixed(1)} s, on your hardware)`;
+  } catch (error) {
+    answer.textContent = String(error.message || error);
+    answer.classList.add("error");
+  } finally {
+    button.disabled = false;
+  }
+});
+
 document.querySelectorAll("[data-kids-activity]").forEach((button) => {
   const selected = button.dataset.kidsActivity === selectedKidsActivity;
   button.classList.toggle("selected", selected);
@@ -337,15 +392,20 @@ $("conversation_mode").addEventListener("change", toggleModePanels);
 $("home_assistant_enabled").addEventListener("change", () => toggleHomeAssistantOptions(true));
 
 let hostShutdownLabel = "robot computer";
+const ACCELERATOR_NAMES = {
+  TensorrtExecutionProvider: "TensorRT",
+  CUDAExecutionProvider: "CUDA",
+  CoreMLExecutionProvider: "Core ML",
+  DmlExecutionProvider: "DirectML",
+};
 
 function renderHost(hostInfo) {
   if (!hostInfo || typeof hostInfo !== "object") return;
-  const acceleration = hostInfo.accelerated
-    ? (hostInfo.onnx_providers || []).find((name) => name !== "CPUExecutionProvider" && name !== "AzureExecutionProvider")
-    : "";
-  const model = hostInfo.model && hostInfo.model !== hostInfo.label ? ` (${hostInfo.model})` : "";
-  $("host-summary").textContent = `${hostInfo.label || "Computer"}${model} · local AI on ${
-    acceleration ? acceleration.replace("ExecutionProvider", "") : "CPU"}`;
+  const acceleration = (hostInfo.onnx_providers || []).find((name) => ACCELERATOR_NAMES[name]);
+  const label = hostInfo.label || "Computer";
+  const model = String(hostInfo.model || "");
+  const name = model && model !== label ? (model.startsWith(label) ? model : `${label} (${model})`) : label;
+  $("host-summary").textContent = `${name} · local AI on ${acceleration ? ACCELERATOR_NAMES[acceleration] : "CPU"}`;
   hostShutdownLabel = hostInfo.label || "robot computer";
   $("shutdown-button").hidden = !hostInfo.shutdown_supported;
   $("shutdown-button").textContent = `Shut down ${hostShutdownLabel}`;
@@ -356,6 +416,8 @@ function renderHost(hostInfo) {
 
 function updateStatus(payload) {
   renderHost(payload.host);
+  const config = payload.config || {};
+  $("local-vision-ask").hidden = !(config.local_vision_enabled && config.camera_enabled);
   const runtime = payload.runtime || {};
   const state = runtime.state || "unknown";
   $("runtime-state").textContent = state.replaceAll("_", " ");
