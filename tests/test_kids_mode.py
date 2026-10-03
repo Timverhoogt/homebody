@@ -599,9 +599,9 @@ def test_kids_tab_has_activities_direct_controls_disclosures_and_end_button() ->
     assert 'fetch("/api/kids/stop"' in main
     assert 'kidsCameraActive ? "Camera search"' in main
     assert '$("kids-stop-button").disabled = !kidsActive;' in main
-    assert "reachy-hermes-kids-profile" in main
+    assert "homebody-kids-profile" in main
     persisted_profile = main.split(
-        'window.localStorage.setItem("reachy-hermes-kids-profile"',
+        'window.localStorage.setItem("homebody-kids-profile"',
         1,
     )[1].split(";", 1)[0]
     assert "camera_consent" not in persisted_profile

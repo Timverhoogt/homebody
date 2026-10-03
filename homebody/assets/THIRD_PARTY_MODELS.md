@@ -21,4 +21,4 @@ The wheel bundles two ONNX models from the Apache-2.0 Reachy Mini Home Assistant
 - `crops_classifier.onnx` SHA-256: `12a02344f63a7c4f2a2ca90f8740ca10a08c17b683b5585d73c3e88323056762`
 - Upstream package license: **Apache License 2.0**
 
-Hermes verifies both checksums before loading the models. Camera frames are processed locally in memory and are not retained by the gesture loop.
+Homebody verifies both checksums before loading the models. Camera frames are processed locally in memory and are not retained by the gesture loop.

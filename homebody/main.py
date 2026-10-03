@@ -1,4 +1,4 @@
-"""Reachy Mini App SDK entry point for Hermes voice conversations."""
+"""Reachy Mini App SDK entry point for Homebody."""
 
 from __future__ import annotations
 
@@ -331,7 +331,7 @@ class AgentReminderDeliveryRequest(BaseModel):
 
 
 class Homebody(ReachyMiniApp):
-    """Embodied voice frontend for a user's own Hermes Agent."""
+    """Embodied voice frontend for a user's own agent (Hermes Agent or OpenClaw)."""
 
     custom_app_url: str | None = "http://0.0.0.0:8042"
     request_media_backend: str | None = "local"
@@ -464,7 +464,7 @@ class Homebody(ReachyMiniApp):
                 config_error = "Configuration is unavailable" if child_locked else str(exc)
             return {
                 "app": "homebody",
-                "wake_phrase": "Hey Hermes",
+                "wake_phrase": "Hey Homebody",
                 "wake_phrases": ["Hey Homebody", "Hey Hermes", "Okay Nabu", "Hey Reachy"],
                 "config": config_payload,
                 "config_error": config_error,

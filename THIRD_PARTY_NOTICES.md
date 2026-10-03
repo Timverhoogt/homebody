@@ -7,7 +7,7 @@ implemented with reference to the Reachy Mini Home Assistant app:
 - Reference commit: `c5fd1f522ab44e8e9feb2897d4018027a8afb063`
 - License: Apache License 2.0
 
-The Hermes implementation is rewritten around its existing serialized robot
+The Homebody implementation is rewritten around its existing serialized robot
 action controller, local opt-in gates, truthful unavailable states, same-peer
 media validation, and mutually exclusive Hermes/Home Assistant voice ownership.
 
@@ -24,7 +24,7 @@ adapted from the official Pollen Robotics Reachy Mini Control controller module:
 - Reference commit: `0f150976f4a44db0cc4c3e30247f4d71e1fff42c`
 - License: Apache License 2.0
 
-The Hermes implementation is rewritten around gesture-bound sessions, a local
+The Homebody implementation is rewritten around gesture-bound sessions, a local
 watchdog, cooperative Stop, privacy/Kids/Awake policy gates, and coupled
 head-plus-base horizontal movement.
 
