@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Renamed the app from Reachy Mini Hermes to **Homebody**: package `reachy-mini-homebody` 0.4.0, module `homebody`, Reachy app `reachy_mini_homebody`, class `Homebody` and CLI `homebody`. Hermes Agent remains the reference agent backend alongside OpenClaw.
+- The dashboard screenshots in `docs/assets` were retaken with the Homebody header using the new, reproducible `docs/tools/capture_ui_screenshots.py`.
 - New defaults `~/.local/share/homebody/config.json`, `~/.cache/homebody/`, `HOMEBODY_CONFIG` and `HOMEBODY_MODEL_DIR`. Pre-rename config, caches and `REACHY_MINI_HERMES_*` variables are still used when present, and `reachy-mini-hermes` remains a CLI alias. See OPERATIONS.md for the upgrade steps.
 - The dashboard header, PWA description and status `wake_phrase` now read Homebody. Browser settings saved under the old `reachy-hermes-*` keys (open tab, Kids profile, agent run, announcement draft) carry over to `homebody-*` keys once; PWA shell v54.
 - Home Assistant keeps the same ESPHome device identity and project name; only the displayed model and manufacturer read Homebody.
