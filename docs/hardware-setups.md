@@ -46,7 +46,7 @@ Because the local AI server is reached over HTTP, a Raspberry Pi robot computer 
 | --- | :---: | :---: | :---: | :---: | :---: | --- |
 | Phone dashboard, Standby/Awake/Meeting/Sleep, app lifecycle | ◐ | ◐ | ✅ | 🧪 | ◐ | |
 | Guarded wake, bounded movement, Stop, fold before torque off | ◐ | ◐ | ✅ | 🧪 | ◐ | Clear-space and fold checks are mandatory on every robot. |
-| Local wake word (Hey Hermes, Okay Nabu, Hey Reachy) | ◐ | ◐ | ✅ | 🧪 | ◐ | Runs on the robot computer's CPU. |
+| Local wake word (Hey Homebody, Hey Hermes, Okay Nabu, Hey Reachy) | ◐ | ◐ | ✅ | 🧪 | ◐ | Runs on the robot computer's CPU. |
 | Local live camera viewer and camera joystick | ◐ | ◐ | ✅ | 🧪 | ◐ | Opt-in; stays between browser and robot. |
 | Voice conversation through Hermes (Realtime or pipeline) | ◐ | ◐ | ✅ | 🧪 | ◐ | Needs the agent host and providers. |
 | Voice conversation through OpenClaw | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | Bridge-side; independent of the robot computer. Not yet run against a live Gateway. |

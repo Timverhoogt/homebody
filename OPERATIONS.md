@@ -358,7 +358,7 @@ After installing or changing a heatsink/fan:
 ## Human audio acceptance
 
 1. Leave Reachy in Standby and confirm motors are relaxed.
-2. Say **“Hey Hermes”** once at normal speaking volume and distance; repeat the initial-wake check with **“Okay Nabu”** and **“Hey Reachy.”**
+2. Say **“Hey Hermes”** once at normal speaking volume and distance; repeat the initial-wake check with **“Hey Homebody”**, **“Okay Nabu”** and **“Hey Reachy.”** “Hey Homebody” was added in 0.4.0 and has not yet passed live-microphone acceptance.
 3. Ask a simple social question; verify the native Realtime response begins promptly.
 4. Interrupt Reachy naturally while it is speaking; verify playback clears and the new turn is heard. In pipeline mode, confirm each configured wake phrase can also interrupt playback.
 5. Ask a non-consequential Hermes tool question, such as checking a sensor state.

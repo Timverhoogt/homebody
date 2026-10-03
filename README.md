@@ -197,11 +197,11 @@ Pipeline mode supports selectable STT, TTS, agent model, voice, and continued co
 
 ## Features
 
-- Local **Hey Hermes**, **Okay Nabu**, and **Hey Reachy** wake phrases; cloud audio starts only after local detection.
+- Local **Hey Homebody**, **Hey Hermes**, **Okay Nabu**, and **Hey Reachy** wake phrases; cloud audio starts only after local detection.
 - Apache-2.0 open-vocabulary sherpa-onnx KWS model, downloaded and checksum-verified on first start.
 - Dual conversation modes: configurable Hermes pipeline and `gpt-realtime-2.1`.
 - Realtime semantic VAD, streaming audio, reasoning-effort selection, and natural interruption.
-- Pipeline interruption by saying **“Hey Hermes”**, **“Okay Nabu”**, or **“Hey Reachy”** while Reachy is speaking.
+- Pipeline interruption by saying **“Hey Homebody”**, **“Hey Hermes”**, **“Okay Nabu”**, or **“Hey Reachy”** while Reachy is speaking.
 - One `ask_hermes` Realtime delegation tool: normal Hermes routing in Conversation profile and a fixed owner-scoped T0–T3 broker in adult Agent profile.
 - Curated Realtime embodiment tools for looking, emotions, and authentic recorded Reachy dances.
 - Optional daemon-local face following, active only after the wake phrase for the current conversation.
@@ -347,7 +347,7 @@ Enter:
 
 Press **Test connection**, save, then say:
 
-> **Hey Hermes**, **Okay Nabu**, or **Hey Reachy**
+> **Hey Homebody**, **Hey Hermes**, **Okay Nabu**, or **Hey Reachy**
 
 ### Browser controls
 

@@ -66,7 +66,7 @@ from .wakeword import HeyHermesSpotter, ensure_kws_model
 _LOGGER = logging.getLogger(__name__)
 # A failed voice turn stops suppressing proactive behaviour after this long back at wake.
 _TURN_ERROR_GRACE_SECONDS = 60.0
-_WAKE_PHRASES_TEXT = "Hey Hermes · Okay Nabu · Hey Reachy"
+_WAKE_PHRASES_TEXT = "Hey Homebody · Hey Hermes · Okay Nabu · Hey Reachy"
 
 
 @dataclass(slots=True)

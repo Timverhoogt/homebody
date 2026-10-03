@@ -16,7 +16,7 @@ import numpy.typing as npt
 
 _LOGGER = logging.getLogger(__name__)
 
-WAKE_PROMPT = "Say “Hey Hermes”, “Okay Nabu”, or “Hey Reachy”"
+WAKE_PROMPT = "Say “Hey Homebody”, “Hey Hermes”, “Okay Nabu”, or “Hey Reachy”"
 _MODEL_URL = (
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/"
     "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2"

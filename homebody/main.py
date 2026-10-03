@@ -443,7 +443,7 @@ class Homebody(ReachyMiniApp):
             return {
                 "app": "homebody",
                 "wake_phrase": "Hey Hermes",
-                "wake_phrases": ["Hey Hermes", "Okay Nabu", "Hey Reachy"],
+                "wake_phrases": ["Hey Homebody", "Hey Hermes", "Okay Nabu", "Hey Reachy"],
                 "config": config_payload,
                 "config_error": config_error,
                 "runtime": runtime_payload,
