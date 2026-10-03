@@ -106,6 +106,9 @@ class AppConfig:
     local_vision_enabled: bool = False
     local_vision_url: str = "http://127.0.0.1:11434/v1"
     local_vision_model: str = "qwen2.5vl:3b"
+    mcp_enabled: bool = False
+    mcp_vision_enabled: bool = False
+    mcp_token_sha256: str = ""
     agent_tools_enabled: bool = True
     power_tools_enabled: bool = True
     kids_mode_enabled: bool = False
@@ -216,6 +219,8 @@ class AppConfig:
             raise ValueError("local_vision_url must be an absolute http(s) URL")
         if not 1 <= len(str(self.local_vision_model).strip()) <= 200:
             raise ValueError("local_vision_model must be 1-200 characters")
+        if self.mcp_token_sha256 and not re.fullmatch(r"[0-9a-f]{64}", str(self.mcp_token_sha256)):
+            raise ValueError("mcp_token_sha256 must be a SHA-256 hex digest")
         if self.local_ai_accelerator not in {"auto", "cpu"}:
             raise ValueError("local_ai_accelerator must be 'auto' or 'cpu'")
         if not 0.5 <= float(self.gpio_long_press_seconds) <= 10.0:
@@ -247,6 +252,8 @@ class AppConfig:
         payload = asdict(self)
         payload["api_key"] = "********" if self.api_key else ""
         payload["api_key_configured"] = bool(self.api_key)
+        payload.pop("mcp_token_sha256", None)
+        payload["mcp_token_configured"] = bool(self.mcp_token_sha256)
         payload.pop("kids_session_id", None)
         payload.pop("kids_mode_enabled", None)
         payload.pop("kids_age_band", None)

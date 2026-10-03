@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=52">
+  <link rel="stylesheet" href="/static/style.css?v=53">
 </head>
 <body>
   <main>
@@ -761,6 +761,22 @@
           </details>
 
           <details>
+            <summary>Agent access (MCP)</summary>
+            <div class="settings-section">
+              <p class="muted">Let your own AI agents (Hermes Agent, OpenClaw, Claude and other MCP clients) use Reachy: say a message aloud, show an emotion, or describe what it sees. Every request follows the same Meeting, Sleep, privacy and Kids Mode rules as voice and this app, and agents can never wake Reachy for a gesture.</p>
+              <label class="toggle-row"><span><strong>Allow agent access</strong><small>Serves an MCP endpoint on this app. Off by default; agents also need the token below.</small></span><input id="mcp_enabled" name="mcp_enabled" type="checkbox" /></label>
+              <label class="toggle-row"><span><strong>Let agents ask what Reachy sees</strong><small>Answered by your local vision model; agents receive text, never images. Needs the local vision model and On-demand camera.</small></span><input id="mcp_vision_enabled" name="mcp_vision_enabled" type="checkbox" /></label>
+              <label>MCP endpoint<input id="mcp-endpoint" type="text" readonly /><small>Add this as a remote (HTTP) MCP server in your agent, with the header <code>Authorization: Bearer &lt;token&gt;</code>.</small></label>
+              <div class="actions">
+                <button type="button" id="mcp-token-button" class="secondary">Create new token</button>
+                <button type="button" id="mcp-revoke-button" class="danger">Revoke token</button>
+              </div>
+              <label id="mcp-token-row" hidden>New token (shown once)<input id="mcp-token" type="text" readonly /><small>Copy it into your agent now. Creating a new token disconnects agents that use the old one.</small></label>
+              <p id="mcp-message" class="message" role="status" aria-live="polite"></p>
+            </div>
+          </details>
+
+          <details>
             <summary>Home Assistant</summary>
             <div class="settings-section">
               <p class="muted">Expose Reachy as the existing ESPHome device on your trusted LAN. The bridge is off by default and requires an app restart after changes.</p>
@@ -805,7 +821,7 @@
     </div>
   </main>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=52"></script>
-  <script src="/static/main.js?v=52"></script>
+  <script src="/static/camera.js?v=53"></script>
+  <script src="/static/main.js?v=53"></script>
 </body>
 </html>
