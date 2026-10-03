@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 from datetime import datetime
 from types import SimpleNamespace
@@ -375,7 +376,13 @@ def test_disabled_presence_discards_the_signal_and_never_queues() -> None:
         (lambda runtime: setattr(runtime._status, "state", "listening"), "voice_active"),
         (lambda runtime: setattr(runtime, "_audio_ready", False), "runtime_not_ready"),
         (lambda runtime: setattr(runtime._status, "last_error", "failed"), "runtime_error"),
-        (lambda runtime: setattr(runtime, "_camera_control_session_id", "camera-test"), "camera_control_active"),
+        (
+            lambda runtime: (
+                setattr(runtime, "_camera_control_session_id", "camera-test"),
+                setattr(runtime, "_camera_control_last_activity", time.monotonic()),
+            ),
+            "camera_control_active",
+        ),
         (lambda runtime: setattr(runtime, "_face_tracking_active", True), "face_tracking_active"),
         (
             lambda runtime: setattr(runtime, "_actions", SimpleNamespace(busy=True, pending_count=1)),

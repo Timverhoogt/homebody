@@ -73,6 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A stopped voice turn can no longer be resumed by a later Awake transition. Before this, preparing an I Spy round cleared the stop request, so an adult or Agent reply that was already in flight could be spoken during Kids Mode.
 - One lock order (motor transition, then Kids) is now enforced. Manual, precision, camera-control, and presence paths nested the locks the other way round and could deadlock against `status()`. The HTTP Kids-lock middleware no longer waits on the Kids lock during slow robot transitions.
 - Concurrent approvals of the same pending Agent draft now execute it exactly once.
+- An abandoned camera-joystick session no longer blocks other features. Before this, closing the tab mid-drag left the session marked active until the next power change or Stop, which blocked presence, gestures, presentation and manual and precision controls. Every check that asks "is camera control active?" now expires a session idle for more than 30 seconds and stops its stream.
 - PWA shell advanced to v46 for the settings credential field.
 - `tests/test_kids_mode.py::test_runtime_generated_kids_session_id_passes_real_bridge_handler` no longer depends on `OPENAI_API_KEY` being set on the machine.
 
