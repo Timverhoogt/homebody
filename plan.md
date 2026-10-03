@@ -167,5 +167,5 @@ These are deployment observations, not service-level guarantees. Hermes pipeline
 - Add phrase-specific real-room acoustic acceptance recordings and tune per-keyword score/threshold only from measured false-positive/false-negative data.
 - Replace the raw watchdog TCP media probe with a WebSocket-aware check to remove benign handshake warnings.
 - Add local offline STT/TTS fallback for deployments that require operation without cloud providers.
-- Add route-specific warm Hermes-agent reuse with session serialization, cache signatures, lifecycle controls, and usage accounting.
+- Run live acceptance of warm Hermes agents (`REACHY_HERMES_WARM_AGENTS=1`) against the deployed Hermes Agent release: confirm `/v1/warm-agents` reports available, and measure pipeline and `ask_hermes` latency warm versus the plain API server.
 - Expand simulated robot integration tests. GitHub Actions (`.github/workflows/ci.yml`) now runs lint, JavaScript syntax checks, the full suite with the Reachy SDK stubbed, and the package build. A CI image with the real Reachy SDK/GStreamer imports is still open.

@@ -68,6 +68,7 @@ Gamepad movement is disabled by default and must be explicitly enabled. Only bou
 ## Operational controls
 
 - Keep `security.redact_secrets` enabled in Hermes.
+- Warm Hermes agents (`REACHY_HERMES_WARM_AGENTS=1`, off by default) run Hermes inside the bridge process. They keep the API server's toolset check and also refuse any built agent that exposes a broad host tool. A Kids session start closes all of them, and a configuration or credential change rebuilds them before the next turn.
 - Rotate credentials after suspected disclosure or accidental posting in chat, logs, screenshots, or source control.
 - Review systemd logs for tracebacks without copying secrets into support tickets.
 - Leave Reachy in Standby, Meeting, or Sleep when motor torque is not required.
