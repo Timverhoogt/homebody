@@ -86,6 +86,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Announcements moved out of `runtime.py` into `reachy_mini_hermes/announcements.py` as `AnnouncementsMixin`, together with the `Announcement` dataclass and its limits. This covers the queue, cancellation, worker and playback. The 9 methods moved unchanged and create bridge clients through `_new_bridge_client`. `runtime.py` still re-exports `Announcement`, and the shared wake prompt now lives in `wakeword.WAKE_PROMPT`. `runtime.py` shrinks by about another 320 lines.
 
 - Owner robot controls moved out of `runtime.py` into `reachy_mini_hermes/manual_control.py` as `ManualControlMixin`. This covers manual and precision actions, live pose, Stop, and the whole camera-joystick session lifecycle, including the idle expiry. The 13 methods moved unchanged. `runtime.py` is now about 2,880 lines, down from about 4,090 before the split began.
+- Proactive behaviour moved out of `runtime.py` into `reachy_mini_hermes/proactive.py` as `ProactiveMixin`. This covers presence acknowledgement, initiative evaluation, contextual offers and their yes/no capture, and the presentation window. The 17 methods and their state moved unchanged. `runtime.py` re-exports `Announcement` explicitly so linting can't remove it.
 
 ### Build
 
