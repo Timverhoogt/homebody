@@ -233,6 +233,8 @@ Pipeline mode supports selectable STT, TTS, agent model, voice, and continued co
 
 ## Add Hermes for voice, memory and tools
 
+**Easiest: let your agent do it.** Open Homebody → Settings → **Connect your agent**, choose Hermes Agent or OpenClaw, and send the message it creates to your agent. The agent installs the bridge, creates a tool-restricted Reachy profile and pairs with the robot. Reachy saves the connection only after testing it. See [Let your agent connect Reachy](docs/agent-setup.md). The manual steps below do the same by hand.
+
 Requirements for the connected experience:
 
 - A reachable Hermes Agent installation with the API Server enabled, **or** an OpenClaw Gateway with its chat-completions endpoint enabled and a dedicated, tool-restricted `reachy` agent. Using OpenClaw? Follow [Use OpenClaw](companion/README.md#use-openclaw-instead-of-or-besides-hermes) instead of step 1; the rest is the same.
@@ -244,15 +246,19 @@ Requirements for the connected experience:
 
 ### 1. Prepare Hermes Agent
 
-On the computer running Hermes:
+On the computer running Hermes, give Reachy its own profile whose API server has no host tools. The bridge refuses every request while the API server exposes `terminal`, file or code tools, because anyone in the room can talk to Reachy:
 
 ```bash
-hermes config set API_SERVER_ENABLED true
-hermes config set API_SERVER_KEY 'replace-with-a-long-random-secret'
-hermes gateway restart
+hermes profile create reachy --clone
+# then delete messaging-bot tokens (TELEGRAM_BOT_TOKEN, DISCORD_BOT_TOKEN, ...) from ~/.hermes/profiles/reachy/.env
+hermes -p reachy tools disable --platform api_server \
+  terminal file code_execution browser delegation cronjob skills computer_use
+printf 'API_SERVER_ENABLED=true\nAPI_SERVER_PORT=8652\nAPI_SERVER_KEY=%s\n' "$(openssl rand -hex 32)" \
+  >> ~/.hermes/profiles/reachy/.env && chmod 600 ~/.hermes/profiles/reachy/.env
+hermes -p reachy gateway install && hermes -p reachy gateway start
 ```
 
-`API_SERVER_KEY` is the private bearer token shared with Reachy. It is **not** an OpenAI key.
+`API_SERVER_KEY` is the private bearer token shared with Reachy. It is **not** an OpenAI key. Keep it in `.env`: on Hermes 0.19, `hermes config set API_SERVER_KEY` writes it in plain text to `config.yaml`. A pip-installed Hermes also needs `aiohttp` in its venv for the API server and the bridge.
 
 For Realtime mode, store the provider credential on the Hermes host:
 
@@ -283,11 +289,12 @@ Use Hermes' own Python environment so the bridge can reuse its configured provid
 ```bash
 cd ~/.hermes/hermes-agent
 venv/bin/python /path/to/homebody/companion/hermes_reachy_bridge.py \
+  --profile reachy --hermes-url http://127.0.0.1:8652 \
   --host 0.0.0.0 \
   --port 8643
 ```
 
-Verify locally:
+Verify locally (`/health` also reports whether the profile exposes broad tools):
 
 ```bash
 curl -H "Authorization: Bearer $API_SERVER_KEY" \
@@ -345,7 +352,7 @@ http://REACHY_HOST:8042
 Enter:
 
 - **Bridge URL:** `http://HERMES_HOST:8643`
-- **API key:** the same `API_SERVER_KEY` configured in Hermes
+- **API key:** the same `API_SERVER_KEY` as in the `reachy` profile's `.env`
 - **Conversation mode:** OpenAI Realtime or Hermes pipeline
 
 Press **Test connection**, save, then say:

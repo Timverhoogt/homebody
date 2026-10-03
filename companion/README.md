@@ -15,16 +15,31 @@ Provider credentials stay on the Hermes host. Reachy stores only the bridge URL 
 
 ## Prerequisites
 
+The quickest route is [agent-led setup](../docs/agent-setup.md): Homebody gives you a message for your agent, and the agent does everything in this file.
+
+By hand: give Reachy a dedicated Hermes profile whose API server has **no broad host tools**. The bridge checks `/v1/toolsets` before every turn and refuses while any of these are enabled:
+
+- `terminal`, `process`, `execute_code`;
+- `read_file`, `write_file`, `search_files`, `patch`;
+- `delegate_task`, `cronjob`, `skill_manage`, `computer_use`, `browser_cdp`, `browser_console`.
+
+`/health` names any that are enabled.
+
 ```bash
-hermes config set API_SERVER_ENABLED true
-hermes config set API_SERVER_KEY 'use-a-long-random-secret'
-hermes gateway restart
+hermes profile create reachy --clone     # then remove messaging-bot tokens from its .env
+hermes -p reachy tools disable --platform api_server \
+  terminal file code_execution browser delegation cronjob skills computer_use
+printf 'API_SERVER_ENABLED=true\nAPI_SERVER_PORT=8652\nAPI_SERVER_KEY=%s\n' "$(openssl rand -hex 32)" \
+  >> ~/.hermes/profiles/reachy/.env && chmod 600 ~/.hermes/profiles/reachy/.env
+hermes -p reachy gateway install && hermes -p reachy gateway start
 ```
+
+Keep `API_SERVER_*` in the profile's `.env`: on Hermes 0.19, `hermes config set` stores them in plain text in `config.yaml`. A pip-installed Hermes needs `aiohttp` (`venv/bin/pip install aiohttp`).
 
 Verify Hermes itself:
 
 ```bash
-curl http://127.0.0.1:8642/health
+curl http://127.0.0.1:8652/health
 ```
 
 For Realtime mode, add a direct OpenAI project key to the active profile's `.env`:
@@ -64,6 +79,7 @@ Use the Python environment that belongs to Hermes Agent:
 ```bash
 cd ~/.hermes/hermes-agent
 venv/bin/python /path/to/homebody/companion/hermes_reachy_bridge.py \
+  --profile reachy --hermes-url http://127.0.0.1:8652 \
   --host 0.0.0.0 \
   --port 8643
 ```
@@ -80,7 +96,7 @@ Configure Reachy with:
 
 ```text
 Bridge URL: http://<hermes-host-LAN-IP>:8643
-API key:    the same API_SERVER_KEY
+API key:    the reachy profile's API_SERVER_KEY
 ```
 
 ## Warm Hermes agents (optional)

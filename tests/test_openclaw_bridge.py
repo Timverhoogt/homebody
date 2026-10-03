@@ -241,7 +241,8 @@ def test_both_backends_route_by_model_and_merge_model_lists() -> None:
 
     assert [item["id"] for item in result["models"]["data"]] == ["hermes-agent", "openclaw/reachy"]
     assert len(fakes.hermes_requests) == 1 and fakes.hermes_requests[0][1]["model"] == "hermes-agent"
-    assert fakes.toolset_checks == 1  # the Hermes tool boundary still guards Hermes requests
+    # The Hermes tool boundary guards the Hermes request, and /health reports it too.
+    assert fakes.toolset_checks == 2
     assert len(fakes.openclaw_requests) == 1
     assert result["health"]["hermes_api"] is True and result["health"]["agent_api"] is True
     assert [item["name"] for item in result["health"]["agent_backends"]] == ["hermes", "openclaw"]
