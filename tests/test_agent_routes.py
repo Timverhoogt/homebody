@@ -581,4 +581,38 @@ def test_agent_05_trusted_ui_exposes_preview_budget_progress_and_control() -> No
     assert "/api/agent/run/status" in script
     assert "/api/agent/run/current" in script
     assert "Approve this exact step once?" in script
-    assert "reachy-hermes-shell-v45" in worker
+    assert "reachy-hermes-shell-v46" in worker
+
+
+def test_settings_require_current_key_to_change_bridge_credentials(monkeypatch) -> None:
+    _app, _runtime, client, saved = build_client(monkeypatch)
+
+    hijack_key = client.post("/api/settings", json={"api_key": "attacker-key"})
+    assert hijack_key.status_code == 403
+    redirect = client.post("/api/settings", json={"bridge_url": "http://attacker.example:8643"})
+    assert redirect.status_code == 403
+    wrong_key = client.post(
+        "/api/settings",
+        json={"bridge_url": "http://attacker.example:8643", "current_api_key": "guess"},
+    )
+    assert wrong_key.status_code == 403
+    assert saved == []
+
+    unchanged = client.post(
+        "/api/settings",
+        json={"bridge_url": "http://127.0.0.1:8643/", "api_key": "********", "language": "nl"},
+    )
+    assert unchanged.status_code == 200
+    assert saved[-1].api_key == "sk-super-secret-value"
+
+    rotated = client.post(
+        "/api/settings",
+        json={
+            "bridge_url": "http://hermes.local:8643",
+            "api_key": "sk-rotated",
+            "current_api_key": "sk-super-secret-value",
+        },
+    )
+    assert rotated.status_code == 200
+    assert saved[-1].bridge_url == "http://hermes.local:8643"
+    assert saved[-1].api_key == "sk-rotated"

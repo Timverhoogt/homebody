@@ -176,6 +176,18 @@ class HermesBridgeClient:
         )
         self._raise_for_error(response, "I Spy session cancellation")
 
+    def set_kids_session_state(self, session_id: str, *, active: bool) -> None:
+        """Tell the bridge a Kids session started or ended so it can latch adult routes."""
+        if not session_id.startswith("kids-") or len(session_id) != 37:
+            return
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/kids/session",
+            headers={"Authorization": f"Bearer {self.config.api_key}"},
+            json={"session_id": session_id, "state": "active" if active else "ended"},
+            timeout=3.0,
+        )
+        self._raise_for_error(response, "Kids session state")
+
     def voice_options(self) -> dict[str, object]:
         response = self._client.get(
             f"{self.config.bridge_url}/v1/voice-options",

@@ -63,6 +63,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - PWA shell advanced to v27 for the Agent 0.1 timeline and Kids-mode card hiding.
 - PWA shell advanced to v21 for the reviewed Bluetooth controller UI.
 
+### Security
+
+- Changing the bridge URL or API key from the unauthenticated settings UI now requires the current key. Before this, a LAN client could swap in its own key (unlocking the camera snapshot route) or point the bridge URL at a host it controls and receive the real key. The settings form has a new Current API key field.
+- The companion bridge now has its own Kids latch. While a Kids session is live it refuses adult chat, Realtime, and Agent routes with 423 and moderates generic speech, instead of relying only on the Reachy client. Reachy reports session start and end through the new `/v1/kids/session` route. Realtime agent tools now default to off unless the client explicitly requests them.
+
+### Fixed
+
+- A stopped voice turn can no longer be resumed by a later Awake transition. Before this, preparing an I Spy round cleared the stop request, so an adult or Agent reply that was already in flight could be spoken during Kids Mode.
+- One lock order (motor transition, then Kids) is now enforced. Manual, precision, camera-control, and presence paths nested the locks the other way round and could deadlock against `status()`. The HTTP Kids-lock middleware no longer waits on the Kids lock during slow robot transitions.
+- Concurrent approvals of the same pending Agent draft now execute it exactly once.
+- PWA shell advanced to v46 for the settings credential field.
+- `tests/test_kids_mode.py::test_runtime_generated_kids_session_id_passes_real_bridge_handler` no longer depends on `OPENAI_API_KEY` being set on the machine.
+
+### Build
+
+- The CI example is now an active GitHub Actions workflow with a complete dependency set. The old list was missing `aioesphomeapi`, `onnxruntime`, `sherpa-onnx` and others, so 18 test modules failed to import. The workflow runs ruff, JavaScript syntax checks, the full suite on Python 3.11 and 3.12, and the package build.
+
 ### Verified
 
 - Ruff, Python compilation, JavaScript syntax, and all 437 automated tests pass.

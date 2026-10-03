@@ -102,6 +102,29 @@ def test_draft_note_requires_exact_one_shot_phone_approval(tmp_path: Path) -> No
     assert (root / "owner.md").read_text(encoding="utf-8") == "Book dentist\n"
 
 
+def test_concurrent_pending_approvals_execute_the_draft_once(tmp_path: Path) -> None:
+    root = tmp_path / "notes"
+    root.mkdir()
+    service = AgentActionService(ActionConfig(note_roots={"notes": root}))
+    arguments = {"root": "notes", "path": "owner.md", "text": "Book dentist"}
+
+    async def scenario() -> list[object]:
+        await service.execute("draft_note", arguments, UnusedHttp(), device_id="reachy-a", generation=4)
+        pending = await service.pending("reachy-a", 4)
+        assert pending is not None
+        draft_id = str(pending["draft_id"])
+        return await asyncio.gather(
+            *(service.approve_pending("reachy-a", 4, draft_id, UnusedHttp()) for _ in range(3)),
+            return_exceptions=True,
+        )
+
+    outcomes = run(scenario())
+    succeeded = [outcome for outcome in outcomes if not isinstance(outcome, BaseException)]
+    rejected = [outcome for outcome in outcomes if isinstance(outcome, ActionValidationError)]
+    assert len(succeeded) == 1
+    assert len(rejected) == 2
+    assert (root / "owner.md").read_text(encoding="utf-8") == "Book dentist\n"
+
 def test_media_is_staged_without_touching_home_assistant() -> None:
     service = AgentActionService(
         ActionConfig(media_entities=frozenset({"media_player.living_room"}))

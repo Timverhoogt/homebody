@@ -68,6 +68,15 @@ _KIDS_HISTORY_LIMIT = 64
 _KIDS_SESSION_ID_RE = re.compile(r"kids-[0-9a-f]{32}\Z")
 _KIDS_SPEECH_APPROVAL_TTL_SECONDS = 5 * 60
 _KIDS_SPEECH_APPROVAL_LIMIT = 256
+# Kids sessions last at most 60 minutes on Reachy; the bridge latch expires shortly after even
+# if the explicit end notification is lost, so adult features cannot stay locked indefinitely.
+_KIDS_LIVE_MAX_SECONDS = 65 * 60
+_KIDS_ENDED_MEMORY = 256
+# Adult capabilities the bridge refuses while any Kids session is live. Cancellation and session
+# publication stay available so Reachy can always wind adult work down.
+_KIDS_LATCHED_PREFIXES = ("/v1/chat/completions", "/v1/realtime", "/v1/agent/")
+_KIDS_LATCH_EXEMPT_PATHS = frozenset({"/v1/agent/session", "/v1/agent/run/cancel", "/v1/agent/run/pause"})
+_KIDS_LATCH_EXEMPT_PREFIXES = ("/v1/agent/cancel/",)
 _KIDS_MEDIA_TAG = re.compile(r"(?m)^\s*(?:\[\[audio_as_voice\]\]\s*)?MEDIA:\S+\s*$")
 _KIDS_MARKDOWN = re.compile(r"[`*_#>|]+")
 _ISPY_COLOURS = ("red", "orange", "yellow", "green", "blue", "purple", "pink", "brown", "black", "white", "grey")
@@ -691,6 +700,8 @@ class Bridge:
         self.http: ClientSession | None = None
         self._kids_sessions: dict[str, dict[str, Any]] = {}
         self._kids_speech_approvals: dict[str, dict[str, Any]] = {}
+        self._kids_live: dict[str, float] = {}
+        self._kids_ended: dict[str, None] = {}
         self.agent_broker = ReachyAgentBroker()
         self.agent_runs = AgentRunManager()
         self._broker_tasks: dict[tuple[str, str], asyncio.Task[Any]] = {}
@@ -827,6 +838,69 @@ class Bridge:
                 text=json.dumps({"error": {"message": "Invalid API key", "type": "authentication_error"}}),
                 content_type="application/json",
             )
+
+    def _mark_kids_live(self, session_id: str) -> None:
+        if session_id in self._kids_ended:
+            return
+        self._kids_live.setdefault(session_id, time.monotonic())
+
+    def _end_kids_live(self, session_id: str) -> None:
+        self._kids_live.pop(session_id, None)
+        self._kids_ended[session_id] = None
+        while len(self._kids_ended) > _KIDS_ENDED_MEMORY:
+            self._kids_ended.pop(next(iter(self._kids_ended)))
+
+    def kids_session_live(self) -> bool:
+        """Return whether any Kids session is live, expiring sessions past the hard cap."""
+        now = time.monotonic()
+        self._kids_live = {
+            key: started for key, started in self._kids_live.items() if now - started <= _KIDS_LIVE_MAX_SECONDS
+        }
+        return bool(self._kids_live)
+
+    @web.middleware
+    async def kids_latch_middleware(self, request: web.Request, handler: Any) -> web.StreamResponse:
+        """Refuse adult chat, Realtime, and Agent routes while a Kids session is live."""
+        path = request.path
+        if (
+            path.startswith(_KIDS_LATCHED_PREFIXES)
+            and path not in _KIDS_LATCH_EXEMPT_PATHS
+            and not path.startswith(_KIDS_LATCH_EXEMPT_PREFIXES)
+            and self.kids_session_live()
+        ):
+            self.require_auth(request)
+            return web.Response(
+                status=423,
+                text="Adult capabilities are unavailable while a Kids Mode session is live",
+            )
+        return await handler(request)
+
+    async def kids_session(self, request: web.Request) -> web.Response:
+        """Record the start or end of a Reachy Kids session for the bridge-side latch."""
+        self.require_auth(request)
+        try:
+            payload = await request.json()
+            session_id = str(payload.get("session_id") or "")
+            state = str(payload.get("state") or "")
+            if (
+                _KIDS_SESSION_ID_RE.fullmatch(session_id) is None
+                or state not in {"active", "ended"}
+                or set(payload) != {"session_id", "state"}
+            ):
+                raise ValueError
+        except Exception as exc:
+            raise web.HTTPBadRequest(text="Invalid Kids Mode session state") from exc
+        if state == "active":
+            self._mark_kids_live(session_id)
+        else:
+            self._end_kids_live(session_id)
+            self._kids_sessions.pop(session_id, None)
+            self._kids_speech_approvals = {
+                token: approval
+                for token, approval in self._kids_speech_approvals.items()
+                if approval.get("session_id") != session_id
+            }
+        return web.json_response({"ok": True, "state": state, "kids_live": self.kids_session_live()})
 
     async def health(self, request: web.Request) -> web.Response:
         hermes_ok = False
@@ -1102,6 +1176,7 @@ class Bridge:
             raise web.HTTPBadRequest(text="Kids Mode input must contain 1 to 2,000 characters")
         if _KIDS_SESSION_ID_RE.fullmatch(session_id) is None:
             raise web.HTTPBadRequest(text="Invalid Kids Mode session ID")
+        self._mark_kids_live(session_id)
         if not isinstance(profile, dict):
             raise web.HTTPBadRequest(text="Kids Mode profile is required")
         age_band = str(profile.get("age_band") or "")
@@ -1372,6 +1447,7 @@ class Bridge:
                 raise ValueError("invalid I Spy frame")
         except Exception as exc:
             raise web.HTTPBadRequest(text="Invalid bounded I Spy request") from exc
+        self._mark_kids_live(session_id)
         forbidden = ", ".join(sorted(_ISPY_DISALLOWED_TERMS))
         content: list[dict[str, object]] = [{
             "type": "text",
@@ -2262,7 +2338,7 @@ class Bridge:
         system_prompt = str(config.get("system_prompt") or "")[:8_000]
         camera_enabled = config.get("camera_enabled") is True
         robot_tools_enabled = config.get("robot_tools_enabled") is True
-        agent_tools_enabled = config.get("agent_tools_enabled") is not False
+        agent_tools_enabled = config.get("agent_tools_enabled") is True
         power_tools_enabled = config.get("power_tools_enabled") is not False
         agent_context = config.get("agent_context")
         if not isinstance(agent_context, dict):
@@ -2692,6 +2768,14 @@ class Bridge:
             payload = await request.json()
         except Exception as exc:
             raise web.HTTPBadRequest(text="Invalid JSON") from exc
+        if self.kids_session_live():
+            # A child may be listening: screen system notices like any child-facing output.
+            text = str(payload.get("input") or payload.get("text") or "").strip()
+            openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+            if not openai_key:
+                raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is not configured")
+            if text and await self._moderation_flagged(text, openai_key):
+                raise web.HTTPForbidden(text="Speech was blocked while a Kids Mode session is live")
         return await self._speech_response(payload)
 
     async def kids_speech_fallback(self, request: web.Request) -> web.Response:
@@ -2779,7 +2863,10 @@ class Bridge:
 
 def create_app(*, api_key: str, hermes_url: str, profile: str | None = None) -> web.Application:
     bridge = Bridge(api_key=api_key, hermes_url=hermes_url, profile=profile)
-    app = web.Application(client_max_size=_MAX_AUDIO_BYTES + 1024 * 1024)
+    app = web.Application(
+        client_max_size=_MAX_AUDIO_BYTES + 1024 * 1024,
+        middlewares=[bridge.kids_latch_middleware],
+    )
     app.on_startup.append(bridge.start)
     app.on_cleanup.append(bridge.stop)
     app.router.add_get("/health", bridge.health)
@@ -2804,6 +2891,7 @@ def create_app(*, api_key: str, hermes_url: str, profile: str | None = None) -> 
     app.router.add_post("/v1/agent/run/cancel", bridge.broker_run_cancel)
     app.router.add_post("/v1/agent/cancel/{request_id}", bridge.broker_cancel)
     app.router.add_post("/v1/chat/completions", bridge.chat)
+    app.router.add_post("/v1/kids/session", bridge.kids_session)
     app.router.add_post("/v1/kids/chat", bridge.kids_chat)
     app.router.add_post("/v1/kids/ispy/select", bridge.kids_ispy_select)
     app.router.add_post("/v1/kids/ispy/clue", bridge.kids_ispy_clue)

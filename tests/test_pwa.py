@@ -129,4 +129,4 @@ def test_v44_ui_uses_dedicated_agent_workspace_and_contextual_offers() -> None:
     assert '"X-Reachy-Adult-UI": "unlocked"' in script
     assert 'if (!initiativeEditActive)' in script
     assert '$("initiative-badge").textContent = "Offline"' in script
-    assert 'reachy-hermes-shell-v45' in worker
+    assert 'reachy-hermes-shell-v46' in worker

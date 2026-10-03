@@ -46,7 +46,7 @@ def test_session_change_invalidates_agent_generation_without_requesting_voice_st
     runtime = make_runtime()
     generation = int(runtime.status()["agent"]["session_generation"])  # type: ignore[index]
 
-    runtime._conversation_stop_requested.clear()
+    runtime._accept_wake_turn()
     runtime.cancel_agent_work("session_changed")
 
     assert runtime.agent_session_is_current(generation) is False
@@ -289,7 +289,7 @@ def test_realtime_agent_session_binds_request_id_and_privacy_cancels_it(
     runtime._publish_remote_agent_session = lambda: None  # type: ignore[method-assign]
     runtime._establish_remote_agent_session = lambda _context: None  # type: ignore[method-assign]
     runtime.set_capability_profile("agent", adult_ui_unlocked=True)
-    runtime._conversation_stop_requested.clear()
+    runtime._accept_wake_turn()
     cancelled = threading.Event()
     captured: dict[str, str] = {}
 

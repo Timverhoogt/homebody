@@ -20,7 +20,7 @@ The Reachy configuration contains the bridge bearer token and is written with mo
 
 - Keep Reachy and Hermes on a trusted LAN, management VLAN, or VPN.
 - Do not expose ports `8042`, `8443`, `8642`, or `8643` directly to the public internet.
-- Port `8042` hosts the settings and power-control UI. Its confirmation strings prevent accidental clicks; they are not authentication.
+- Port `8042` hosts the settings and power-control UI. Its confirmation strings prevent accidental clicks; they are not authentication. Once a bridge API key is saved, changing the bridge URL or API key requires entering the current key, so a LAN client cannot redirect the key to another host or swap in its own key.
 - Port `8443` hosts the daemon's WebRTC signaling service for the local camera producer.
 - Port `8642` is the Hermes API Server.
 - Port `8643` is the companion bridge, including the Realtime WebSocket proxy.
@@ -38,6 +38,8 @@ The model can call only one broad Realtime delegation tool, `ask_hermes`. In Con
 Kids Mode does not use the normal Hermes agent or Realtime tool session. A fresh random child session is routed through authenticated `/v1/kids/chat` requests with bounded input/output. The bridge accepts only fixed age-band/activity/language enums, constructs the full child policy itself, and owns a capped two-hour in-memory history; no caller-supplied system prompt or history is accepted. Camera, agent/delegation, power, Home Assistant, messaging, files, purchases, and explicit robot-action tools are not advertised or accepted. Both child input and complete model output are moderated before approved text can reach speech.
 
 Child speech uses authenticated Kids-only `/v1/kids/speech/stream` and `/v1/kids/speech/fallback` routes. The streaming route fixes ElevenLabs Flash v2.5, the configured child voice, and 24 kHz PCM; fallback uses the caregiver-configured host TTS only after streaming fails. Complete normalized, post-moderated text receives separate short-lived, single-use bridge capabilities for streaming and configured-TTS fallback, each tied to the exact session and text digest; both speech paths reject missing, expired, altered, or replayed approvals. Raw or unmoderated LLM tokens are never streamed directly to the speaker. Parent stop, privacy, timeout, and app shutdown clear queued audio and interrupt network streaming.
+
+The bridge also enforces Kids Mode itself rather than trusting the Reachy client. While any Kids session is live, it refuses adult chat, Realtime, and Agent execution/approval routes with HTTP 423, and moderates generic speech text. Cancellation stays open. Realtime agent tools are only enabled when the client explicitly requests them. The latch ends on Reachy's explicit end notification, or at the latest 65 minutes after the session started.
 
 Kids Mode has no separate PIN or authentication layer. Treat the local dashboard as a trusted-management surface and do not expose it to an untrusted network. While a child session is active, the UI presents only Kids controls and Stop, management APIs remain blocked, and public transcript, response preview, nickname, and internal child-session identifiers stay redacted. Stop ends the session, clears child text/audio state, folds Reachy, and immediately restores management controls.
 

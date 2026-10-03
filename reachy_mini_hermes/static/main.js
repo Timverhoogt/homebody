@@ -828,6 +828,8 @@ function payloadFromForm() {
     else if (el.type === "number") payload[name] = Number(el.value);
     else payload[name] = el.value.trim();
   });
+  const currentKey = $("current_api_key").value.trim();
+  if (currentKey) payload.current_api_key = currentKey;
   return payload;
 }
 
@@ -1033,6 +1035,7 @@ $("settings-form").addEventListener("submit", async (event) => {
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     setMessage(body.note || "Saved", "ok");
     $("api_key").value = "********";
+    $("current_api_key").value = "";
     await refreshStatus();
   } catch (error) {
     setMessage(String(error), "error");

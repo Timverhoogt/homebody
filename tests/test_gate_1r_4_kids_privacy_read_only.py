@@ -111,7 +111,7 @@ def make_runtime() -> HermesVoiceRuntime:
     runtime._read_head_safely_folded = lambda: True  # type: ignore[method-assign]
 
     runtime.set_capability_profile("agent", adult_ui_unlocked=True)
-    runtime._conversation_stop_requested.clear()
+    runtime._accept_wake_turn()
     return runtime
 
 

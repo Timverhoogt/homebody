@@ -97,6 +97,7 @@ Authorization: Bearer <API_SERVER_KEY>
 | `GET /v1/models` | Reachy-compatible Hermes model routes |
 | `GET /v1/voice-options` | STT/TTS models and account voices |
 | `POST /v1/chat/completions` | Authenticated proxy to Hermes API Server |
+| `POST /v1/kids/session` | Reachy reports a Kids session as `active` or `ended` for the bridge-side Kids latch |
 | `POST /v1/kids/chat` | Bounded, pre/post-moderated child chat without Hermes memory/tools |
 | `POST /v1/kids/speech/stream` | Fixed-policy ElevenLabs Flash v2.5 24 kHz PCM stream for approved child text |
 | `POST /v1/audio/transcriptions` | Configured/local/ElevenLabs STT |
@@ -130,6 +131,8 @@ When Reachy enables camera support, the bridge advertises `capture_reachy_camera
 When Reachy enables robot tools, the bridge advertises `move_reachy_head`, `express_reachy_emotion`, and `dance_reachy`. The bridge never executes these physical actions itself: completed calls are forwarded to the robot, where an allow-listed local worker performs them. Knowledge, Home Assistant, files, memory, and consequential actions continue to route through `ask_hermes`.
 
 ### Kids Mode trust boundary
+
+While any Kids session is live, the bridge itself refuses adult capabilities with HTTP 423: `/v1/chat/completions`, `/v1/realtime`, and the `/v1/agent/*` routes, except `/v1/agent/session` and the cancel/pause routes Reachy needs to wind adult work down. Generic `/v1/audio/speech` stays available for fixed system notices such as the five-minute warning, but its text is moderated first. Reachy reports session start and end through `/v1/kids/session`; any Kids chat or I Spy request also marks its session live. If the end notification is lost, the latch expires 65 minutes after the session started. A start notification that arrives after its end is ignored.
 
 `/v1/kids/chat` is a separate, bounded OpenAI chat route. It does not forward Hermes session headers or normal agent history, and it applies moderation before and after generation. The bridge accepts only age-band/activity/language enums, constructs the child policy itself, and owns bounded ephemeral history keyed by the random child session ID; caller-supplied system prompts and history are rejected. Camera, robot, agent/delegation, Home Assistant, file, messaging, purchase, and power capabilities are absent during child conversation.
 

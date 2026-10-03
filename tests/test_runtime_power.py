@@ -873,3 +873,21 @@ def test_gesture_iteration_is_awake_private_confirmed_and_edge_triggered() -> No
     runtime._kids_active = True
     assert runtime._process_gesture_once(Detector(), gate, now=4.0) is False
     assert len(captures) == 4
+
+
+def test_awake_transition_cannot_resume_a_stopped_voice_turn() -> None:
+    runtime = HermesVoiceRuntime(FakeRobot(), threading.Event())
+    runtime._set_motor_mode = lambda enabled, wake=False: None  # type: ignore[method-assign]
+    runtime._accept_wake_turn()
+    assert runtime._turn_stop_requested() is False
+
+    # Kids start, a profile change, or a phone Stop ends the in-flight turn ...
+    runtime._request_conversation_stop()
+    # ... and a later Awake transition (I Spy, manual control) clears the shared event.
+    runtime.set_power_mode("awake")
+
+    assert not runtime._conversation_stop_requested.is_set()
+    assert runtime._turn_stop_requested() is True
+
+    runtime._accept_wake_turn()
+    assert runtime._turn_stop_requested() is False
