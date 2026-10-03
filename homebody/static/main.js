@@ -176,6 +176,7 @@ $("local-vision-test-button").addEventListener("click", async () => {
       body: JSON.stringify({
         local_vision_url: $("local_vision_url").value.trim() || null,
         local_vision_model: $("local_vision_model").value.trim() || null,
+        current_api_key: $("current_api_key").value.trim() || null,
       }),
     }, 15000);
     const body = await response.json();
@@ -201,9 +202,11 @@ $("local-vision-ask").addEventListener("submit", async (event) => {
   answer.textContent = "Looking…";
   answer.classList.remove("error");
   try {
+    // The key stays in this field only; it is never stored by the page.
+    const key = $("local-vision-key").value.trim();
     const response = await fetchWithTimeout("/api/vision/describe", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({ question }),
     }, 90000);
     const body = await response.json();

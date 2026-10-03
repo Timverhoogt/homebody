@@ -436,5 +436,5 @@ def test_announcement_ui_exposes_full_tts_controls_and_private_routes() -> None:
     assert 'id="announcement-live"' in html
     assert 'role="alert"' in html
     assert "Voice only · do not change power state" in html
-    assert "homebody-shell-v51" in worker
-    assert "/static/main.js?v=51" in html
+    assert "homebody-shell-v52" in worker
+    assert "/static/main.js?v=52" in html

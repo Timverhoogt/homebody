@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=51">
+  <link rel="stylesheet" href="/static/style.css?v=52">
 </head>
 <body>
   <main>
@@ -672,6 +672,8 @@
             <input id="local-vision-question" type="text" maxlength="300" placeholder="What is on the desk?" />
             <button type="submit" id="local-vision-ask-button">Ask</button>
           </div>
+          <label for="local-vision-key">Bridge API key</label>
+          <input id="local-vision-key" type="password" autocomplete="off" placeholder="Needed because the answer describes your room" />
           <p id="local-vision-answer" class="local-vision-answer" aria-live="polite"></p>
         </form>
         <p id="camera-message" class="message" role="status" aria-live="polite"></p>
@@ -697,7 +699,7 @@
             <input id="api_key" name="api_key" type="password" placeholder="Leave masked value unchanged" autocomplete="off" />
           </label>
           <label>Current API key
-            <input id="current_api_key" name="current_api_key" type="password" placeholder="Only needed to change the bridge URL or API key" autocomplete="off" />
+            <input id="current_api_key" name="current_api_key" type="password" placeholder="Only needed to change or test a new bridge URL, API key, or vision server" autocomplete="off" />
           </label>
           <div class="grid-two">
             <label>Agent model
@@ -803,7 +805,7 @@
     </div>
   </main>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=51"></script>
-  <script src="/static/main.js?v=51"></script>
+  <script src="/static/camera.js?v=52"></script>
+  <script src="/static/main.js?v=52"></script>
 </body>
 </html>

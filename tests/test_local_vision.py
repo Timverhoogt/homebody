@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
+from dataclasses import replace
 
 import httpx
 import numpy as np
@@ -227,6 +229,9 @@ def test_realtime_camera_call_sends_a_local_description_instead_of_the_image(mon
     runtime._run_realtime_conversation(config)
 
     session = sessions[0]
+    deadline = time.monotonic() + 2.0
+    while not session.results and time.monotonic() < deadline:  # type: ignore[attr-defined]
+        time.sleep(0.01)
     assert session.frames == []  # type: ignore[attr-defined]
     assert session.results == [  # type: ignore[attr-defined]
         (
@@ -250,10 +255,13 @@ def build_client(monkeypatch: pytest.MonkeyPatch, config: AppConfig) -> tuple[Ho
     return app, TestClient(app.settings_app), saved
 
 
-def test_describe_route_needs_a_runtime_and_maps_refusals(monkeypatch: pytest.MonkeyPatch) -> None:
-    app, client, _saved = build_client(monkeypatch, vision_config())
+KEY = {"Authorization": "Bearer sk-secret"}
 
-    assert client.post("/api/vision/describe", json={"question": "?"}).status_code == 409
+
+def test_describe_route_needs_a_runtime_and_maps_refusals(monkeypatch: pytest.MonkeyPatch) -> None:
+    app, client, _saved = build_client(monkeypatch, replace(vision_config(), api_key="sk-secret"))
+
+    assert client.post("/api/vision/describe", json={"question": "?"}, headers=KEY).status_code == 409
 
     class Runtime:
         kids_controls_locked = False
@@ -264,10 +272,48 @@ def test_describe_route_needs_a_runtime_and_maps_refusals(monkeypatch: pytest.Mo
             return {"answer": "A lamp", "model": "m", "latency_ms": 5}
 
     app._runtime = Runtime()  # type: ignore[assignment]
-    assert client.post("/api/vision/describe", json={"question": "What?"}).json()["answer"] == "A lamp"
-    refused = client.post("/api/vision/describe", json={"question": "fail"})
+    assert client.post("/api/vision/describe", json={"question": "What?"}, headers=KEY).json()["answer"] == "A lamp"
+    refused = client.post("/api/vision/describe", json={"question": "fail"}, headers=KEY)
     assert refused.status_code == 409 and "turned off" in refused.json()["detail"]
-    assert client.post("/api/vision/describe", json={"question": "x" * 301}).status_code == 422
+    assert client.post("/api/vision/describe", json={"question": "x" * 301}, headers=KEY).status_code == 422
+
+
+def test_describe_route_requires_the_bridge_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[str] = []
+
+    class Runtime:
+        kids_controls_locked = False
+
+        def describe_camera_view(self, question: str) -> dict[str, object]:
+            asked.append(question)
+            return {"answer": "A room", "model": "m", "latency_ms": 5}
+
+    app, client, _saved = build_client(monkeypatch, replace(vision_config(), api_key="sk-secret"))
+    app._runtime = Runtime()  # type: ignore[assignment]
+    body = {"question": "Describe the people here"}
+    assert client.post("/api/vision/describe", json=body).status_code == 401
+    assert client.post("/api/vision/describe", json=body, headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert client.post("/api/vision/describe", json=body, headers={"Authorization": "Bearer "}).status_code == 401
+    assert asked == []
+
+    app, client, _saved = build_client(monkeypatch, vision_config())
+    app._runtime = Runtime()  # type: ignore[assignment]
+    # Without a configured key there is nothing to check against, so the route stays closed.
+    assert client.post("/api/vision/describe", json=body, headers={"Authorization": "Bearer "}).status_code == 503
+    assert asked == []
+
+
+def test_camera_snapshot_stays_closed_without_a_configured_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Runtime:
+        kids_controls_locked = False
+
+        def camera_snapshot(self) -> bytes:
+            raise AssertionError("snapshot must not be captured")
+
+    app, client, _saved = build_client(monkeypatch, AppConfig(camera_enabled=True))
+    app._runtime = Runtime()  # type: ignore[assignment]
+    response = client.post("/api/camera/snapshot", json={"confirm": "camera"}, headers={"Authorization": "Bearer "})
+    assert response.status_code == 503
 
 
 def test_vision_test_route_checks_the_form_values_before_saving(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -297,6 +343,67 @@ def test_vision_test_route_checks_the_form_values_before_saving(monkeypatch: pyt
     assert used == [("http://192.168.1.40:11434/v1", "gemma3:4b")]
     assert client.post("/api/vision/test", json={"local_vision_url": "ftp://x"}).status_code == 400
     assert saved == []
+
+
+def test_vision_test_route_needs_the_current_key_to_probe_a_new_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    saved_url = "http://192.168.1.40:11434/v1"
+    _app, client, _saved = build_client(
+        monkeypatch, AppConfig(api_key="sk-secret", local_vision_url=saved_url, local_vision_model="gemma3:4b")
+    )
+    used: list[str] = []
+
+    class FakeClient:
+        def __init__(self, url: str, model: str, *, timeout: float) -> None:
+            used.append(url)
+
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            pass
+
+        def health(self) -> dict[str, object]:
+            return {"reachable": True, "model": "gemma3:4b", "model_listed": True, "models": []}
+
+    monkeypatch.setattr(main_module, "LocalVisionClient", FakeClient)
+
+    probe = {"local_vision_url": "http://10.0.0.5:8080/internal"}
+    assert client.post("/api/vision/test", json=probe).status_code == 403
+    assert client.post("/api/vision/test", json={**probe, "current_api_key": "wrong"}).status_code == 403
+    assert used == []
+    # The saved server can be tested without the key; a new one with it.
+    assert client.post("/api/vision/test", json={}).status_code == 200
+    assert client.post("/api/vision/test", json={**probe, "current_api_key": "sk-secret"}).status_code == 200
+    assert used == [saved_url, "http://10.0.0.5:8080/internal"]
+
+
+def test_slow_local_vision_does_not_block_the_realtime_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = make_realtime_runtime()
+    release = threading.Event()
+    sent: list[tuple[str, dict[str, object]]] = []
+
+    def slow_describe(question: str, *, config: AppConfig | None = None) -> dict[str, object]:
+        release.wait(timeout=5.0)
+        return {"answer": "A lamp", "model": "m", "latency_ms": 5}
+
+    runtime.describe_camera_view = slow_describe  # type: ignore[method-assign]
+
+    class Session:
+        def send_tool_result(self, call_id: str, result: dict[str, object], **_kwargs: object) -> None:
+            sent.append((call_id, result))
+
+        def send_camera_error(self, call_id: str, message: str) -> None:
+            raise AssertionError(message)
+
+    started = time.monotonic()
+    runtime._describe_for_realtime(Session(), "call-1", "what is here", AppConfig(local_vision_enabled=True))  # type: ignore[arg-type]
+    assert time.monotonic() - started < 0.5
+    assert sent == []
+    release.set()
+    deadline = time.monotonic() + 2.0
+    while not sent and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert sent and sent[0][0] == "call-1" and sent[0][1]["description"] == "A lamp"
 
 
 def test_redirecting_the_vision_server_needs_the_current_key(monkeypatch: pytest.MonkeyPatch) -> None:
