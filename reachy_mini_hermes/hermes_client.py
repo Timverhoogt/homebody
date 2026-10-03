@@ -214,8 +214,7 @@ class HermesBridgeClient:
         payload = response.json()
         transcript = str(payload.get("text") or payload.get("transcript") or "").strip()
         self.last_stt_provider = str(payload.get("provider") or self.config.stt_provider)
-        if not transcript:
-            raise HermesBridgeError("Hermes STT returned an empty transcript")
+        # Silence or unintelligible audio is a normal no-speech turn, not a bridge failure.
         return transcript
 
     def models(self) -> list[dict[str, object]]:

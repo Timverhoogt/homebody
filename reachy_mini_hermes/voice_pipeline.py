@@ -77,6 +77,9 @@ class PipelineVoiceMixin:
                     self._motion.thinking()
                 self._set_status("transcribing", "Command received; transcribing")
                 transcript = client.transcribe(encode_wav(endpoint.samples, 16000))
+                if not transcript:
+                    self._set_status("waiting_for_wake_word", "No speech detected")
+                    break
                 if (
                     not conversation_is_current()
                     or self.stop_event.is_set()
@@ -303,7 +306,10 @@ class PipelineVoiceMixin:
             deadline = time.monotonic() + duration + 0.15
             while time.monotonic() < deadline and not self.stop_event.is_set():
                 if self._turn_stop_requested() or self._effective_power_mode() in {"meeting", "sleep"}:
+                    # Response audio is a file played with play_sound; the streaming buffer flush
+                    # alone does not stop it, so replace it with silence like every other cancel path.
                     self._clear_streamed_audio()
+                    self.robot.media.play_sound(str(self.assets / "silence.wav"))
                     break
                 if not barge_in or self._spotter is None:
                     time.sleep(0.02)
