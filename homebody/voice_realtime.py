@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from dataclasses import dataclass
 
@@ -189,6 +190,50 @@ class RealtimeVoiceMixin:
         _LOGGER.info("Realtime power mode tool: %s", result)
         return result
 
+    def _describe_for_realtime(
+        self,
+        session: RealtimeBridgeSession,
+        call_id: str,
+        question: str,
+        config: AppConfig,
+    ) -> None:
+        """Answer a Realtime camera call with the local vision model off the event loop.
+
+        A slow or unreachable vision server must not stall audio, barge-in or Stop, so the frame
+        is described on a worker thread and the answer is sent whenever it arrives.
+        """
+
+        def describe() -> None:
+            try:
+                seen = self.describe_camera_view(question, config=config)
+            except Exception as exc:
+                message = str(exc)
+                _LOGGER.warning("Local vision could not answer the camera call: %s", message)
+                with self._status_lock:
+                    self._status.camera_last_error = message
+                try:
+                    session.send_camera_error(call_id, message)
+                except Exception:
+                    _LOGGER.debug("Could not report the local vision error for %s", call_id, exc_info=True)
+                return
+            if self._effective_power_mode() in {"meeting", "sleep"}:
+                # Privacy was requested while the model was looking; drop the description.
+                return
+            try:
+                session.send_tool_result(
+                    call_id,
+                    {
+                        "ok": True,
+                        "image_attached": False,
+                        "seen_by": "local vision model on Reachy's computer",
+                        "description": seen["answer"],
+                    },
+                )
+            except Exception:
+                _LOGGER.exception("Could not deliver the local vision answer for %s", call_id)
+
+        threading.Thread(target=describe, name="realtime-local-vision", daemon=True).start()
+
     def _run_realtime_conversation(self, config: AppConfig) -> None:
         """Run a persistent speech-to-speech session after the local wake word."""
         if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
@@ -343,17 +388,7 @@ class RealtimeVoiceMixin:
                                 # The frame is answered on this computer; only the text goes to the model.
                                 self._set_status("looking", "Asking the local vision model")
                                 question = camera_call_purpose(payload) or "Describe what you see."
-                                seen = self.describe_camera_view(question, config=config)
-                                session.send_tool_result(
-                                    camera_call_id,
-                                    {
-                                        "ok": True,
-                                        "image_attached": False,
-                                        "seen_by": "local vision model on Reachy's computer",
-                                        "description": seen["answer"],
-                                    },
-                                )
-                                self._set_status("thinking", "Hermes is answering from the local description")
+                                self._describe_for_realtime(session, camera_call_id, question, config)
                             else:
                                 jpeg = self._capture_camera_jpeg()
                                 session.send_camera_frame(camera_call_id, jpeg)

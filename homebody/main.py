@@ -239,6 +239,7 @@ class LocalVisionTestRequest(BaseModel):
 
     local_vision_url: str | None = Field(default=None, max_length=2048)
     local_vision_model: str | None = Field(default=None, max_length=200)
+    current_api_key: str | None = Field(default=None, max_length=4096)
 
 
 class GpioButtonsRequest(BaseModel):
@@ -896,8 +897,10 @@ class Homebody(ReachyMiniApp):
             request: AgentReminderDeliveryRequest,
             authorization: str = Header(default=""),
         ) -> dict[str, object]:
-            expected = f"Bearer {load_config().api_key}"
-            if not secrets.compare_digest(authorization, expected):
+            api_key = load_config().api_key
+            if not api_key:
+                raise HTTPException(status_code=503, detail="Reminder delivery authentication is not configured")
+            if not secrets.compare_digest(authorization, f"Bearer {api_key}"):
                 raise HTTPException(status_code=401, detail="Unauthorized")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -968,8 +971,10 @@ class Homebody(ReachyMiniApp):
             request: ConfirmationRequest,
             authorization: str = Header(default=""),
         ) -> Response:
-            expected = f"Bearer {load_config().api_key}"
-            if not secrets.compare_digest(authorization, expected):
+            api_key = load_config().api_key
+            if not api_key:
+                raise HTTPException(status_code=503, detail="Camera snapshot authentication is not configured")
+            if not secrets.compare_digest(authorization, f"Bearer {api_key}"):
                 raise HTTPException(status_code=401, detail="Unauthorized")
             if request.confirm.strip().lower() != "camera":
                 raise HTTPException(status_code=400, detail="Confirmation must be 'camera'")
@@ -986,7 +991,19 @@ class Homebody(ReachyMiniApp):
             )
 
         @self.settings_app.post("/api/vision/describe")
-        def describe_camera_view(request: VisionQuestionRequest) -> dict[str, object]:
+        def describe_camera_view(
+            request: VisionQuestionRequest,
+            authorization: str = Header(default=""),
+        ) -> dict[str, object]:
+            # A description reveals what the camera sees, so it needs the same key as a snapshot.
+            api_key = load_config().api_key
+            if not api_key:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Set a bridge API key before asking about the camera view",
+                )
+            if not secrets.compare_digest(authorization, f"Bearer {api_key}"):
+                raise HTTPException(status_code=401, detail="Enter the bridge API key to ask about the camera view")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
             try:
@@ -997,11 +1014,18 @@ class Homebody(ReachyMiniApp):
         @self.settings_app.post("/api/vision/test")
         def test_local_vision(request: LocalVisionTestRequest) -> dict[str, object]:
             # Test the values in the form before they are saved.
-            updates = {key: value for key, value in request.model_dump().items() if value is not None}
+            updates = {
+                key: value
+                for key, value in request.model_dump(exclude={"current_api_key"}).items()
+                if value is not None
+            }
+            current = load_config()
             try:
-                config = merge_config(load_config(), updates)
+                config = merge_config(current, updates)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
+            # Probing an unsaved URL makes Reachy fetch from it, so it needs the same key as saving it.
+            _authorize_credential_change(current, config, request.current_api_key)
             try:
                 with LocalVisionClient(config.local_vision_url, config.local_vision_model, timeout=10.0) as client:
                     return {"ok": True, **client.health()}
