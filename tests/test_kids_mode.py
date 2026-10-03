@@ -636,3 +636,25 @@ def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> N
 
     assert first != second
     assert reported == [(first, True), (first, False), (second, True), (second, False)]
+
+
+def test_kids_bridge_calls_use_the_runtime_client_factory(monkeypatch: pytest.MonkeyPatch) -> None:
+    created: list[object] = []
+
+    class RecordingClient:
+        def __init__(self, config: object) -> None:
+            created.append(config)
+            self.states: list[tuple[str, bool]] = []
+
+        def set_kids_session_state(self, session_id: str, *, active: bool) -> None:
+            self.states.append((session_id, active))
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("reachy_mini_hermes.runtime.HermesBridgeClient", RecordingClient)
+    runtime = HermesVoiceRuntime(FakeRobot(), threading.Event())
+
+    runtime._notify_bridge_kids_session("kids-" + "e" * 32, True)
+
+    assert len(created) == 1
