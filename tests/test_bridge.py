@@ -1025,3 +1025,29 @@ def _agent_context(generation: int) -> dict[str, object]:
         "explicit_private_intent": False,
         "reachy_status": {},
     }
+
+
+def test_ispy_frames_go_to_openai_unless_a_local_vision_server_is_configured(monkeypatch) -> None:
+    bridge = load_bridge_module()
+    monkeypatch.delenv("REACHY_ISPY_VISION_URL", raising=False)
+
+    url, headers, body = bridge._ispy_vision_request("sk-openai")
+    assert url == "https://api.openai.com/v1/chat/completions"
+    assert headers == {"Authorization": "Bearer sk-openai"}
+    assert body["store"] is False
+
+    monkeypatch.setenv("REACHY_ISPY_VISION_URL", "http://127.0.0.1:11434/v1/")
+    monkeypatch.setenv("REACHY_ISPY_VISION_MODEL", "gemma3:4b")
+    monkeypatch.delenv("REACHY_ISPY_VISION_API_KEY", raising=False)
+    url, headers, body = bridge._ispy_vision_request("sk-openai")
+    assert url == "http://127.0.0.1:11434/v1/chat/completions"
+    # The OpenAI key is never sent to the local server.
+    assert headers == {}
+    assert body["model"] == "gemma3:4b" and "store" not in body
+
+    monkeypatch.setenv("REACHY_ISPY_VISION_API_KEY", "local-key")
+    assert bridge._ispy_vision_request("sk-openai")[1] == {"Authorization": "Bearer local-key"}
+
+    monkeypatch.setenv("REACHY_ISPY_VISION_URL", "file:///tmp/socket")
+    with pytest.raises(bridge.web.HTTPServiceUnavailable):
+        bridge._ispy_vision_request("sk-openai")

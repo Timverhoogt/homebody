@@ -65,6 +65,7 @@ def test_real_models_load_and_reject_a_blank_frame() -> None:
     models = Path(__file__).resolve().parents[1] / "reachy_mini_hermes" / "assets" / "gesture_models"
     detector = GestureDetector(models)
     try:
+        assert detector.active_provider == "CPUExecutionProvider"
         ok, encoded = cv2.imencode(".jpg", np.zeros((240, 320, 3), dtype=np.uint8))
         assert ok
         assert detector.detect_jpeg(encoded.tobytes()) == ("no_gesture", 0.0)

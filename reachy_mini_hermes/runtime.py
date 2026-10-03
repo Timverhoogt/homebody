@@ -90,6 +90,9 @@ class RuntimeStatus:
     interruptions: int = 0
     camera_captures: int = 0
     camera_last_error: str = ""
+    local_vision_answers: int = 0
+    local_vision_last_latency_ms: int = 0
+    local_vision_last_error: str = ""
     face_tracking_active: bool = False
     doa_angle_degrees: float | None = None
     gesture_detection_active: bool = False
@@ -99,6 +102,7 @@ class RuntimeStatus:
     gesture_reactions: int = 0
     gesture_last_action: str = ""
     gesture_last_error: str = ""
+    gesture_accelerator: str = ""
     robot_actions: int = 0
     last_robot_action: str = ""
     robot_action_last_error: str = ""

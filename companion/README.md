@@ -128,6 +128,18 @@ In Conversation profile, the bridge executes `ask_hermes` through the authentica
 
 When Reachy enables camera support, the bridge advertises `capture_reachy_camera`. The tool call is forwarded to Reachy, which captures one bounded JPEG and sends it as an `input_image` conversation item. The bridge never polls or continuously streams the camera.
 
+When **Use a local vision model** is on in Reachy's settings, Reachy answers `capture_reachy_camera` itself: it sends the frame to the configured OpenAI-compatible vision server (for example Ollama on a Jetson Orin Nano) and returns only the text description as the tool result. No image reaches OpenAI.
+
+Kids I Spy can pick its object with a local vision model too. Set these on the bridge host:
+
+| Variable | Meaning |
+| --- | --- |
+| `REACHY_ISPY_VISION_URL` | OpenAI-compatible base URL, e.g. `http://127.0.0.1:11434/v1`. When unset, I Spy uses OpenAI (`REACHY_ISPY_MODEL`). |
+| `REACHY_ISPY_VISION_MODEL` | Vision model on that server, default `qwen2.5vl:3b`. It must support JSON-schema output. |
+| `REACHY_ISPY_VISION_API_KEY` | Optional bearer key for that server. The OpenAI key is never sent to it. |
+
+With a local server the five I Spy frames stay on your network. The bridge still validates the target strictly, and the target text still passes OpenAI moderation, so `OPENAI_API_KEY` remains required for Kids Mode.
+
 When Reachy enables robot tools, the bridge advertises `move_reachy_head`, `express_reachy_emotion`, and `dance_reachy`. The bridge never executes these physical actions itself: completed calls are forwarded to the robot, where an allow-listed local worker performs them. Knowledge, Home Assistant, files, memory, and consequential actions continue to route through `ask_hermes`.
 
 ### Kids Mode trust boundary

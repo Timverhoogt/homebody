@@ -666,6 +666,14 @@
           <button type="button" id="camera-test-button" class="secondary">Capture one local test frame</button>
         </div>
         <p class="muted compact-note">The live viewer is opt-in, works only while Reachy is Awake, and stops when you leave this tab, background the app, enter Meeting, or enter Sleep.</p>
+        <form id="local-vision-ask" class="local-vision-ask" hidden>
+          <label for="local-vision-question">Ask the local vision model</label>
+          <div class="local-vision-row">
+            <input id="local-vision-question" type="text" maxlength="300" placeholder="What is on the desk?" />
+            <button type="submit" id="local-vision-ask-button">Ask</button>
+          </div>
+          <p id="local-vision-answer" class="local-vision-answer" aria-live="polite"></p>
+        </form>
         <p id="camera-message" class="message" role="status" aria-live="polite"></p>
       </section>
     </div>
@@ -734,6 +742,19 @@
               <label class="toggle-row"><span><strong>Local live camera</strong><small>Allow this UI to connect directly to Reachy's local WebRTC video while Awake</small></span><input id="camera_feed_enabled" name="camera_feed_enabled" type="checkbox" /></label>
               <label class="toggle-row"><span><strong>Camera movement controls</strong><small>Optional supervised joystick over the live feed. Off by default; release holds the current view.</small></span><input id="camera_controls_enabled" name="camera_controls_enabled" type="checkbox" /></label>
               <label>Joystick hand<select id="camera_controls_handedness" name="camera_controls_handedness"><option value="right">Right</option><option value="left">Left</option></select><small>Place the thumb control on the selected side of the live image.</small></label>
+            </div>
+          </details>
+
+          <details>
+            <summary>Local vision and AI acceleration</summary>
+            <div class="settings-section">
+              <p class="muted">Answer camera questions with a vision model on your own hardware, such as Ollama, llama.cpp or vLLM on a Jetson Orin Nano or a GPU PC. The frame stays on your network and only the text answer reaches the conversation.</p>
+              <label class="toggle-row"><span><strong>Use a local vision model</strong><small>Realtime camera requests and the camera card's Ask button use this model instead of sending the image to the cloud. Needs On-demand camera.</small></span><input id="local_vision_enabled" name="local_vision_enabled" type="checkbox" /></label>
+              <label>Vision server URL<input id="local_vision_url" name="local_vision_url" type="url" inputmode="url" placeholder="http://127.0.0.1:11434/v1" /><small>An OpenAI-compatible endpoint. Ollama's default is http://127.0.0.1:11434/v1.</small></label>
+              <label>Vision model<input id="local_vision_model" name="local_vision_model" type="text" placeholder="qwen2.5vl:3b" /><small>For example qwen2.5vl:3b or gemma3:4b in Ollama.</small></label>
+              <label>On-device AI accelerator<select id="local_ai_accelerator" name="local_ai_accelerator"><option value="auto">Automatic</option><option value="cpu">CPU only</option></select><small>Automatic uses TensorRT or CUDA on a Jetson, Core ML on a Mac, or DirectML on Windows when installed, and falls back to the CPU. Used by local gesture detection from its next start.</small></label>
+              <div class="actions"><button type="button" id="local-vision-test-button" class="secondary">Test vision server</button></div>
+              <p id="local-vision-message" class="message" role="status" aria-live="polite"></p>
             </div>
           </details>
 

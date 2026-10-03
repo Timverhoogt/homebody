@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import functools
 import glob
+import logging
 import platform
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
+
+_LOGGER = logging.getLogger(__name__)
 
 HostKind = Literal["raspberry_pi", "jetson", "linux", "macos", "windows", "other"]
 
@@ -126,3 +129,55 @@ def host() -> HostCapabilities:
 
 def is_linux() -> bool:
     return sys.platform.startswith("linux")
+
+
+def onnx_cache_dir() -> Path:
+    """Where accelerators keep compiled engines (TensorRT) between runs."""
+    path = Path.home() / ".cache" / "reachy_mini_hermes" / "onnx"
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        _LOGGER.debug("Could not create the ONNX engine cache at %s", path, exc_info=True)
+    return path
+
+
+def onnx_session_providers(preference: str = "auto", *, cache_dir: Path | None = None) -> list[object]:
+    """Execution providers for a new ONNX session, fastest first and always ending with CPU.
+
+    ``preference="cpu"`` forces the CPU. TensorRT gets an FP16 engine cache so a Jetson builds
+    each engine once instead of on every start.
+    """
+    if preference == "cpu":
+        return ["CPUExecutionProvider"]
+    available = onnx_providers()
+    chosen: list[object] = []
+    for name in ACCELERATED_PROVIDERS:
+        if name not in available:
+            continue
+        if name == "TensorrtExecutionProvider" and cache_dir is not None:
+            options = {
+                "trt_engine_cache_enable": True,
+                "trt_engine_cache_path": str(cache_dir),
+                "trt_fp16_enable": True,
+            }
+            chosen.append((name, options))
+        else:
+            chosen.append(name)
+    chosen.append("CPUExecutionProvider")
+    return chosen
+
+
+def create_onnx_session(model_path: Path, providers: list[object]):  # type: ignore[no-untyped-def]
+    """Open an ONNX session on the fastest provider that works, falling back to the CPU.
+
+    A provider can be listed by onnxruntime yet fail to initialise (missing CUDA or TensorRT
+    libraries, an unsupported operator); local AI must still run, only slower.
+    """
+    import onnxruntime as ort  # noqa: PLC0415
+
+    if providers and providers != ["CPUExecutionProvider"]:
+        try:
+            return ort.InferenceSession(str(model_path), providers=providers)
+        except Exception as exc:  # pragma: no cover - depends on the accelerator stack
+            _LOGGER.warning("Accelerated ONNX session failed for %s; using the CPU: %s", model_path.name, exc)
+    return ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])

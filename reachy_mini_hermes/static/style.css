@@ -429,6 +429,10 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .bluetooth-pairing-grid { display: grid; grid-template-columns: minmax(240px, 1fr) 1.5fr; align-items: end; gap: 14px; }
 .bluetooth-actions { justify-content: flex-start; }
 .bluetooth-actions button { min-height: 44px; }
+.local-vision-ask { display: grid; gap: 8px; margin: 14px 0 0; }
+.local-vision-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.local-vision-answer { margin: 0; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.local-vision-answer.error { color: var(--danger); }
 .gpio-gestures { display: grid; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
 .gpio-gestures li { display: flex; align-items: flex-start; gap: 10px; color: var(--muted); line-height: 1.45; }
 .gpio-gestures strong { color: var(--text); }

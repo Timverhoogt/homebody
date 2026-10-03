@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import reachy_mini_hermes.main as main_module
+from reachy_mini_hermes import platform_info
 from reachy_mini_hermes.config import AppConfig
 from reachy_mini_hermes.home_assistant import default_device_identity
 from reachy_mini_hermes.main import ReachyMiniHermes
@@ -89,3 +90,49 @@ def test_settings_ui_hides_hardware_cards_the_host_cannot_drive() -> None:
     assert '.bluetooth-card").hidden = !hostInfo.bluetooth_controller_supported' in script
     assert '.gpio-card").hidden = !hostInfo.gpio_supported' in script
     assert '$("shutdown-button").hidden = !hostInfo.shutdown_supported' in script
+
+
+def test_auto_prefers_tensorrt_then_cuda_and_always_keeps_the_cpu(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        platform_info,
+        "onnx_providers",
+        lambda: ["CPUExecutionProvider", "CUDAExecutionProvider", "TensorrtExecutionProvider"],
+    )
+
+    providers = platform_info.onnx_session_providers("auto", cache_dir=tmp_path)
+
+    assert providers[0][0] == "TensorrtExecutionProvider"  # type: ignore[index]
+    assert providers[0][1]["trt_engine_cache_path"] == str(tmp_path)  # type: ignore[index]
+    assert providers[1:] == ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+
+def test_cpu_preference_and_plain_builds_use_only_the_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(platform_info, "onnx_providers", lambda: ["CoreMLExecutionProvider", "CPUExecutionProvider"])
+
+    assert platform_info.onnx_session_providers("cpu") == ["CPUExecutionProvider"]
+    assert platform_info.onnx_session_providers("auto") == ["CoreMLExecutionProvider", "CPUExecutionProvider"]
+
+
+def test_a_failing_accelerator_falls_back_to_a_cpu_session(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    import onnxruntime
+
+    opened: list[object] = []
+
+    class FakeSession:
+        def __init__(self, path: str, providers: list[object]) -> None:
+            opened.append(providers)
+            if providers != ["CPUExecutionProvider"]:
+                raise RuntimeError("libcudnn.so.9: cannot open shared object file")
+
+    monkeypatch.setattr(onnxruntime, "InferenceSession", FakeSession)
+
+    accelerated = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    session = platform_info.create_onnx_session(tmp_path / "model.onnx", accelerated)
+
+    assert isinstance(session, FakeSession)
+    assert opened == [["CUDAExecutionProvider", "CPUExecutionProvider"], ["CPUExecutionProvider"]]
+
+
+def test_unknown_accelerator_setting_is_rejected() -> None:
+    with pytest.raises(ValueError, match="local_ai_accelerator"):
+        AppConfig(local_ai_accelerator="gpu")
