@@ -55,6 +55,18 @@ from .robot_tools import (
     manual_precision_action,
     manual_robot_action,
 )
+from .safety_gate import (
+    ANNOUNCEMENT_ACTIVE,
+    CAMERA_CAPTURE_POLICY,
+    CAMERA_CONTROL_POLICY,
+    GESTURE_POLICY,
+    PRESENCE_POLICY,
+    PRESENTATION_POLICY,
+    READINESS_POLICY,
+    ROBOT_ACTION_POLICY,
+    VOICE_ACTIVITY_BUSY,
+    SafetyGate,
+)
 from .wakeword import HeyHermesSpotter, ensure_kws_model
 
 _LOGGER = logging.getLogger(__name__)
@@ -251,6 +263,67 @@ def doa_yaw_degrees(angle_radians: float) -> float:
     return round(max(-60.0, min(60.0, yaw)), 1)
 
 
+class _RuntimeSafetyProbe:
+    """Read the runtime state that safety rules need, each value under its own existing lock."""
+
+    def __init__(self, runtime: HermesVoiceRuntime) -> None:
+        self._runtime = runtime
+
+    def runtime_ready(self) -> bool:
+        runtime = self._runtime
+        return not runtime.stop_event.is_set() and runtime._control_ready.is_set() and runtime._audio_ready
+
+    def power_mode(self) -> str:
+        return self._runtime._effective_power_mode()
+
+    def privacy_requested(self) -> bool:
+        return self._runtime._privacy_requested.is_set()
+
+    def motors_confirmed(self) -> bool:
+        return self._runtime._motors_enabled is True
+
+    def kids_engaged(self) -> bool:
+        runtime = self._runtime
+        with runtime._kids_lock:
+            return runtime._kids_active or runtime._kids_locked
+
+    def kids_session_active(self) -> bool:
+        runtime = self._runtime
+        with runtime._kids_lock:
+            return runtime._kids_active
+
+    def agent_profile_active(self) -> bool:
+        runtime = self._runtime
+        with runtime._agent_lock:
+            return runtime._capability_profile == "agent"
+
+    def camera_control_active(self) -> bool:
+        runtime = self._runtime
+        with runtime._camera_control_lock:
+            return bool(runtime._camera_control_session_id)
+
+    def announcement_active(self) -> bool:
+        return self._runtime._announcement_active.is_set()
+
+    def voice_activity_busy(self) -> bool:
+        return self._runtime._voice_activity_lock.locked()
+
+    def status(self) -> tuple[str, str]:
+        runtime = self._runtime
+        with runtime._status_lock:
+            return runtime._status.state, runtime._status.last_error
+
+    def face_tracking_active(self) -> bool:
+        return self._runtime._face_tracking_active
+
+    def actions_ready(self) -> bool:
+        return self._runtime._actions is not None
+
+    def robot_busy(self) -> bool:
+        actions = self._runtime._actions
+        return actions is not None and bool(actions.busy or actions.pending_count)
+
+
 class HermesVoiceRuntime:
     """Own microphone capture and serialize voice turns through Hermes."""
 
@@ -338,6 +411,7 @@ class HermesVoiceRuntime:
         # Lock order: _motor_transition_lock before _kids_lock. status() reads Kids state and is
         # called while holding the motor lock, so the reverse nesting would deadlock.
         self._kids_lock = threading.RLock()
+        self._safety_gate = SafetyGate(_RuntimeSafetyProbe(self))
         self._kids_active = False
         self._kids_camera_active = False
         self._kids_locked = False
@@ -722,40 +796,16 @@ class HermesVoiceRuntime:
             }
 
     def _presentation_suppression_reason(self, config: AppConfig) -> str:
-        if self.stop_event.is_set() or not self._control_ready.is_set() or not self._audio_ready:
-            return "runtime is not ready"
+        reason = self._safety_gate.block_reason(READINESS_POLICY)
+        if reason:
+            return reason
         if not config.shared_physical_context_enabled:
             return "shared physical context is disabled"
         if not config.camera_enabled:
             return "camera access is disabled"
         if not config.contextual_offers_enabled or not config.initiative_policy_enabled:
             return "contextual offers are disabled"
-        if self._effective_power_mode() != "awake" or self._motors_enabled is not True:
-            return "Reachy must be safely Awake"
-        if self._privacy_requested.is_set():
-            return "privacy mode is active"
-        with self._agent_lock:
-            if self._capability_profile != "agent":
-                return "Agent profile is required"
-        with self._kids_lock:
-            if self._kids_active or self._kids_locked:
-                return "Kids Mode is active"
-        with self._camera_control_lock:
-            if self._camera_control_session_id:
-                return "camera control is active"
-        if self._announcement_active.is_set() or self._voice_activity_lock.locked():
-            return "voice activity is active"
-        if self._face_tracking_active:
-            return "face tracking is active"
-        actions = self._actions
-        if actions is not None and (actions.busy or actions.pending_count):
-            return "robot action is active"
-        with self._status_lock:
-            if self._status.last_error:
-                return "runtime error is active"
-            if self._status.state != "waiting_for_wake_word":
-                return "voice activity is active"
-        return ""
+        return self._safety_gate.block_reason(PRESENTATION_POLICY)
 
     def _presentation_window_active(self) -> bool:
         with self._presentation_lock:
@@ -931,42 +981,14 @@ class HermesVoiceRuntime:
         owns_announcement: bool = False,
     ) -> str:
         """Return why silent presence motion is currently unsafe, or an empty string."""
-        if self.stop_event.is_set() or not self._control_ready.is_set() or not self._audio_ready:
-            return "runtime_not_ready"
-        power_mode = self._effective_power_mode()
-        if power_mode in {"meeting", "sleep"}:
-            return power_mode
-        if self._privacy_requested.is_set():
-            return "privacy"
-        if power_mode != "awake":
-            return "not_awake"
-        if self._motors_enabled is not True:
-            return "motors_not_enabled"
-        with self._kids_lock:
-            if self._kids_active or self._kids_locked:
-                return "kids_mode"
-        if self._announcement_active.is_set() and not owns_announcement:
-            return "announcement_active"
-        if self._voice_activity_lock.locked() and not owns_voice_activity:
-            return "voice_active"
-        with self._status_lock:
-            if self._status.last_error or self._status.state in {
-                "starting",
-                "stopping",
-                "configuration_error",
-                "power_transition_error",
-            }:
-                return "runtime_error"
-            if self._status.state != "waiting_for_wake_word":
-                return "voice_active"
-        with self._camera_control_lock:
-            if self._camera_control_session_id:
-                return "camera_control_active"
-        if self._face_tracking_active:
-            return "face_tracking_active"
-        actions = self._actions
-        if actions is not None and (actions.busy or actions.pending_count):
-            return "robot_action_active"
+        exempt = []
+        if owns_announcement:
+            exempt.append(ANNOUNCEMENT_ACTIVE)
+        if owns_voice_activity:
+            exempt.append(VOICE_ACTIVITY_BUSY)
+        reason = self._safety_gate.block_reason(PRESENCE_POLICY, exempt=exempt)
+        if reason:
+            return reason
         if self._motion is None or not config.motion_enabled:
             return "motion_disabled"
         return ""
@@ -2051,14 +2073,7 @@ class HermesVoiceRuntime:
             raise RuntimeError(f"Could not read Reachy pose: {exc}") from exc
 
     def _assert_camera_control_policy(self) -> None:
-        if self._kids_active or self._kids_locked:
-            raise RuntimeError("Camera controls are blocked while Kids Mode is active or locked")
-        if self._effective_power_mode() != "awake" or self._privacy_requested.is_set():
-            raise RuntimeError("Camera controls require confirmed Awake outside privacy modes")
-        if self._motors_enabled is not True:
-            raise RuntimeError("Camera controls require confirmed Awake motor torque")
-        if self._actions is None:
-            raise RuntimeError("Robot action controller is not ready")
+        self._safety_gate.require(CAMERA_CONTROL_POLICY)
 
     def _validate_camera_control_session(self, session_id: str, sequence: int) -> None:
         now = time.monotonic()
@@ -2279,11 +2294,7 @@ class HermesVoiceRuntime:
         return {"bytes": len(jpeg), "content_type": "image/jpeg"}
 
     def _assert_camera_allowed(self) -> None:
-        with self._kids_lock:
-            if self._kids_active:
-                raise RuntimeError("Camera capture is blocked while Kids Mode is active")
-        if self._effective_power_mode() in {"meeting", "sleep"} or self._privacy_requested.is_set():
-            raise RuntimeError("Camera capture is blocked in the current privacy mode")
+        self._safety_gate.require(CAMERA_CAPTURE_POLICY)
 
     def camera_snapshot(self) -> bytes:
         """Capture one bounded JPEG for an explicitly authenticated request."""
@@ -2334,18 +2345,7 @@ class HermesVoiceRuntime:
     def _gesture_detection_allowed(self, config: AppConfig) -> bool:
         if not config.gesture_detection_enabled or not config.home_assistant_controls_enabled:
             return False
-        if self._effective_power_mode() != "awake" or self._motors_enabled is not True:
-            return False
-        if self._privacy_requested.is_set():
-            return False
-        with self._kids_lock:
-            if self._kids_active or self._kids_locked:
-                return False
-        with self._camera_control_lock:
-            if self._camera_control_session_id:
-                return False
-        actions = self._actions
-        return actions is not None and not actions.busy and actions.pending_count == 0
+        return self._safety_gate.allows(GESTURE_POLICY)
 
     def _clear_gesture_detection_state(self) -> None:
         with self._status_lock:
@@ -2511,14 +2511,7 @@ class HermesVoiceRuntime:
             _LOGGER.warning("Could not orient to local wake DOA: %s", exc)
 
     def _before_robot_action(self) -> None:
-        mode = self._effective_power_mode()
-        if self._privacy_requested.is_set() or mode in {"meeting", "sleep"}:
-            raise RuntimeError("Robot action was blocked by privacy mode")
-        with self._kids_lock:
-            if self._kids_active or self._kids_locked:
-                raise RuntimeError("Robot action was blocked by Kids Mode")
-        if self._motors_enabled is not True:
-            raise RuntimeError("Robot action was blocked because motor torque is not confirmed")
+        self._safety_gate.require(ROBOT_ACTION_POLICY)
         self._head_safely_folded = False
         self._set_face_tracking(False)
         if self._motion is not None:

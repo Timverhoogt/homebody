@@ -76,6 +76,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - PWA shell advanced to v46 for the settings credential field.
 - `tests/test_kids_mode.py::test_runtime_generated_kids_session_id_passes_real_bridge_handler` no longer depends on `OPENAI_API_KEY` being set on the machine.
 
+### Refactored
+
+- The six duplicated runtime safety checks now live in `reachy_mini_hermes/safety_gate.py` as named rules and ordered, unit-tested policy tables. The six checks are presentation, presence, gesture, robot action, camera control and camera capture. Behaviour, reason strings and precedence are unchanged. Each check reads state under its existing lock and short-circuits, so evaluation adds no new lock nesting.
+
 ### Build
 
 - The CI example is now an active GitHub Actions workflow with a complete dependency set. The old list was missing `aioesphomeapi`, `onnxruntime`, `sherpa-onnx` and others, so 18 test modules failed to import. The workflow runs ruff, JavaScript syntax checks, the full suite on Python 3.11 and 3.12, and the package build.
