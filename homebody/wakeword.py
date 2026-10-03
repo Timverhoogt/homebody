@@ -64,7 +64,7 @@ def ensure_kws_model(cache_directory: Path | None = None) -> Path:
         return model_path
 
     cache.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="reachy-hermes-kws-", dir=cache) as temporary_directory:
+    with tempfile.TemporaryDirectory(prefix="homebody-kws-", dir=cache) as temporary_directory:
         temporary = Path(temporary_directory)
         archive = temporary / "model.tar.bz2"
         _LOGGER.info("Downloading the local keyword-spotting model from %s", _MODEL_URL)

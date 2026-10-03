@@ -463,7 +463,7 @@ class BluetoothGamepadService:
                     self._reset_gamepad_state_locked()
                 thread = threading.Thread(
                     target=self._gamepad_loop,
-                    name="reachy-hermes-gamepad",
+                    name="homebody-gamepad",
                     daemon=True,
                 )
                 self._gamepad_thread = thread

@@ -2789,7 +2789,7 @@ class Bridge:
                     # Only the last temp file was deleted before; one audio file per request.
                     raise web.HTTPBadRequest(text="Only one audio file is accepted")
                 suffix = Path(part.filename or "audio.wav").suffix or ".wav"
-                with tempfile.NamedTemporaryFile(prefix="reachy-hermes-stt-", suffix=suffix, delete=False) as output:
+                with tempfile.NamedTemporaryFile(prefix="homebody-stt-", suffix=suffix, delete=False) as output:
                     temp_path = output.name
                     total = 0
                     while chunk := await part.read_chunk(64 * 1024):
@@ -3000,7 +3000,7 @@ class Bridge:
         _ensure_hermes_imports()
         from tools.tts_tool import text_to_speech_tool
 
-        temp_directory = Path(tempfile.mkdtemp(prefix="reachy-hermes-tts-"))
+        temp_directory = Path(tempfile.mkdtemp(prefix="homebody-tts-"))
         requested_path = temp_directory / "speech.mp3"
         try:
             raw_result = await asyncio.to_thread(text_to_speech_tool, text, str(requested_path))
