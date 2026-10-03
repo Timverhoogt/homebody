@@ -701,3 +701,75 @@ def test_real_aioesphome_client_round_trips_assist_start_pcm_events_and_stop() -
             await running.close()
 
     asyncio.run(scenario())
+
+
+def _varuint(value: int) -> bytes:
+    out = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        if value:
+            out.append(byte | 0x80)
+        else:
+            out.append(byte)
+            return bytes(out)
+
+
+def test_esphome_server_drops_peer_declaring_an_oversized_packet() -> None:
+    async def scenario() -> None:
+        running = await start_esphome_server(FakeProvider(), host="127.0.0.1", port=0, advertise=False)
+        try:
+            reader, writer = await asyncio.open_connection("127.0.0.1", running.port)
+            # Preamble, a 64 MiB declared length, message type 1, and a few payload bytes.
+            writer.write(b"\x00" + _varuint(64 * 1024 * 1024) + _varuint(1) + b"x" * 16)
+            await writer.drain()
+            closed = await asyncio.wait_for(reader.read(), timeout=2.0)
+            assert closed == b""
+            writer.close()
+        finally:
+            await running.close()
+
+    asyncio.run(scenario())
+
+
+def test_esphome_state_publisher_survives_a_failing_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[int] = []
+
+    async def flaky_publish(self) -> None:  # type: ignore[no-untyped-def]
+        calls.append(1)
+        if len(calls) == 1:
+            raise ValueError("config.json is not valid JSON")
+
+    monkeypatch.setattr(home_assistant_module.ESPHomeProtocol, "publish_states", flaky_publish)
+
+    async def scenario() -> None:
+        running = await start_esphome_server(FakeProvider(), host="127.0.0.1", port=0, advertise=False)
+        try:
+            _reader, writer = await asyncio.open_connection("127.0.0.1", running.port)
+            deadline = time.monotonic() + 4.0
+            while time.monotonic() < deadline and len(calls) < 2:
+                await asyncio.sleep(0.05)
+            assert len(calls) >= 2
+            assert not running._publisher.done()
+            writer.close()
+        finally:
+            await running.close()
+
+    asyncio.run(scenario())
+
+
+def test_esphome_server_close_tolerates_a_crashed_publisher() -> None:
+    async def scenario() -> None:
+        running = await start_esphome_server(FakeProvider(), host="127.0.0.1", port=0, advertise=False)
+        running._publisher.cancel()
+
+        async def crashed() -> None:
+            raise RuntimeError("publisher crashed")
+
+        failed = asyncio.create_task(crashed())
+        await asyncio.sleep(0)
+        running._publisher = failed
+        await running.close()
+        assert not running.server.is_serving()
+
+    asyncio.run(scenario())

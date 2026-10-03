@@ -456,7 +456,14 @@ class ESPHomeProtocol(asyncio.Protocol):
                 if self.transport:
                     self.transport.close()
                 return
-            packet = _read_packet(self._buffer)
+            try:
+                packet = _read_packet(self._buffer)
+            except ValueError as exc:
+                _LOGGER.warning("Dropping malformed ESPHome connection: %s", exc)
+                self._buffer.clear()
+                if self.transport:
+                    self.transport.close()
+                return
             if packet is None:
                 return
             payload, msg_type = packet
@@ -683,6 +690,9 @@ class RunningESPHomeServer:
             await self._publisher
         except asyncio.CancelledError:
             pass
+        except Exception:
+            # A crashed publisher must not stop the sockets and server from closing.
+            _LOGGER.exception("Home Assistant state publisher had failed before shutdown")
         for protocol in tuple(self.protocols):
             if protocol.transport:
                 protocol.transport.close()
@@ -723,7 +733,15 @@ async def start_esphome_server(
     async def publish() -> None:
         while True:
             await asyncio.sleep(1.0)
-            await asyncio.gather(*(protocol.publish_states() for protocol in tuple(protocols)))
+            # One failing provider read (for example a hand-edited config) must not end
+            # state publishing for every connected Home Assistant client.
+            results = await asyncio.gather(
+                *(protocol.publish_states() for protocol in tuple(protocols)),
+                return_exceptions=True,
+            )
+            for result in results:
+                if isinstance(result, Exception):
+                    _LOGGER.warning("Home Assistant state publish failed: %s", result)
 
     publisher = asyncio.create_task(publish(), name="reachy-hermes-ha-state-publisher")
     return RunningESPHomeServer(server=server, protocols=protocols, port=bound_port, _publisher=publisher)
@@ -1467,6 +1485,9 @@ def _varuint_to_bytes(value: int) -> bytes:
     return bytes(encoded)
 
 
+_MAX_INBOUND_PACKET_BYTES = 1024 * 1024
+
+
 def _read_varuint(data: bytearray, offset: int) -> tuple[int, int] | None:
     result = 0
     bitpos = 0
@@ -1487,6 +1508,9 @@ def _read_packet(buffer: bytearray) -> tuple[bytes, int] | None:
     if length_result is None:
         return None
     length, offset = length_result
+    if length > _MAX_INBOUND_PACKET_BYTES:
+        # The plaintext API accepts any LAN peer, so never buffer an unbounded declared length.
+        raise ValueError(f"ESPHome packet of {length} bytes exceeds the inbound limit")
     type_result = _read_varuint(buffer, offset)
     if type_result is None:
         return None
