@@ -384,6 +384,7 @@ def test_runtime_kids_mode_forces_moderated_pipeline_and_removes_private_tools()
 def test_runtime_generated_kids_session_id_passes_real_bridge_handler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     runtime = HermesVoiceRuntime(FakeRobot(), threading.Event())
     runtime._audio_ready = True
     runtime.start_kids_mode(KidsProfile(activity="quiz", duration_minutes=15), greet=False)
@@ -617,3 +618,21 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     for asset in ("style.css", "camera.js", "main.js"):
         assert f"/static/{asset}?v=46" in html
         assert f'"/static/{asset}?v=46"' in worker
+
+
+def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:
+    runtime = HermesVoiceRuntime(FakeRobot(), threading.Event())
+    runtime._audio_ready = True
+    reported: list[tuple[str, bool]] = []
+    runtime._notify_bridge_kids_session_async = (  # type: ignore[method-assign]
+        lambda session_id, active: reported.append((session_id, active))
+    )
+
+    runtime.start_kids_mode(KidsProfile(activity="quiz", duration_minutes=15), greet=False)
+    first = runtime._kids_session_id
+    runtime.start_kids_mode(KidsProfile(activity="riddles", duration_minutes=15), greet=False)
+    second = runtime._kids_session_id
+    runtime.stop_kids_mode(fold=False)
+
+    assert first != second
+    assert reported == [(first, True), (first, False), (second, True), (second, False)]

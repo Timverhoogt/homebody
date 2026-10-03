@@ -1457,6 +1457,7 @@ class HermesVoiceRuntime:
                 self._capability_profile = "conversation"
             previous = self._kids_timer
             previous_warning = self._kids_warning_timer
+            replaced_session_id = self._kids_session_id if self._kids_active else ""
             if previous is not None:
                 previous.cancel()
             if previous_warning is not None:
@@ -1488,6 +1489,10 @@ class HermesVoiceRuntime:
             self._kids_warning_timer = warning
             timer.start()
             warning.start()
+            started_session_id = self._kids_session_id
+        if replaced_session_id:
+            self._notify_bridge_kids_session_async(replaced_session_id, active=False)
+        self._notify_bridge_kids_session_async(started_session_id, active=True)
         self._request_conversation_stop()
         with self._status_lock:
             self._status.transcript = ""
@@ -1733,6 +1738,23 @@ class HermesVoiceRuntime:
         except Exception:
             _LOGGER.exception("Kids Mode expiry could not complete the safe fold")
 
+    def _notify_bridge_kids_session(self, session_id: str, active: bool) -> None:
+        client = HermesBridgeClient(self.config_loader())
+        try:
+            client.set_kids_session_state(session_id, active=active)
+        except Exception:
+            _LOGGER.warning("Could not report the Kids session state to the Hermes bridge")
+        finally:
+            client.close()
+
+    def _notify_bridge_kids_session_async(self, session_id: str, active: bool) -> None:
+        threading.Thread(
+            target=self._notify_bridge_kids_session,
+            args=(session_id, active),
+            name="kids-bridge-session",
+            daemon=True,
+        ).start()
+
     def _cancel_ispy_bridge_session(self, session_id: str) -> None:
         client = HermesBridgeClient(self.config_loader())
         try:
@@ -1746,6 +1768,7 @@ class HermesVoiceRuntime:
         """End Kids Mode immediately, cancel its voice/motion, and optionally fold safely."""
         with self._kids_lock:
             was_active = self._kids_active
+            ended_session_id = self._kids_session_id if was_active else ""
             ispy_session_id = (
                 self._kids_session_id
                 if self._kids_profile is not None and self._kids_profile.activity == "ispy"
@@ -1766,6 +1789,8 @@ class HermesVoiceRuntime:
             self._kids_session_id = ""
             self._kids_last_end_reason = reason[:40]
             self._kids_last_fold_succeeded = None
+        if ended_session_id:
+            self._notify_bridge_kids_session_async(ended_session_id, active=False)
         self._request_conversation_stop()
         self._cancel_announcements(clear_queue=True)
         self._clear_streamed_audio()

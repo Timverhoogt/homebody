@@ -249,3 +249,27 @@ def test_bridge_kids_speech_route_is_fixed_to_flash_pcm_streaming() -> None:
     assert "ELEVENLABS_KIDS_VOICE_ID" in method
     assert "_consume_kids_speech_approval" in method
     assert "eleven_multilingual_v2" not in method
+
+
+def test_kids_session_state_client_posts_active_and_ended() -> None:
+    seen: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/kids/session"
+        assert request.headers["authorization"] == "Bearer secret"
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"ok": True})
+
+    client = HermesBridgeClient(
+        AppConfig(bridge_url="http://bridge.test", api_key="secret"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    session_id = "kids-" + "d" * 32
+    client.set_kids_session_state(session_id, active=True)
+    client.set_kids_session_state(session_id, active=False)
+    client.set_kids_session_state("not-a-kids-session", active=True)
+
+    assert seen == [
+        {"session_id": session_id, "state": "active"},
+        {"session_id": session_id, "state": "ended"},
+    ]
