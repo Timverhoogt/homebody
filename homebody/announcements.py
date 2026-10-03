@@ -304,7 +304,7 @@ class AnnouncementsMixin:
 
     def _play_announcement_audio(self, item: Announcement, speech: SpeechAudio, text: str) -> None:
         suffix = speech.extension if speech.extension.startswith(".") else ".audio"
-        with tempfile.NamedTemporaryFile(prefix="reachy-announcement-", suffix=suffix, delete=False) as output:
+        with tempfile.NamedTemporaryFile(prefix="homebody-announcement-", suffix=suffix, delete=False) as output:
             output.write(speech.data)
             path = Path(output.name)
         try:
