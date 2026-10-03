@@ -456,6 +456,9 @@ class AgentActionService:
             pending = self._pending.get(key)
             if pending is None or pending.draft_id != draft_id or pending.expires_at <= time.monotonic():
                 raise ActionValidationError("pending approval is missing, stale, or mismatched")
+            # Claim the draft before any await so concurrent approvals (double tap, retry)
+            # cannot both execute it.
+            self._pending.pop(key, None)
         approval = await self.issue_approval(
             device_id,
             generation,
@@ -470,9 +473,6 @@ class AgentActionService:
             generation=generation,
             approval_token=str(approval["approval_token"]),
         )
-        async with self._lock:
-            if self._pending.get(key) == pending:
-                self._pending.pop(key, None)
         return result
 
     async def issue_approval(
