@@ -97,6 +97,8 @@
 
 **Outcome:** Reachy adapts timing and category preferences without silently changing authority.
 
+**Implemented foundation:** an owner-visible preference ledger (`reachy_mini_hermes/adaptation.py`) for eight categories: presence plus the seven offer sources. It holds only decayed counts of welcomed, dismissed and snoozed responses (14-day half-life), dismissals per part of the day, a snooze deadline and a disabled flag. "Yes" welcomes a category, "no" dismisses it, and "later" / "not now" snoozes it for four hours without counting as a decline. The policy may scale the topic cooldown between 0.5× and 4×, honour a snooze or a disabled category, and keep quiet in a part of the day after repeated dismissals there. Confidence thresholds, budgets, permissions and risk tiers are never changed. Every decision carries a plain-language "Why did Reachy do that?" explanation. Preferences persist next to the app config as small counters only, and can be reset per category or entirely.
+
 - Learn only coarse preference signals: welcomed, dismissed, snoozed, disabled category.
 - Adapt frequency and timing, not permissions or risk tier.
 - Transparent controls, reset, and “Why did Reachy do that?” status.

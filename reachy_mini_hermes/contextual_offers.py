@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 OfferSource = Literal["calendar", "reminder", "timer", "home_assistant", "weather", "project", "presentation"]
-OfferResponse = Literal["yes", "no", "unknown"]
+OfferResponse = Literal["yes", "no", "later", "unknown"]
 
 _SOURCES = frozenset(
     {"calendar", "reminder", "timer", "home_assistant", "weather", "project", "presentation"}
@@ -30,7 +30,9 @@ _EXPLANATIONS = {
     "presentation": "High-confidence presentation context",
 }
 _YES = frozenset({"yes", "yeah", "yep", "sure", "please", "please do", "go ahead", "ja", "graag", "doe maar"})
-_NO = frozenset({"no", "nope", "no thanks", "not now", "nee", "liever niet", "nu niet"})
+_NO = frozenset({"no", "nope", "no thanks", "nee", "liever niet"})
+# "Not now" is about timing, not interest: it snoozes the category instead of dismissing it.
+_LATER = frozenset({"later", "not now", "not right now", "maybe later", "nu niet", "straks", "later misschien"})
 
 
 def _clean_text(value: str, *, field_name: str, maximum: int) -> str:
@@ -150,14 +152,14 @@ class ContextualOfferState:
 
     def respond(self, token: int, response: str) -> dict[str, object]:
         normalized = response.strip().lower()
-        if normalized not in {"yes", "no"}:
-            raise ValueError("Contextual offer response must be yes or no")
+        if normalized not in {"yes", "no", "later"}:
+            raise ValueError("Contextual offer response must be yes, no, or later")
         with self._lock:
             self._expire_unlocked()
             record = self._require_current(token)
             if record.state != "awaiting_response":
                 raise RuntimeError("Contextual offer is not awaiting a response")
-            record.state = "accepted" if normalized == "yes" else "dismissed"
+            record.state = {"yes": "accepted", "no": "dismissed", "later": "snoozed"}[normalized]
             record.reason = normalized
             self._listening_token = 0
             return {
@@ -171,7 +173,7 @@ class ContextualOfferState:
             if self._latest is None or self._latest.token != token:
                 return False
             record = self._latest
-            if record.state in {"accepted", "dismissed", "expired", "cancelled"}:
+            if record.state in {"accepted", "dismissed", "snoozed", "expired", "cancelled"}:
                 return False
             record.state = "cancelled"
             record.reason = reason.strip()[:64] or "cancelled"
@@ -252,4 +254,6 @@ def parse_offer_response(text: str) -> OfferResponse:
         return "yes"
     if clean in _NO:
         return "no"
+    if clean in _LATER:
+        return "later"
     return "unknown"

@@ -194,7 +194,11 @@ class HermesVoiceRuntime(
         config_loader: Callable[[], AppConfig] = load_config,
         assets_directory: Path | None = None,
         agent_audit: AgentAuditLog | None = None,
+        preferences_path: Path | None = None,
     ) -> None:
+        # Learned initiative preferences persist only when the app supplies a path; tests and
+        # tooling keep them in memory.
+        self._preferences_path = preferences_path
         self.robot = robot
         self.stop_event = stop_event
         self.config_loader = config_loader
