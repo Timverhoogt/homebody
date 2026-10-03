@@ -214,6 +214,7 @@ class HermesVoiceRuntime(
         self._actions: ReachyRobotActions | None = None
         self._spotter: HeyHermesSpotter | None = None
         self._last_wake_at = 0.0
+        self._button_wake_deadline = 0.0
         self._init_power_state()
         self._motor_transition_lock = threading.RLock()
         self._privacy_requested = threading.Event()
@@ -616,13 +617,16 @@ class HermesVoiceRuntime(
                 self._status.audio_frames_processed += 1
             self._noise.update(frame)
             keyword = self._spotter.accept(frame, 16000)
+            if not keyword and self._take_button_wake():
+                keyword = "button"
             if not keyword:
                 continue
             if self._presentation_window_active():
                 self._spotter.reset()
                 continue
             now = time.monotonic()
-            if now - self._last_wake_at < config.wake_cooldown_seconds:
+            # The cooldown filters repeated spoken detections; a button press is deliberate.
+            if keyword != "button" and now - self._last_wake_at < config.wake_cooldown_seconds:
                 continue
             self._last_wake_at = now
             _LOGGER.info("Wake word detected: %s", keyword)

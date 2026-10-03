@@ -125,7 +125,7 @@ Physical Reachy deployment:
 - `Okay Nabu` and `Hey Reachy` are verified against generated acceptance audio and load in the live three-phrase keyword graph;
 - camera, motor, power, app restart, bridge, daemon, and watchdog checks have passed on the reference Reachy Mini Lite;
 - on the current Raspberry Pi target, BlueZ 5.82, the onboard adapter, RF unblocking, classic/LE discovery, `bluetoothctl` authorization, and `input` group access are verified; final Reachy Mini Wireless DualShock pairing and mapping acceptance is deferred;
-- the green GPIO17 button is electrically verified with one debounced falling edge on press and one rising edge on release. GPIO behavior is not yet integrated into the app.
+- the green GPIO17 button is electrically verified with one debounced falling edge on press and one rising edge on release. The app integrates the buttons through libgpiod: red Stop/Sleep, green listen/Awake/Standby, startup ownership, and stuck-button lockout. Two-button acceptance on hardware is still open.
 
 Human acceptance still required per hardware/audio environment:
 
@@ -158,7 +158,7 @@ These are deployment observations, not service-level guarantees. Hermes pipeline
 
 ## Deferred work
 
-- Integrate the green/red Raspberry Pi buttons through `libgpiod` with pull-ups, debounce, short/long-press semantics, startup ownership, and safe failure behavior.
+- Add a Robot-tab GPIO button card (status, enable switch) and run the two-button hardware acceptance in `OPERATIONS.md`.
 - Persist parent lock/session recovery policy across process restarts if the deployment requires crash continuity.
 - Add phrase-specific real-room acoustic acceptance recordings and tune per-keyword score/threshold only from measured false-positive/false-negative data.
 - Replace the raw watchdog TCP media probe with a WebSocket-aware check to remove benign handshake warnings.

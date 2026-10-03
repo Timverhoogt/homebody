@@ -265,6 +265,41 @@ jstest /dev/input/js0
 journalctl -u bluetooth -n 100 --no-pager
 ```
 
+## Physical GPIO buttons
+
+Optional green/red momentary buttons wired between a BCM GPIO pin and ground. The app enables the Pi's internal pull-up, so no resistor is needed. The feature is off by default. Until the settings card ships, enable it in `~/.local/share/reachy_mini_hermes/config.json` and restart the app:
+
+```json
+"gpio_buttons_enabled": true,
+"gpio_chip": "/dev/gpiochip0",
+"gpio_green_pin": 17,
+"gpio_red_pin": 27,
+"gpio_long_press_seconds": 2.0
+```
+
+`gpio_red_pin` has no default: set it to the pin you actually wired. Set a pin to `null` to leave that button out. On a Raspberry Pi 5 the header lines are also on `/dev/gpiochip0` in current Raspberry Pi OS. Check with `gpioinfo`.
+
+| Button | Short press | Long press (≥ `gpio_long_press_seconds`) |
+| --- | --- | --- |
+| Red | Stop everything: voice turn, Agent work, Kids Mode (safe fold), announcements, offers, movement | Stop, then Sleep |
+| Green | From Sleep/Meeting: Awake. Otherwise: listen now, as if the wake word was heard | Standby |
+
+Safety behaviour:
+
+- Red short press is always honoured, also while the runtime is starting and while Kids Mode locks the phone UI. The other gestures wait until the runtime is ready.
+- A button that is already held when the app starts is ignored until it is released once. A button held for 30 s is treated as stuck and ignored until it is released.
+- Debounce is applied in the kernel (libgpiod, 30 ms) and again in the app.
+- A missing `gpiod` library, a busy line, or missing permissions only disables the buttons. Reachy keeps running and the reason is logged.
+
+Acceptance:
+
+1. Confirm the app's service user can open the chip: `ls -l /dev/gpiochip0` (group `gpio`), and `groups` lists `gpio`. Restart the Reachy daemon after changing groups.
+2. Confirm no other process owns the lines: `gpioinfo | grep -E "line +(17|27):"` shows them unused before the app starts and `consumer="reachy-mini-hermes"` afterwards.
+3. In Standby, press green briefly: Reachy wakes and listens. Press red briefly during the answer: speech and movement stop.
+4. Hold red for 2 s: Reachy stops and goes to Sleep. Press green briefly: Reachy returns to Awake.
+5. Start Kids Mode and press red briefly: the session ends with a safe fold.
+6. Hold a button while restarting the app: nothing happens until it is released and pressed again.
+
 ## Power controls
 
 Use the settings UI where practical. API equivalents:
