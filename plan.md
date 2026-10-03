@@ -159,6 +159,7 @@ These are deployment observations, not service-level guarantees. Hermes pipeline
 ## Deferred work
 
 - Run the two-button GPIO hardware acceptance in `OPERATIONS.md` on the Reachy Pi.
+- Run OpenClaw acceptance against a live Gateway: a dedicated tool-restricted `reachy` agent, pipeline and Realtime (`ask_openclaw`) conversations, session continuity, and the Hermes + OpenClaw side-by-side setup.
 - Run first-light acceptance on each 🧪/◐ setup in `docs/hardware-setups.md`: Reachy SDK smoke test and app start on a Jetson Orin Nano (JetPack 6, uv-managed Python 3.11+), then local vision with Ollama and TensorRT gesture detection; app acceptance on a Mac and a Windows PC driving a Lite.
 - Persist parent lock/session recovery policy across process restarts if the deployment requires crash continuity.
 - Add phrase-specific real-room acoustic acceptance recordings and tune per-keyword score/threshold only from measured false-positive/false-negative data.

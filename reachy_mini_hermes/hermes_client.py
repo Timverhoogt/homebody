@@ -103,8 +103,14 @@ class HermesBridgeClient:
             payload = response.json()
             if not isinstance(payload, dict):
                 raise HermesBridgeError("Hermes bridge returned an invalid health payload")
-            if payload.get("status") != "ok" or payload.get("hermes_api") is False:
-                raise HermesBridgeError("Hermes bridge is running but its agent API is unavailable")
+            if payload.get("status") != "ok" or payload.get("agent_api", payload.get("hermes_api")) is False:
+                failing = [
+                    f"{item.get('label') or item.get('name')}: {item.get('error') or 'unavailable'}"
+                    for item in payload.get("agent_backends", [])
+                    if isinstance(item, dict) and item.get("ok") is not True
+                ]
+                detail = "; ".join(failing) or "its agent API is unavailable"
+                raise HermesBridgeError(f"The bridge is running but {detail}")
             return payload
         except Exception as exc:
             raise HermesBridgeError(f"Hermes bridge is unavailable: {exc}") from exc

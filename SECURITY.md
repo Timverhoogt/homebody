@@ -11,7 +11,7 @@ Include the affected version, deployment topology, reproduction steps, exposed p
 Three credential classes must remain separate:
 
 1. **`API_SERVER_KEY`** authenticates Reachy to the companion bridge and Hermes API Server. It can provide access to a tool-capable agent and must be treated as an administrative credential.
-2. **Provider credentials**, such as `OPENAI_API_KEY` and `ELEVENLABS_API_KEY`, stay on the Hermes host. They must never be copied into Reachy's configuration.
+2. **Provider credentials**, such as `OPENAI_API_KEY` and `ELEVENLABS_API_KEY`, stay on the Hermes host. They must never be copied into Reachy's configuration. The same applies to an **OpenClaw Gateway token**, which is an owner/operator credential. It stays in the bridge's environment, and the bridge only routes Reachy to allowlisted, tool-restricted OpenClaw agents (never `main` unless the operator explicitly opts in). It does not forward `x-openclaw-*` override headers or client tools.
 3. **Reachy host privileges** control app lifecycle and Pi shutdown. The settings service must not be exposed to untrusted clients.
 
 The Reachy configuration contains the bridge bearer token and is written with mode `0600`. The Hermes `.env` containing provider credentials should also use mode `0600`.

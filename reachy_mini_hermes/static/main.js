@@ -685,6 +685,7 @@ function updateStatus(payload) {
 
 function modelLabel(model) {
   if (model.id === "hermes-agent") return "Hermes default model";
+  if (/^openclaw[/:]/i.test(model.id)) return `OpenClaw agent · ${model.id.replace(/^openclaw[/:]/i, "")}`;
   const root = model.root && model.root !== model.id ? model.root : model.id;
   return `${root} — ${model.id}`;
 }
@@ -703,14 +704,23 @@ async function loadModels() {
       option.textContent = modelLabel(model);
       select.appendChild(option);
     });
-    if (![...select.options].some((option) => option.value === selected)) {
+    const offered = [...select.options].some((option) => option.value === selected);
+    if (!offered && select.options.length) {
+      // e.g. an OpenClaw-only bridge: offer its agent instead of a Hermes route it does not have.
+      select.value = select.options[0].value;
+      $("model-help").textContent = `The bridge does not offer ${selected}. Save settings to use ${select.options[0].textContent}.`;
+    } else if (!offered) {
       const option = document.createElement("option");
       option.value = selected;
       option.textContent = `${selected} — unavailable route`;
       select.appendChild(option);
+      select.value = selected;
+    } else {
+      select.value = selected;
     }
-    select.value = selected;
     const health = body.health || {};
+    const backends = (health.agent_backends || []).map((item) => item.label).filter(Boolean);
+    if (backends.length && offered) $("model-help").textContent = `Agents connected through the bridge: ${backends.join(" and ")}.`;
     const tts = health.tts_provider || "configured Hermes provider";
     const stt = health.stt_provider || "configured Hermes provider";
     $("voice-provider").textContent = `Speech voice: ${tts} TTS · Recognition: ${stt} STT. These are independent from the agent model.`;
@@ -1303,7 +1313,8 @@ $("test-button").addEventListener("click", async () => {
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
-    setMessage(`Connected: ${body.health.status || "ok"}`, "ok");
+    const agents = (body.health.agent_backends || []).map((item) => item.label).filter(Boolean);
+    setMessage(`Connected: ${body.health.status || "ok"}${agents.length ? ` · ${agents.join(" and ")}` : ""}`, "ok");
   } catch (error) {
     setMessage(String(error), "error");
   } finally {

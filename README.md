@@ -36,7 +36,7 @@ An extensible, all-in-one companion and control app for Reachy Mini: local wake 
 1. **Bring supported hardware.** Use Reachy Mini Wireless, or a Lite driven by a PC, Mac, Raspberry Pi or NVIDIA Jetson. The app detects which one and shows only the features that host can drive. Tim's self-built Lite + Pi 4 is the reference setup and a community adaptation, not an official Wireless conversion. See [hardware setups](docs/hardware-setups.md) for what each setup supports.
 2. **Start locally and safely.** The browser UI exposes Standby, Awake, Meeting and Sleep; guarded wake/fold; bounded movement; Stop; announcements; and opt-in camera controls. Meeting and Sleep stop microphone capture and wake detection. Camera sharing is off by default.
 3. **Try the short demo.** With clear space around Reachy, open the Dashboard, confirm folded Standby and released torque, wake from the Robot tab, try one bounded look, press Stop, return to Standby, and confirm fold-before-torque-off. Only then enable one camera or voice path at a time.
-4. **Add Hermes when wanted.** A private authenticated bridge enables speech, provider routing, personal memory, skills and progressively gated tools while keeping provider credentials on the Hermes host.
+4. **Add your agent when wanted.** A private authenticated bridge connects Reachy to Hermes Agent, to [OpenClaw](companion/README.md#use-openclaw-instead-of-or-besides-hermes), or to both. It enables speech, provider routing, personal memory, skills and progressively gated tools while keeping provider credentials on the agent host.
 5. **Treat advanced features as gated.** Kids Mode requires adult supervision. Agent Mode uses empty-by-default allowlists, reversible actions, and exact phone approval for consequential work. Bluetooth controller management needs a Linux host with Bluetooth and still needs final physical controller acceptance.
 
 ## Supported setups
@@ -197,7 +197,7 @@ Pipeline mode supports selectable STT, TTS, agent model, voice, and continued co
 
 Requirements for the connected experience:
 
-- A reachable Hermes Agent installation with the API Server enabled.
+- A reachable Hermes Agent installation with the API Server enabled, **or** an OpenClaw Gateway with its chat-completions endpoint enabled and a dedicated, tool-restricted `reachy` agent. Using OpenClaw? Follow [Use OpenClaw](companion/README.md#use-openclaw-instead-of-or-besides-hermes) instead of step 1; the rest is the same.
 - Pipeline mode: configured STT and TTS providers.
 - Realtime mode: an OpenAI API project key with access to `gpt-realtime-2.1`.
 - Kids Mode: OpenAI moderation/chat access plus an `ELEVENLABS_API_KEY` for fixed-policy Flash v2.5 streaming TTS.
