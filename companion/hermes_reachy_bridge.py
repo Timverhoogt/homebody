@@ -170,8 +170,43 @@ _ISPY_COLOUR_COPY = {
     },
 }
 _REACHY_PROHIBITED_TOOLS = frozenset(
-    {"terminal", "process", "execute_code", "read_file", "write_file", "search_files", "patch"}
+    {
+        "terminal",
+        "process",
+        "execute_code",
+        "read_file",
+        "write_file",
+        "search_files",
+        "patch",
+        # Indirect routes to the same power: sub-agents and scheduled jobs can request any toolset,
+        # skills written now run later in the owner's full agent, and raw browser/desktop control.
+        "delegate_task",
+        "cronjob",
+        "skill_manage",
+        "computer_use",
+        "browser_cdp",
+        "browser_console",
+    }
 )
+_TOOL_BOUNDARY_HINT = (
+    "disable them for the api_server platform of the Hermes profile Reachy uses, "
+    "e.g. `hermes -p reachy tools disable --platform api_server terminal file code_execution`"
+)
+
+
+def _enabled_hermes_tools(payload: object) -> set[str] | None:
+    """Enabled tool names from ``/v1/toolsets``: a bare list, or ``{"data": [...]}`` since Hermes 0.19."""
+    if isinstance(payload, dict):
+        payload = payload.get("data")
+    if not isinstance(payload, list):
+        return None
+    return {
+        str(tool)
+        for toolset in payload
+        if isinstance(toolset, dict) and toolset.get("enabled") is True
+        for tool in toolset.get("tools", [])
+        if isinstance(tool, str)
+    }
 _PRIVATE_INTENT_PATTERNS = {
     "get_home_status": re.compile(
         r"(?i)\b(home(?: assistant)?|smart[- ]?home|sensor|device|entity|temperature|humidity|"
@@ -1059,7 +1094,15 @@ class Bridge:
                 hermes_ok = False
         backends: list[dict[str, object]] = []
         if self.hermes_enabled:
-            backends.append({"name": "hermes", "label": "Hermes Agent", "ok": hermes_ok})
+            hermes_entry: dict[str, object] = {"name": "hermes", "label": "Hermes Agent", "ok": hermes_ok}
+            if hermes_ok:
+                # A reachable Hermes that exposes broad tools would refuse every Reachy turn; say so here.
+                boundary_status, boundary_reason = await self._tool_boundary_problem()
+                if boundary_status:
+                    hermes_entry.update(ok=False, error=boundary_reason)
+            else:
+                hermes_entry["error"] = f"Hermes API server is not reachable at {self.hermes_url}"
+            backends.append(hermes_entry)
         if self.openclaw is not None:
             openclaw_health = (
                 await self.openclaw.health(self.http)
@@ -1180,31 +1223,34 @@ class Bridge:
             )
         return web.json_response(options)
 
-    async def _require_reachy_tool_boundary(self) -> None:
-        """Fail closed unless this Hermes API profile excludes broad host authority."""
+    async def _tool_boundary_problem(self) -> tuple[int, str]:
+        """``(0, "")`` when the Hermes API profile excludes broad host tools, else an HTTP status and reason."""
         if self.http is None:
-            raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
+            return 503, "Bridge HTTP client is not ready"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
             async with self.http.get(f"{self.hermes_url}/v1/toolsets", headers=headers) as response:
                 if response.status != 200:
                     raise RuntimeError("capability discovery failed")
                 payload = await response.json(content_type=None)
-        except web.HTTPException:
-            raise
-        except Exception as exc:
-            raise web.HTTPServiceUnavailable(text="Reachy capability boundary is unavailable") from exc
-        if not isinstance(payload, list):
-            raise web.HTTPServiceUnavailable(text="Reachy capability boundary is unavailable")
-        enabled_tools = {
-            str(tool)
-            for toolset in payload
-            if isinstance(toolset, dict) and toolset.get("enabled") is True
-            for tool in toolset.get("tools", [])
-            if isinstance(tool, str)
-        }
-        if enabled_tools & _REACHY_PROHIBITED_TOOLS:
+        except Exception:
+            return 503, "Reachy capability boundary is unavailable"
+        enabled_tools = _enabled_hermes_tools(payload)
+        if enabled_tools is None:
+            return 503, "Reachy capability boundary is unavailable"
+        broad = sorted(enabled_tools & _REACHY_PROHIBITED_TOOLS)
+        if broad:
+            return 403, f"Hermes exposes broad host tools to Reachy ({', '.join(broad)}); {_TOOL_BOUNDARY_HINT}"
+        return 0, ""
+
+    async def _require_reachy_tool_boundary(self) -> None:
+        """Fail closed unless this Hermes API profile excludes broad host authority."""
+        status, reason = await self._tool_boundary_problem()
+        if status == 403:
+            _LOGGER.warning("Blocked a Reachy request: %s", reason)
             raise web.HTTPForbidden(text="Reachy requests are blocked from broad host capabilities")
+        if status:
+            raise web.HTTPServiceUnavailable(text=reason)
 
     async def chat(self, request: web.Request) -> web.Response:
         self.require_auth(request)

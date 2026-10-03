@@ -12,6 +12,7 @@
     <a class="brand" href="#top" aria-label="Homebody home"><span class="brand-mark">H</span><span>Homebody</span></a>
     <nav aria-label="Primary navigation">
       <a href="#expect">Start here</a>
+      <a href="#agent-setup">Agent setup</a>
       <a href="#capabilities">Capabilities</a>
       <a href="#architecture">Architecture</a>
       <a class="nav-cta" href="https://github.com/Timverhoogt/homebody" target="_blank" rel="noopener noreferrer" aria-label="View source on GitHub (opens in a new tab)">GitHub ↗</a>
@@ -23,7 +24,7 @@
       <div class="hero-copy">
         <p class="eyebrow">AN ALWAYS-ON HOME COMPANION FOR REACHY MINI</p>
         <h1>Always home.<br /><em>Your agent.</em></h1>
-        <p class="lede">Homebody gives Reachy Mini a home in your office or living room. It looks after power, safety and privacy all day, plays supervised games with your kids, and connects to the agent you already trust: Hermes Agent, OpenClaw or more to come. It also welcomes the games, stories and skills the community builds.</p>
+        <p class="lede">Homebody gives Reachy Mini a home in your office or living room. It looks after power, safety and privacy all day, plays supervised games with your kids, and connects to the agent you already trust: Hermes Agent, OpenClaw or more to come. Paste one message to your agent and it connects itself. It also welcomes the games, stories and skills the community builds.</p>
         <div class="hero-actions">
           <a class="button primary" href="https://github.com/Timverhoogt/homebody" target="_blank" rel="noopener noreferrer" aria-label="View source on GitHub (opens in a new tab)">View source on GitHub ↗</a>
           <a class="button secondary" href="https://github.com/Timverhoogt/homebody/blob/main/docs/lite-raspberry-pi-4.md" target="_blank" rel="noopener noreferrer" aria-label="Read the Lite plus Raspberry Pi 4 setup guide (opens in a new tab)">Read the Pi setup guide ↗</a>
@@ -31,6 +32,7 @@
         <div class="proof" aria-label="Project facts">
           <span><strong>Early alpha</strong> reference-tested</span>
           <span><strong>Privacy you can see</strong> local first</span>
+          <span><strong>One message</strong> your agent sets itself up</span>
           <span><strong>Apache-2.0</strong> open source</span>
         </div>
       </div>
@@ -59,6 +61,35 @@
       </article>
     </section>
 
+    <section class="agent-setup section" id="agent-setup">
+      <div class="section-heading">
+        <p class="eyebrow">AGENT-LED SETUP</p>
+        <h2>One message.<br />Connected.</h2>
+        <p>Connecting a robot to an agent usually means installing a bridge, creating keys, restricting tools and typing addresses into two places. Hermes Agent and OpenClaw can already work on their own computer, so Homebody hands them a guide and a one-time code. You approve their plan; they do the rest.</p>
+      </div>
+      <div class="mode-strip agent-steps">
+        <article>
+          <p class="number">01 / IN SETTINGS</p>
+          <h2>Create a message</h2>
+          <p>Choose Hermes Agent or OpenClaw under Connect your agent. Homebody writes a short message with a one-time code that lasts 30 minutes. Optionally, it also lets your agent use Reachy as a tool.</p>
+        </article>
+        <article>
+          <p class="number">02 / TO YOUR AGENT</p>
+          <h2>Paste it, approve the plan</h2>
+          <p>The agent follows a guide served by the robot itself and downloads the bridge with checksums. It creates a separate, tool-restricted Reachy profile, so voices in the room never reach its terminal or files, and then pairs.</p>
+        </article>
+        <article>
+          <p class="number">03 / TESTED, THEN SAVED</p>
+          <h2>Say &ldquo;Hey Homebody&rdquo;</h2>
+          <p>Reachy saves nothing until it has reached the bridge with the agent's key and checked that the agent behind it is ready and restricted. If something is off, the agent is told exactly what to fix.</p>
+        </article>
+      </div>
+      <figure class="visual-card agent-setup-shot">
+        <img src="docs/assets/ui-agent-setup.webp" width="1120" height="623" alt="Homebody's Connect your agent card showing a one-time setup message for Hermes Agent and a waiting status." loading="lazy" />
+        <figcaption><strong>One message, one-time code.</strong> Real Homebody UI with an example message: the stock reachy-mini.local name and a made-up code. Tested with an agent following only this message, against fresh Hermes Agent 0.19 and OpenClaw 2026.9.8 installs. <a href="https://github.com/Timverhoogt/homebody/blob/main/docs/agent-setup.md" target="_blank" rel="noopener noreferrer" aria-label="Read how agent-led setup works (opens in a new tab)">How it works and why it is safe ↗</a></figcaption>
+      </figure>
+    </section>
+
     <section class="capability-matrix section" id="capabilities">
       <div class="section-heading">
         <p class="eyebrow">VERIFIED VS GATED</p>
@@ -71,6 +102,7 @@
           <tbody>
             <tr><th>Local dashboard, privacy and guarded movement</th><td>✅</td><td>✅</td><td>Optional</td><td>Physical acceptance still required</td></tr>
             <tr><th>Local live camera</th><td>✅</td><td>✅</td><td>Optional</td><td>Explicit opt-in; trusted UI only</td></tr>
+            <tr><th>Agent-led setup (Hermes Agent, OpenClaw)</th><td>◐</td><td>◐</td><td>◐</td><td>One-time code from Settings; Reachy saves only a tested connection</td></tr>
             <tr><th>Voice, announcements and one-frame model vision</th><td>—</td><td>—</td><td>◐</td><td>Private bridge + configured providers</td></tr>
             <tr><th>Supervised Kids Mode and personal agent tools</th><td>—</td><td>—</td><td>◐</td><td>Adult supervision; progressively gated</td></tr>
             <tr><th>Local vision model (Jetson, GPU PC, Mac)</th><td>🧪</td><td>Via LAN server</td><td>Optional</td><td>Frames stay on your network; only text reaches the model</td></tr>
@@ -168,13 +200,14 @@
 <span>$</span> uv build --wheel
 <span>$</span> uv pip install --reinstall dist/reachy_mini_homebody-*.whl
 
-<span class="terminal-comment"># Then open Reachy’s app settings and say any local wake phrase:</span>
+<span class="terminal-comment"># Then open Reachy’s app settings → Connect your agent,</span>
+<span class="terminal-comment"># send the message to Hermes or OpenClaw, and say:</span>
 <span class="terminal-accent">“Hey Homebody” · “Hey Hermes” · “Okay Nabu” · “Hey Reachy”</span></pre>
     </section>
   </main>
 
   <footer>
-    <div><strong>Homebody</strong><span>An always-on home companion for Reachy Mini. Bring your own agent: Hermes, OpenClaw or more.</span></div>
+    <div><strong>Homebody</strong><span>An always-on home companion for Reachy Mini. Bring your own agent: Hermes, OpenClaw or more. It sets itself up.</span></div>
     <nav aria-label="Footer navigation">
       <a href="https://github.com/Timverhoogt/homebody" target="_blank" rel="noopener noreferrer" aria-label="View source on GitHub (opens in a new tab)">GitHub ↗</a>
       <a href="https://github.com/NousResearch/hermes-agent" target="_blank" rel="noopener noreferrer" aria-label="Open Hermes Agent on GitHub (opens in a new tab)">Hermes Agent ↗</a>

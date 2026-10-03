@@ -20,6 +20,8 @@ There is no raw motor or joint control, no image download, no microphone access,
 1. Open Homebody → **Settings → Agent access (MCP)**.
 2. Turn on **Allow agent access** and save settings.
 3. Optionally turn on **Let agents ask what Reachy sees**. This needs the local vision model and On-demand camera; see [hardware setups](hardware-setups.md).
+Quicker with Hermes Agent or OpenClaw: tick **Also let my agent use Reachy** under Settings → **Connect your agent** ([agent-led setup](agent-setup.md)). The agent then turns agent access on, receives its own token while pairing and adds Homebody to its MCP configuration itself. Otherwise:
+
 4. Press **Create new token**. If a bridge API key is set, enter it in *Current API key* first. Copy the token: it is shown once and only a hash is stored. **Revoke token** cuts every agent off.
 
 The endpoint is `http://<reachy-address>:8042/mcp`, shown in the same section.

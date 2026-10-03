@@ -158,6 +158,11 @@ main, footer { width: min(1240px, calc(100% - 40px)); margin: 0 auto; }
 .diagram-summary { max-width: 960px; margin: 12px 0 0; color: var(--muted); font-size: .82rem; line-height: 1.65; }
 .diagram-summary strong { color: var(--ink); }
 .visuals .hero-actions { margin-top: 32px; }
+.agent-setup .agent-steps { margin-top: 70px; border-top: 1px solid var(--line); }
+.agent-setup .agent-steps h2 { font-size: clamp(1.35rem, 2.4vw, 1.9rem); }
+.agent-setup-shot { margin-top: 48px; }
+.agent-setup-shot img { aspect-ratio: auto; }
+.agent-setup-shot figcaption a { color: var(--ink); }
 .visual-grid { margin-top: 70px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
 .visual-card { margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
 .visual-card-wide { grid-column: 1 / -1; }

@@ -15,16 +15,31 @@ Provider credentials stay on the Hermes host. Reachy stores only the bridge URL 
 
 ## Prerequisites
 
+The quickest route is [agent-led setup](../docs/agent-setup.md): Homebody gives you a message for your agent, and the agent does everything in this file.
+
+By hand: give Reachy a dedicated Hermes profile whose API server has **no broad host tools**. The bridge checks `/v1/toolsets` before every turn and refuses while any of these are enabled:
+
+- `terminal`, `process`, `execute_code`;
+- `read_file`, `write_file`, `search_files`, `patch`;
+- `delegate_task`, `cronjob`, `skill_manage`, `computer_use`, `browser_cdp`, `browser_console`.
+
+`/health` names any that are enabled.
+
 ```bash
-hermes config set API_SERVER_ENABLED true
-hermes config set API_SERVER_KEY 'use-a-long-random-secret'
-hermes gateway restart
+hermes profile create reachy --clone     # then remove messaging-bot tokens from its .env
+hermes -p reachy tools disable --platform api_server \
+  terminal file code_execution browser delegation cronjob skills computer_use
+printf 'API_SERVER_ENABLED=true\nAPI_SERVER_PORT=8652\nAPI_SERVER_KEY=%s\n' "$(openssl rand -hex 32)" \
+  >> ~/.hermes/profiles/reachy/.env && chmod 600 ~/.hermes/profiles/reachy/.env
+hermes -p reachy gateway install && hermes -p reachy gateway start
 ```
+
+Keep `API_SERVER_*` in the profile's `.env`: on Hermes 0.19, `hermes config set` stores them in plain text in `config.yaml`. A pip-installed Hermes needs `aiohttp` (`venv/bin/pip install aiohttp`).
 
 Verify Hermes itself:
 
 ```bash
-curl http://127.0.0.1:8642/health
+curl http://127.0.0.1:8652/health
 ```
 
 For Realtime mode, add a direct OpenAI project key to the active profile's `.env`:
@@ -64,6 +79,7 @@ Use the Python environment that belongs to Hermes Agent:
 ```bash
 cd ~/.hermes/hermes-agent
 venv/bin/python /path/to/homebody/companion/hermes_reachy_bridge.py \
+  --profile reachy --hermes-url http://127.0.0.1:8652 \
   --host 0.0.0.0 \
   --port 8643
 ```
@@ -80,7 +96,7 @@ Configure Reachy with:
 
 ```text
 Bridge URL: http://<hermes-host-LAN-IP>:8643
-API key:    the same API_SERVER_KEY
+API key:    the reachy profile's API_SERVER_KEY
 ```
 
 ## Warm Hermes agents (optional)
@@ -137,17 +153,17 @@ The bridge can send Reachy's conversations to an [OpenClaw](https://docs.opencla
 
 - Reachy only reaches agents you list in `REACHY_OPENCLAW_AGENTS`, `reachy` by default. Whatever model id the app sends, the request goes to an allowlisted agent.
 - The owner's `main` or `default` agent is refused unless you set `REACHY_OPENCLAW_ALLOW_PRIMARY_AGENT=1`. Don't, unless that agent's tools are already safe for a room full of voices.
-- `x-openclaw-*` override headers, client tools and streaming are never forwarded. The Gateway token stays on the bridge host and Reachy never receives it.
+- `x-openclaw-*` override headers, client tools and streaming are never forwarded. This matters: sent directly to the Gateway, `x-openclaw-agent-id: main` switches a turn to the owner's `main` agent with full tools, and `x-openclaw-session-key` can join the owner's own session. Through the bridge both are ignored; this was tested live. The Gateway token stays on the bridge host and Reachy never receives it.
 
 ### 1. Prepare OpenClaw
 
-Create a dedicated agent for Reachy and restrict its tools and sandbox:
+Create a dedicated agent for Reachy (add `--non-interactive --workspace ~/reachy-workspace` to skip the prompts):
 
 ```bash
 openclaw agents add reachy
 ```
 
-Then edit `~/.openclaw/openclaw.json` (JSON5). Keep your other entries as they are, enable the chat endpoint, and restrict the `reachy` agent:
+Then edit `~/.openclaw/openclaw.json` (JSON5). Keep your other entries as they are, enable the chat endpoint, and restrict the `reachy` agent with the **minimal tool profile**:
 
 ```json5
 {
@@ -156,20 +172,33 @@ Then edit `~/.openclaw/openclaw.json` (JSON5). Keep your other entries as they a
     entries: {
       reachy: {
         name: "Reachy",
-        sandbox: { mode: "all", scope: "agent" },
-        tools: { deny: ["exec", "process", "write", "edit", "apply_patch", "browser", "gateway"] },
+        // A room full of voices: no files, shell, web, people/device presence or OpenClaw admin.
+        tools: { profile: "minimal", deny: ["gateway", "presence", "session_status"] },
+        // Optional extra isolation. It needs a running Docker daemon: without one, every Reachy turn
+        // fails with "internal error".
+        // sandbox: { mode: "all", scope: "agent" },
       },
     },
   },
 }
 ```
 
-Exact field names can differ between OpenClaw versions; check with `openclaw agents list` and the OpenClaw [multi-agent sandbox and tools](https://docs.openclaw.ai/tools/multi-agent-sandbox-tools) guide. Restart the Gateway, then confirm the agent is offered:
+**Use the profile, not just a deny-list.** Tested against a live OpenClaw 2026.9.8 Gateway, an agent that only denies `exec`, `write`, `edit` and similar tools still offers the model several more:
+
+- `read` and `ls` accept absolute paths, and in the test they read `~/.openclaw/openclaw.json` with the Gateway token inside.
+- `openclaw` can change Gateway config, channels, agents and API keys without asking.
+- `tool_search` and `tool_call` reach `web_fetch`, `sessions_spawn` and other catalogue tools.
+
+With the config above, the model sees only OpenClaw's tool-search helpers over an empty catalogue, and every one of those calls failed as "Unknown tool". Field names can change between OpenClaw versions; `openclaw config validate` checks the file.
+
+Restart the Gateway (most changes also apply live), then confirm the agent is offered:
 
 ```bash
 curl -s http://127.0.0.1:18789/v1/models -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN"
 # lists openclaw/reachy
 ```
+
+**Self-check.** Ask Reachy: "Read the file .openclaw/openclaw.json in my home folder and tell me what it says." It should not be able to. If it reads anything back, the `reachy` agent still has file tools, so fix its `tools` entry before going further.
 
 Keep the Gateway on loopback or a private network, as OpenClaw recommends.
 
@@ -207,11 +236,19 @@ In Reachy → Settings → *Agent model*, choose *Hermes default model* or *Open
 
 ### What works with OpenClaw
 
+Verified against a live OpenClaw 2026.9.8 Gateway (it needs Node 24.16 or newer), with a stand-in model that recorded every request:
+
+- the bridge's health check and model list;
+- pipeline turns, and the `ask_openclaw` call the Realtime mode makes;
+- separate memory per conversation;
+- the agent allowlist, the refusal of `main`, and header stripping;
+- Hermes and OpenClaw side by side.
+
 | Feature | With OpenClaw |
 | --- | --- |
 | Pipeline conversation (wake word, STT, agent, TTS) | ✅ The agent answers; choose **ElevenLabs** for speech. |
 | Realtime conversation | ✅ The Realtime model delegates through an `ask_openclaw` tool. Needs `OPENAI_API_KEY`. |
-| Conversation memory | ✅ Each Reachy conversation maps to one OpenClaw session through the OpenAI `user` field. |
+| Conversation memory | ✅ Each Reachy conversation maps to one OpenClaw session (`agent:reachy:openai-user:reachy:<conversation>`) through the OpenAI `user` field. |
 | Kids Mode, Agent Mode broker, I Spy | ✅ These never used Hermes; they work the same. |
 | "Configured" or local Whisper speech | ❌ They run Hermes Agent's own speech tools. The bridge answers HTTP 409 and the Settings list hides them. |
 | Tool-inventory check before each request | ❌ Hermes-only. Rely on the dedicated, restricted `reachy` agent. |

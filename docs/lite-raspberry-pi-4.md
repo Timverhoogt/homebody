@@ -149,7 +149,7 @@ Keep the settings UI on the trusted network. Its default app port is `8042`.
 
 ### Optional Hermes connection
 
-Hermes is not needed to understand the local control/privacy surface, but the current voice, Realtime, Kids speech and advanced agent paths use the private companion bridge on a separate Hermes host. Follow the repository [README](../README.md#add-hermes-for-voice-memory-and-tools) and [companion guide](../companion/README.md). Provider credentials stay on that host; Reachy stores only the bridge URL and bearer token.
+Hermes is not needed to understand the local control/privacy surface, but the current voice, Realtime, Kids speech and advanced agent paths use the private companion bridge on a separate Hermes host. The easiest way is to let your agent connect itself: in Settings → **Connect your agent**, create a message and send it to Hermes Agent or OpenClaw on the agent computer ([how it works](agent-setup.md)). To do it by hand, follow the repository [README](../README.md#add-hermes-for-voice-memory-and-tools) and [companion guide](../companion/README.md). Provider credentials stay on that host; Reachy stores only the bridge URL and bearer token.
 
 ## Acceptance sequence
 

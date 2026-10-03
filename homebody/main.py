@@ -13,12 +13,22 @@ from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 from reachy_mini import ReachyMini, ReachyMiniApp
 from starlette.concurrency import run_in_threadpool
 
 from .agent_audit import AgentAuditLog
+from .agent_setup import (
+    AgentSetup,
+    SetupError,
+    bridge_file,
+    bridge_manifest,
+    probe_bridge,
+    render_guide,
+    robot_url,
+    setup_message,
+)
 from .bluetooth import BluetoothGamepadService
 from .config import AppConfig, config_transaction, default_config_path, load_config, merge_config, save_config
 from .contextual_offers import ContextualOffer
@@ -245,6 +255,17 @@ class GamepadEnabledRequest(BaseModel):
     enabled: bool
 
 
+class AgentSetupStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    backend: Literal["hermes", "openclaw"]
+    mcp: StrictBool = False
+    current_api_key: str = Field(default="", max_length=4096)
+
+
+_AGENT_SETUP_MAX_BODY_BYTES = 16 * 1024
+
+
 class McpTokenRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -375,6 +396,7 @@ class Homebody(ReachyMiniApp):
         self._gpio_buttons = GpioButtonService(self._handle_button_event)
         self._gpio_config_lock = threading.Lock()
         self._mcp = McpServer(lambda: self._runtime)
+        self._agent_setup = AgentSetup()
         self._oauth = OAuthServer(default_config_path().with_name("mcp-oauth.json"))
         self._agent_listener = PublicAgentListener(self._build_public_app)
         self._register_settings_routes()
@@ -1103,6 +1125,103 @@ class Homebody(ReachyMiniApp):
                 raise HTTPException(status_code=403, detail="Enter the current API key to manage agent access")
             return current
 
+        # -- agent-led setup: the owner's agent connects itself (see agent_setup.py) -------------------
+
+        @self.settings_app.post("/api/agent-setup/start")
+        def agent_setup_start(request: AgentSetupStartRequest, http_request: Request) -> dict[str, object]:
+            """Create a one-time setup code and the message the owner pastes to their agent."""
+            _require_owner(request.current_api_key)
+            code = self._agent_setup.start(request.backend, mcp=request.mcp)
+            base = robot_url(http_request.headers.get("host", ""), http_request.url.scheme)
+            return {
+                "ok": True,
+                "code": code,
+                "message": setup_message(request.backend, base, code, mcp=request.mcp),
+                "guide_url": f"{base}/agent-setup/{request.backend}.md",
+                **self._agent_setup.status(),
+            }
+
+        @self.settings_app.post("/api/agent-setup/cancel")
+        def agent_setup_cancel(request: McpTokenRequest) -> dict[str, object]:
+            _require_owner(request.current_api_key)
+            self._agent_setup.cancel()
+            return {"ok": True, **self._agent_setup.status()}
+
+        @self.settings_app.get("/api/agent-setup/status")
+        def agent_setup_status() -> dict[str, object]:
+            return self._agent_setup.status()
+
+        @self.settings_app.get("/agent-setup/{backend}.md", include_in_schema=False)
+        def agent_setup_guide(backend: str, request: Request) -> PlainTextResponse:
+            try:
+                guide = render_guide(backend, robot_url(request.headers.get("host", ""), request.url.scheme))
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail="Unknown agent") from exc
+            return PlainTextResponse(
+                guide, media_type="text/markdown; charset=utf-8", headers={"Cache-Control": "no-store"}
+            )
+
+        @self.settings_app.get("/agent-setup/bridge/manifest.json", include_in_schema=False)
+        def agent_setup_bridge_manifest() -> dict[str, object]:
+            from . import __version__  # noqa: PLC0415
+
+            return {"homebody_version": __version__, "files": bridge_manifest()}
+
+        @self.settings_app.get("/agent-setup/bridge/{name}", include_in_schema=False)
+        def agent_setup_bridge_file(name: str) -> FileResponse:
+            try:
+                path = bridge_file(name)
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail="Not a bridge file") from exc
+            return FileResponse(path, media_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.post("/api/agent-setup/pair")
+        async def agent_setup_pair(request: Request) -> JSONResponse:
+            """The agent finishes setup: setup code + its bridge address and key. Saved only once verified."""
+            body = await request.body()
+            if len(body) > _AGENT_SETUP_MAX_BODY_BYTES:
+                return JSONResponse(status_code=413, content={"ok": False, "error": "Request too large"})
+            try:
+                payload = json.loads(body or b"{}")
+                if not isinstance(payload, dict):
+                    raise SetupError("Send a JSON object")
+                code, backend, bridge, key = AgentSetup.validate_pair_request(payload)
+                self._agent_setup.redeem(code, backend)
+                try:
+                    health = await run_in_threadpool(probe_bridge, bridge, key, backend)
+                except SetupError as exc:
+                    self._agent_setup.record_error(str(exc))
+                    raise
+                mcp_token = ""
+                with config_transaction():
+                    current = load_config()
+                    changes: dict[str, object] = {"bridge_url": bridge, "api_key": key}
+                    if self._agent_setup.status().get("mcp"):
+                        mcp_token = new_token()
+                        changes.update(mcp_enabled=True, mcp_token_sha256=token_digest(mcp_token))
+                    save_config(merge_config(current, changes))
+                self._agent_setup.complete(bridge, agent_name=str(payload.get("agent_name") or ""))
+            except json.JSONDecodeError:
+                return JSONResponse(status_code=400, content={"ok": False, "error": "Send a JSON object"})
+            except SetupError as exc:
+                return JSONResponse(status_code=exc.status, content={"ok": False, "error": str(exc)})
+            except (OSError, ValueError) as exc:
+                return JSONResponse(status_code=500, content={"ok": False, "error": f"Could not save: {exc}"})
+            _LOGGER.info("Agent setup paired %s at %s", backend, bridge)
+            answer: dict[str, object] = {
+                "ok": True,
+                "message": "Reachy is connected. Say 'Hey Homebody' to talk.",
+                "realtime_available": bool(health.get("realtime_available")),
+            }
+            if mcp_token:
+                base = robot_url(request.headers.get("host", ""), request.url.scheme)
+                answer["mcp"] = {
+                    "url": f"{base}/mcp",
+                    "headers": {"Authorization": f"Bearer {mcp_token}"},
+                    "note": "Shown once. Store it only in your own MCP configuration.",
+                }
+            return JSONResponse(answer, headers={"Cache-Control": "no-store"})
+
         @self.settings_app.post("/api/mcp/token")
         def mcp_create_token(request: McpTokenRequest) -> dict[str, object]:
             """Issue a new MCP token (replacing any old one). It is shown once and stored only as a hash."""
@@ -1557,8 +1676,6 @@ class Homebody(ReachyMiniApp):
     async def _answer_mcp(self, request: Request, config: AppConfig) -> Response:
         """Answer one authorized MCP JSON-RPC request; shared by the home and public listeners."""
         version = request.headers.get("mcp-protocol-version", "")
-        if version and version not in PROTOCOL_VERSIONS:
-            return JSONResponse(status_code=400, content={"detail": f"Unsupported MCP protocol version {version}"})
         body = await request.body()
         if len(body) > _MCP_MAX_BODY_BYTES:
             return JSONResponse(status_code=413, content={"detail": "MCP request is too large"})
@@ -1578,6 +1695,11 @@ class Homebody(ReachyMiniApp):
                     "error": {"code": -32600, "message": "Batches are not supported"},
                 },
             )
+        # A newer client may send its own latest version on initialize, where the version is still being
+        # negotiated in the body. Afterwards it must use the version Homebody chose.
+        initializing = isinstance(message, dict) and message.get("method") == "initialize"
+        if version and version not in PROTOCOL_VERSIONS and not initializing:
+            return JSONResponse(status_code=400, content={"detail": f"Unsupported MCP protocol version {version}"})
         answer = await run_in_threadpool(self._mcp.handle, message, config)
         if answer is None:
             return Response(status_code=202)

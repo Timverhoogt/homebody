@@ -23,7 +23,7 @@ Every setup has the same three jobs. They can live on one machine or be spread o
 | Role | Runs | Needs |
 | --- | --- | --- |
 | **Robot computer** | The Reachy daemon and this app: wake word, audio, camera, motor safety, phone UI. | USB to a Lite (or the Wireless' own CM4). Light CPU load. |
-| **Agent host** | Hermes Agent and/or OpenClaw, plus the companion bridge (`companion/`): conversation, memory, tools, speech providers. | Optional. Any always-on computer; can be the robot computer. |
+| **Agent host** | Hermes Agent and/or OpenClaw, plus the companion bridge (`companion/`): conversation, memory, tools, speech providers. | Optional. Any always-on computer; can be the robot computer. The agent can [set this up itself](agent-setup.md) from one message in Settings. |
 | **Local AI server** *(optional)* | An OpenAI-compatible vision model, e.g. Ollama. Used by the local vision features. | A GPU, an Apple Silicon Mac, or a Jetson. Can be the robot computer or another machine on your LAN. |
 
 Because the local AI server is reached over HTTP, a Raspberry Pi robot computer can use a vision model running on a Jetson or GPU PC elsewhere in the house.
@@ -49,7 +49,7 @@ Because the local AI server is reached over HTTP, a Raspberry Pi robot computer 
 | Local wake word (Hey Homebody, Hey Hermes, Okay Nabu, Hey Reachy) | ◐ | ◐ | ✅ | 🧪 | ◐ | Runs on the robot computer's CPU. |
 | Local live camera viewer and camera joystick | ◐ | ◐ | ✅ | 🧪 | ◐ | Opt-in; stays between browser and robot. |
 | Voice conversation through Hermes (Realtime or pipeline) | ◐ | ◐ | ✅ | 🧪 | ◐ | Needs the agent host and providers. |
-| Voice conversation through OpenClaw | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | Bridge-side; independent of the robot computer. Not yet run against a live Gateway. |
+| Voice conversation through OpenClaw | ◐ | ◐ | ◐ | ◐ | ◐ | Bridge-side; independent of the robot computer. Verified against a live OpenClaw 2026.9.8 Gateway; not yet spoken to on a robot. |
 | Supervised Kids Mode | ◐ | ◐ | ✅ | 🧪 | ◐ | Adult supervision always required. |
 | Home Assistant ESPHome device | ◐ | ◐ | ◐ | 🧪 | ◐ | Identity comes from `/etc/machine-id`, or the network card's hardware address on Mac and Windows. |
 | On-device hand gestures (CPU) | ◐ | ◐ | ◐ | 🧪 | ◐ | |

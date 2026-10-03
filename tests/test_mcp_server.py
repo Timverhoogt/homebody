@@ -11,6 +11,7 @@ from homebody.main import Homebody
 from homebody.mcp_server import (
     ANNOUNCEMENTS_PER_TEN_MINUTES,
     CALLS_PER_MINUTE,
+    PROTOCOL_VERSIONS,
     McpServer,
     new_token,
     token_digest,
@@ -281,7 +282,12 @@ def test_endpoint_transport_rules(monkeypatch: pytest.MonkeyPatch) -> None:
     assert foreign.status_code == 403
     same = client.post("/mcp", json=INIT, headers={**AUTH, "Origin": "http://testserver"})
     assert same.status_code == 200
-    assert client.post("/mcp", json=INIT, headers={**AUTH, "MCP-Protocol-Version": "1999-01-01"}).status_code == 400
+    # A newer client announces its own latest version while negotiating; Homebody answers with one it speaks.
+    newer = client.post("/mcp", json=INIT, headers={**AUTH, "MCP-Protocol-Version": "2025-11-25"})
+    assert newer.status_code == 200 and newer.json()["result"]["protocolVersion"] in PROTOCOL_VERSIONS
+    listing = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
+    assert client.post("/mcp", json=listing, headers={**AUTH, "MCP-Protocol-Version": "1999-01-01"}).status_code == 400
+    assert client.post("/mcp", json=listing, headers={**AUTH, "MCP-Protocol-Version": "2025-06-18"}).status_code == 200
     note = client.post("/mcp", json={"jsonrpc": "2.0", "method": "notifications/initialized"}, headers=AUTH)
     assert note.status_code == 202
     assert client.post("/mcp", json=[INIT], headers=AUTH).status_code == 400

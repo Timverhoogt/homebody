@@ -211,6 +211,116 @@ $("local-vision-test-button").addEventListener("click", async () => {
   }
 });
 
+let agentSetupTimer = null;
+
+function describeAgentSetup(status) {
+  const message = $("agent-setup-status");
+  const waiting = status.state === "waiting";
+  $("agent-setup-cancel").hidden = !waiting;
+  if (!waiting && agentSetupTimer) {
+    window.clearInterval(agentSetupTimer);
+    agentSetupTimer = null;
+  }
+  if (status.state === "waiting") {
+    const minutes = Math.max(1, Math.ceil(Number(status.expires_in || 0) / 60));
+    message.textContent = `Waiting for ${status.agent}… ${minutes} min left.` + (status.last_error ? ` Last attempt: ${status.last_error}` : "");
+    message.className = status.last_error ? "message error" : "message";
+  } else if (status.state === "paired") {
+    message.textContent = `Connected to ${status.agent_name || status.agent} at ${status.bridge_url}. Say "Hey Homebody" to talk.`;
+    message.className = "message ok";
+    $("agent-setup-message-row").hidden = true;
+    $("agent-setup-copy-row").hidden = true;
+    loaded = false;  // let the next status refresh show the new bridge settings
+  } else if (status.state === "expired" || status.state === "failed") {
+    message.textContent = status.state === "failed"
+      ? "Setup stopped after too many wrong codes. Create a new message."
+      : "The setup message expired. Create a new one.";
+    message.className = "message error";
+  } else if (status.state === "cancelled") {
+    message.textContent = "Setup cancelled.";
+    message.className = "message";
+  }
+}
+
+async function refreshAgentSetup() {
+  try {
+    const response = await fetchWithTimeout("/api/agent-setup/status", { cache: "no-store" });
+    if (response.ok) describeAgentSetup(await response.json());
+  } catch (error) {
+    // Polling is best effort; the next tick tries again.
+  }
+}
+
+function watchAgentSetup() {
+  if (agentSetupTimer) window.clearInterval(agentSetupTimer);
+  agentSetupTimer = window.setInterval(refreshAgentSetup, 3000);
+}
+
+$("agent-setup-button").addEventListener("click", async () => {
+  const button = $("agent-setup-button");
+  const message = $("agent-setup-status");
+  button.disabled = true;
+  message.textContent = "Creating a setup message…";
+  message.className = "message";
+  try {
+    const response = await fetchWithTimeout("/api/agent-setup/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        backend: $("agent-setup-backend").value,
+        mcp: $("agent-setup-mcp").checked,
+        current_api_key: $("current_api_key").value.trim(),
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    $("agent-setup-message").value = body.message;
+    $("agent-setup-message-row").hidden = false;
+    $("agent-setup-copy-row").hidden = false;
+    describeAgentSetup(body);
+    watchAgentSetup();
+  } catch (error) {
+    message.textContent = String(error.message || error);
+    message.className = "message error";
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("agent-setup-copy").addEventListener("click", async () => {
+  const text = $("agent-setup-message").value;
+  try {
+    await navigator.clipboard.writeText(text);
+    $("agent-setup-copy").textContent = "Copied";
+  } catch (error) {
+    $("agent-setup-message").select();  // plain-HTTP pages may not allow the clipboard API
+    $("agent-setup-copy").textContent = "Selected — press Ctrl+C";
+  }
+  window.setTimeout(() => { $("agent-setup-copy").textContent = "Copy message"; }, 2500);
+});
+
+$("agent-setup-cancel").addEventListener("click", async () => {
+  try {
+    const response = await fetchWithTimeout("/api/agent-setup/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_api_key: $("current_api_key").value.trim() }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    $("agent-setup-message-row").hidden = true;
+    $("agent-setup-copy-row").hidden = true;
+    describeAgentSetup(body);
+  } catch (error) {
+    $("agent-setup-status").textContent = String(error.message || error);
+    $("agent-setup-status").className = "message error";
+  }
+});
+
+refreshAgentSetup().then(() => {
+  if (!$("agent-setup-cancel").hidden) watchAgentSetup();
+});
+
 $("mcp-endpoint").value = `${window.location.origin}/mcp`;
 
 async function refreshMcpStatus() {

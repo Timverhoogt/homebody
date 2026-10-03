@@ -581,7 +581,7 @@ def test_agent_05_trusted_ui_exposes_preview_budget_progress_and_control() -> No
     assert "/api/agent/run/status" in script
     assert "/api/agent/run/current" in script
     assert "Approve this exact step once?" in script
-    assert "homebody-shell-v57" in worker
+    assert "homebody-shell-v58" in worker
 
 
 def test_settings_require_current_key_to_change_bridge_credentials(monkeypatch) -> None:

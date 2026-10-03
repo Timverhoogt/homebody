@@ -25,7 +25,7 @@ dependencies = [
     "sherpa-onnx>=1.13.4,<2",
     "websockets>=15,<17",
 ]
-keywords = ["reachy-mini-app", "homebody", "hermes-agent", "openclaw", "voice-assistant", "robotics", "kids-mode"]
+keywords = ["reachy-mini-app", "homebody", "hermes-agent", "openclaw", "mcp", "voice-assistant", "robotics", "kids-mode"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
@@ -55,15 +55,15 @@ dev = [
 ]
 
 [tool.setuptools]
-package-dir = { "" = "." }
+# The companion bridge ships inside the app as homebody.bridge, so Reachy can hand the exact matching
+# bridge to an agent during setup. It is served as files, never imported by the app.
+package-dir = { "" = ".", "homebody.bridge" = "companion" }
 include-package-data = true
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["homebody*"]
+packages = ["homebody", "homebody.bridge"]
 
 [tool.setuptools.package-data]
-homebody = ["assets/*", "assets/gesture_models/*", "static/*"]
+homebody = ["assets/*", "assets/gesture_models/*", "static/*", "agent_guides/*.md"]
+"homebody.bridge" = ["*.py", "*.example"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

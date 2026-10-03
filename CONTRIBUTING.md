@@ -15,6 +15,7 @@ Homebody owns the body and your agent provides the brain. Hermes Agent is the re
 - Start from [`companion/agent_backends.py`](companion/agent_backends.py) and the [OpenClaw section of the bridge README](companion/README.md#use-openclaw-instead-of-or-besides-hermes). They show the pattern: authenticated bridge, credentials kept on the agent host, and refusing configurations the bridge can't check.
 - A connector should fail closed. If it can't confirm that an agent's tools are limited, it shouldn't expose them.
 - Add tests next to [`tests/test_openclaw_bridge.py`](tests/test_openclaw_bridge.py).
+- Make it [agent-led](docs/agent-setup.md) if the agent can run commands. Add a setup guide in [`homebody/agent_guides/`](homebody/agent_guides/) and its name to `BACKENDS` in [`homebody/agent_setup.py`](homebody/agent_setup.py). Follow the existing guides: ask the owner first, use a separate restricted profile, a check after every step, and pairing that the robot verifies. Then test it by giving a capable agent only the Settings message.
 
 ### Play: experiences for kids and family
 
