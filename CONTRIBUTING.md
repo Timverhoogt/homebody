@@ -4,7 +4,7 @@ Thanks for wanting to help Reachy Mini feel at home. Homebody is the always-on f
 
 You don't need to be a robotics expert. Some of the most useful contributions are a hardware report, a translation or a bug found while living with the robot.
 
-> Homebody was previously called *Reachy Mini Hermes*. The Python package is `reachy-mini-homebody` and the module is `homebody`; the GitHub repository keeps its old name for now.
+> Homebody was previously called *Reachy Mini Hermes*. The Python package is `reachy-mini-homebody` and the module is `homebody`.
 
 ## Ways to contribute
 

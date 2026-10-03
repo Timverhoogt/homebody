@@ -33,9 +33,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://huggingface.co/spaces/Timbo89/reachy_mini_hermes"
+Homepage = "https://huggingface.co/spaces/Timbo89/reachy_mini_homebody"
 Documentation = "https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server"
-Repository = "https://github.com/Timverhoogt/reachy-mini-hermes"
+Repository = "https://github.com/Timverhoogt/homebody"
 "Standalone I Spy" = "https://github.com/Timverhoogt/reachy-mini-i-spy"
 
 [project.scripts]

@@ -25,13 +25,13 @@ tags:
 
 **Homebody gives Reachy Mini a home.** It is an always-on companion for your office or living room. It connects to the agent you already trust, keeps the household safe and private, and welcomes the games, stories and skills the community builds.
 
-[**Explore the app page ↗**](https://huggingface.co/spaces/Timbo89/reachy_mini_hermes) · [**Contribute**](CONTRIBUTING.md) · [**Hardware setups**](docs/hardware-setups.md) · [**Lite + Raspberry Pi 4 guide**](docs/lite-raspberry-pi-4.md) · [**Privacy and security**](SECURITY.md) · [**Operations**](OPERATIONS.md)
+[**Explore the app page ↗**](https://huggingface.co/spaces/Timbo89/reachy_mini_homebody) · [**Contribute**](CONTRIBUTING.md) · [**Hardware setups**](docs/hardware-setups.md) · [**Lite + Raspberry Pi 4 guide**](docs/lite-raspberry-pi-4.md) · [**Privacy and security**](SECURITY.md) · [**Operations**](OPERATIONS.md)
 
 ![An actual Reachy Mini on a desk raising its antennas in an official Pollen Robotics demonstration](docs/assets/hero-reachy.webp)
 
 *Actual Reachy Mini. Official Pollen Robotics source, converted to a static metadata-free WebP under Apache-2.0. [Image credits and immutable sources](docs/IMAGE_CREDITS.md).*
 
-> **Status: early alpha.** Homebody was previously called *Reachy Mini Hermes*; see [upgrading from Reachy Mini Hermes](OPERATIONS.md#upgrading-from-reachy-mini-hermes). The Space URL and GitHub repository keep their old names for now. Automated, bridge, network, camera, deployment and physical power-state checks have passed on Tim's reference Reachy Mini Lite + Raspberry Pi 4 setup. This is not a production-readiness or broad hardware-compatibility claim. Every installation still needs the documented physical, spoken wake-word, acoustic barge-in, camera/privacy and safe-fold acceptance checks.
+> **Status: early alpha.** Homebody was previously called *Reachy Mini Hermes*; see [upgrading from Reachy Mini Hermes](OPERATIONS.md#upgrading-from-reachy-mini-hermes). Automated, bridge, network, camera, deployment and physical power-state checks have passed on Tim's reference Reachy Mini Lite + Raspberry Pi 4 setup. This is not a production-readiness or broad hardware-compatibility claim. Every installation still needs the documented physical, spoken wake-word, acoustic barge-in, camera/privacy and safe-fold acceptance checks.
 
 ## Why Homebody
 
@@ -280,7 +280,7 @@ Use Hermes' own Python environment so the bridge can reuse its configured provid
 
 ```bash
 cd ~/.hermes/hermes-agent
-venv/bin/python /path/to/reachy_mini_hermes/companion/hermes_reachy_bridge.py \
+venv/bin/python /path/to/homebody/companion/hermes_reachy_bridge.py \
   --host 0.0.0.0 \
   --port 8643
 ```
@@ -312,7 +312,7 @@ Read [`companion/README.md`](companion/README.md) for endpoints, profiles, servi
 Development install:
 
 ```bash
-uv pip install -e /path/to/reachy_mini_hermes
+uv pip install -e /path/to/homebody
 ```
 
 Wheel deployment:
@@ -325,7 +325,7 @@ uv pip install --reinstall --no-deps dist/reachy_mini_homebody-*.whl
 Validate the public app structure when the Reachy app assistant is available:
 
 ```bash
-reachy-mini-app-assistant check /path/to/reachy_mini_hermes
+reachy-mini-app-assistant check /path/to/homebody
 ```
 
 Start through the Reachy dashboard, or:

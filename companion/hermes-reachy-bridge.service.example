@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/.hermes/hermes-agent
-ExecStart=%h/.hermes/hermes-agent/venv/bin/python %h/reachy_mini_hermes/companion/hermes_reachy_bridge.py --host 0.0.0.0 --port 8643
+ExecStart=%h/.hermes/hermes-agent/venv/bin/python %h/homebody/companion/hermes_reachy_bridge.py --host 0.0.0.0 --port 8643
 Restart=on-failure
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1

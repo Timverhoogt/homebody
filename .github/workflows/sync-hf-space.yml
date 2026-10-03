@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_SPACE_ID: ${{ vars.HF_SPACE_ID || 'Timbo89/reachy_mini_hermes' }}
+      HF_SPACE_ID: ${{ vars.HF_SPACE_ID || 'Timbo89/reachy_mini_homebody' }}
       SYNC_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Check token
