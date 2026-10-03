@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Hosted-agent sign-in moved to its own listener (default `127.0.0.1:8043`) serving only `/mcp` (OAuth tokens only) and the OAuth endpoints. Before, these shared the dashboard port behind a `Host`-header check, and a proxy that rewrites `Host` (nginx's default `proxy_pass`, `ngrok --host-header=rewrite`, `cloudflared httpHostHeader`) exposed the dashboard API and accepted the static token through the tunnel. Point the tunnel at the new listener.
+- Open authorization requests are capped (50 in total, 5 per client, oldest evicted), so an unauthenticated flood no longer grows memory and CPU without bound.
+- Never-approved client registrations expire after an hour and are evicted when the 20 slots are full, so strangers can no longer lock the owner out of connecting an agent.
+
+### Security
+
 - `POST /api/vision/describe` (the camera card's Ask box) now requires the bridge bearer token. Before, any LAN client could ask the local vision model to describe the room.
 - `POST /api/vision/test` needs the current API key to probe an unsaved vision URL, so it can no longer be used to make Reachy fetch from arbitrary hosts. Testing the saved server is unchanged.
 - The camera snapshot and agent reminder-delivery routes stay closed when no bridge API key is configured, instead of accepting an empty bearer token.

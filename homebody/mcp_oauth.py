@@ -45,6 +45,10 @@ APPROVAL_CODE_ATTEMPTS = 5
 PENDING_SECONDS = 600
 MAX_CLIENTS = 20
 MAX_REDIRECT_URIS = 5
+# Registration and /authorize are open to the internet, so everything they store is bounded.
+MAX_PENDING = 50
+MAX_PENDING_PER_CLIENT = 5
+UNAPPROVED_CLIENT_SECONDS = 3600
 _APPROVAL_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I confusion
 _VERIFIER_RE = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
 _CHALLENGE_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
@@ -177,8 +181,7 @@ class OAuthServer:
             raise OAuthError("invalid_client_metadata", "Unsupported grant_types")
         name = " ".join(str(payload.get("client_name") or "Unnamed agent").split())[:80] or "Unnamed agent"
         with self._lock:
-            if len(self._clients) >= MAX_CLIENTS:
-                raise OAuthError("invalid_client_metadata", "Too many registered agents; disconnect some first")
+            self._make_room_for_client_unlocked()
             client_id = "hbc_" + secrets.token_urlsafe(16)
             issued = int(self._clock())
             self._clients[client_id] = {"name": name, "redirect_uris": list(uris), "created_at": issued}
@@ -231,6 +234,19 @@ class OAuthServer:
         )
         with self._lock:
             self._prune_unlocked()
+            if client_id not in self._clients:
+                raise OAuthError("invalid_client", "Unknown client_id; register first", 400)
+            # A client may hold only a few open requests, and the whole store is capped; the oldest
+            # request goes first, so a flood can delay a real connection but never fill memory.
+            own = sorted(
+                (item for item in self._pending.values() if item.client_id == client_id),
+                key=lambda item: item.expires_at,
+            )
+            for stale in own[: max(0, len(own) - MAX_PENDING_PER_CLIENT + 1)]:
+                self._pending.pop(stale.pending_id, None)
+            while len(self._pending) >= MAX_PENDING:
+                oldest = min(self._pending.values(), key=lambda item: item.expires_at)
+                self._pending.pop(oldest.pending_id, None)
             self._pending[pending.pending_id] = pending
         return pending
 
@@ -258,6 +274,10 @@ class OAuthServer:
             pending = self._pending.get(pending_id)
             if pending is None:
                 raise OAuthError("access_denied", "This request expired. Start connecting again from your agent.")
+            client = self._clients.get(pending.client_id)
+            if client is None:
+                self._pending.pop(pending_id, None)
+                raise OAuthError("access_denied", "This agent's registration expired. Connect again from your agent.")
             approval = self._approval
             if approval is None or approval["expires_at"] <= self._clock():
                 raise OAuthError("access_denied", "No valid approval code. Create one in Homebody Settings.")
@@ -268,6 +288,9 @@ class OAuthServer:
                 raise OAuthError("access_denied", "That approval code is not right.")
             self._approval = None  # single use
             self._pending.pop(pending_id, None)
+            # Approved agents are never evicted to make room for new registrations.
+            client["approved_at"] = int(self._clock())
+            self._save_unlocked()
             code = secrets.token_urlsafe(32)
             self._codes[_digest(code)] = {
                 "client_id": pending.client_id,
@@ -425,6 +448,32 @@ class OAuthServer:
             }
 
     # -- housekeeping ---------------------------------------------------------------------------
+
+    def _make_room_for_client_unlocked(self) -> None:
+        """Drop never-approved registrations so strangers cannot use up every client slot."""
+        now = self._clock()
+        granted = {grant["client_id"] for grant in self._grants.values()}
+        # A stable sort on age alone keeps registration order for agents created in the same second.
+        unapproved = sorted(
+            (
+                (client["created_at"], client_id)
+                for client_id, client in self._clients.items()
+                if not client.get("approved_at") and client_id not in granted
+            ),
+            key=lambda item: item[0],
+        )
+        for created_at, client_id in unapproved:
+            if now - created_at >= UNAPPROVED_CLIENT_SECONDS:
+                self._drop_client_unlocked(client_id)
+        unapproved = [item for item in unapproved if item[1] in self._clients]
+        while len(self._clients) >= MAX_CLIENTS and unapproved:
+            self._drop_client_unlocked(unapproved.pop(0)[1])
+        if len(self._clients) >= MAX_CLIENTS:
+            raise OAuthError("invalid_client_metadata", "Too many connected agents; disconnect some first")
+
+    def _drop_client_unlocked(self, client_id: str) -> None:
+        self._clients.pop(client_id, None)
+        self._pending = {key: value for key, value in self._pending.items() if value.client_id != client_id}
 
     def _revoke_grant_unlocked(self, grant_id: str) -> None:
         self._grants.pop(grant_id, None)

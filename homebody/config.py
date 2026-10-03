@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
@@ -111,6 +112,10 @@ class AppConfig:
     mcp_token_sha256: str = ""
     mcp_oauth_enabled: bool = False
     mcp_public_url: str = ""
+    # Hosted-agent sign-in is served on its own listener, never on the dashboard port, so a tunnel
+    # pointed here can only ever reach /mcp and the OAuth endpoints.
+    mcp_public_bind: str = "127.0.0.1"
+    mcp_public_port: int = 8043
     agent_tools_enabled: bool = True
     power_tools_enabled: bool = True
     kids_mode_enabled: bool = False
@@ -140,6 +145,7 @@ class AppConfig:
         self.camera_controls_handedness = self.camera_controls_handedness.strip().lower() or "right"
         self.local_vision_url = self.local_vision_url.strip().rstrip("/")
         self.mcp_public_url = self.mcp_public_url.strip().rstrip("/")
+        self.mcp_public_bind = str(self.mcp_public_bind).strip() or "127.0.0.1"
         self.local_vision_model = self.local_vision_model.strip()
         self.kids_session_id = self.kids_session_id.strip()
         self.kids_age_band = self.kids_age_band.strip()
@@ -232,6 +238,12 @@ class AppConfig:
             bare_origin = parsed.netloc and not parsed.query and not parsed.fragment and parsed.path in {"", "/"}
             if not bare_origin or not (https or local_http):
                 raise ValueError("mcp_public_url must be an https:// origin such as https://reachy.example.com")
+        try:
+            ipaddress.ip_address(str(self.mcp_public_bind))
+        except ValueError as exc:
+            raise ValueError("mcp_public_bind must be an IP address such as 127.0.0.1") from exc
+        if not 1024 <= int(self.mcp_public_port) <= 65535 or int(self.mcp_public_port) in {8042, 8000}:
+            raise ValueError("mcp_public_port must be 1024-65535 and not the dashboard (8042) or daemon (8000) port")
         if self.mcp_oauth_enabled and not public:
             raise ValueError("Set the public HTTPS address before turning on agent sign-in (OAuth)")
         if self.local_ai_accelerator not in {"auto", "cpu"}:

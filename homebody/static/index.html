@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=55">
+  <link rel="stylesheet" href="/static/style.css?v=56">
 </head>
 <body>
   <main>
@@ -774,8 +774,13 @@
               <label id="mcp-token-row" hidden>New token (shown once)<input id="mcp-token" type="text" readonly /><small>Copy it into your agent now. Creating a new token disconnects agents that use the old one.</small></label>
               <p id="mcp-message" class="message" role="status" aria-live="polite"></p>
               <h3>Hosted agents (ChatGPT dots, Grok Bot)</h3>
-              <p class="muted">Agents that run in their vendor's cloud sign in with OAuth and you approve each one with a one-time code. Publish only this app's agent paths (<code>/mcp</code>, <code>/oauth/</code>, <code>/.well-known/</code>) through an HTTPS tunnel; through that address the dashboard is never reachable. See <em>docs/agent-access-mcp.md</em>.</p>
+              <p class="muted">Agents that run in their vendor's cloud sign in with OAuth and you approve each one with a one-time code. They sign in on a separate listener that serves only <code>/mcp</code> and the sign-in pages, so point your HTTPS tunnel at that listener, never at this dashboard. See <em>docs/agent-access-mcp.md</em>.</p>
               <label>Public HTTPS address<input id="mcp_public_url" name="mcp_public_url" type="url" placeholder="https://reachy.example.com" autocomplete="off" maxlength="300" /><small>The tunnel's address, without a path. Changing it signs every hosted agent out.</small></label>
+              <div class="grid-two">
+                <label>Sign-in listener address<input id="mcp_public_bind" name="mcp_public_bind" type="text" placeholder="127.0.0.1" autocomplete="off" maxlength="64" /><small>Keep 127.0.0.1 when the tunnel runs on this computer; use 0.0.0.0 only if it runs elsewhere on a trusted network.</small></label>
+                <label>Sign-in listener port<input id="mcp_public_port" name="mcp_public_port" type="number" min="1024" max="65535" step="1" value="8043" /><small>Point the tunnel at this port, for example http://127.0.0.1:8043.</small></label>
+              </div>
+              <p id="mcp-listener-status" class="muted compact-note" role="status" aria-live="polite"></p>
               <label class="toggle-row"><span><strong>Let hosted agents sign in (OAuth)</strong><small>Needs agent access and the public address. Changing this needs the current API key, when one is set.</small></span><input id="mcp_oauth_enabled" name="mcp_oauth_enabled" type="checkbox" /></label>
               <div class="actions">
                 <button type="button" id="mcp-approval-button" class="secondary">Create approval code</button>
@@ -831,7 +836,7 @@
     </div>
   </main>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=55"></script>
-  <script src="/static/main.js?v=55"></script>
+  <script src="/static/camera.js?v=56"></script>
+  <script src="/static/main.js?v=56"></script>
 </body>
 </html>

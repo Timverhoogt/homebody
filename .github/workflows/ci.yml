@@ -45,6 +45,7 @@ jobs:
             pyyaml \
             "sherpa-onnx>=1.13.4,<2" \
             "websockets>=15,<17" \
+            "uvicorn>=0.30" \
             build pytest ruff
       - name: Lint
         run: .venv/bin/ruff check .
