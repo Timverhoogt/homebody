@@ -103,6 +103,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   5. Timer and reminder tasks are capped at 32, are cancelled on shutdown, and log delivery failures.
   6. JSON routes refuse bodies over 1 MiB.
   7. Upstream error details are no longer echoed to the robot.
+- Dashboard and PWA reliability fixes, in five parts:
+  1. The service worker no longer lists the same app shell twice, never caches error responses, and the page and worker shell versions are now tested to agree.
+  2. Status polling backs off to 15 seconds while Reachy is unreachable, pauses while the page is hidden, and times out after 5 seconds.
+  3. An Agent run survives a network blip.
+  4. Stop app and Shut down report failures instead of claiming success.
+  5. Kids-locked tabs can't be reached with the keyboard or the URL #hash, and countdowns no longer re-announce to screen readers every 1.5 seconds.
+  PWA shell advanced to v47.
 
 ### Build
 

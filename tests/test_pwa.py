@@ -76,8 +76,8 @@ def test_dashboard_exposes_bounded_agent_status_approval_and_stop_controls() -> 
         assert f'id="{element_id}"' in html
     assert 'fetch("/api/agent/profile"' in javascript
     assert 'fetch("/api/agent/stop"' in javascript
-    assert 'fetch("/api/agent/activity"' in javascript
-    assert 'fetch("/api/agent/pending-approval"' in javascript
+    assert 'fetchWithTimeout("/api/agent/activity"' in javascript
+    assert 'fetchWithTimeout("/api/agent/pending-approval"' in javascript
     assert 'fetch("/api/agent/approve-pending"' in javascript
     assert 'document.querySelector(".agent-card").hidden = kidsActive || kidsLocked' in javascript
 
@@ -129,4 +129,100 @@ def test_v44_ui_uses_dedicated_agent_workspace_and_contextual_offers() -> None:
     assert '"X-Reachy-Adult-UI": "unlocked"' in script
     assert 'if (!initiativeEditActive)' in script
     assert '$("initiative-badge").textContent = "Offline"' in script
-    assert 'reachy-hermes-shell-v46' in worker
+    assert 'reachy-hermes-shell-v47' in worker
+
+
+def test_shell_versions_agree_between_page_and_service_worker() -> None:
+    import re
+
+    html = (STATIC / "index.html").read_text()
+    worker = (STATIC / "service-worker.js").read_text()
+    cache_version = re.search(r'reachy-hermes-shell-v(\d+)"', worker)
+    assert cache_version is not None
+    page_versions = set(re.findall(r'/static/[\w.-]+\?v=(\d+)', html))
+    worker_versions = set(re.findall(r'/static/[\w.-]+\?v=(\d+)', worker))
+    # A deploy that bumps one place but not another serves new HTML with stale cached JS.
+    assert page_versions == worker_versions == {cache_version.group(1)}
+
+
+def test_service_worker_shell_has_no_fragment_duplicates() -> None:
+    import re
+
+    worker = (STATIC / "service-worker.js").read_text()
+    shell = re.search(r"const APP_SHELL = \[(.*?)\];", worker, re.S)
+    assert shell is not None
+    entries = re.findall(r'"([^"]+)"', shell.group(1))
+    # cache.addAll rejects requests that differ only by #fragment.
+    assert len({entry.split("#", 1)[0] for entry in entries}) == len(entries)
+
+
+def test_service_worker_never_caches_error_responses() -> None:
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        import pytest
+
+        pytest.skip("node is not installed")
+    harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const puts = [];
+const listeners = {};
+const cache = { put: (key, value) => { puts.push([String(key), value.status]); return Promise.resolve(); },
+                addAll: () => Promise.resolve() };
+const sandbox = {
+  URL,
+  console,
+  self: { location: { origin: "https://reachy.local" }, addEventListener: (name, fn) => { listeners[name] = fn; },
+          skipWaiting() {}, clients: { claim() {} } },
+  caches: { open: () => Promise.resolve(cache), match: () => Promise.resolve(undefined),
+            keys: () => Promise.resolve([]) },
+  fetch: () => Promise.resolve({ ok: false, status: 502, clone() { return this; } }),
+};
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), sandbox);
+async function dispatch(url, mode) {
+  let responded;
+  listeners.fetch({ request: { method: "GET", url, mode }, respondWith: (p) => { responded = p; } });
+  await responded;
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+(async () => {
+  await dispatch("https://reachy.local/", "navigate");
+  await dispatch("https://reachy.local/static/main.js?v=1", "no-cors");
+  process.stdout.write(JSON.stringify(puts));
+})();
+"""
+    result = subprocess.run(
+        [node, "-e", harness, str(STATIC / "service-worker.js")],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=True,
+    )
+    assert json.loads(result.stdout) == []
+
+
+def test_dashboard_polling_backs_off_pauses_and_times_out() -> None:
+    javascript = (STATIC / "main.js").read_text()
+    assert "setInterval(refreshStatus" not in javascript
+    assert 'document.addEventListener("visibilitychange"' in javascript
+    assert "Math.min(1500 * 2 ** statusPollFailures, 15000)" in javascript
+    assert "controller.abort()" in javascript
+    assert "if (agentActivityPending) return;" in javascript
+
+
+def test_kids_locked_tabs_cannot_be_reached_by_keyboard_or_history() -> None:
+    javascript = (STATIC / "main.js").read_text()
+    assert "const target = requested && !requested.hidden ? requested : visibleTabButtons()[0];" in javascript
+    assert "const visible = visibleTabButtons();" in javascript
+
+
+def test_power_actions_report_failures_and_countdowns_are_not_live_regions() -> None:
+    javascript = (STATIC / "main.js").read_text()
+    html = (STATIC / "index.html").read_text()
+    assert javascript.count("if (!response.ok) throw new Error(await responseDetail(response));") >= 2
+    assert '<section class="card kids-hero" aria-live' not in html
+    assert '<div class="presentation-status-grid" aria-live' not in html

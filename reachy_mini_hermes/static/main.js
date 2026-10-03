@@ -16,6 +16,8 @@ let manualActionPending = false;
 let poseRefreshPending = false;
 let powerTransitionPending = false;
 let statusRefreshPending = false;
+let statusRefreshHealthy = false;
+let agentActivityPending = false;
 let currentPowerMode = "unknown";
 let lastMotorAnnouncement = "";
 let deferredInstallPrompt = null;
@@ -164,8 +166,14 @@ document.querySelectorAll("[data-kids-activity]").forEach((button) => {
 $("kids-activity-badge").textContent = kidsActivityLabels[selectedKidsActivity];
 $("kids-ispy-consent-row").hidden = selectedKidsActivity !== "ispy";
 
+function visibleTabButtons() {
+  return [...document.querySelectorAll("[data-tab]")].filter((button) => !button.hidden);
+}
+
 function activateTab(name, focus = false, recordHistory = false) {
-  const target = document.querySelector(`[data-tab="${name}"]`) || document.querySelector("[data-tab]");
+  // A Kids-locked UI hides every tab except Kids; arrows, history and #hash must not reveal them.
+  const requested = document.querySelector(`[data-tab="${name}"]`);
+  const target = requested && !requested.hidden ? requested : visibleTabButtons()[0];
   if (!target) return;
   document.querySelectorAll("[data-tab]").forEach((button) => {
     const active = button === target;
@@ -196,12 +204,14 @@ tabButtons.forEach((button, index) => {
   button.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    let next = index;
-    if (event.key === "ArrowLeft") next = (index - 1 + tabButtons.length) % tabButtons.length;
-    if (event.key === "ArrowRight") next = (index + 1) % tabButtons.length;
+    const visible = visibleTabButtons();
+    const position = Math.max(0, visible.indexOf(button));
+    let next = position;
+    if (event.key === "ArrowLeft") next = (position - 1 + visible.length) % visible.length;
+    if (event.key === "ArrowRight") next = (position + 1) % visible.length;
     if (event.key === "Home") next = 0;
-    if (event.key === "End") next = tabButtons.length - 1;
-    activateTab(tabButtons[next].dataset.tab, true, true);
+    if (event.key === "End") next = visible.length - 1;
+    activateTab(visible[next].dataset.tab, true, true);
   });
 });
 const initialTab = window.location.hash.slice(1) || window.localStorage.getItem("reachy-hermes-tab") || "dashboard";
@@ -702,14 +712,29 @@ $("tts_provider").addEventListener("change", () => {
   refreshSpeechControls();
 });
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error(`No response from Reachy after ${timeoutMs / 1000} seconds`);
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 async function refreshStatus() {
-  if (statusRefreshPending) return;
+  if (statusRefreshPending) return statusRefreshHealthy;
   statusRefreshPending = true;
   try {
-    const response = await fetch("/api/status", { cache: "no-store" });
+    const response = await fetchWithTimeout("/api/status", { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     updateStatus(await response.json());
+    statusRefreshHealthy = true;
   } catch (error) {
+    statusRefreshHealthy = false;
     if (window.ReachyCamera?.isActive()) {
       window.ReachyCamera.stop("Camera stopped because Hermes status is unavailable.");
     }
@@ -743,19 +768,53 @@ async function refreshStatus() {
   } finally {
     statusRefreshPending = false;
   }
+  return statusRefreshHealthy;
 }
+
+// Poll status every 1.5 s while healthy, back off to 15 s while Reachy is unreachable, and
+// pause entirely while the page is hidden.
+let statusPollTimer = 0;
+let statusPollFailures = 0;
+function scheduleStatusPoll(delayMs) {
+  window.clearTimeout(statusPollTimer);
+  if (document.hidden) return;
+  statusPollTimer = window.setTimeout(pollStatus, delayMs);
+}
+async function pollStatus() {
+  const healthy = await refreshStatus();
+  statusPollFailures = healthy ? 0 : Math.min(statusPollFailures + 1, 4);
+  scheduleStatusPoll(healthy ? 1500 : Math.min(1500 * 2 ** statusPollFailures, 15000));
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    window.clearTimeout(statusPollTimer);
+  } else {
+    statusPollFailures = 0;
+    pollStatus();
+  }
+});
 
 async function refreshAgentRun() {
   if (!agentProfileActive || agentRunRequestPending) return;
   try {
     const endpoint = agentRunId ? "/api/agent/run/status" : "/api/agent/run/current";
-    const response = await fetch(endpoint, {
+    const response = await fetchWithTimeout(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Reachy-Adult-UI": "unlocked" },
       body: agentRunId ? JSON.stringify({ run_id: agentRunId }) : undefined,
     });
+    if (!response.ok) {
+      // Only an authoritative 4xx (stale, locked, forbidden, unknown run) ends the local run;
+      // a network blip or bridge 5xx must not re-enable Preview while a plan is running.
+      if (response.status >= 400 && response.status < 500) {
+        currentAgentRun = null;
+        agentRunId = "";
+        window.sessionStorage.removeItem("reachy-hermes-agent-run-id");
+        renderAgentRun();
+      }
+      return;
+    }
     const body = await response.json();
-    if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     currentAgentRun = body.run || null;
     if (currentAgentRun?.run_id) {
       agentRunId = String(currentAgentRun.run_id);
@@ -763,10 +822,7 @@ async function refreshAgentRun() {
     }
     renderAgentRun();
   } catch (error) {
-    currentAgentRun = null;
-    agentRunId = "";
-    window.sessionStorage.removeItem("reachy-hermes-agent-run-id");
-    renderAgentRun();
+    // Keep the last known run; the next poll reconciles it.
   }
 }
 
@@ -782,9 +838,11 @@ async function refreshAgentActivity() {
     renderAgentRun();
     return;
   }
-  await refreshAgentRun();
+  if (agentActivityPending) return;
+  agentActivityPending = true;
   try {
-    const response = await fetch("/api/agent/activity", {
+    await refreshAgentRun();
+    const response = await fetchWithTimeout("/api/agent/activity", {
       cache: "no-store",
       headers: { "X-Reachy-Adult-UI": "unlocked" },
     });
@@ -798,7 +856,7 @@ async function refreshAgentActivity() {
     if (activeCapability) {
       $("agent-current-task").textContent = `Using ${String(activeCapability.capability_id).replaceAll("_", " ")}…`;
     }
-    const pendingResponse = await fetch("/api/agent/pending-approval", {
+    const pendingResponse = await fetchWithTimeout("/api/agent/pending-approval", {
       cache: "no-store",
       headers: { "X-Reachy-Adult-UI": "unlocked" },
     });
@@ -816,6 +874,8 @@ async function refreshAgentActivity() {
     }
   } catch (error) {
     // Runtime status remains authoritative if the Hermes-host timeline is unavailable.
+  } finally {
+    agentActivityPending = false;
   }
 }
 
@@ -1797,23 +1857,48 @@ document.querySelectorAll("[data-power]").forEach((button) => {
   });
 });
 
+async function responseDetail(response) {
+  // An HTML 502 from a proxy is not JSON; report the HTTP status instead of a parse error.
+  try {
+    const body = await response.json();
+    return body.detail || `HTTP ${response.status}`;
+  } catch {
+    return `HTTP ${response.status}`;
+  }
+}
+
+function setPowerMessage(text, kind) {
+  $("power-message").textContent = text;
+  $("power-message").className = `message ${kind}`;
+}
+
 $("app-off-button").addEventListener("click", async () => {
   if (!window.confirm("Stop the voice app? Restart it later from Reachy Control.")) return;
   if (window.ReachyCamera?.isActive()) {
     window.ReachyCamera.stop("Camera stopped before stopping the voice app.");
   }
-  await fetch("/api/app-off", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: "off" }),
-  });
-  $("power-message").textContent = "Voice app is stopping";
+  try {
+    const response = await fetchWithTimeout("/api/app-off", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: "off" }),
+    });
+    if (!response.ok) throw new Error(await responseDetail(response));
+    setPowerMessage("Voice app is stopping", "ok");
+  } catch (error) {
+    setPowerMessage(`Could not stop the voice app: ${error.message || error}`, "error");
+  }
 });
 
 $("shutdown-button").addEventListener("click", async () => {
   if (window.prompt("Type SHUTDOWN to safely power off the Pi") !== "SHUTDOWN") return;
-  await fetch("/api/shutdown", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: "shutdown" }),
-  });
-  $("power-message").textContent = "Pi is shutting down safely";
+  try {
+    const response = await fetchWithTimeout("/api/shutdown", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: "shutdown" }),
+    });
+    if (!response.ok) throw new Error(await responseDetail(response));
+    setPowerMessage("Pi is shutting down safely", "ok");
+  } catch (error) {
+    setPowerMessage(`Shutdown was not started: ${error.message || error}`, "error");
+  }
 });
 
 async function loadRobotOptions() {
@@ -1864,8 +1949,7 @@ async function startUi() {
   await Promise.all([loadModels(), loadVoiceOptions(), loadRobotOptions()]);
 }
 
-startUi();
-setInterval(refreshStatus, 1500);
+startUi().finally(() => scheduleStatusPoll(1500));
 setInterval(refreshAgentActivity, 5000);
 setInterval(() => {
   if (!$("panel-robot").hidden) refreshBluetooth();

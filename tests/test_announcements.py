@@ -436,5 +436,5 @@ def test_announcement_ui_exposes_full_tts_controls_and_private_routes() -> None:
     assert 'id="announcement-live"' in html
     assert 'role="alert"' in html
     assert "Voice only · do not change power state" in html
-    assert "reachy-hermes-shell-v46" in worker
-    assert "/static/main.js?v=46" in html
+    assert "reachy-hermes-shell-v47" in worker
+    assert "/static/main.js?v=47" in html

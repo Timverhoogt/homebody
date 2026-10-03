@@ -1,12 +1,11 @@
-const CACHE_NAME = "reachy-hermes-shell-v46";
+const CACHE_NAME = "reachy-hermes-shell-v47";
 const APP_SHELL = [
   "/",
-  "/#dashboard",
   "/manifest.webmanifest",
-  "/static/style.css?v=46",
+  "/static/style.css?v=47",
   "/static/gstwebrtc-api.js",
-  "/static/camera.js?v=46",
-  "/static/main.js?v=46",
+  "/static/camera.js?v=47",
+  "/static/main.js?v=47",
   "/static/icon-192.png",
   "/static/icon-512.png",
   "/static/icon-maskable-512.png",
@@ -37,8 +36,11 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put("/", copy));
+          // Never let a 502 during an app restart become the offline shell.
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put("/", copy));
+          }
           return response;
         })
         .catch(() => caches.match("/")),
@@ -49,8 +51,10 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/static/") || url.pathname === "/manifest.webmanifest") {
     event.respondWith(
       caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        }
         return response;
       })),
     );
