@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import reachy_mini_hermes.main as main_module
+from reachy_mini_hermes import safety_gate
 from reachy_mini_hermes.config import AppConfig
 from reachy_mini_hermes.main import ReachyMiniHermes
 from reachy_mini_hermes.robot_tools import CameraJoystickStream
@@ -362,3 +363,39 @@ def test_camera_pointer_gesture_pins_its_origin_across_status_layout_changes() -
     assert "state.controlRadius = Math.min(rect.width, rect.height) * 0.36" in camera
     assert "const originX = state.controlOriginX ?? rect.left + rect.width / 2" in camera
     assert "const originY = state.controlOriginY ?? rect.top + rect.height / 2" in camera
+
+
+def test_abandoned_camera_control_session_expires_for_every_reader() -> None:
+    runtime, actions = ready_runtime()
+    started = runtime.start_camera_control(camera_feed_enabled=True, controls_enabled=True, adult_ui_unlocked=True)
+    session_id = str(started["session_id"])
+    stream = actions.commands[0][1]["stream"]
+    assert isinstance(stream, CameraJoystickStream)
+    runtime.queue_camera_control(session_id, 1, 0.5, 0.0)
+
+    # While the gesture is live, other owners stay blocked.
+    assert runtime.status()["camera_control_active"] is True
+    with pytest.raises(RuntimeError, match="blocked during camera control"):
+        runtime.queue_manual_robot_action("look", "left")
+
+    # The browser tab closes mid-drag: no end packet, no further sequence numbers.
+    runtime._camera_control_last_activity -= 31.0
+
+    assert runtime.status()["camera_control_active"] is False
+    assert runtime._safety_gate.block_reason(safety_gate.GESTURE_POLICY) == ""
+    assert stream.snapshot().active is False
+    result = runtime.queue_manual_robot_action("look", "left")
+    assert result["ok"] is True
+    with pytest.raises(RuntimeError, match="not active"):
+        runtime.queue_camera_control(session_id, 2, 0.5, 0.0)
+
+
+def test_camera_control_session_expires_on_its_own_next_packet() -> None:
+    runtime, _actions = ready_runtime()
+    started = runtime.start_camera_control(camera_feed_enabled=True, controls_enabled=True, adult_ui_unlocked=True)
+    session_id = str(started["session_id"])
+    runtime._camera_control_last_activity -= 31.0
+
+    with pytest.raises(RuntimeError, match="expired"):
+        runtime.queue_camera_control(session_id, 1, 0.5, 0.0)
+    assert runtime._camera_control_session_id == ""

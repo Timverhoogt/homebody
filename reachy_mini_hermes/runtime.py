@@ -70,6 +70,8 @@ from .safety_gate import (
 from .wakeword import HeyHermesSpotter, ensure_kws_model
 
 _LOGGER = logging.getLogger(__name__)
+# A joystick gesture that sends nothing for this long is abandoned (closed tab, lost network).
+_CAMERA_CONTROL_IDLE_TIMEOUT_SECONDS = 30.0
 _POWER_MODES = frozenset({"standby", "awake", "meeting", "sleep"})
 _MEDIA_TAG = re.compile(r"(?m)^\s*(?:\[\[audio_as_voice\]\]\s*)?MEDIA:\S+\s*$")
 _MARKDOWN = re.compile(r"[`*_#>|]+")
@@ -300,7 +302,7 @@ class _RuntimeSafetyProbe:
     def camera_control_active(self) -> bool:
         runtime = self._runtime
         with runtime._camera_control_lock:
-            return bool(runtime._camera_control_session_id)
+            return runtime._camera_control_session_live_locked()
 
     def announcement_active(self) -> bool:
         return self._runtime._announcement_active.is_set()
@@ -707,7 +709,7 @@ class HermesVoiceRuntime:
         payload["motors_enabled"] = self._motors_enabled
         payload["head_safely_folded"] = self._head_safely_folded
         with self._camera_control_lock:
-            payload["camera_control_active"] = bool(self._camera_control_session_id)
+            payload["camera_control_active"] = self._camera_control_session_live_locked()
         payload["announcement_queue_depth"] = self._announcement_queue.qsize()
         if self._home_assistant_bridge is not None:
             payload["home_assistant"] = self._home_assistant_bridge.status()
@@ -2015,7 +2017,7 @@ class HermesVoiceRuntime:
                 if self._effective_power_mode() != "awake" or self._motors_enabled is not True:
                     raise RuntimeError("Manual robot control requires confirmed Awake motor torque")
                 with self._camera_control_lock:
-                    if self._camera_control_session_id:
+                    if self._camera_control_session_live_locked():
                         raise RuntimeError("Manual robot controls are blocked during camera control")
                     result = self._actions.enqueue(
                         name,
@@ -2075,17 +2077,35 @@ class HermesVoiceRuntime:
     def _assert_camera_control_policy(self) -> None:
         self._safety_gate.require(CAMERA_CONTROL_POLICY)
 
+    def _camera_control_session_live_locked(self) -> bool:
+        """Return whether a joystick session is live, expiring one abandoned past the idle timeout.
+
+        Every reader of camera-control ownership goes through this, so a closed tab cannot keep
+        presence, gestures, presentation, and manual controls blocked. Hold _camera_control_lock.
+        """
+        if not self._camera_control_session_id:
+            return False
+        if time.monotonic() - self._camera_control_last_activity <= _CAMERA_CONTROL_IDLE_TIMEOUT_SECONDS:
+            return True
+        _LOGGER.info("Expiring an abandoned camera-control session")
+        stream = self._camera_control_stream
+        self._camera_control_stream = None
+        self._camera_control_session_id = ""
+        self._camera_control_last_sequence = 0
+        self._camera_control_last_activity = 0.0
+        if stream is not None:
+            stream.stop()
+        return False
+
     def _validate_camera_control_session(self, session_id: str, sequence: int) -> None:
-        now = time.monotonic()
         if not self._camera_control_session_id or session_id != self._camera_control_session_id:
             raise RuntimeError("Camera control session is not active")
-        if now - self._camera_control_last_activity > 30.0:
-            self._camera_control_session_id = ""
+        if not self._camera_control_session_live_locked():
             raise RuntimeError("Camera control session expired")
         if sequence <= self._camera_control_last_sequence:
             raise RuntimeError("Camera control sequence is stale or replayed")
         self._camera_control_last_sequence = sequence
-        self._camera_control_last_activity = now
+        self._camera_control_last_activity = time.monotonic()
 
     def start_camera_control(
         self,
@@ -2235,7 +2255,7 @@ class HermesVoiceRuntime:
                 if self._effective_power_mode() != "awake" or self._motors_enabled is not True:
                     raise RuntimeError("Precision robot control requires confirmed Awake motor torque")
                 with self._camera_control_lock:
-                    if self._camera_control_session_id:
+                    if self._camera_control_session_live_locked():
                         raise RuntimeError("Precision robot controls are blocked during camera control")
                     pose = self.robot_pose()
                     name, arguments = manual_precision_action(

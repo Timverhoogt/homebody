@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import threading
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -161,5 +162,6 @@ def test_presentation_requires_awake_agent_and_idle_camera(monkeypatch) -> None:
         target.start_presentation_window()
     target._capability_profile = "agent"
     target._camera_control_session_id = "camera-active"
+    target._camera_control_last_activity = time.monotonic()
     with pytest.raises(RuntimeError, match="camera control"):
         target.start_presentation_window()
