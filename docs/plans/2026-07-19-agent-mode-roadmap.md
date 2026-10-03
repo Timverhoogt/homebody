@@ -10,6 +10,31 @@
 
 ---
 
+## Status and next steps (updated 2026-10-03)
+
+Since this plan was written the app was renamed Homebody: files listed under `reachy_mini_hermes/` now live in `homebody/`. `CHANGELOG.md` records each release in detail.
+
+| Release | Status |
+|---|---|
+| Phase 0 + Agent 0.1: policy, audit, approvals, read-only broker | Shipped |
+| Agent 0.2: reversible home control, timers, reminders, media, undo | Shipped |
+| Agent 0.3: one-shot vision and bounded gestures | Shipped |
+| Agent 0.4: calendar, notes, draft-first messages | Shipped |
+| Agent 0.5: multi-step runs with preview, approval, pause and cancel | Shipped |
+| Agent 0.6: proactive presence (`2026-07-23-agent-06-proactive-presence.md`) | Shipped (0.6.1–0.6.5) |
+| Warm Hermes agents for pipeline and `ask_hermes` (off by default) | Shipped, awaiting live acceptance |
+| Phase 6 / Maintenance 0.1 | Not started |
+
+Next steps, in order:
+
+1. **Live acceptance of what has shipped.** Every phase above passed mocked tests and review, but the exit gates also ask for physical and live-system checks. Run them on the reference Reachy: the section 7 demonstration, the Phase 3 camera and motion races on both units, and the Agent 0.5 cancellation and restart checks.
+2. **Warm Hermes agents.** Enable `REACHY_HERMES_WARM_AGENTS=1` on the Hermes host, confirm `/v1/warm-agents` reports available against the deployed Hermes release, and measure pipeline and `ask_hermes` latency warm versus the plain API server (baseline ~14 s and ~23 s).
+3. **Phase 6, Maintenance 0.1.** The only unbuilt phase. Start with read-only sanitized diagnostics and the separate toggle plus admin PIN, then allowlisted service restart, then signed update and rollback, tested on a non-production install first. It must stay out of Realtime schemas and Kids Mode.
+
+The remaining non-agent work (hardware acceptance, offline speech fallback, CI with the real SDK) is tracked in `plan.md` under Next steps.
+
+---
+
 ## 1. Product decision
 
 Agent Mode is an **adult capability profile**, not a third conversation engine and not a synonym for “give the Realtime model every Hermes tool.”
@@ -334,6 +359,8 @@ A capability is not shippable until it has:
 - [ ] Physical acceptance when camera, motion, audio, Bluetooth, or motors are involved.
 
 ## 7. Immediate implementation slice
+
+*Done: Phase 0 and Agent 0.1 shipped. The demonstration below is still the live acceptance script.*
 
 Implement **Phase 0 + Agent 0.1 only** first. Do not enable home mutations, messaging, maintenance, or multi-step background execution in the first slice.
 
