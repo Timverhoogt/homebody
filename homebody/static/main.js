@@ -7,7 +7,7 @@ const fields = [
   "home_assistant_camera_enabled", "home_assistant_assist_enabled", "home_assistant_port",
   "realtime_model", "realtime_voice", "realtime_reasoning_effort",
   "local_vision_enabled", "local_vision_url", "local_vision_model", "local_ai_accelerator",
-  "mcp_enabled", "mcp_vision_enabled", "mcp_oauth_enabled", "mcp_public_url",
+  "mcp_enabled", "mcp_vision_enabled", "mcp_oauth_enabled", "mcp_public_url", "mcp_public_bind", "mcp_public_port",
   "end_silence_seconds", "max_utterance_seconds", "vad_min_rms", "vad_noise_multiplier",
   "wake_keyword_threshold", "wake_keyword_score",
 ];
@@ -219,6 +219,10 @@ async function refreshMcpStatus() {
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     renderOauthAgents(body.oauth || { agents: [] }, body.oauth_enabled);
+    const listener = body.public_listener || {};
+    $("mcp-listener-status").textContent = listener.running
+      ? `Sign-in listener running on ${listener.address}. Point your tunnel here.`
+      : listener.error || (body.oauth_enabled ? "Sign-in listener starts when Homebody is running." : "");
     const message = $("mcp-message");
     if (message.classList.contains("ok") || message.classList.contains("error")) return;
     const state = !body.enabled ? "Agent access is off." : body.token_configured ? "Agent access is on." : "Agent access is on, but no token exists yet.";

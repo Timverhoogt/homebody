@@ -15,6 +15,9 @@ from homebody.mcp_oauth import (
     ACCESS_TOKEN_SECONDS,
     APPROVAL_CODE_ATTEMPTS,
     MAX_CLIENTS,
+    MAX_PENDING,
+    MAX_PENDING_PER_CLIENT,
+    UNAPPROVED_CLIENT_SECONDS,
     OAuthError,
     OAuthServer,
     consent_page,
@@ -115,8 +118,53 @@ def test_registration_allows_loopback_and_limits_clients() -> None:
     assert loopback["client_name"] == "a b" and loopback["token_endpoint_auth_method"] == "none"
     for _ in range(MAX_CLIENTS - 1):
         server.register({"redirect_uris": [REDIRECT]})
+    # Strangers cannot lock the owner out: the oldest never-approved registration makes room.
+    newest = server.register({"redirect_uris": [REDIRECT]})["client_id"]
+    assert newest in server._clients and loopback["client_id"] not in server._clients
+    for client in server._clients.values():
+        client["approved_at"] = 1
     with pytest.raises(OAuthError, match="Too many"):
         server.register({"redirect_uris": [REDIRECT]})
+
+
+def test_open_authorization_requests_are_bounded() -> None:
+    server = OAuthServer(None)
+    flooding = server.register({"redirect_uris": [REDIRECT]})["client_id"]
+    for _ in range(MAX_PENDING_PER_CLIENT * 4):
+        server.start_authorization(authorize_params(flooding, verifier()), resource=RESOURCE)
+    assert len(server._pending) == MAX_PENDING_PER_CLIENT
+
+    others = [server.register({"redirect_uris": [REDIRECT]})["client_id"] for _ in range(MAX_CLIENTS - 1)]
+    for client_id in others * MAX_PENDING_PER_CLIENT:
+        server.start_authorization(authorize_params(client_id, verifier()), resource=RESOURCE)
+    assert len(server._pending) == MAX_PENDING
+    # The newest request always gets in, so a real connection is delayed at worst, never refused.
+    latest = server.start_authorization(authorize_params(flooding, verifier()), resource=RESOURCE)
+    assert server.pending(latest.pending_id) is not None and len(server._pending) == MAX_PENDING
+
+
+def test_unapproved_registrations_expire_but_approved_agents_stay() -> None:
+    clock = Clock()
+    server = OAuthServer(None, clock=clock)
+    stale = server.register({"redirect_uris": [REDIRECT]})["client_id"]
+    approved, _verifier, _tokens = granted(server)
+    pending = server.start_authorization(authorize_params(stale, verifier()), resource=RESOURCE)
+
+    clock.now += UNAPPROVED_CLIENT_SECONDS + 1
+    server.register({"redirect_uris": [REDIRECT]})
+    assert stale not in server._clients and approved in server._clients
+    # Its open request went with it, so a late approval cannot resurrect it.
+    assert server.pending(pending.pending_id) is None
+
+
+def test_approval_fails_when_the_registration_was_evicted() -> None:
+    server = OAuthServer(None)
+    client_id = server.register({"redirect_uris": [REDIRECT]})["client_id"]
+    pending = server.start_authorization(authorize_params(client_id, verifier()), resource=RESOURCE)
+    code = server.new_approval_code()
+    server._clients.pop(client_id)
+    with pytest.raises(OAuthError, match="registration expired"):
+        server.approve(pending.pending_id, code)
 
 
 def test_authorize_rejects_unknown_clients_bad_redirects_and_missing_pkce() -> None:
@@ -354,50 +402,68 @@ def oauth_config(**overrides: Any) -> AppConfig:
     return AppConfig(**values)
 
 
-def build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, config: AppConfig) -> tuple[Homebody, TestClient]:
+class FakeListener:
+    def __init__(self) -> None:
+        self.synced: list[AppConfig] = []
+
+    def sync(self, config: AppConfig) -> None:
+        self.synced.append(config)
+
+    def status(self) -> dict[str, object]:
+        return {"running": False, "address": "", "error": ""}
+
+    def close(self) -> None:
+        pass
+
+
+def build(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, config: AppConfig
+) -> tuple[Homebody, TestClient, TestClient]:
+    """The app, a client for the home dashboard port, and one for the public hosted-agent listener."""
     stored = [config]
     monkeypatch.setattr(main_module, "load_config", lambda: stored[-1])
     monkeypatch.setattr(main_module, "save_config", lambda value: stored.append(value))
     app = Homebody(False)
     app._oauth = OAuthServer(tmp_path / "mcp-oauth.json")
+    app._agent_listener = FakeListener()  # type: ignore[assignment]
     app._runtime = FakeRuntime()  # type: ignore[assignment]
-    return app, TestClient(app.settings_app)
+    return app, TestClient(app.settings_app), TestClient(app._build_public_app())
 
 
 def test_oauth_routes_are_hidden_until_turned_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _app, client = build(monkeypatch, tmp_path, AppConfig(mcp_enabled=True, mcp_token_sha256=token_digest(STATIC)))
-    assert client.get("/.well-known/oauth-protected-resource/mcp").status_code == 404
-    assert client.get("/.well-known/oauth-authorization-server").status_code == 404
-    assert client.post("/oauth/register", json={"redirect_uris": [REDIRECT]}).status_code == 404
+    _app, client, public = build(
+        monkeypatch, tmp_path, AppConfig(mcp_enabled=True, mcp_token_sha256=token_digest(STATIC))
+    )
+    assert public.get("/.well-known/oauth-protected-resource/mcp").status_code == 404
+    assert public.get("/.well-known/oauth-authorization-server").status_code == 404
+    assert public.post("/oauth/register", json={"redirect_uris": [REDIRECT]}).status_code == 404
+    assert public.post("/mcp", json=INIT).status_code == 404
     challenge = client.post("/mcp", json=INIT).headers["www-authenticate"]
     assert "resource_metadata" not in challenge
     assert client.post("/api/mcp/approval-code", json={}).status_code == 409
 
 
 def test_full_hosted_agent_flow_over_http(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _app, client = build(monkeypatch, tmp_path, oauth_config())
-    public = {"Host": "reachy.example.com"}
+    _app, client, agent = build(monkeypatch, tmp_path, oauth_config())
 
-    unauthorized = client.post("/mcp", json=INIT, headers=public)
+    unauthorized = agent.post("/mcp", json=INIT)
     assert unauthorized.status_code == 401
     assert (
         f'resource_metadata="{PUBLIC}/.well-known/oauth-protected-resource/mcp"'
         in (unauthorized.headers["www-authenticate"])
     )
-    metadata = client.get("/.well-known/oauth-protected-resource/mcp", headers=public).json()
+    metadata = agent.get("/.well-known/oauth-protected-resource/mcp").json()
     assert metadata["resource"] == RESOURCE
-    server_metadata = client.get("/.well-known/oauth-authorization-server", headers=public).json()
+    server_metadata = agent.get("/.well-known/oauth-authorization-server").json()
     assert server_metadata["issuer"] == PUBLIC
 
-    registered = client.post(
-        "/oauth/register", json={"client_name": "dots", "redirect_uris": [REDIRECT]}, headers=public
-    )
+    registered = agent.post("/oauth/register", json={"client_name": "dots", "redirect_uris": [REDIRECT]})
     assert registered.status_code == 201
     client_id = registered.json()["client_id"]
-    assert client.post("/oauth/register", content=b"{nope", headers=public).status_code == 400
+    assert agent.post("/oauth/register", content=b"{nope").status_code == 400
 
     code_verifier = verifier()
-    page = client.get("/oauth/authorize", params=authorize_params(client_id, code_verifier), headers=public)
+    page = agent.get("/oauth/authorize", params=authorize_params(client_id, code_verifier))
     assert page.status_code == 200 and "dots" in page.text
     assert (
         page.headers["x-frame-options"] == "DENY"
@@ -405,29 +471,27 @@ def test_full_hosted_agent_flow_over_http(monkeypatch: pytest.MonkeyPatch, tmp_p
     )
     pending_id = page.text.split('name="pending_id" value="')[1].split('"')[0]
 
-    bad = client.get(
+    bad = agent.get(
         "/oauth/authorize", params=authorize_params(client_id, code_verifier, redirect_uri="https://evil.example/cb")
     )
     assert bad.status_code == 400 and "location" not in bad.headers
 
     approval = client.post("/api/mcp/approval-code", json={}).json()["code"]
-    wrong = client.post(
+    wrong = agent.post(
         "/oauth/authorize",
         data={"pending_id": pending_id, "approval_code": "AAAA-AAAA", "action": "approve"},
-        headers=public,
         follow_redirects=False,
     )
     assert wrong.status_code == 400 and "not right" in wrong.text
-    approved = client.post(
+    approved = agent.post(
         "/oauth/authorize",
         data={"pending_id": pending_id, "approval_code": approval, "action": "approve"},
-        headers=public,
         follow_redirects=False,
     )
     assert approved.status_code == 303 and approved.headers["location"].startswith(REDIRECT + "?")
     code = parse_qs(urlparse(approved.headers["location"]).query)["code"][0]
 
-    token = client.post(
+    token = agent.post(
         "/oauth/token",
         data={
             "grant_type": "authorization_code",
@@ -437,56 +501,79 @@ def test_full_hosted_agent_flow_over_http(monkeypatch: pytest.MonkeyPatch, tmp_p
             "code_verifier": code_verifier,
             "resource": RESOURCE,
         },
-        headers=public,
     )
     assert token.status_code == 200 and token.headers["cache-control"] == "no-store"
     access = token.json()["access_token"]
 
-    ok = client.post("/mcp", json=INIT, headers={**public, "Authorization": f"Bearer {access}"})
+    ok = agent.post("/mcp", json=INIT, headers={"Authorization": f"Bearer {access}"})
     assert ok.status_code == 200 and ok.json()["result"]["serverInfo"]["name"] == "homebody"
 
     agents = client.get("/api/mcp/status").json()["oauth"]["agents"]
     assert agents == [{"name": "dots", "connected": True}]
 
-    reused = client.post("/oauth/token", data={"grant_type": "authorization_code", "code": code}, headers=public)
+    reused = agent.post("/oauth/token", data={"grant_type": "authorization_code", "code": code})
     assert reused.status_code == 400 and reused.json()["error"] == "invalid_request"
 
-    assert client.post("/oauth/revoke", data={"token": access}, headers=public).status_code == 200
-    assert client.post("/mcp", json=INIT, headers={**public, "Authorization": f"Bearer {access}"}).status_code == 401
+    assert agent.post("/oauth/revoke", data={"token": access}).status_code == 200
+    assert agent.post("/mcp", json=INIT, headers={"Authorization": f"Bearer {access}"}).status_code == 401
 
 
 def test_deny_over_http(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    app, client = build(monkeypatch, tmp_path, oauth_config())
+    app, _client, agent = build(monkeypatch, tmp_path, oauth_config())
     client_id = app._oauth.register({"redirect_uris": [REDIRECT]})["client_id"]
     pending = app._oauth.start_authorization(authorize_params(client_id, verifier()), resource=RESOURCE)
 
-    denied = client.post(
+    denied = agent.post(
         "/oauth/authorize", data={"pending_id": pending.pending_id, "action": "deny"}, follow_redirects=False
     )
     assert denied.status_code == 303 and "error=access_denied" in denied.headers["location"]
-    again = client.post(
+    again = agent.post(
         "/oauth/authorize", data={"pending_id": pending.pending_id, "action": "deny"}, follow_redirects=False
     )
     assert again.status_code == 400
 
 
-def test_public_host_only_reaches_agent_routes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _app, client = build(monkeypatch, tmp_path, oauth_config())
+def test_dashboard_port_never_serves_hosted_agents(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _app, client, agent = build(monkeypatch, tmp_path, oauth_config())
 
-    for path in ("/", "/api/status", "/api/config", "/api/mcp/status"):
+    # The OAuth endpoints do not exist on the dashboard port at all.
+    for path in ("/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource/mcp"):
+        assert client.get(path).status_code == 404
+    assert client.post("/oauth/register", json={"redirect_uris": [REDIRECT]}).status_code == 404
+    # A tunnel pointed at the dashboard port by mistake gets nothing when it keeps the public Host.
+    for path in ("/", "/api/status", "/api/mcp/status", "/mcp"):
         assert client.get(path, headers={"Host": "reachy.example.com"}).status_code == 404
         assert client.get(path, headers={"X-Forwarded-Host": "REACHY.example.com"}).status_code == 404
-    assert client.post("/api/mcp/approval-code", json={}, headers={"Host": "reachy.example.com"}).status_code == 404
     assert client.get("/api/status").status_code == 200  # the home network still sees everything
-
-    # The never-expiring static token is for the home network only.
     static = {"Authorization": f"Bearer {STATIC}"}
     assert client.post("/mcp", json=INIT, headers=static).status_code == 200
-    assert client.post("/mcp", json=INIT, headers={**static, "Host": "reachy.example.com"}).status_code == 401
+
+
+def test_public_listener_serves_only_agent_routes_whatever_the_host(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _app, _client, agent = build(monkeypatch, tmp_path, oauth_config())
+    static = {"Authorization": f"Bearer {STATIC}"}
+    # A proxy that rewrites Host (nginx default, ngrok --host-header=rewrite) changes nothing here.
+    for headers in ({}, {"Host": "reachy.example.com"}, {"Host": "127.0.0.1:8043"}):
+        for path in ("/", "/api/status", "/api/config", "/api/mcp/status", "/static/main.js"):
+            assert agent.get(path, headers=headers).status_code == 404
+        assert agent.post("/api/mcp/approval-code", json={}, headers=headers).status_code == 404
+        assert agent.post("/api/settings", json={}, headers=headers).status_code == 404
+        # The never-expiring static token is for the home network only.
+        assert agent.post("/mcp", json=INIT, headers={**static, **headers}).status_code == 401
+        assert agent.get("/.well-known/oauth-authorization-server", headers=headers).status_code == 200
+
+
+def test_saving_settings_moves_the_public_listener(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    app, client, _agent = build(monkeypatch, tmp_path, oauth_config())
+    saved = client.post("/api/settings", json={"mcp_public_port": 8443})
+    assert saved.status_code == 200, saved.text
+    assert app._agent_listener.synced[-1].mcp_public_port == 8443  # type: ignore[attr-defined]
 
 
 def test_owner_routes_need_the_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    app, client = build(monkeypatch, tmp_path, oauth_config(api_key="owner-key"))
+    app, client, _agent = build(monkeypatch, tmp_path, oauth_config(api_key="owner-key"))
     granted(app._oauth)
 
     assert client.post("/api/mcp/approval-code", json={}).status_code == 403
@@ -500,7 +587,7 @@ def test_owner_routes_need_the_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 
 def test_turning_on_sign_in_needs_the_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _app, client = build(monkeypatch, tmp_path, AppConfig(api_key="owner-key", mcp_enabled=True))
+    _app, client, _agent = build(monkeypatch, tmp_path, AppConfig(api_key="owner-key", mcp_enabled=True))
     update = {"mcp_oauth_enabled": True, "mcp_public_url": PUBLIC}
 
     assert client.post("/api/settings", json=update).status_code == 403

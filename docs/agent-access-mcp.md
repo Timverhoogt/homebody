@@ -47,17 +47,24 @@ claude mcp add --transport http homebody http://<reachy-address>:8042/mcp \
 
 Hosted agents run in their vendor's cloud, so they need a public HTTPS address and sign in with OAuth instead of a bearer token. Homebody acts as its own small OAuth 2.1 server, so you need no extra account. You approve each agent once with a one-time code.
 
-**1. Publish only the agent paths over HTTPS.** Use a tunnel that terminates TLS, for example Cloudflare Tunnel, Tailscale Funnel or a reverse proxy on a VPS. Forward only these paths to `http://<reachy-address>:8042`:
+**1. Point an HTTPS tunnel at the sign-in listener, never at the dashboard.** While sign-in is on, Homebody runs a second, separate listener (default `127.0.0.1:8043`) that serves only:
 
-- `/mcp`
-- `/oauth/`
-- `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
+- `/mcp`, which accepts OAuth access tokens only, never the static token;
+- `/oauth/` (register, authorize, token, revoke);
+- `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`.
 
-Homebody also protects itself. Any request that arrives with the public host name (`Host` or `X-Forwarded-Host`) can reach only those paths: the dashboard and every `/api/` route answer 404, and the static token is refused. Through the tunnel, OAuth is the only way in.
+Every other path there answers 404. The dashboard on port `8042` serves none of these routes, so the tunnel can only reach what is meant to be public, whatever `Host` header your proxy sends. Use a tunnel that terminates TLS and point it at the listener, for example:
+
+- Cloudflare Tunnel: `service: http://127.0.0.1:8043`
+- Tailscale Funnel: `tailscale funnel --bg 8043`
+- a reverse proxy on a VPS: `proxy_pass http://<reachy-address>:8043;` (then set **Sign-in listener address** to `0.0.0.0`, or to the address the proxy reaches, and firewall the port to the proxy)
+
+Never point a tunnel at port `8042`. As a backstop, the dashboard answers 404 to any request carrying the public host name, but a proxy that rewrites `Host` would bypass that check.
 
 **2. Turn on sign-in.** In **Settings → Agent access (MCP)**:
 
 1. Enter the tunnel's address in **Public HTTPS address**, for example `https://reachy.example.com`. Use no path.
+1. Leave **Sign-in listener address** and **port** at `127.0.0.1` and `8043` unless your tunnel runs on another machine. Settings shows whether the listener is running.
 2. Turn on **Let hosted agents sign in (OAuth)** and save. If a bridge API key is set, enter it in *Current API key* first.
 
 **3. Connect the agent.** In the agent's connector or MCP settings, add `https://reachy.example.com/mcp`. The agent then:
