@@ -13,18 +13,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Hosted-agent sign-in moved to its own listener (default `127.0.0.1:8043`) serving only `/mcp` (OAuth tokens only) and the OAuth endpoints. Before, these shared the dashboard port behind a `Host`-header check, and a proxy that rewrites `Host` (nginx's default `proxy_pass`, `ngrok --host-header=rewrite`, `cloudflared httpHostHeader`) exposed the dashboard API and accepted the static token through the tunnel. Point the tunnel at the new listener.
 - Open authorization requests are capped (50 in total, 5 per client, oldest evicted), so an unauthenticated flood no longer grows memory and CPU without bound.
 - Never-approved client registrations expire after an hour and are evicted when the 20 slots are full, so strangers can no longer lock the owner out of connecting an agent.
-
-### Security
-
 - `POST /api/vision/describe` (the camera card's Ask box) now requires the bridge bearer token. Before, any LAN client could ask the local vision model to describe the room.
 - `POST /api/vision/test` needs the current API key to probe an unsaved vision URL, so it can no longer be used to make Reachy fetch from arbitrary hosts. Testing the saved server is unchanged.
 - The camera snapshot and agent reminder-delivery routes stay closed when no bridge API key is configured, instead of accepting an empty bearer token.
+- Changing the bridge URL or API key from the unauthenticated settings UI now requires the current key. Before this, a LAN client could swap in its own key (unlocking the camera snapshot route) or point the bridge URL at a host it controls and receive the real key. The settings form has a new Current API key field.
+- The companion bridge now has its own Kids latch. While a Kids session is live it refuses adult chat, Realtime, and Agent routes with 423 and moderates generic speech, instead of relying only on the Reachy client. Reachy reports session start and end through the new `/v1/kids/session` route. Realtime agent tools now default to off unless the client explicitly requests them.
 
 ### Fixed
 
 - GPIO buttons: a long press is now recognised from its edge timestamps, so holding green or red still means Standby or Sleep when the press and release arrive together after the monitor was busy with an earlier action.
 - GPIO buttons: saving new button settings while an action is still running no longer revives the old monitor or double-dispatches presses. Each monitor has its own stop signal, stale queued presses are dropped, and the new monitor waits for the old one to release the lines.
 - Realtime camera calls answered by the local vision model run on a worker thread, so a slow or unreachable vision server no longer freezes audio, barge-in and Stop for up to a minute.
+- A stopped voice turn can no longer be resumed by a later Awake transition. Before this, preparing an I Spy round cleared the stop request, so an adult or Agent reply that was already in flight could be spoken during Kids Mode.
+- One lock order (motor transition, then Kids) is now enforced. Manual, precision, camera-control, and presence paths nested the locks the other way round and could deadlock against `status()`. The HTTP Kids-lock middleware no longer waits on the Kids lock during slow robot transitions.
+- Concurrent approvals of the same pending Agent draft now execute it exactly once.
+- An abandoned camera-joystick session no longer blocks other features. Before this, closing the tab mid-drag left the session marked active until the next power change or Stop, which blocked presence, gestures, presentation and manual and precision controls. Every check that asks "is camera control active?" now expires a session idle for more than 30 seconds and stops its stream.
+- PWA shell advanced to v46 for the settings credential field.
+- `tests/test_kids_mode.py::test_runtime_generated_kids_session_id_passes_real_bridge_handler` no longer depends on `OPENAI_API_KEY` being set on the machine.
 
 ### Changed
 
@@ -37,32 +42,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Home Assistant keeps the same ESPHome device identity and project name; only the displayed model and manufacturer read Homebody.
 - Added the local wake phrase **Hey Homebody** alongside Hey Hermes, Okay Nabu and Hey Reachy (BPE tokens verified against the bundled GigaSpeech KWS vocabulary; live-microphone acceptance pending).
 - README reworked around the always-on household story, and a CONTRIBUTING guide with the household promises added.
-
-### Added
-
-- Optional warm Hermes agents for the pipeline and Realtime `ask_hermes` routes (`REACHY_HERMES_WARM_AGENTS=1`, off by default). The bridge keeps one Hermes agent per conversation instead of the API server building a new one every turn. Turns for the same conversation run one at a time. A cache signature over model, provider, credential hash, toolsets, system prompt, memory scope and Hermes config files rebuilds an agent when any of them change. Idle, age, turn and capacity limits apply, and Kids Mode, failures, cancellation and shutdown close agents. Owner routes `GET`/`DELETE /v1/warm-agents` report per-route hits, cold builds, rebuild reasons, latency and token use. When an agent cannot be built, requests fall back to the API server; a started turn is never replayed.
-- Opt-in local HaGRID ONNX gesture pipeline with pinned Apache-2.0 model checksums, 3 FPS in-memory inference, repeated-frame confirmation, edge triggering, cooldowns, truthful HA telemetry, and no-auto-wake/Kids/privacy/action-ownership gates. Palm produces a welcome, peace an excited response, and rock one short dance.
-- Home Assistant `Awake` switch gated by the explicit robot-controls opt-in; On uses the serialized verified wake transition, while Off folds safely and releases torque through Standby.
-- Agent 0.1 read-only Reachy Agent Broker with eight typed capabilities for live manifest/status, allowlisted Home Assistant state, current public information/pages, personal context, conversation history, and scoped notes.
-- Authenticated execute/ask/cancel/activity bridge routes, typed Reachy client contracts, evidence/freshness metadata, strict private-intent and session-generation checks, bounded redaction, and a sanitized PWA activity timeline.
-- Traversal/symlink-safe scoped reads, public-page SSRF/redirect/size protections, empty-by-default entity/root allowlists, and cancellation that prevents stale results from reaching speech.
-- Agent owner actions for verified reversible Home Assistant control and undo, authenticated timer/reminder delivery, approval-gated media, calendar reads/drafts/creates, single-recipient message drafts/sends, and symlink/hardlink-safe note drafts/appends.
-- Agent 0.5 generation-bound multi-step runs with exact 1–5 step previews, five-call/two-side-effect/120-second budgets, per-step evidence and status, phone heartbeat, approval pauses, safe read-only pause/resume, authoritative cancellation, restart-fail-closed in-memory checkpoints, and no automatic side-effect replay.
-- Trusted-phone Agent 0.5 controls for goal planning, exact argument review, Start, Pause, Resume, per-step approval, Cancel, live budget use, and final verified/failed/uncertain summaries. Voice multi-tool requests now stage the same preview instead of executing hidden chains.
-- Trusted-phone exact approval sheet with five-minute device/session-scoped drafts, one-shot execution, edit/replay rejection, and Kids/privacy/generation invalidation.
-- BlueZ-backed Bluetooth discovery, pairing, trust, connect, disconnect, and forget controls in the trusted Robot tab.
-- Opt-in Linux joystick monitoring restricted to Sony-vendor DualShock 4 and DualSense identities with the validated PlayStation mapping; other layouts fail closed.
-- Safe gamepad mapping for bounded look, center, Happy, Surprised, and cooperative Stop actions.
-- Integrated Kids Mode I Spy with explicit caregiver camera consent, a visible bounded three-frame search, strict stable-target validation, deterministic hint/guess/reveal state, authoritative Stop/expiry cancellation, and bridge-session deletion.
-- Bluetooth/controller operational guidance, service-account permissions, explicit Reachy Mini Wireless-only hardware scope, security boundaries, and hardware-free regression tests.
-- Optional camera-feed thumb joystick with separate off-by-default opt-in, left/right placement, dead zone, spring-return visuals, keyboard support, in-overlay Stop, explicit head/base Center, native and fallback fullscreen handling, and mobile safe-area layout.
-- GitHub Actions workflow that mirrors `main` to the Hugging Face Space behind the Reachy Mini app store listing after CI passes (requires an `HF_TOKEN` repository secret).
-- Gesture-bound camera-control API sessions with random identifiers, monotonic anti-replay sequences, bounded finite pan/tilt, cancellable head interpolation, server-owned base assistance, release-to-hold, settings/power/privacy/Kids revocation, and generic-control ownership exclusion.
-- Optional ESPHome-native Home Assistant bridge on TCP 6053 with the existing stable Reachy device/entity identity, mDNS discovery, real telemetry, truthful unavailable states, and independently gated controls and camera snapshots.
-- Opt-in Home Assistant Assist ownership after local wake detection, including 16 kHz PCM streaming, HA pipeline state/motion cues, bounded same-peer TTS/media playback, announcements, follow-up support, and privacy/disconnect/timeout cancellation.
-
-### Changed
-
 - Agent single-request UX now keeps the sanitized broker timeline pollable during an active voice request, shows the running capability or exact approval wait in the trusted UI, and prompts for concise natural speech without reading internal capability IDs aloud.
 - Agent 0.6 Goal 1 introduces disabled-by-default Proactive Presence: authenticated, identity-free local presence signals; ephemeral state; existing voice/gesture attention observations; and a cancellable silent head acknowledgement that never wakes Reachy or enables motors.
 - The Hermes companion can now poll one explicitly configured Home Assistant occupancy entity and forward only changed `on`/`off` state to Reachy; Home Assistant credentials remain on the Hermes host.
@@ -97,28 +76,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - PWA shell advanced to v27 for the Agent 0.1 timeline and Kids-mode card hiding.
 - PWA shell advanced to v21 for the reviewed Bluetooth controller UI.
 
-### Security
+### Added
 
-- Changing the bridge URL or API key from the unauthenticated settings UI now requires the current key. Before this, a LAN client could swap in its own key (unlocking the camera snapshot route) or point the bridge URL at a host it controls and receive the real key. The settings form has a new Current API key field.
-- The companion bridge now has its own Kids latch. While a Kids session is live it refuses adult chat, Realtime, and Agent routes with 423 and moderates generic speech, instead of relying only on the Reachy client. Reachy reports session start and end through the new `/v1/kids/session` route. Realtime agent tools now default to off unless the client explicitly requests them.
-
-### Fixed
-
-- A stopped voice turn can no longer be resumed by a later Awake transition. Before this, preparing an I Spy round cleared the stop request, so an adult or Agent reply that was already in flight could be spoken during Kids Mode.
-- One lock order (motor transition, then Kids) is now enforced. Manual, precision, camera-control, and presence paths nested the locks the other way round and could deadlock against `status()`. The HTTP Kids-lock middleware no longer waits on the Kids lock during slow robot transitions.
-- Concurrent approvals of the same pending Agent draft now execute it exactly once.
-- An abandoned camera-joystick session no longer blocks other features. Before this, closing the tab mid-drag left the session marked active until the next power change or Stop, which blocked presence, gestures, presentation and manual and precision controls. Every check that asks "is camera control active?" now expires a session idle for more than 30 seconds and stops its stream.
-- PWA shell advanced to v46 for the settings credential field.
-- `tests/test_kids_mode.py::test_runtime_generated_kids_session_id_passes_real_bridge_handler` no longer depends on `OPENAI_API_KEY` being set on the machine.
+- Optional warm Hermes agents for the pipeline and Realtime `ask_hermes` routes (`REACHY_HERMES_WARM_AGENTS=1`, off by default). The bridge keeps one Hermes agent per conversation instead of the API server building a new one every turn. Turns for the same conversation run one at a time. A cache signature over model, provider, credential hash, toolsets, system prompt, memory scope and Hermes config files rebuilds an agent when any of them change. Idle, age, turn and capacity limits apply, and Kids Mode, failures, cancellation and shutdown close agents. Owner routes `GET`/`DELETE /v1/warm-agents` report per-route hits, cold builds, rebuild reasons, latency and token use. When an agent cannot be built, requests fall back to the API server; a started turn is never replayed.
+- Opt-in local HaGRID ONNX gesture pipeline with pinned Apache-2.0 model checksums, 3 FPS in-memory inference, repeated-frame confirmation, edge triggering, cooldowns, truthful HA telemetry, and no-auto-wake/Kids/privacy/action-ownership gates. Palm produces a welcome, peace an excited response, and rock one short dance.
+- Home Assistant `Awake` switch gated by the explicit robot-controls opt-in; On uses the serialized verified wake transition, while Off folds safely and releases torque through Standby.
+- Agent 0.1 read-only Reachy Agent Broker with eight typed capabilities for live manifest/status, allowlisted Home Assistant state, current public information/pages, personal context, conversation history, and scoped notes.
+- Authenticated execute/ask/cancel/activity bridge routes, typed Reachy client contracts, evidence/freshness metadata, strict private-intent and session-generation checks, bounded redaction, and a sanitized PWA activity timeline.
+- Traversal/symlink-safe scoped reads, public-page SSRF/redirect/size protections, empty-by-default entity/root allowlists, and cancellation that prevents stale results from reaching speech.
+- Agent owner actions for verified reversible Home Assistant control and undo, authenticated timer/reminder delivery, approval-gated media, calendar reads/drafts/creates, single-recipient message drafts/sends, and symlink/hardlink-safe note drafts/appends.
+- Agent 0.5 generation-bound multi-step runs with exact 1–5 step previews, five-call/two-side-effect/120-second budgets, per-step evidence and status, phone heartbeat, approval pauses, safe read-only pause/resume, authoritative cancellation, restart-fail-closed in-memory checkpoints, and no automatic side-effect replay.
+- Trusted-phone Agent 0.5 controls for goal planning, exact argument review, Start, Pause, Resume, per-step approval, Cancel, live budget use, and final verified/failed/uncertain summaries. Voice multi-tool requests now stage the same preview instead of executing hidden chains.
+- Trusted-phone exact approval sheet with five-minute device/session-scoped drafts, one-shot execution, edit/replay rejection, and Kids/privacy/generation invalidation.
+- BlueZ-backed Bluetooth discovery, pairing, trust, connect, disconnect, and forget controls in the trusted Robot tab.
+- Opt-in Linux joystick monitoring restricted to Sony-vendor DualShock 4 and DualSense identities with the validated PlayStation mapping; other layouts fail closed.
+- Safe gamepad mapping for bounded look, center, Happy, Surprised, and cooperative Stop actions.
+- Integrated Kids Mode I Spy with explicit caregiver camera consent, a visible bounded three-frame search, strict stable-target validation, deterministic hint/guess/reveal state, authoritative Stop/expiry cancellation, and bridge-session deletion.
+- Bluetooth/controller operational guidance, service-account permissions, explicit Reachy Mini Wireless-only hardware scope, security boundaries, and hardware-free regression tests.
+- Optional camera-feed thumb joystick with separate off-by-default opt-in, left/right placement, dead zone, spring-return visuals, keyboard support, in-overlay Stop, explicit head/base Center, native and fallback fullscreen handling, and mobile safe-area layout.
+- GitHub Actions workflow that mirrors `main` to the Hugging Face Space behind the Reachy Mini app store listing after CI passes (requires an `HF_TOKEN` repository secret).
+- Gesture-bound camera-control API sessions with random identifiers, monotonic anti-replay sequences, bounded finite pan/tilt, cancellable head interpolation, server-owned base assistance, release-to-hold, settings/power/privacy/Kids revocation, and generic-control ownership exclusion.
+- Optional ESPHome-native Home Assistant bridge on TCP 6053 with the existing stable Reachy device/entity identity, mDNS discovery, real telemetry, truthful unavailable states, and independently gated controls and camera snapshots.
+- Opt-in Home Assistant Assist ownership after local wake detection, including 16 kHz PCM streaming, HA pipeline state/motion cues, bounded same-peer TTS/media playback, announcements, follow-up support, and privacy/disconnect/timeout cancellation.
 
 ### Refactored
 
 - The six duplicated runtime safety checks now live in `reachy_mini_hermes/safety_gate.py` as named rules and ordered, unit-tested policy tables. The six checks are presentation, presence, gesture, robot action, camera control and camera capture. Behaviour, reason strings and precedence are unchanged. Each check reads state under its existing lock and short-circuits, so evaluation adds no new lock nesting.
-
 - Kids Mode moved out of `runtime.py` into `reachy_mini_hermes/kids_runtime.py` as `KidsModeMixin`. This covers the start/stop lifecycle, timers, I Spy rounds, the Kids voice policy, bridge session reporting and moderated Kids speech streaming. The 17 methods moved unchanged. Kids bridge calls create their client through `HermesVoiceRuntime._new_bridge_client`, so tests that patch `reachy_mini_hermes.runtime.HermesBridgeClient` still reach Kids paths. `runtime.py` shrinks by about 560 lines.
-
 - Announcements moved out of `runtime.py` into `reachy_mini_hermes/announcements.py` as `AnnouncementsMixin`, together with the `Announcement` dataclass and its limits. This covers the queue, cancellation, worker and playback. The 9 methods moved unchanged and create bridge clients through `_new_bridge_client`. `runtime.py` still re-exports `Announcement`, and the shared wake prompt now lives in `wakeword.WAKE_PROMPT`. `runtime.py` shrinks by about another 320 lines.
-
 - Owner robot controls moved out of `runtime.py` into `reachy_mini_hermes/manual_control.py` as `ManualControlMixin`. This covers manual and precision actions, live pose, Stop, and the whole camera-joystick session lifecycle, including the idle expiry. The 13 methods moved unchanged. `runtime.py` is now about 2,880 lines, down from about 4,090 before the split began.
 - Proactive behaviour moved out of `runtime.py` into `reachy_mini_hermes/proactive.py` as `ProactiveMixin`. This covers presence acknowledgement, initiative evaluation, contextual offers and their yes/no capture, and the presentation window. The 17 methods and their state moved unchanged. `runtime.py` re-exports `Announcement` explicitly so linting can't remove it.
 - Agent session handling moved out of `runtime.py` into `reachy_mini_hermes/agent_session.py` as `AgentSessionMixin`. This covers the capability profile, generation, request lease, broker context, bridge session publication and activity log. The 12 methods and their state moved unchanged. Bridge clients are created through `_new_bridge_client`.
