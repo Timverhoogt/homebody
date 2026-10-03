@@ -23,6 +23,8 @@ _LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
 
 # A joystick gesture that sends nothing for this long is abandoned (closed tab, lost network).
 _CAMERA_CONTROL_IDLE_TIMEOUT_SECONDS = 30.0
+# A green-button press that the wake loop cannot take within this window is dropped.
+_BUTTON_WAKE_WINDOW_SECONDS = 2.0
 
 
 class ManualControlMixin:
@@ -350,3 +352,45 @@ class ManualControlMixin:
             "active_cancelled": active_cancelled,
             "queued_cancelled": queued_cancelled,
         }
+
+    def physical_stop(self) -> dict[str, object]:
+        """Red-button Stop: end voice, Kids Mode, announcements, offers, and movement together.
+
+        Every step runs even when an earlier one fails, so one unready subsystem never leaves
+        another one moving or talking. Failures are reported together afterwards.
+        """
+        errors: list[str] = []
+        steps: list[tuple[str, object]] = [
+            ("agent", lambda: self.cancel_agent_work("emergency_stop")),
+            ("offer", lambda: self.cancel_contextual_offer("emergency_stop")),
+            ("presentation", lambda: self.stop_presentation_window("emergency_stop")),
+            ("announcements", lambda: self.stop_announcements(clear_queue=True)),
+        ]
+        with self._kids_lock:
+            kids_active = self._kids_active or self._kids_locked
+        if kids_active:
+            steps.append(("kids", lambda: self.stop_kids_mode(reason="physical_stop", fold=True)))
+        steps.append(("robot", self.stop_manual_robot_action))
+        for name, step in steps:
+            try:
+                step()  # type: ignore[operator]
+            except Exception as exc:
+                _LOGGER.warning("Physical Stop could not stop %s: %s", name, exc)
+                errors.append(f"{name}: {exc}")
+        if errors:
+            raise RuntimeError("; ".join(errors)[:300])
+        return {"ok": True, "kids_stopped": kids_active}
+
+    def request_button_wake(self) -> str:
+        """Green-button press: wake from Sleep/Meeting, otherwise start a turn as the wake word does."""
+        mode = self._effective_power_mode()
+        if mode in {"meeting", "sleep"}:
+            self.set_power_mode("awake")
+            return "awake"
+        # The wake loop consumes this on its next audio frame; a stale press simply expires.
+        self._button_wake_deadline = time.monotonic() + _BUTTON_WAKE_WINDOW_SECONDS
+        return "listen"
+
+    def _take_button_wake(self) -> bool:
+        deadline, self._button_wake_deadline = self._button_wake_deadline, 0.0
+        return 0.0 < deadline and time.monotonic() <= deadline

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import uuid
 from collections.abc import Iterator
@@ -87,6 +88,11 @@ class AppConfig:
     home_assistant_assist_enabled: bool = False
     home_assistant_port: int = 6053
     gamepad_enabled: bool = False
+    gpio_buttons_enabled: bool = False
+    gpio_chip: str = "/dev/gpiochip0"
+    gpio_green_pin: int | None = 17
+    gpio_red_pin: int | None = None
+    gpio_long_press_seconds: float = 2.0
     agent_tools_enabled: bool = True
     power_tools_enabled: bool = True
     kids_mode_enabled: bool = False
@@ -182,6 +188,15 @@ class AppConfig:
             raise ValueError("Unsupported camera control handedness")
         if not 1024 <= int(self.home_assistant_port) <= 65535:
             raise ValueError("home_assistant_port must be between 1024 and 65535")
+        if not re.fullmatch(r"/dev/gpiochip[0-9]{1,2}", str(self.gpio_chip)):
+            raise ValueError("gpio_chip must be a /dev/gpiochipN device")
+        pins = [pin for pin in (self.gpio_green_pin, self.gpio_red_pin) if pin is not None]
+        if any(isinstance(pin, bool) or not isinstance(pin, int) or not 0 <= pin <= 53 for pin in pins):
+            raise ValueError("GPIO button pins must be BCM numbers between 0 and 53")
+        if len(set(pins)) != len(pins):
+            raise ValueError("The green and red buttons need different GPIO pins")
+        if not 0.5 <= float(self.gpio_long_press_seconds) <= 10.0:
+            raise ValueError("gpio_long_press_seconds must be between 0.5 and 10")
         if self.home_assistant_assist_enabled and not self.home_assistant_enabled:
             raise ValueError("Home Assistant Assist requires the Home Assistant bridge")
         if self.home_assistant_camera_enabled and not self.home_assistant_enabled:

@@ -14,6 +14,7 @@ authors = [{ name = "Tim Verhoogt and contributors" }]
 dependencies = [
     "aioesphomeapi>=45.6,<46",
     "evdev==1.9.3",
+    "gpiod>=2.2,<3; sys_platform == 'linux'",
     "httpx>=0.28,<1",
     "mutagen>=1.47,<2",
     "numpy>=1.26",

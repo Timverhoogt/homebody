@@ -19,6 +19,7 @@ from .agent_audit import AgentAuditLog
 from .bluetooth import BluetoothGamepadService
 from .config import AppConfig, config_transaction, default_config_path, load_config, merge_config, save_config
 from .contextual_offers import ContextualOffer
+from .gpio_buttons import ButtonEvent, ButtonName, GpioButtonService
 from .hermes_client import HermesBridgeClient
 from .kids_mode import KidsProfile
 from .presence import PresenceObservation
@@ -286,6 +287,7 @@ class ReachyMiniHermes(ReachyMiniApp):
         self._runtime: HermesVoiceRuntime | None = None
         self._bluetooth = BluetoothGamepadService(self._handle_gamepad_action)
         self._gamepad_config_lock = threading.Lock()
+        self._gpio_buttons = GpioButtonService(self._handle_button_event)
         self._register_settings_routes()
 
     def _handle_gamepad_action(self, kind: str, action: str, value: str) -> bool:
@@ -302,6 +304,38 @@ class ReachyMiniHermes(ReachyMiniApp):
             return True
         self._runtime.queue_manual_robot_action(action, value)
         return True
+
+    def _handle_button_event(self, event: ButtonEvent) -> None:
+        """Map the physical buttons: red stops or sleeps, green listens/wakes or stands by."""
+        runtime = self._runtime
+        if runtime is None:
+            raise RuntimeError("Voice runtime has not started")
+        _LOGGER.info("GPIO %s button %s press", event.button, event.gesture)
+        if event.button == "red" and event.gesture == "short":
+            # Stop is always honoured, even while starting or Kids-locked.
+            runtime.physical_stop()
+            return
+        if not runtime.control_ready:
+            raise RuntimeError("Voice runtime is still starting")
+        if event.button == "red":
+            try:
+                runtime.physical_stop()
+            finally:
+                runtime.set_power_mode("sleep")
+        elif event.gesture == "short":
+            runtime.request_button_wake()
+        else:
+            runtime.set_power_mode("standby")
+
+    def _start_gpio_buttons(self, config: AppConfig) -> None:
+        if not config.gpio_buttons_enabled:
+            return
+        pins: dict[ButtonName, int] = {}
+        if config.gpio_green_pin is not None:
+            pins["green"] = config.gpio_green_pin
+        if config.gpio_red_pin is not None:
+            pins["red"] = config.gpio_red_pin
+        self._gpio_buttons.start(chip=config.gpio_chip, pins=pins, long_press_seconds=config.gpio_long_press_seconds)
 
     def _register_settings_routes(self) -> None:
         if self.settings_app is None:
@@ -1233,10 +1267,13 @@ class ReachyMiniHermes(ReachyMiniApp):
             preferences_path=default_config_path().parent / "initiative-preferences.json",
         )
         try:
-            if load_config().gamepad_enabled:
+            startup_config = load_config()
+            if startup_config.gamepad_enabled:
                 self._bluetooth.set_gamepad_enabled(True)
+            self._start_gpio_buttons(startup_config)
             self._runtime.run()
         finally:
+            self._gpio_buttons.close()
             self._bluetooth.close()
 
 
