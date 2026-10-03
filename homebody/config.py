@@ -1,4 +1,4 @@
-"""Persistent configuration for the Reachy Mini Hermes app."""
+"""Persistent configuration for the Homebody app."""
 
 from __future__ import annotations
 
@@ -14,15 +14,24 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 _CONFIG_LOCK = threading.RLock()
-_CONFIG_ENV = "REACHY_MINI_HERMES_CONFIG"
+_CONFIG_ENV = "HOMEBODY_CONFIG"
+# Pre-rename (Reachy Mini Hermes) override, still honoured so existing robots keep their settings.
+_LEGACY_CONFIG_ENV = "REACHY_MINI_HERMES_CONFIG"
 
 
 def default_config_path() -> Path:
     """Return a user-writable path that survives package upgrades."""
-    override = os.getenv(_CONFIG_ENV, "").strip()
-    if override:
-        return Path(override).expanduser()
-    return Path.home() / ".local" / "share" / "reachy_mini_hermes" / "config.json"
+    for env in (_CONFIG_ENV, _LEGACY_CONFIG_ENV):
+        override = os.getenv(env, "").strip()
+        if override:
+            return Path(override).expanduser()
+    data = Path.home() / ".local" / "share"
+    path = data / "homebody" / "config.json"
+    legacy = data / "reachy_mini_hermes" / "config.json"
+    # Use a pre-rename config in place rather than copying a file that holds the bridge token.
+    if not path.exists() and legacy.exists():
+        return legacy
+    return path
 
 
 @dataclass(slots=True)

@@ -28,7 +28,7 @@ The Hermes implementation is rewritten around gesture-bound sessions, a local
 watchdog, cooperative Stop, privacy/Kids/Awake policy gates, and coupled
 head-plus-base horizontal movement.
 
-The Reachy Mini Hermes browser camera viewer includes an unmodified bundled copy
+The Homebody browser camera viewer includes an unmodified bundled copy
 of `gstwebrtc-api.js`, sourced from Pollen Robotics' Reachy Mini Control desktop
 application and originally maintained by the GStreamer project:
 

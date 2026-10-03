@@ -290,7 +290,7 @@ function updateInstallUi() {
   if (runningStandalone()) {
     button.hidden = true;
     status.textContent = "Installed";
-    message.textContent = "Running as the Reachy Hermes home-screen app.";
+    message.textContent = "Running as the Homebody home-screen app.";
     message.className = "message ok";
     help.hidden = true;
     return;
@@ -332,7 +332,7 @@ $("install-button").addEventListener("click", async () => {
     $("install-button").hidden = true;
     $("install-status").textContent = "Installing";
     $("install-help").hidden = true;
-    $("install-message").textContent = "Installation accepted. Reachy Hermes is being added to your home screen.";
+    $("install-message").textContent = "Installation accepted. Homebody is being added to your home screen.";
     $("install-message").className = "message ok";
   } else {
     updateInstallUi();

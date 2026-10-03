@@ -7,10 +7,10 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-import reachy_mini_hermes.main as main_module
-from reachy_mini_hermes.config import AppConfig, load_config
-from reachy_mini_hermes.main import ReachyMiniHermes
-from reachy_mini_hermes.runtime import HermesVoiceRuntime
+import homebody.main as main_module
+from homebody.config import AppConfig, load_config
+from homebody.main import Homebody
+from homebody.runtime import HermesVoiceRuntime
 
 
 def test_pin_routes_schema_and_legacy_config_are_removed(tmp_path: Path) -> None:
@@ -23,7 +23,7 @@ def test_pin_routes_schema_and_legacy_config_are_removed(tmp_path: Path) -> None
     assert config.api_key == "test-key"
     assert not hasattr(config, "kids_parent_pin_hash")
 
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     schema = app.settings_app.openapi()
     serialized = json.dumps(schema)
     assert not any("/kids/parent" in path for path in schema["paths"])
@@ -41,7 +41,7 @@ def test_pin_routes_schema_and_legacy_config_are_removed(tmp_path: Path) -> None
 
 
 def test_locked_status_route_uses_child_allowlist_and_redacts_runtime_text(monkeypatch) -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = HermesVoiceRuntime(SimpleNamespace(), threading.Event())
     runtime._kids_locked = True
     with runtime._status_lock:
@@ -99,7 +99,7 @@ def test_locked_status_route_uses_child_allowlist_and_redacts_runtime_text(monke
 
 
 def test_locked_child_status_omits_agent_session_details(monkeypatch) -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = HermesVoiceRuntime(SimpleNamespace(), threading.Event())
     runtime.set_capability_profile("agent", adult_ui_unlocked=True)
     runtime._kids_locked = True

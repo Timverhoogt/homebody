@@ -5,7 +5,7 @@ import struct
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = ROOT / "reachy_mini_hermes" / "static"
+STATIC = ROOT / "homebody" / "static"
 
 
 def _png_size(path: Path) -> tuple[int, int]:
@@ -17,7 +17,7 @@ def _png_size(path: Path) -> tuple[int, int]:
 def test_pwa_manifest_declares_standalone_root_scoped_app_and_icons() -> None:
     manifest = json.loads((STATIC / "manifest.webmanifest").read_text())
 
-    assert manifest["name"] == "Reachy Mini Hermes"
+    assert manifest["name"] == "Homebody"
     assert manifest["start_url"] == "/#dashboard"
     assert manifest["scope"] == "/"
     assert manifest["display"] == "standalone"
@@ -45,7 +45,7 @@ def test_service_worker_caches_only_the_app_shell_and_bypasses_api() -> None:
 def test_dashboard_exposes_native_install_prompt_with_http_fallback() -> None:
     html = (STATIC / "index.html").read_text()
     javascript = (STATIC / "main.js").read_text()
-    backend = (ROOT / "reachy_mini_hermes" / "main.py").read_text()
+    backend = (ROOT / "homebody" / "main.py").read_text()
 
     assert 'rel="manifest" href="/manifest.webmanifest"' in html
     assert 'id="install-button"' in html
@@ -129,7 +129,7 @@ def test_v44_ui_uses_dedicated_agent_workspace_and_contextual_offers() -> None:
     assert '"X-Reachy-Adult-UI": "unlocked"' in script
     assert 'if (!initiativeEditActive)' in script
     assert '$("initiative-badge").textContent = "Offline"' in script
-    assert 'reachy-hermes-shell-v50' in worker
+    assert 'homebody-shell-v51' in worker
 
 
 def test_shell_versions_agree_between_page_and_service_worker() -> None:
@@ -137,7 +137,7 @@ def test_shell_versions_agree_between_page_and_service_worker() -> None:
 
     html = (STATIC / "index.html").read_text()
     worker = (STATIC / "service-worker.js").read_text()
-    cache_version = re.search(r'reachy-hermes-shell-v(\d+)"', worker)
+    cache_version = re.search(r'homebody-shell-v(\d+)"', worker)
     assert cache_version is not None
     page_versions = set(re.findall(r'/static/[\w.-]+\?v=(\d+)', html))
     worker_versions = set(re.findall(r'/static/[\w.-]+\?v=(\d+)', worker))

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from reachy_mini_hermes.config import AppConfig, load_config, merge_config, save_config
+from homebody.config import AppConfig, load_config, merge_config, save_config
 
 
 def test_config_round_trip_and_permissions(tmp_path: Path) -> None:
@@ -117,9 +117,9 @@ def test_config_transaction_serialises_read_modify_write(tmp_path, monkeypatch) 
     import threading
     import time
 
-    from reachy_mini_hermes.config import config_transaction, load_config, merge_config, save_config
+    from homebody.config import config_transaction, load_config, merge_config, save_config
 
-    monkeypatch.setenv("REACHY_MINI_HERMES_CONFIG", str(tmp_path / "config.json"))
+    monkeypatch.setenv("HOMEBODY_CONFIG", str(tmp_path / "config.json"))
     save_config(AppConfig())
     first_loaded = threading.Event()
 
@@ -144,3 +144,33 @@ def test_config_transaction_serialises_read_modify_write(tmp_path, monkeypatch) 
     final = load_config()
     assert final.language == "nl"
     assert final.motion_enabled is False
+
+
+def test_default_config_path_prefers_homebody_and_keeps_pre_rename_settings(tmp_path, monkeypatch) -> None:
+    from homebody.config import default_config_path
+
+    monkeypatch.delenv("HOMEBODY_CONFIG", raising=False)
+    monkeypatch.delenv("REACHY_MINI_HERMES_CONFIG", raising=False)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    data = tmp_path / ".local" / "share"
+    assert default_config_path() == data / "homebody" / "config.json"
+
+    legacy = data / "reachy_mini_hermes" / "config.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("{}", encoding="utf-8")
+    assert default_config_path() == legacy
+
+    current = data / "homebody" / "config.json"
+    current.parent.mkdir(parents=True)
+    current.write_text("{}", encoding="utf-8")
+    assert default_config_path() == current
+
+
+def test_default_config_path_honours_new_and_pre_rename_overrides(tmp_path, monkeypatch) -> None:
+    from homebody.config import default_config_path
+
+    monkeypatch.delenv("HOMEBODY_CONFIG", raising=False)
+    monkeypatch.setenv("REACHY_MINI_HERMES_CONFIG", str(tmp_path / "legacy.json"))
+    assert default_config_path() == tmp_path / "legacy.json"
+    monkeypatch.setenv("HOMEBODY_CONFIG", str(tmp_path / "homebody.json"))
+    assert default_config_path() == tmp_path / "homebody.json"

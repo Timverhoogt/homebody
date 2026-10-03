@@ -5,8 +5,8 @@ import json
 import httpx
 import pytest
 
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.hermes_client import HermesBridgeClient, HermesBridgeError
+from homebody.config import AppConfig
+from homebody.hermes_client import HermesBridgeClient, HermesBridgeError
 
 
 def make_client(handler) -> HermesBridgeClient:
@@ -93,7 +93,7 @@ def test_transcription_payload() -> None:
 
 
 def test_typed_agent_broker_client_contract() -> None:
-    from reachy_mini_hermes.hermes_client import AgentBrokerContext
+    from homebody.hermes_client import AgentBrokerContext
 
     seen: list[dict[str, object]] = []
 
@@ -202,7 +202,7 @@ def test_typed_agent_broker_client_contract() -> None:
     ],
 )
 def test_agent_broker_client_rejects_unverified_result_metadata(changed: dict[str, object]) -> None:
-    from reachy_mini_hermes.hermes_client import AgentBrokerContext
+    from homebody.hermes_client import AgentBrokerContext
 
     def handler(_request: httpx.Request) -> httpx.Response:
         payload: dict[str, object] = {
@@ -236,7 +236,7 @@ def test_agent_broker_client_rejects_unverified_result_metadata(changed: dict[st
 
 
 def test_agent_05_client_preview_current_and_action_contracts() -> None:
-    from reachy_mini_hermes.hermes_client import AgentBrokerContext
+    from homebody.hermes_client import AgentBrokerContext
 
     seen: list[tuple[str, dict[str, object]]] = []
     run = {

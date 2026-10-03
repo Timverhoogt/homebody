@@ -6,8 +6,8 @@ import json
 import numpy as np
 import pytest
 
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.realtime_client import RealtimeBridgeError, RealtimeBridgeSession, RealtimeEvent, realtime_url
+from homebody.config import AppConfig
+from homebody.realtime_client import RealtimeBridgeError, RealtimeBridgeSession, RealtimeEvent, realtime_url
 
 
 def test_realtime_url_uses_private_bridge() -> None:

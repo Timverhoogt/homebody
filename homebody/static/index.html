@@ -7,12 +7,12 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Reachy Hermes" />
-  <title>Reachy Mini Hermes</title>
+  <meta name="apple-mobile-web-app-title" content="Homebody" />
+  <title>Homebody</title>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=50">
+  <link rel="stylesheet" href="/static/style.css?v=51">
 </head>
 <body>
   <main>
@@ -34,7 +34,7 @@
       <span id="status-dot" class="status-dot" aria-label="Runtime status"></span>
     </section>
 
-    <nav class="tabs" role="tablist" aria-label="Reachy Hermes controls">
+    <nav class="tabs" role="tablist" aria-label="Homebody controls">
       <button type="button" class="tab-button active" id="tab-dashboard" role="tab" aria-selected="true" aria-controls="panel-dashboard" data-tab="dashboard">Home</button>
       <button type="button" class="tab-button" id="tab-agent" role="tab" aria-selected="false" aria-controls="panel-agent" data-tab="agent">Agent</button>
       <button type="button" class="tab-button" id="tab-kids" role="tab" aria-selected="false" aria-controls="panel-kids" data-tab="kids">Kids</button>
@@ -66,7 +66,7 @@
 
       <details id="install-card" class="card install-card disclosure-card">
         <summary class="section-heading">
-          <div><p class="label">Phone shortcut</p><h2>Install Reachy Hermes</h2><p class="muted compact-note">Open controls from your home screen</p></div>
+          <div><p class="label">Phone shortcut</p><h2>Install Homebody</h2><p class="muted compact-note">Open controls from your home screen</p></div>
           <span id="install-status" class="badge">Web app</span>
         </summary>
         <p id="install-description" class="muted">Open Reachy controls in a standalone window from your phone's home screen.</p>
@@ -329,7 +329,7 @@
       <section class="card kids-guide-card">
         <div class="section-heading"><div><p class="label">For families</p><h2>Use Kids Mode together</h2></div><span class="badge">Beta</span></div>
         <div class="kids-guide-grid">
-          <div><strong>How to talk</strong><p class="muted">After Reachy's greeting, say <b>Hey Hermes</b>, <b>Okay Nabu</b>, or <b>Hey Reachy</b>. Kids can interrupt with any wake phrase.</p></div>
+          <div><strong>How to talk</strong><p class="muted">After Reachy's greeting, say <b>Hey Homebody</b>, <b>Hey Hermes</b>, <b>Okay Nabu</b>, or <b>Hey Reachy</b>. Kids can interrupt with any wake phrase.</p></div>
           <div><strong>Adult supervision</strong><p class="muted">Generative AI can still make mistakes. Keep a grown-up nearby, especially for younger children or sensitive topics.</p></div>
           <div><strong>Fast child voice</strong><p class="muted">Replies use ElevenLabs Flash v2.5 and begin playing from streamed PCM as soon as audio arrives.</p></div>
           <div><strong>Cloud processing</strong><p class="muted">Child audio/text—and the optional nickname in the greeting—go to the configured STT provider, OpenAI moderation/chat, and ElevenLabs speech. No Hermes memory does not mean provider non-retention; review those providers' terms.</p></div>
@@ -355,7 +355,7 @@
           <button type="button" class="secondary announcement-template" data-announcement-template="Dinner is ready. Please come downstairs.">Dinner ready</button>
           <button type="button" class="secondary announcement-template" data-announcement-template="We are leaving in five minutes. Please get ready.">Leaving soon</button>
           <button type="button" class="secondary announcement-template" data-announcement-template="Could everyone please come to the living room?">Come here</button>
-          <button type="button" class="secondary announcement-template" data-announcement-template="This is a test announcement from Reachy Mini Hermes.">Test</button>
+          <button type="button" class="secondary announcement-template" data-announcement-template="This is a test announcement from Homebody.">Test</button>
         </div>
 
         <div class="grid-two announcement-options">
@@ -803,7 +803,7 @@
     </div>
   </main>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=50"></script>
-  <script src="/static/main.js?v=50"></script>
+  <script src="/static/camera.js?v=51"></script>
+  <script src="/static/main.js?v=51"></script>
 </body>
 </html>

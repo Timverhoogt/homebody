@@ -12,8 +12,8 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from companion.agent_backends import OpenClawBackend, OpenClawConfig, OpenClawConfigError
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.hermes_client import HermesBridgeClient, HermesBridgeError
+from homebody.config import AppConfig
+from homebody.hermes_client import HermesBridgeClient, HermesBridgeError
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -335,7 +335,7 @@ def test_app_health_accepts_an_openclaw_only_bridge() -> None:
 
 
 def test_settings_ui_labels_openclaw_agents() -> None:
-    script = (ROOT / "reachy_mini_hermes" / "static" / "main.js").read_text(encoding="utf-8")
+    script = (ROOT / "homebody" / "static" / "main.js").read_text(encoding="utf-8")
 
     assert "OpenClaw agent ·" in script
     assert json.dumps("hermes-agent") in script

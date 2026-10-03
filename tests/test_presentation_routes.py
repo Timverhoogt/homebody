@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from reachy_mini_hermes.main import ReachyMiniHermes
+from homebody.main import Homebody
 
 
 class Runtime:
@@ -40,7 +40,7 @@ class Runtime:
 
 
 def test_presentation_routes_require_unlocked_adult_ui() -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = Runtime()
     app._runtime = runtime  # type: ignore[assignment]
     client = TestClient(app.settings_app)

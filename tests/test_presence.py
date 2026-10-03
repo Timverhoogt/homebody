@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from reachy_mini_hermes.presence import PresenceObservation, PresenceState
+from homebody.presence import PresenceObservation, PresenceState
 
 
 class Clock:

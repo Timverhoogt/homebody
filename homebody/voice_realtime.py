@@ -18,7 +18,7 @@ from .robot_tools import completed_robot_tool_call
 from .safety_gate import POWER_MODES as _POWER_MODES
 
 # Keep the runtime logger name so existing log filters still match these lines.
-_LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
+_LOGGER = logging.getLogger("homebody.runtime")
 
 @dataclass(slots=True)
 class RealtimePlayback:

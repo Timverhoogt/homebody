@@ -6,10 +6,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from reachy_mini_hermes.audio import EndpointResult
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.hermes_client import SpeechAudio
-from reachy_mini_hermes.runtime import HermesVoiceRuntime
+from homebody.audio import EndpointResult
+from homebody.config import AppConfig
+from homebody.hermes_client import SpeechAudio
+from homebody.runtime import HermesVoiceRuntime
 
 
 class FakeMedia:
@@ -111,7 +111,7 @@ def test_realtime_wake_session_accepts_audio_after_agent_generation_change(
         def close(self) -> None:
             self.closed = True
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.RealtimeBridgeSession", Session)
+    monkeypatch.setattr("homebody.runtime.RealtimeBridgeSession", Session)
     runtime._read_16k_frame = lambda: np.ones(160, dtype=np.float32)  # type: ignore[method-assign]
 
     runtime.cancel_agent_work("session_changed")
@@ -154,7 +154,7 @@ def test_pipeline_wake_session_completes_first_turn_after_agent_generation_chang
         def close(self) -> None:
             calls.append("close")
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.HermesBridgeClient", Client)
+    monkeypatch.setattr("homebody.runtime.HermesBridgeClient", Client)
     # This test exercises local generation invalidation and the first voice turn,
     # not the best-effort remote lease publisher's daemon thread.
     runtime._publish_remote_agent_session = lambda: None  # type: ignore[method-assign]
@@ -186,7 +186,7 @@ def test_pipeline_no_speech_timeout_returns_to_wake_word_without_bridge_turn(
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.HermesBridgeClient", Client)
+    monkeypatch.setattr("homebody.runtime.HermesBridgeClient", Client)
     runtime._record_utterance = lambda config: EndpointResult(  # type: ignore[method-assign]
         np.empty(0, dtype=np.float32), False, "initial_timeout", 0.01
     )
@@ -232,8 +232,8 @@ def test_realtime_follow_up_inactivity_closes_session(monkeypatch: pytest.Monkey
             self.closed = True
 
     clock = Clock()
-    monkeypatch.setattr("reachy_mini_hermes.runtime.RealtimeBridgeSession", Session)
-    monkeypatch.setattr("reachy_mini_hermes.runtime.time.monotonic", clock.monotonic)
+    monkeypatch.setattr("homebody.runtime.RealtimeBridgeSession", Session)
+    monkeypatch.setattr("homebody.runtime.time.monotonic", clock.monotonic)
     runtime._read_16k_frame = lambda: None  # type: ignore[method-assign]
 
     runtime.cancel_agent_work("session_changed")
@@ -272,7 +272,7 @@ def test_privacy_cancellation_closes_realtime_session_and_flushes_audio(
         def close(self) -> None:
             self.closed = True
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.RealtimeBridgeSession", Session)
+    monkeypatch.setattr("homebody.runtime.RealtimeBridgeSession", Session)
     runtime._read_16k_frame = lambda: None  # type: ignore[method-assign]
 
     runtime.cancel_agent_work("session_changed")
@@ -318,7 +318,7 @@ def test_realtime_agent_session_binds_request_id_and_privacy_cancels_it(
 
     runtime._cancel_remote_agent_request = cancel_remote  # type: ignore[method-assign]
     runtime._read_16k_frame = lambda: None  # type: ignore[method-assign]
-    monkeypatch.setattr("reachy_mini_hermes.runtime.RealtimeBridgeSession", Session)
+    monkeypatch.setattr("homebody.runtime.RealtimeBridgeSession", Session)
 
     runtime._run_realtime_conversation(AppConfig(conversation_mode="realtime"))
 

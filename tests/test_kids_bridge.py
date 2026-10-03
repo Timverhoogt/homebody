@@ -6,8 +6,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.hermes_client import HermesBridgeClient, HermesBridgeError
+from homebody.config import AppConfig
+from homebody.hermes_client import HermesBridgeClient, HermesBridgeError
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -7,7 +7,7 @@ from typing import cast
 
 import pytest
 
-from reachy_mini_hermes.robot_tools import (
+from homebody.robot_tools import (
     CameraJoystickStream,
     ReachyRobotActions,
     completed_robot_tool_call,
@@ -133,9 +133,9 @@ def test_precision_controls_validate_only_cartesian_axes() -> None:
 
 
 def test_precision_head_and_base_moves_are_clamped_and_interpolated(monkeypatch) -> None:
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     monkeypatch.setattr(
-        "reachy_mini_hermes.robot_tools.interpolate_head_pose",
+        "homebody.robot_tools.interpolate_head_pose",
         lambda start, target, ratio: target,
     )
     robot = FakeRobot()
@@ -164,9 +164,9 @@ def test_precision_head_and_base_moves_are_clamped_and_interpolated(monkeypatch)
 
 
 def test_precision_center_all_resets_head_and_base(monkeypatch) -> None:
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     monkeypatch.setattr(
-        "reachy_mini_hermes.robot_tools.interpolate_head_pose",
+        "homebody.robot_tools.interpolate_head_pose",
         lambda start, target, ratio: target,
     )
     robot = FakeRobot()
@@ -192,9 +192,9 @@ def test_precision_center_all_resets_head_and_base(monkeypatch) -> None:
 
 
 def test_presence_acknowledgement_is_a_small_head_only_action(monkeypatch) -> None:
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     monkeypatch.setattr(
-        "reachy_mini_hermes.robot_tools.interpolate_head_pose",
+        "homebody.robot_tools.interpolate_head_pose",
         lambda start, target, ratio: target,
     )
     robot = FakeRobot()
@@ -232,7 +232,7 @@ def test_presence_acknowledgement_queue_is_cancellable(monkeypatch) -> None:
         return not actions._cancel_requested.wait(1.0)
 
     monkeypatch.setattr(actions, "_run_precision_interpolation", wait_for_cancel)
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     actions.start()
     try:
         queued = actions.enqueue(
@@ -262,7 +262,7 @@ def test_presence_acknowledgement_queue_is_cancellable(monkeypatch) -> None:
 
 
 def test_camera_joystick_stream_rotates_head_and_base_together_at_interactive_rate(monkeypatch) -> None:
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     robot = FakeRobot()
     actions = ReachyRobotActions(robot, threading.Event(), library_factory=FakeLibrary)
     stream = CameraJoystickStream(watchdog_seconds=1.0)
@@ -293,7 +293,7 @@ def test_camera_joystick_stream_rotates_head_and_base_together_at_interactive_ra
 
 
 def test_camera_joystick_stream_stops_when_browser_updates_expire(monkeypatch) -> None:
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     robot = FakeRobot()
     actions = ReachyRobotActions(robot, threading.Event(), library_factory=FakeLibrary)
     stream = CameraJoystickStream(watchdog_seconds=0.08)
@@ -310,7 +310,7 @@ def test_camera_joystick_stream_stops_when_browser_updates_expire(monkeypatch) -
 
 
 def test_camera_joystick_stream_stops_cleanly_through_action_queue(monkeypatch) -> None:
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     robot = FakeRobot()
     results: list[dict[str, object]] = []
     actions = ReachyRobotActions(
@@ -376,7 +376,7 @@ def test_camera_joystick_release_is_reported_as_expected_cancellation(monkeypatc
         return not actions._cancel_requested.wait(1.0)
 
     monkeypatch.setattr(actions, "_run_precision_interpolation", wait_for_release)
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     actions.start()
     try:
         queued = actions.enqueue(
@@ -399,13 +399,13 @@ def test_camera_joystick_release_is_reported_as_expected_cancellation(monkeypatc
 
 
 def test_camera_joystick_adds_bounded_base_assistance_near_head_limit(monkeypatch) -> None:
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     monkeypatch.setattr(
-        "reachy_mini_hermes.robot_tools.interpolate_head_pose",
+        "homebody.robot_tools.interpolate_head_pose",
         lambda start, target, ratio: target,
     )
     monkeypatch.setattr(
-        "reachy_mini_hermes.robot_tools._head_pose_components",
+        "homebody.robot_tools._head_pose_components",
         lambda _pose: {"x": 0.0, "y": 0.0, "z": 0.0, "roll": 0.0, "pitch": 0.0, "yaw": 30.0},
     )
     robot = FakeRobot()
@@ -439,7 +439,7 @@ def test_camera_joystick_rejects_non_finite_or_unbounded_input(value: object) ->
 
 def test_robot_actions_use_safe_curated_moves_without_move_audio(monkeypatch) -> None:
     monkeypatch.setattr(
-        "reachy_mini_hermes.robot_tools.create_head_pose",
+        "homebody.robot_tools.create_head_pose",
         lambda **kwargs: kwargs,
     )
     robot = FakeRobot()
@@ -464,7 +464,7 @@ def test_robot_actions_use_safe_curated_moves_without_move_audio(monkeypatch) ->
 
 def test_diagonal_look_uses_one_bounded_semantic_head_pose(monkeypatch) -> None:
     monkeypatch.setattr(
-        "reachy_mini_hermes.robot_tools.create_head_pose",
+        "homebody.robot_tools.create_head_pose",
         lambda **kwargs: kwargs,
     )
     robot = FakeRobot()
@@ -522,7 +522,7 @@ def test_unknown_or_unapproved_robot_action_is_rejected() -> None:
 
 
 def test_worker_completes_tool_with_actual_execution_result(monkeypatch) -> None:
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     robot = FakeRobot()
     completed = threading.Event()
     results: list[dict[str, object]] = []
@@ -607,7 +607,7 @@ def test_manual_stop_interrupts_recorded_move_without_sdk_media_cancel() -> None
 
 
 def test_manual_look_can_hold_pose_without_restoring_idle_motion(monkeypatch) -> None:
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     completed = threading.Event()
     lifecycle: list[str] = []
     actions = ReachyRobotActions(
@@ -630,7 +630,7 @@ def test_manual_look_can_hold_pose_without_restoring_idle_motion(monkeypatch) ->
 
 
 def test_cancel_generation_blocks_dequeued_action_before_execution(monkeypatch) -> None:
-    monkeypatch.setattr("reachy_mini_hermes.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
     robot = FakeRobot()
     entered = threading.Event()
     release = threading.Event()

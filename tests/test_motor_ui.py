@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = ROOT / "reachy_mini_hermes" / "static"
+STATIC = ROOT / "homebody" / "static"
 
 
 def test_robot_tab_exposes_motor_state_and_safe_power_controls() -> None:
@@ -98,7 +98,7 @@ def test_motor_ui_serializes_power_transitions_and_reports_confirmed_state() -> 
     assert 'data-action-busy="true"' in style
     assert "position: fixed" in style
     assert 'data-action-busy="false"' in html
-    assert 'reachy-hermes-shell-v50' in worker
-    assert '/static/style.css?v=50' in html
-    assert '/static/camera.js?v=50' in html
-    assert '/static/main.js?v=50' in html
+    assert 'homebody-shell-v51' in worker
+    assert '/static/style.css?v=51' in html
+    assert '/static/camera.js?v=51' in html
+    assert '/static/main.js?v=51' in html

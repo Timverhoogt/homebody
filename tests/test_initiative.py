@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from reachy_mini_hermes.initiative import (
+from homebody.initiative import (
     InitiativeCandidate,
     InitiativePolicy,
     InitiativeSettings,

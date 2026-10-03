@@ -15,7 +15,7 @@ from .agent_policy import AgentPolicy
 from .hermes_client import AgentBrokerContext
 
 # Keep the runtime logger name so existing log filters still match these lines.
-_LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
+_LOGGER = logging.getLogger("homebody.runtime")
 
 class AgentSessionMixin:
     """Adult Agent authority: profile switches, generation-bound requests, broker context, and activity."""

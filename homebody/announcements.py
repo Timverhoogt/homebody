@@ -19,7 +19,7 @@ from .hermes_client import HermesBridgeClient, SpeechAudio
 from .wakeword import WAKE_PROMPT
 
 # Keep the runtime logger name so existing log filters still match announcement lines.
-_LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
+_LOGGER = logging.getLogger("homebody.runtime")
 
 _ANNOUNCEMENT_BEHAVIORS = frozenset({"voice_only", "wake_and_return", "wake_and_stay"})
 _ANNOUNCEMENT_QUEUE_LIMIT = 20

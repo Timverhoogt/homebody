@@ -19,7 +19,7 @@ from .robot_tools import CameraJoystickStream, manual_precision_action, manual_r
 from .safety_gate import CAMERA_CONTROL_POLICY
 
 # Keep the runtime logger name so existing log filters still match control lines.
-_LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
+_LOGGER = logging.getLogger("homebody.runtime")
 
 # A joystick gesture that sends nothing for this long is abandoned (closed tab, lost network).
 _CAMERA_CONTROL_IDLE_TIMEOUT_SECONDS = 30.0

@@ -19,7 +19,7 @@ from .presence import PresenceObservation
 from .safety_gate import CAMERA_CAPTURE_POLICY, GESTURE_POLICY
 
 # Keep the runtime logger name so existing log filters still match these lines.
-_LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
+_LOGGER = logging.getLogger("homebody.runtime")
 
 def doa_yaw_degrees(angle_radians: float) -> float:
     """Convert XVF3800 DOA coordinates to a conservative Reachy head yaw."""

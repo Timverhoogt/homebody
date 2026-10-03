@@ -19,8 +19,8 @@ from companion.reachy_agent_broker import (
     BrokerValidationError,
     ReachyAgentBroker,
 )
-from reachy_mini_hermes.kids_mode import KidsProfile
-from reachy_mini_hermes.runtime import HermesVoiceRuntime
+from homebody.kids_mode import KidsProfile
+from homebody.runtime import HermesVoiceRuntime
 
 _LOGGER = logging.getLogger(__name__)
 

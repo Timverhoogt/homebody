@@ -50,7 +50,7 @@ jobs:
         run: .venv/bin/ruff check .
       - name: Check JavaScript syntax
         run: |
-          for file in reachy_mini_hermes/static/*.js; do node --check "$file"; done
+          for file in homebody/static/*.js; do node --check "$file"; done
       - name: Test
         # Override the local --maxfail=1 default so CI reports every failure.
         run: .venv/bin/pytest --maxfail=1000

@@ -63,7 +63,7 @@ Use the Python environment that belongs to Hermes Agent:
 
 ```bash
 cd ~/.hermes/hermes-agent
-venv/bin/python /path/to/reachy_mini_hermes/companion/hermes_reachy_bridge.py \
+venv/bin/python /path/to/homebody/companion/hermes_reachy_bridge.py \
   --host 0.0.0.0 \
   --port 8643
 ```
@@ -275,7 +275,7 @@ The Kids `/v1/kids/speech/stream` and `/v1/kids/speech/fallback` paths accept on
 
 ## Run at boot with systemd
 
-The included example assumes this repository is cloned to `~/reachy_mini_hermes`:
+The included example assumes this repository is cloned to `~/homebody`:
 
 ```bash
 mkdir -p ~/.config/systemd/user

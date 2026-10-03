@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-import reachy_mini_hermes.main as main_module
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.main import ReachyMiniHermes
+import homebody.main as main_module
+from homebody.config import AppConfig
+from homebody.main import Homebody
 
 OFFER = {
     "source": "weather",
@@ -35,7 +35,7 @@ class Runtime:
 
 
 def test_offer_submission_requires_bearer_and_forbids_unknown_context(monkeypatch) -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = Runtime()
     app._runtime = runtime  # type: ignore[assignment]
     monkeypatch.setattr(main_module, "load_config", lambda: AppConfig(api_key="secret"))
@@ -66,7 +66,7 @@ def test_offer_submission_requires_bearer_and_forbids_unknown_context(monkeypatc
 
 
 def test_phone_response_requires_unlocked_adult_ui_and_executes_no_action(monkeypatch) -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = Runtime()
     app._runtime = runtime  # type: ignore[assignment]
     monkeypatch.setattr(main_module, "load_config", lambda: AppConfig(api_key="secret"))

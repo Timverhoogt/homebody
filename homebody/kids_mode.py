@@ -35,7 +35,7 @@ _ACTIVITY_INSTRUCTIONS = {
     ),
 }
 
-_WAKE_HINT = "Say Hey Hermes, Okay Nabu, or Hey Reachy"
+_WAKE_HINT = "Say Hey Homebody, Hey Hermes, Okay Nabu, or Hey Reachy"
 _ACTIVITY_GREETINGS = {
     "buddy": f"Kids Mode is ready. {_WAKE_HINT}, then tell me what you would like to talk about.",
     "story": f"Story time is ready. {_WAKE_HINT}, then choose a character or a place for our story.",

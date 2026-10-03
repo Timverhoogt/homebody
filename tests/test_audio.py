@@ -5,8 +5,8 @@ from collections.abc import Iterator
 
 import numpy as np
 
-import reachy_mini_hermes.audio as audio_module
-from reachy_mini_hermes.audio import AdaptiveEndpointRecorder, encode_wav, mono_float32, resample_linear
+import homebody.audio as audio_module
+from homebody.audio import AdaptiveEndpointRecorder, encode_wav, mono_float32, resample_linear
 
 
 def test_audio_normalization_and_resample() -> None:

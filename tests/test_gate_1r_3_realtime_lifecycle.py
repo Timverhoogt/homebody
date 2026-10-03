@@ -8,9 +8,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.realtime_client import RealtimeEvent
-from reachy_mini_hermes.runtime import HermesVoiceRuntime
+from homebody.config import AppConfig
+from homebody.realtime_client import RealtimeEvent
+from homebody.runtime import HermesVoiceRuntime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -193,7 +193,7 @@ def test_focused_realtime_conversation_lifecycle(monkeypatch: pytest.MonkeyPatch
             size = event.payload.get("samples_size", 16)
             return np.ones(size, dtype=np.float32)
 
-    monkeypatch.setattr("reachy_mini_hermes.runtime.RealtimeBridgeSession", MockRealtimeSession)
+    monkeypatch.setattr("homebody.runtime.RealtimeBridgeSession", MockRealtimeSession)
 
     # Simple non-blocking frame reader with tiny delay to let time progress nicely
     def read_frame() -> np.ndarray:

@@ -5,12 +5,12 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-import reachy_mini_hermes.main as main_module
-from reachy_mini_hermes.agent_audit import AgentAuditLog
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.kids_mode import KidsProfile
-from reachy_mini_hermes.main import ReachyMiniHermes
-from reachy_mini_hermes.runtime import HermesVoiceRuntime
+import homebody.main as main_module
+from homebody.agent_audit import AgentAuditLog
+from homebody.config import AppConfig
+from homebody.kids_mode import KidsProfile
+from homebody.main import Homebody
+from homebody.runtime import HermesVoiceRuntime
 
 
 def build_client(monkeypatch):
@@ -18,7 +18,7 @@ def build_client(monkeypatch):
     saved: list[AppConfig] = []
     monkeypatch.setattr(main_module, "load_config", lambda: config)
     monkeypatch.setattr(main_module, "save_config", lambda value: saved.append(value))
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = HermesVoiceRuntime(SimpleNamespace(), threading.Event(), config_loader=lambda: config)
     runtime._establish_remote_agent_session = lambda _context: None  # type: ignore[method-assign]
     runtime._publish_remote_agent_session = lambda: None  # type: ignore[method-assign]
@@ -170,7 +170,7 @@ def test_agent_routes_reject_kids_lock_and_stop_invalidates_generation(monkeypat
 
 def test_fresh_runtime_uses_newer_agent_generation_after_restart(monkeypatch) -> None:
     epochs = iter((1_000_000_000, 2_000_000_000))
-    monkeypatch.setattr("reachy_mini_hermes.runtime.time.time_ns", lambda: next(epochs))
+    monkeypatch.setattr("homebody.runtime.time.time_ns", lambda: next(epochs))
 
     first = HermesVoiceRuntime(SimpleNamespace(), threading.Event())
     second = HermesVoiceRuntime(SimpleNamespace(), threading.Event())
@@ -581,7 +581,7 @@ def test_agent_05_trusted_ui_exposes_preview_budget_progress_and_control() -> No
     assert "/api/agent/run/status" in script
     assert "/api/agent/run/current" in script
     assert "Approve this exact step once?" in script
-    assert "reachy-hermes-shell-v50" in worker
+    assert "homebody-shell-v51" in worker
 
 
 def test_settings_require_current_key_to_change_bridge_credentials(monkeypatch) -> None:

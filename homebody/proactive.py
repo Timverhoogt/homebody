@@ -32,7 +32,7 @@ from .safety_gate import (
 )
 
 # Keep the runtime logger name so existing log filters still match these lines.
-_LOGGER = logging.getLogger("reachy_mini_hermes.runtime")
+_LOGGER = logging.getLogger("homebody.runtime")
 
 class ProactiveMixin:
     """Silent presence, initiative budgets, one-question contextual offers, and presentation windows."""

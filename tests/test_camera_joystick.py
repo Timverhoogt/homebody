@@ -7,15 +7,15 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-import reachy_mini_hermes.main as main_module
-from reachy_mini_hermes import safety_gate
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.main import ReachyMiniHermes
-from reachy_mini_hermes.robot_tools import CameraJoystickStream
-from reachy_mini_hermes.runtime import HermesVoiceRuntime
+import homebody.main as main_module
+from homebody import safety_gate
+from homebody.config import AppConfig
+from homebody.main import Homebody
+from homebody.robot_tools import CameraJoystickStream
+from homebody.runtime import HermesVoiceRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = ROOT / "reachy_mini_hermes" / "static"
+STATIC = ROOT / "homebody" / "static"
 
 
 class FakeActions:
@@ -162,7 +162,7 @@ def test_camera_script_cancels_every_pointer_and_lifecycle_boundary() -> None:
 
 
 def test_camera_control_routes_require_explicit_opt_in_and_adult_ui(monkeypatch: pytest.MonkeyPatch) -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = RouteRuntime()
     app._runtime = runtime  # type: ignore[assignment]
     monkeypatch.setattr(
@@ -184,7 +184,7 @@ def test_camera_control_routes_require_explicit_opt_in_and_adult_ui(monkeypatch:
 
 
 def test_camera_control_routes_forward_generation_bound_commands(monkeypatch: pytest.MonkeyPatch) -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = RouteRuntime()
     app._runtime = runtime  # type: ignore[assignment]
     monkeypatch.setattr(
@@ -215,7 +215,7 @@ def test_camera_control_routes_forward_generation_bound_commands(monkeypatch: py
 
 
 def test_camera_control_route_revokes_when_saved_opt_in_is_removed(monkeypatch: pytest.MonkeyPatch) -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = RouteRuntime()
     app._runtime = runtime  # type: ignore[assignment]
     monkeypatch.setattr(main_module, "load_config", lambda: AppConfig(camera_feed_enabled=True))
@@ -241,7 +241,7 @@ def test_camera_control_route_rejects_coerced_or_unbounded_input(
     monkeypatch: pytest.MonkeyPatch,
     bad_value: object,
 ) -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = RouteRuntime()
     app._runtime = runtime  # type: ignore[assignment]
     monkeypatch.setattr(

@@ -5,9 +5,9 @@ import threading
 import pytest
 from fastapi.testclient import TestClient
 
-import reachy_mini_hermes.main as main_module
-from reachy_mini_hermes.config import AppConfig
-from reachy_mini_hermes.main import ReachyMiniHermes
+import homebody.main as main_module
+from homebody.config import AppConfig
+from homebody.main import Homebody
 
 
 class FakeBluetoothService:
@@ -46,7 +46,7 @@ class FakeBluetoothService:
 
 
 def test_bluetooth_management_routes_are_bounded_and_persist_gamepad_opt_in(monkeypatch) -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     service = FakeBluetoothService()
     app._bluetooth = service  # type: ignore[assignment]
     saved: list[AppConfig] = []
@@ -80,7 +80,7 @@ def test_gamepad_enable_failure_does_not_persist_future_auto_enable(monkeypatch)
             self.enable_calls.append(enabled)
             raise RuntimeError("Previous gamepad reader is still stopping")
 
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     service = FailingBluetoothService()
     app._bluetooth = service  # type: ignore[assignment]
     saved: list[AppConfig] = []
@@ -96,7 +96,7 @@ def test_gamepad_enable_failure_does_not_persist_future_auto_enable(monkeypatch)
 
 
 def test_gamepad_enable_rolls_back_runtime_if_persistence_fails(monkeypatch) -> None:
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     service = FakeBluetoothService()
     app._bluetooth = service  # type: ignore[assignment]
     monkeypatch.setattr(main_module, "load_config", lambda: AppConfig(gamepad_enabled=False))
@@ -130,7 +130,7 @@ def test_gamepad_enable_disable_transactions_are_serialized(monkeypatch) -> None
             self.enabled = enabled
             return self._status()
 
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     service = BlockingBluetoothService()
     app._bluetooth = service  # type: ignore[assignment]
     saved: list[AppConfig] = []
@@ -166,7 +166,7 @@ def test_gamepad_stop_requires_authoritative_idle_confirmation() -> None:
         def stop_manual_robot_action() -> dict[str, object]:
             return {"ok": True, "robot_stopped": False}
 
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     app._runtime = FakeRuntime()  # type: ignore[assignment]
 
     with pytest.raises(RuntimeError, match="did not confirm Stop completion"):
@@ -181,7 +181,7 @@ def test_gamepad_precision_actions_use_the_existing_safe_precision_runtime_path(
         def queue_precision_robot_action(self, axis: str, delta: float) -> None:
             self.precision.append((axis, delta))
 
-    app = ReachyMiniHermes(False)
+    app = Homebody(False)
     runtime = FakeRuntime()
     app._runtime = runtime  # type: ignore[assignment]
 
