@@ -614,10 +614,10 @@ def test_kids_tab_has_activities_direct_controls_disclosures_and_end_button() ->
 def test_kids_static_assets_advance_pwa_cache_together() -> None:
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     worker = (STATIC / "service-worker.js").read_text(encoding="utf-8")
-    assert "homebody-shell-v53" in worker
+    assert "homebody-shell-v54" in worker
     for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=53" in html
-        assert f'"/static/{asset}?v=53"' in worker
+        assert f"/static/{asset}?v=54" in html
+        assert f'"/static/{asset}?v=54"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

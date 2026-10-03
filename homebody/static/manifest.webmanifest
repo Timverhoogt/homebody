@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Homebody",
   "short_name": "Homebody",
-  "description": "Voice, privacy, and physical control for your embodied Hermes Agent.",
+  "description": "Always-on home companion for Reachy Mini: voice, privacy and physical control with the agent you choose.",
   "start_url": "/#dashboard",
   "scope": "/",
   "display": "standalone",
