@@ -54,7 +54,7 @@ python tools/mcp_check.py http://<reachy-address>:8042/mcp --token <your token> 
 
 ## Hosted agents (ChatGPT dots, Grok Bot)
 
-Hosted agents run in their vendor's cloud, so they need a public HTTPS address and sign in with OAuth instead of a bearer token. Homebody acts as its own small OAuth 2.1 server, so you need no extra account. You approve each agent once with a one-time code.
+Hosted agents run in their vendor's cloud, so they need a public HTTPS address and sign in with OAuth instead of a bearer token. Homebody acts as its own small OAuth 2.1 server, so you need no extra account. You approve each agent once, in Settings on your home network.
 
 **1. Point an HTTPS tunnel at the sign-in listener, never at the dashboard.** While sign-in is on, Homebody runs a second, separate listener (default `127.0.0.1:8043`) that serves only:
 
@@ -80,12 +80,13 @@ Never point a tunnel at port `8042`. As a backstop, the dashboard answers 404 to
 
 1. discovers the sign-in server;
 2. registers itself;
-3. opens Homebody's consent page in your browser, which shows the agent's name, where it will return to, and what it may do.
+3. opens Homebody's consent page in your browser, which shows the agent's name, where it will return to, what it may do and a four-character match code.
 
-**4. Approve it.** Press **Create approval code** in Settings and type the code on the consent page.
+**4. Approve that exact request in Settings.** Open **Settings → Agent access** on your home network. Under **Waiting for your approval**, find the request whose code and return address match the consent page, and press **Approve**. Then press **Continue** on the consent page.
 
-- The code works once, for 10 minutes, and five wrong guesses burn it.
-- **Deny** sends the agent away without access.
+- Nothing typed on the consent page grants access, so a sign-in link someone else sends you cannot trick you into approving their agent. Settings shows what Homebody itself knows: the agent's name, its return address, the code and how long ago it registered.
+- Requests expire after 10 minutes. If you see a request you did not start, press **Deny**.
+- **Deny** on the consent page also sends the agent away without access.
 
 **Afterwards.**
 

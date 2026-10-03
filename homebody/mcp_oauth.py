@@ -9,9 +9,10 @@ authorization server:
 * registration: Dynamic Client Registration (RFC 7591) for public clients only;
 * authorization code flow with mandatory PKCE S256, exact redirect-URI matching, and a ``resource``
   indicator (RFC 8707) that binds every token to this ``/mcp`` endpoint;
-* consent: Homebody has no user accounts, so the owner proves ownership with a one-time approval
-  code created in Settings (which itself needs the bridge API key). Codes are short-lived,
-  single-use and attempt-limited;
+* consent: Homebody has no user accounts. The owner approves each specific request in Settings on
+  the home network (which needs the bridge API key), where the agent's name, return address and
+  a short match code are shown by Homebody itself rather than by the agent. The public consent
+  page only shows the same match code and waits; nothing typed there grants access;
 * tokens: one-hour access tokens and 30-day rotating refresh tokens. Reusing an old refresh token
   revokes the whole grant. Only SHA-256 hashes of codes and tokens are kept.
 """
@@ -40,8 +41,6 @@ SCOPE = "homebody"
 ACCESS_TOKEN_SECONDS = 3600
 REFRESH_TOKEN_SECONDS = 30 * 86400
 AUTH_CODE_SECONDS = 300
-APPROVAL_CODE_SECONDS = 600
-APPROVAL_CODE_ATTEMPTS = 5
 PENDING_SECONDS = 600
 MAX_CLIENTS = 20
 MAX_REDIRECT_URIS = 5
@@ -49,7 +48,7 @@ MAX_REDIRECT_URIS = 5
 MAX_PENDING = 50
 MAX_PENDING_PER_CLIENT = 5
 UNAPPROVED_CLIENT_SECONDS = 3600
-_APPROVAL_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I confusion
+_MATCH_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I confusion
 _VERIFIER_RE = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
 _CHALLENGE_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
@@ -95,6 +94,43 @@ def _valid_redirect_uri(uri: str) -> bool:
     return parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
 
 
+def _is_number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def _valid_client(record: object) -> bool:
+    return (
+        isinstance(record, dict)
+        and isinstance(record.get("name"), str)
+        and _is_number(record.get("created_at"))
+        and isinstance(record.get("redirect_uris"), list)
+        and 1 <= len(record["redirect_uris"]) <= MAX_REDIRECT_URIS
+        and all(isinstance(uri, str) and _valid_redirect_uri(uri) for uri in record["redirect_uris"])
+        and (record.get("approved_at") is None or _is_number(record.get("approved_at")))
+    )
+
+
+def _valid_grant(record: object) -> bool:
+    return (
+        isinstance(record, dict)
+        and isinstance(record.get("client_id"), str)
+        and isinstance(record.get("resource"), str)
+        and isinstance(record.get("refresh"), str)
+        and _is_number(record.get("refresh_expires_at", 0))
+        and isinstance(record.get("used", []), list)
+        and all(isinstance(item, str) for item in record.get("used", []))
+    )
+
+
+def _valid_access(record: object) -> bool:
+    return (
+        isinstance(record, dict)
+        and isinstance(record.get("grant_id"), str)
+        and isinstance(record.get("resource"), str)
+        and _is_number(record.get("expires_at"))
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class PendingAuthorization:
     pending_id: str
@@ -105,6 +141,8 @@ class PendingAuthorization:
     code_challenge: str
     resource: str
     expires_at: float
+    match_code: str = ""
+    created_at: float = 0.0
 
 
 class OAuthServer:
@@ -124,7 +162,8 @@ class OAuthServer:
         self._access: dict[str, dict[str, Any]] = {}
         self._codes: dict[str, dict[str, Any]] = {}
         self._pending: dict[str, PendingAuthorization] = {}
-        self._approval: dict[str, Any] | None = None
+        # Owner decisions made in Settings, keyed by pending request id: "approved" or "denied".
+        self._decisions: dict[str, str] = {}
         self._load()
 
     # -- discovery ------------------------------------------------------------------------------
@@ -231,6 +270,8 @@ class OAuthServer:
             code_challenge=params["code_challenge"],
             resource=resource,
             expires_at=self._clock() + PENDING_SECONDS,
+            match_code="".join(secrets.choice(_MATCH_ALPHABET) for _ in range(4)),
+            created_at=self._clock(),
         )
         with self._lock:
             self._prune_unlocked()
@@ -255,20 +296,39 @@ class OAuthServer:
             self._prune_unlocked()
             return self._pending.get(pending_id)
 
-    def new_approval_code(self) -> str:
-        """Owner-side: a one-time code to type into the consent page. Replaces any earlier code."""
-        code = "".join(secrets.choice(_APPROVAL_ALPHABET) for _ in range(8))
+    def pending_for_owner(self) -> list[dict[str, Any]]:
+        """Open requests for the Settings page; Homebody, not the agent, vouches for these details."""
         with self._lock:
-            self._approval = {
-                "digest": _digest(code),
-                "expires_at": self._clock() + APPROVAL_CODE_SECONDS,
-                "attempts": 0,
-            }
-        return f"{code[:4]}-{code[4:]}"
+            self._prune_unlocked()
+            now = self._clock()
+            items = []
+            for pending in sorted(self._pending.values(), key=lambda item: item.created_at):
+                client = self._clients.get(pending.client_id, {})
+                items.append(
+                    {
+                        "id": pending.pending_id,
+                        "agent": pending.client_name,
+                        "returns_to": urlparse(pending.redirect_uri).netloc,
+                        "match_code": pending.match_code,
+                        "age_seconds": int(now - pending.created_at),
+                        "registered_seconds_ago": int(now - float(client.get("created_at", now))),
+                        "approved": self._decisions.get(pending.pending_id) == "approved",
+                    }
+                )
+            return items
 
-    def approve(self, pending_id: str, approval_code: str) -> str:
-        """Check the owner's approval code and return the redirect URL carrying the auth code."""
-        cleaned = re.sub(r"[^A-Za-z0-9]", "", approval_code).upper()
+    def owner_decide(self, pending_id: str, *, approve: bool) -> None:
+        """Owner-side, from Settings: approve or deny one specific request."""
+        with self._lock:
+            self._prune_unlocked()
+            pending = self._pending.get(pending_id)
+            if pending is None or pending.client_id not in self._clients:
+                raise OAuthError("access_denied", "That request expired or was withdrawn")
+            self._decisions[pending_id] = "approved" if approve else "denied"
+        _LOGGER.info("MCP OAuth request from %s %s", pending.client_name, "approved" if approve else "denied")
+
+    def complete(self, pending_id: str) -> str:
+        """Agent-side "Continue": the redirect URL once the owner has decided. Raises while waiting."""
         with self._lock:
             self._prune_unlocked()
             pending = self._pending.get(pending_id)
@@ -278,16 +338,19 @@ class OAuthServer:
             if client is None:
                 self._pending.pop(pending_id, None)
                 raise OAuthError("access_denied", "This agent's registration expired. Connect again from your agent.")
-            approval = self._approval
-            if approval is None or approval["expires_at"] <= self._clock():
-                raise OAuthError("access_denied", "No valid approval code. Create one in Homebody Settings.")
-            approval["attempts"] += 1
-            if not hmac.compare_digest(_digest(cleaned), approval["digest"]):
-                if approval["attempts"] >= APPROVAL_CODE_ATTEMPTS:
-                    self._approval = None
-                raise OAuthError("access_denied", "That approval code is not right.")
-            self._approval = None  # single use
+            decision = self._decisions.get(pending_id)
+            if decision is None:
+                raise OAuthError(
+                    "authorization_pending",
+                    "Not approved yet. Approve this request in Homebody Settings, then press Continue.",
+                )
             self._pending.pop(pending_id, None)
+            self._decisions.pop(pending_id, None)
+            if decision != "approved":
+                return self._redirect(
+                    pending.redirect_uri,
+                    {"error": "access_denied", "error_description": "The owner declined", "state": pending.state},
+                )
             # Approved agents are never evicted to make room for new registrations.
             client["approved_at"] = int(self._clock())
             self._save_unlocked()
@@ -299,12 +362,13 @@ class OAuthServer:
                 "resource": pending.resource,
                 "expires_at": self._clock() + AUTH_CODE_SECONDS,
             }
-        _LOGGER.info("MCP OAuth access approved for %s", pending.client_name)
+        _LOGGER.info("MCP OAuth access granted to %s", pending.client_name)
         return self._redirect(pending.redirect_uri, {"code": code, "state": pending.state})
 
     def deny(self, pending_id: str) -> str | None:
         with self._lock:
             pending = self._pending.pop(pending_id, None)
+            self._decisions.pop(pending_id, None)
         if pending is None:
             return None
         return self._redirect(
@@ -431,21 +495,18 @@ class OAuthServer:
             self._access.clear()
             self._codes.clear()
             self._pending.clear()
-            self._approval = None
+            self._decisions.clear()
             self._save_unlocked()
         _LOGGER.info("All MCP OAuth agents disconnected")
 
     def public_status(self) -> dict[str, Any]:
         with self._lock:
             connected = {grant["client_id"] for grant in self._grants.values()}
-            approval_valid = bool(self._approval and self._approval["expires_at"] > self._clock())
-            return {
-                "agents": [
-                    {"name": client["name"], "connected": client_id in connected}
-                    for client_id, client in sorted(self._clients.items(), key=lambda item: item[1]["created_at"])
-                ],
-                "approval_code_active": approval_valid,
-            }
+            agents = [
+                {"name": client["name"], "connected": client_id in connected}
+                for client_id, client in sorted(self._clients.items(), key=lambda item: item[1]["created_at"])
+            ]
+        return {"agents": agents, "pending": self.pending_for_owner()}
 
     # -- housekeeping ---------------------------------------------------------------------------
 
@@ -485,6 +546,7 @@ class OAuthServer:
         now = self._clock()
         self._codes = {key: value for key, value in self._codes.items() if value["expires_at"] > now}
         self._pending = {key: value for key, value in self._pending.items() if value.expires_at > now}
+        self._decisions = {key: value for key, value in self._decisions.items() if key in self._pending}
         self._access = {key: value for key, value in self._access.items() if value["expires_at"] > now}
 
     def _load(self) -> None:
@@ -497,7 +559,24 @@ class OAuthServer:
             access = payload.get("access", {})
             if not all(isinstance(item, dict) for item in (clients, grants, access)):
                 raise ValueError("unexpected structure")
-            self._clients, self._grants, self._access = clients, grants, access
+            # Keep only well-formed records that still link up, so a damaged file drops agents
+            # (they connect again) instead of raising errors later on every request.
+            self._clients = {key: value for key, value in clients.items() if _valid_client(value)}
+            self._grants = {
+                key: value
+                for key, value in grants.items()
+                if _valid_grant(value) and value["client_id"] in self._clients
+            }
+            self._access = {
+                key: value
+                for key, value in access.items()
+                if _valid_access(value) and value["grant_id"] in self._grants
+            }
+            dropped = len(clients) + len(grants) + len(access) - (
+                len(self._clients) + len(self._grants) + len(self._access)
+            )
+            if dropped:
+                _LOGGER.warning("Dropped %s malformed record(s) from the MCP OAuth store", dropped)
         except (OSError, ValueError, AttributeError) as exc:
             # Fail closed: an unreadable store means no agent is connected.
             _LOGGER.warning("Ignoring unreadable MCP OAuth store %s: %s", self._path, exc)
@@ -541,6 +620,7 @@ def consent_page(pending: PendingAuthorization | None, *, error: str = "", visio
         "button{font-size:1rem;padding:12px 16px;border-radius:10px;border:0;margin-top:12px;"
         "width:100%;cursor:pointer}"
         ".ok{background:#ff7a45;color:#fff}.no{background:#2a2f3b;color:#f7f8fb}.err{color:#ff5d6c}"
+        ".code{font-size:2rem;letter-spacing:.3em;text-align:center;font-weight:700;color:#f7f8fb;margin:8px 0}"
     )
     if pending is None:
         body = (
@@ -562,12 +642,15 @@ def consent_page(pending: PendingAuthorization | None, *, error: str = "", visio
             f"<p>The agent at <strong>{escape(redirect_host)}</strong> asks to:</p><ul>{items}</ul>"
             "<p>Meeting, Sleep, privacy and Kids Mode always win. You can disconnect it any time in "
             "Homebody Settings → Agent access.</p>"
+            "<p><strong>To allow it,</strong> open Homebody Settings → Agent access on your home network. "
+            "Find this request, check that it shows the same code and return address, and press "
+            "<em>Approve</em>. Then come back and press <em>Continue</em>.</p>"
+            f'<p class="code" aria-label="Match code">{escape(pending.match_code)}</p>'
+            "<p>Did you not start this? Press Deny, and deny it in Settings too.</p>"
             + (f'<p class="err" role="alert">{escape(error)}</p>' if error else "")
             + '<form method="post" action="/oauth/authorize">'
             f'<input type="hidden" name="pending_id" value="{escape(pending.pending_id)}">'
-            '<label for="code">Approval code from Homebody Settings</label>'
-            '<input id="code" name="approval_code" autocomplete="one-time-code" maxlength="12" required autofocus>'
-            '<button class="ok" name="action" value="approve">Allow</button>'
+            '<button class="ok" name="action" value="continue">Continue</button>'
             "</form>"
             '<form method="post" action="/oauth/authorize">'
             f'<input type="hidden" name="pending_id" value="{escape(pending.pending_id)}">'
