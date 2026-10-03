@@ -39,7 +39,7 @@ from google.protobuf.message import Message
 from PIL import Image, UnidentifiedImageError
 from zeroconf import ServiceInfo, Zeroconf
 
-from .config import AppConfig, load_config, merge_config, save_config
+from .config import AppConfig, config_transaction, load_config, merge_config, save_config
 
 _LOGGER = logging.getLogger(__name__)
 _HOME_ASSISTANT_CAMERA_MAX_PIXELS = 1920 * 1080
@@ -928,9 +928,10 @@ class HermesHomeAssistantProvider(HomeAssistantStateProvider):
         return self.config_loader()
 
     def _update_config(self, changes: dict[str, object]) -> AppConfig:
-        current = self._config()
-        updated = merge_config(current, changes)
-        self.config_saver(updated)
+        with config_transaction():
+            current = self._config()
+            updated = merge_config(current, changes)
+            self.config_saver(updated)
         return updated
 
     def _runtime_status(self) -> dict[str, object]:

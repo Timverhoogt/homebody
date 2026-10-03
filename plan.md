@@ -161,7 +161,6 @@ These are deployment observations, not service-level guarantees. Hermes pipeline
 - Integrate the green/red Raspberry Pi buttons through `libgpiod` with pull-ups, debounce, short/long-press semantics, startup ownership, and safe failure behavior.
 - Persist parent lock/session recovery policy across process restarts if the deployment requires crash continuity.
 - Add phrase-specific real-room acoustic acceptance recordings and tune per-keyword score/threshold only from measured false-positive/false-negative data.
-- Downgrade empty STT/silence from an error to a normal no-speech turn.
 - Replace the raw watchdog TCP media probe with a WebSocket-aware check to remove benign handshake warnings.
 - Add local offline STT/TTS fallback for deployments that require operation without cloud providers.
 - Add route-specific warm Hermes-agent reuse with session serialization, cache signatures, lifecycle controls, and usage accounting.

@@ -111,3 +111,36 @@ def test_capability_profile_is_bounded_to_conversation_or_agent() -> None:
     assert AppConfig(capability_profile=" Agent ").capability_profile == "agent"
     with pytest.raises(ValueError, match="capability profile"):
         AppConfig(capability_profile="maintenance")
+
+
+def test_config_transaction_serialises_read_modify_write(tmp_path, monkeypatch) -> None:
+    import threading
+    import time
+
+    from reachy_mini_hermes.config import config_transaction, load_config, merge_config, save_config
+
+    monkeypatch.setenv("REACHY_MINI_HERMES_CONFIG", str(tmp_path / "config.json"))
+    save_config(AppConfig())
+    first_loaded = threading.Event()
+
+    def slow_settings_save() -> None:
+        with config_transaction():
+            current = load_config()
+            first_loaded.set()
+            time.sleep(0.2)
+            save_config(merge_config(current, {"language": "nl"}))
+
+    def home_assistant_toggle() -> None:
+        first_loaded.wait(timeout=2.0)
+        with config_transaction():
+            save_config(merge_config(load_config(), {"motion_enabled": False}))
+
+    writers = [threading.Thread(target=slow_settings_save), threading.Thread(target=home_assistant_toggle)]
+    for writer in writers:
+        writer.start()
+    for writer in writers:
+        writer.join(timeout=5.0)
+
+    final = load_config()
+    assert final.language == "nl"
+    assert final.motion_enabled is False
