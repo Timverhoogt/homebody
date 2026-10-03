@@ -50,7 +50,7 @@ def make_runtime() -> HermesVoiceRuntime:
     runtime._publish_remote_agent_session = lambda: None  # type: ignore[method-assign]
     runtime._establish_remote_agent_session = lambda _context: None  # type: ignore[method-assign]
     runtime.set_capability_profile("agent", adult_ui_unlocked=True)
-    runtime._conversation_stop_requested.clear()
+    runtime._accept_wake_turn()
     return runtime
 
 

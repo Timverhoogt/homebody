@@ -281,6 +281,11 @@ class HermesVoiceRuntime:
         self._motor_transition_lock = threading.RLock()
         self._privacy_requested = threading.Event()
         self._conversation_stop_requested = threading.Event()
+        # Every stop request advances this generation. A wake-started turn records it, so a
+        # later "awake" transition that clears the event can never resume a stopped turn.
+        self._conversation_stop_generation = 0
+        self._turn_stop_generation = 0
+        self._conversation_stop_generation_lock = threading.Lock()
         self._motors_enabled: bool | None = None
         self._head_safely_folded = False
         self._camera_lock = threading.Lock()
@@ -330,6 +335,8 @@ class HermesVoiceRuntime:
         self._control_ready = threading.Event()
         self._home_assistant_bridge: HomeAssistantBridge | None = None
         self._home_assistant_error = ""
+        # Lock order: _motor_transition_lock before _kids_lock. status() reads Kids state and is
+        # called while holding the motor lock, so the reverse nesting would deadlock.
         self._kids_lock = threading.RLock()
         self._kids_active = False
         self._kids_camera_active = False
@@ -361,6 +368,25 @@ class HermesVoiceRuntime:
         self._agent_activity: list[dict[str, object]] = []
         self._agent_policy = AgentPolicy()
 
+
+    def _request_conversation_stop(self) -> None:
+        """Stop the current voice turn; only a newly accepted wake may start another."""
+        with self._conversation_stop_generation_lock:
+            self._conversation_stop_generation += 1
+            self._conversation_stop_requested.set()
+
+    def _accept_wake_turn(self) -> None:
+        """Begin a new wake-started turn that earlier stop requests no longer cancel."""
+        with self._conversation_stop_generation_lock:
+            self._conversation_stop_requested.clear()
+            self._turn_stop_generation = self._conversation_stop_generation
+
+    def _turn_stop_requested(self) -> bool:
+        """Return whether the wake-started turn was stopped, even if the event was cleared since."""
+        if self._conversation_stop_requested.is_set():
+            return True
+        with self._conversation_stop_generation_lock:
+            return self._turn_stop_generation != self._conversation_stop_generation
     def set_power_mode(
         self,
         mode: str,
@@ -387,7 +413,7 @@ class HermesVoiceRuntime:
                     self._status.announcement_last_text = ""
         with self._motor_transition_lock:
             if mode in {"standby", "meeting", "sleep"}:
-                self._conversation_stop_requested.set()
+                self._request_conversation_stop()
             else:
                 self._conversation_stop_requested.clear()
             if mode in {"meeting", "sleep"}:
@@ -572,7 +598,7 @@ class HermesVoiceRuntime:
                 with self._power_lock:
                     self._power_mode = "standby"
                     self._meeting_until = 0.0
-                self._conversation_stop_requested.set()
+                self._request_conversation_stop()
                 error = str(exc)
                 if recovery_error:
                     error = f"{error}; automatic safe-Standby recovery also failed: {recovery_error}"
@@ -995,8 +1021,8 @@ class HermesVoiceRuntime:
         try:
             # Recheck after acquiring the voice owner slot so a concurrent wake,
             # power transition, Kids transition, or explicit action cannot race.
-            with self._kids_lock:
-                with self._motor_transition_lock:
+            with self._motor_transition_lock:
+                with self._kids_lock:
                     reason = self._presence_suppression_reason(config, owns_voice_activity=True)
                     actions = self._actions
                     if reason:
@@ -1197,7 +1223,7 @@ class HermesVoiceRuntime:
                 self._agent_pending_approval = False
                 self._record_agent_activity_unlocked("profile_changed")
                 payload = self._agent_status_unlocked()
-        self._conversation_stop_requested.set()
+        self._request_conversation_stop()
         if profile != "agent":
             self.cancel_contextual_offer("agent_profile_inactive")
             self.stop_presentation_window("agent_profile_inactive")
@@ -1240,7 +1266,7 @@ class HermesVoiceRuntime:
         # Stop request. In particular, do not clear the event here: a real
         # Stop/privacy/power/Kids cancellation may have raced with this call.
         if safe_reason != "session_changed":
-            self._conversation_stop_requested.set()
+            self._request_conversation_stop()
         if active_request_id:
             threading.Thread(
                 target=self._cancel_remote_agent_request,
@@ -1410,8 +1436,10 @@ class HermesVoiceRuntime:
 
     @property
     def kids_controls_locked(self) -> bool:
-        with self._kids_lock:
-            return self._kids_locked
+        # Read without _kids_lock: the async HTTP middleware calls this on the event loop, and
+        # _kids_lock can be held across multi-second robot transitions. Writers still hold the
+        # lock; a single attribute read is atomic.
+        return self._kids_locked
 
     def start_kids_mode(self, profile: KidsProfile, *, greet: bool = True) -> dict[str, object]:
         """Start one time-bounded, camera-free, private-tool-free Realtime session."""
@@ -1460,7 +1488,7 @@ class HermesVoiceRuntime:
             self._kids_warning_timer = warning
             timer.start()
             warning.start()
-        self._conversation_stop_requested.set()
+        self._request_conversation_stop()
         with self._status_lock:
             self._status.transcript = ""
             self._status.response_preview = ""
@@ -1682,7 +1710,7 @@ class HermesVoiceRuntime:
             if not self._kids_active or generation != self._kids_generation:
                 return
         try:
-            self._conversation_stop_requested.set()
+            self._request_conversation_stop()
             self._clear_streamed_audio()
             self.queue_announcement(
                 text="Five minutes left in Kids Mode. Let's finish this activity soon.",
@@ -1738,7 +1766,7 @@ class HermesVoiceRuntime:
             self._kids_session_id = ""
             self._kids_last_end_reason = reason[:40]
             self._kids_last_fold_succeeded = None
-        self._conversation_stop_requested.set()
+        self._request_conversation_stop()
         self._cancel_announcements(clear_queue=True)
         self._clear_streamed_audio()
         cancel_move = getattr(self.robot, "cancel_move", None)
@@ -1924,10 +1952,10 @@ class HermesVoiceRuntime:
     ) -> dict[str, object]:
         """Queue one allow-listed UI action only after a serialized, confirmed wake."""
         name, arguments = manual_robot_action(action, value)
-        with self._kids_lock:
-            if self._kids_active:
-                raise RuntimeError("Manual robot controls are blocked while Kids Mode is active")
-            with self._motor_transition_lock:
+        with self._motor_transition_lock:
+            with self._kids_lock:
+                if self._kids_active:
+                    raise RuntimeError("Manual robot controls are blocked while Kids Mode is active")
                 mode = self._effective_power_mode()
                 if mode in {"meeting", "sleep"} or self._privacy_requested.is_set():
                     raise RuntimeError("Manual robot control is blocked in Meeting and Sleep")
@@ -2031,8 +2059,8 @@ class HermesVoiceRuntime:
             raise RuntimeError("Camera controls require an unlocked adult UI")
         if not camera_feed_enabled or not controls_enabled:
             raise RuntimeError("Camera feed and camera movement controls must both be enabled")
-        with self._kids_lock:
-            with self._motor_transition_lock:
+        with self._motor_transition_lock:
+            with self._kids_lock:
                 self._assert_camera_control_policy()
                 assert self._actions is not None
                 if self._actions.busy or self._actions.pending_count:
@@ -2066,8 +2094,8 @@ class HermesVoiceRuntime:
             math.isfinite(value) and -1.0 <= value <= 1.0 for value in (pan, tilt)
         ):
             raise RuntimeError("Camera control input must be finite and between -1 and 1")
-        with self._kids_lock:
-            with self._motor_transition_lock:
+        with self._motor_transition_lock:
+            with self._kids_lock:
                 self._assert_camera_control_policy()
                 with self._camera_control_lock:
                     self._validate_camera_control_session(session_id, sequence)
@@ -2079,8 +2107,8 @@ class HermesVoiceRuntime:
 
     def center_camera_control(self, session_id: str, sequence: int) -> dict[str, object]:
         """Explicitly return the camera head and body yaw to neutral."""
-        with self._kids_lock:
-            with self._motor_transition_lock:
+        with self._motor_transition_lock:
+            with self._kids_lock:
                 self._assert_camera_control_policy()
                 with self._camera_control_lock:
                     self._validate_camera_control_session(session_id, sequence)
@@ -2153,10 +2181,10 @@ class HermesVoiceRuntime:
 
     def queue_precision_robot_action(self, axis: str, delta: float) -> dict[str, object]:
         """Queue one bounded Cartesian nudge after confirmed motor wake."""
-        with self._kids_lock:
-            if self._kids_active:
-                raise RuntimeError("Precision robot controls are blocked while Kids Mode is active")
-            with self._motor_transition_lock:
+        with self._motor_transition_lock:
+            with self._kids_lock:
+                if self._kids_active:
+                    raise RuntimeError("Precision robot controls are blocked while Kids Mode is active")
                 mode = self._effective_power_mode()
                 if mode in {"meeting", "sleep"} or self._privacy_requested.is_set():
                     raise RuntimeError("Precision robot control is blocked in Meeting and Sleep")
@@ -2772,7 +2800,7 @@ class HermesVoiceRuntime:
             with self._motor_transition_lock:
                 if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
                     continue
-                self._conversation_stop_requested.clear()
+                self._accept_wake_turn()
                 try:
                     self._set_motor_mode(True, wake=True)
                 except RuntimeError as exc:
@@ -3095,7 +3123,7 @@ class HermesVoiceRuntime:
         if self._motion is not None:
             self._motion.listening()
         try:
-            while not self.stop_event.is_set() and not self._conversation_stop_requested.is_set():
+            while not self.stop_event.is_set() and not self._turn_stop_requested():
                 if self._effective_power_mode() in {"meeting", "sleep"}:
                     break
                 if time.monotonic() - last_activity >= config.conversation_timeout_seconds:
@@ -3287,9 +3315,9 @@ class HermesVoiceRuntime:
                                 self._status.turns_completed += 1
                             generation_done = True
                         last_activity = time.monotonic()
-                    if self._conversation_stop_requested.is_set():
+                    if self._turn_stop_requested():
                         break
-                if self._conversation_stop_requested.is_set():
+                if self._turn_stop_requested():
                     break
                 if generation_done and speaking and not playback.audible(time.monotonic()):
                     speaking = False
@@ -3575,7 +3603,7 @@ class HermesVoiceRuntime:
             first_turn = True
             while (
                 not self.stop_event.is_set()
-                and not self._conversation_stop_requested.is_set()
+                and not self._turn_stop_requested()
                 and conversation_is_current()
             ):
                 if self._effective_power_mode() in {"meeting", "sleep"}:
@@ -3609,7 +3637,7 @@ class HermesVoiceRuntime:
                 if (
                     not conversation_is_current()
                     or self.stop_event.is_set()
-                    or self._conversation_stop_requested.is_set()
+                    or self._turn_stop_requested()
                     or self._privacy_requested.is_set()
                     or self._effective_power_mode() in {"meeting", "sleep"}
                 ):
@@ -3650,7 +3678,7 @@ class HermesVoiceRuntime:
                 if (
                     not conversation_is_current()
                     or self.stop_event.is_set()
-                    or self._conversation_stop_requested.is_set()
+                    or self._turn_stop_requested()
                     or self._privacy_requested.is_set()
                     or self._effective_power_mode() in {"meeting", "sleep"}
                 ):
@@ -3695,7 +3723,7 @@ class HermesVoiceRuntime:
                         if (
                             not conversation_is_current()
                             or self.stop_event.is_set()
-                            or self._conversation_stop_requested.is_set()
+                            or self._turn_stop_requested()
                             or self._privacy_requested.is_set()
                             or self._effective_power_mode() in {"meeting", "sleep"}
                         ):
@@ -3704,7 +3732,7 @@ class HermesVoiceRuntime:
                         if (
                             not conversation_is_current()
                             or self.stop_event.is_set()
-                            or self._conversation_stop_requested.is_set()
+                            or self._turn_stop_requested()
                             or self._privacy_requested.is_set()
                             or self._effective_power_mode() in {"meeting", "sleep"}
                         ):
@@ -3723,7 +3751,7 @@ class HermesVoiceRuntime:
                 else:
                     speech = client.synthesize(spoken_text)
                     if (
-                        self._conversation_stop_requested.is_set()
+                        self._turn_stop_requested()
                         or self._privacy_requested.is_set()
                         or self._effective_power_mode() in {"meeting", "sleep"}
                     ):
@@ -3736,7 +3764,7 @@ class HermesVoiceRuntime:
                     )
                 if (
                     not conversation_is_current()
-                    or self._conversation_stop_requested.is_set()
+                    or self._turn_stop_requested()
                     or self._effective_power_mode() in {"meeting", "sleep"}
                 ):
                     break
@@ -3752,7 +3780,7 @@ class HermesVoiceRuntime:
                     )
                     if (
                         not conversation_is_current()
-                        or self._conversation_stop_requested.is_set()
+                        or self._turn_stop_requested()
                         or self._effective_power_mode() in {"meeting", "sleep"}
                     ):
                         break
@@ -3977,7 +4005,7 @@ class HermesVoiceRuntime:
         interrupted = False
         try:
             if (
-                self._conversation_stop_requested.is_set()
+                self._turn_stop_requested()
                 or self._privacy_requested.is_set()
                 or self._effective_power_mode() in {"meeting", "sleep"}
             ):
@@ -3991,7 +4019,7 @@ class HermesVoiceRuntime:
             self.robot.media.play_sound(str(path))
             deadline = time.monotonic() + duration + 0.15
             while time.monotonic() < deadline and not self.stop_event.is_set():
-                if self._conversation_stop_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
+                if self._turn_stop_requested() or self._effective_power_mode() in {"meeting", "sleep"}:
                     self._clear_streamed_audio()
                     break
                 if not barge_in or self._spotter is None:
