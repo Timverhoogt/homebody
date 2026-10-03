@@ -49,7 +49,7 @@ Because the local AI server is reached over HTTP, a Raspberry Pi robot computer 
 | Local wake word (Hey Homebody, Hey Hermes, Okay Nabu, Hey Reachy) | ◐ | ◐ | ✅ | 🧪 | ◐ | Runs on the robot computer's CPU. |
 | Local live camera viewer and camera joystick | ◐ | ◐ | ✅ | 🧪 | ◐ | Opt-in; stays between browser and robot. |
 | Voice conversation through Hermes (Realtime or pipeline) | ◐ | ◐ | ✅ | 🧪 | ◐ | Needs the agent host and providers. |
-| Voice conversation through OpenClaw | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | Bridge-side; independent of the robot computer. Not yet run against a live Gateway. |
+| Voice conversation through OpenClaw | ◐ | ◐ | ◐ | ◐ | ◐ | Bridge-side; independent of the robot computer. Verified against a live OpenClaw 2026.9.8 Gateway; not yet spoken to on a robot. |
 | Supervised Kids Mode | ◐ | ◐ | ✅ | 🧪 | ◐ | Adult supervision always required. |
 | Home Assistant ESPHome device | ◐ | ◐ | ◐ | 🧪 | ◐ | Identity comes from `/etc/machine-id`, or the network card's hardware address on Mac and Windows. |
 | On-device hand gestures (CPU) | ◐ | ◐ | ◐ | 🧪 | ◐ | |

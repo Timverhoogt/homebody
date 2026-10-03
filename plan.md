@@ -177,7 +177,9 @@ Updated 2026-10-03. Agent Mode 0.1–0.6 and warm Hermes agents have shipped; se
   - run `tools/mcp_check.py --say … --emotion happy` against the real robot in Awake, Standby, Sleep and privacy mode;
   - connect Hermes Agent and OpenClaw with their own model keys;
   - connect ChatGPT dots and Grok Bot through an HTTPS tunnel with OAuth sign-in, and record which vendors support dynamic client registration.
-- Run OpenClaw acceptance against a live Gateway: a dedicated tool-restricted `reachy` agent, pipeline and Realtime (`ask_openclaw`) conversations, session continuity, and the Hermes + OpenClaw side-by-side setup.
+- Finish OpenClaw acceptance on the robot. The bridge side is verified against a live OpenClaw 2026.9.8 Gateway with a recording stand-in model; see `companion/README.md`. Covered: health, model list, pipeline turns, `ask_openclaw`, per-conversation sessions, allowlist, header stripping, Hermes side by side, and the minimal-profile tool policy. Still open:
+  - speak to Reachy through OpenClaw with a real model, in both pipeline and Realtime modes;
+  - run the self-check question from the docs.
 
 ### Hardware and acoustics
 
