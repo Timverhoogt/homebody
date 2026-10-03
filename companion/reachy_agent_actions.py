@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -61,6 +62,11 @@ _PRIVATE_ACTIONS = frozenset(
         "append_scoped_note",
     }
 )
+
+
+_LOGGER = logging.getLogger(__name__)
+_HA_ENTITY_ID_RE = re.compile(r"[a-z_]+\.[a-z0-9_]+")
+_MAX_SCHEDULED_ITEMS = 32
 
 
 class ActionValidationError(ValueError):
@@ -401,9 +407,29 @@ class AgentActionService:
                 await response.read()
                 if response.status != 200:
                     raise ActionUnavailableError("timer or reminder delivery failed")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # Nothing awaits these background tasks; log instead of "exception was never retrieved".
+            _LOGGER.warning("Timer or reminder %s could not be delivered: %s", item_id, exc)
         finally:
             async with self._lock:
                 self._scheduled_tasks.pop(item_id, None)
+
+    def _require_schedule_capacity(self) -> None:
+        """Bound background timer/reminder tasks; caller holds self._lock."""
+        if len(self._scheduled_tasks) >= _MAX_SCHEDULED_ITEMS:
+            raise ActionValidationError("too many active timers and reminders")
+
+    async def shutdown(self) -> None:
+        """Cancel every pending timer and reminder delivery when the bridge stops."""
+        async with self._lock:
+            tasks = list(self._scheduled_tasks.values())
+            self._scheduled_tasks.clear()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def pending(self, device_id: str, generation: int) -> dict[str, object] | None:
         key = (device_id, generation)
@@ -553,6 +579,7 @@ class AgentActionService:
                 "verified": True,
             }
             async with self._lock:
+                self._require_schedule_capacity()
                 self._timers[key][item_id] = item
                 self._undo[key].append(_Undo("cancel_timer", {"timer_id": item_id}))
                 self._scheduled_tasks[item_id] = asyncio.create_task(
@@ -591,6 +618,7 @@ class AgentActionService:
                 "verified": True,
             }
             async with self._lock:
+                self._require_schedule_capacity()
                 self._reminders[key][item_id] = item
                 self._undo[key].append(_Undo("cancel_reminder", {"reminder_id": item_id}))
                 self._scheduled_tasks[item_id] = asyncio.create_task(
@@ -668,6 +696,17 @@ class AgentActionService:
     ) -> tuple[object, list[dict[str, object]], float, bool]:
         entity = str(arguments["entity_id"])
         domain = entity.split(".", 1)[0]
+        # Validate and allowlist before any authenticated Home Assistant request, so a model-chosen
+        # string can never reach /api/states/<anything> with the HA token.
+        if not _HA_ENTITY_ID_RE.fullmatch(entity):
+            raise ActionValidationError("invalid Home Assistant entity_id")
+        if capability_id == "control_home_entity":
+            if domain not in {"light", "switch", "scene"} or str(arguments["action"]) not in (
+                self.config.home_actions.get(entity, frozenset())
+            ):
+                raise ActionValidationError("Home Assistant action is not allowlisted")
+        elif entity not in self.config.media_entities or domain != "media_player":
+            raise ActionValidationError("media player is not allowlisted")
         previous = await self._state(entity, http)
         if capability_id == "control_home_entity":
             action = str(arguments["action"])

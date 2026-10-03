@@ -71,6 +71,11 @@ _KIDS_SPEECH_APPROVAL_LIMIT = 256
 # Kids sessions last at most 60 minutes on Reachy; the bridge latch expires shortly after even
 # if the explicit end notification is lost, so adult features cannot stay locked indefinitely.
 _KIDS_LIVE_MAX_SECONDS = 65 * 60
+_MAX_STT_PARTS = 8
+_MAX_STT_OPTION_BYTES = 256
+# Every route accepts the audio-sized client_max_size; JSON routes refuse large bodies up front.
+_MAX_JSON_BODY_BYTES = 1024 * 1024
+_LARGE_BODY_PATHS = frozenset({"/v1/audio/transcriptions", "/v1/kids/ispy/select"})
 _KIDS_ENDED_MEMORY = 256
 # Adult capabilities the bridge refuses while any Kids session is live. Cancellation and session
 # publication stay available so Reachy can always wind adult work down.
@@ -766,6 +771,7 @@ class Bridge:
             presence_task.cancel()
             await asyncio.gather(presence_task, return_exceptions=True)
         await self.agent_runs.shutdown()
+        await self.agent_broker.actions.shutdown()
         async with self._broker_tasks_lock:
             tasks = list(self._broker_tasks.values())
             self._broker_tasks.clear()
@@ -860,8 +866,17 @@ class Bridge:
 
     @web.middleware
     async def kids_latch_middleware(self, request: web.Request, handler: Any) -> web.StreamResponse:
-        """Refuse adult chat, Realtime, and Agent routes while a Kids session is live."""
+        """Bound JSON body sizes, and refuse adult chat, Realtime, and Agent routes during Kids."""
         path = request.path
+        if (
+            path not in _LARGE_BODY_PATHS
+            and request.content_length is not None
+            and request.content_length > _MAX_JSON_BODY_BYTES
+        ):
+            raise web.HTTPRequestEntityTooLarge(
+                max_size=_MAX_JSON_BODY_BYTES,
+                actual_size=request.content_length,
+            )
         if (
             path.startswith(_KIDS_LATCHED_PREFIXES)
             and path not in _KIDS_LATCH_EXEMPT_PATHS
@@ -1707,28 +1722,22 @@ class Bridge:
                 raise BrokerValidationError("invalid request_id")
             if not isinstance(arguments, dict) or not isinstance(context, dict):
                 raise BrokerValidationError("approval arguments and context must be objects")
-            approval = await self.agent_broker.issue_approval(
+            # Phone approval is only meaningful for the exact draft the owner reviewed: refuse
+            # anything that does not match the staged draft, then claim it once like approve-pending.
+            pending = await self.agent_broker.pending_approval(device_id, context)
+            if (
+                pending is None
+                or pending.get("capability_id") != capability_id
+                or pending.get("arguments") != arguments
+            ):
+                raise BrokerValidationError("approval requires the exact staged draft")
+            result = await self.agent_broker.approve_pending(
                 device_id,
                 context,
-                capability_id,
-                arguments,
-            )
-            result = await self.agent_broker.execute(
-                {
-                    "request_id": request_id,
-                    "capability_id": capability_id,
-                    "arguments": arguments,
-                    "context": context,
-                    "approval_token": approval["approval_token"],
-                },
+                str(pending["draft_id"]),
                 self.http,
-                device_id=device_id,
             )
-            generation = context.get("session_generation")
-            if type(generation) is not int:
-                raise BrokerValidationError("invalid Agent Mode generation")
-            await self.agent_broker.assert_current(device_id, generation)
-            return web.json_response(result, headers={"Cache-Control": "no-store"})
+            return web.json_response({**result, "request_id": request_id}, headers={"Cache-Control": "no-store"})
         except BrokerValidationError as exc:
             raise web.HTTPForbidden(text=str(exc)) from exc
         except BrokerUnavailableError as exc:
@@ -2398,7 +2407,7 @@ class Bridge:
             + system_prompt
         )
         upstream_headers = {"Authorization": f"Bearer {openai_key}"}
-        upstream_url = f"wss://api.openai.com/v1/realtime?model={model}"
+        upstream_url = f"wss://api.openai.com/v1/realtime?model={quote(model, safe='')}"
         ws_timeout = ClientTimeout(total=None, connect=10, sock_connect=10)
 
         try:
@@ -2557,7 +2566,8 @@ class Bridge:
                         except Exception as exc:
                             _LOGGER.exception("Realtime Hermes tool completion failed")
                             if not client.closed:
-                                await client.send_json({"type": "bridge.error", "error": str(exc)})
+                                failure = f"Hermes tool call failed ({type(exc).__name__})"
+                                await client.send_json({"type": "bridge.error", "error": failure})
                             await upstream.close()
 
                     async def openai_to_client() -> None:
@@ -2596,7 +2606,9 @@ class Bridge:
         except Exception as exc:
             _LOGGER.exception("Realtime proxy failed")
             if not client.closed:
-                await client.send_json({"type": "bridge.error", "error": str(exc)})
+                await client.send_json(
+                    {"type": "bridge.error", "error": f"Realtime bridge failed ({type(exc).__name__})"}
+                )
         finally:
             if not client.closed:
                 await client.close()
@@ -2609,17 +2621,27 @@ class Bridge:
         reader = await request.multipart()
         temp_path = ""
         options: dict[str, str] = {}
+        parts_seen = 0
         try:
             while True:
                 part: Any = await reader.next()
                 if part is None:
                     break
+                parts_seen += 1
+                if parts_seen > _MAX_STT_PARTS:
+                    raise web.HTTPBadRequest(text="Too many form parts")
                 if part.name != "file":
                     if part.name in {"provider", "model", "language"}:
-                        options[part.name] = (await part.text()).strip()
+                        value = await part.read_chunk(_MAX_STT_OPTION_BYTES + 1)
+                        if len(value) > _MAX_STT_OPTION_BYTES:
+                            raise web.HTTPBadRequest(text=f"Form field {part.name} is too long")
+                        options[part.name] = value.decode("utf-8", errors="replace").strip()
                     else:
                         await part.release()
                     continue
+                if temp_path:
+                    # Only the last temp file was deleted before; one audio file per request.
+                    raise web.HTTPBadRequest(text="Only one audio file is accepted")
                 suffix = Path(part.filename or "audio.wav").suffix or ".wav"
                 with tempfile.NamedTemporaryFile(prefix="reachy-hermes-stt-", suffix=suffix, delete=False) as output:
                     temp_path = output.name
@@ -2660,9 +2682,8 @@ class Bridge:
                     ) as upstream:
                         payload = await upstream.json(content_type=None)
                         if upstream.status != 200:
-                            raise web.HTTPBadRequest(
-                                text=str(payload.get("detail") or "ElevenLabs transcription failed")
-                            )
+                            _LOGGER.warning("ElevenLabs transcription failed with HTTP %s", upstream.status)
+                            raise web.HTTPBadGateway(text="ElevenLabs transcription failed")
                 return web.json_response({"text": str(payload.get("text") or "").strip(), "provider": "elevenlabs"})
 
             _ensure_hermes_imports()
