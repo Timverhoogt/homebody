@@ -348,8 +348,8 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .initiative-status-grid > div { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: #080a0f88; }
 .initiative-status-grid strong { display: block; margin-top: 4px; overflow-wrap: anywhere; font-size: .84rem; }
 .initiative-limits { margin-top: 12px; }
-.initiative-limits summary > span { display: grid; gap: 2px; }
-.initiative-limits summary small { display: block; color: var(--muted); font-size: .72rem; font-weight: 500; }
+.initiative-limits summary > span, .initiative-learned summary > span { display: grid; gap: 2px; }
+.initiative-limits summary small, .initiative-learned summary small { display: block; color: var(--muted); font-size: .72rem; font-weight: 500; }
 .initiative-limit-grid { display: grid; grid-template-columns: 1.5fr repeat(4, 1fr); gap: 9px; padding-top: 12px; align-items: end; }
 .initiative-limit-grid label { margin: 0; min-width: 0; font-size: .75rem; }
 .initiative-limit-grid input { margin-top: 6px; min-width: 0; }
@@ -361,7 +361,7 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .contextual-offer-status { grid-column: 1 / -1; padding: 11px 12px; border: 1px solid #7b61ff44; border-radius: 11px; background: #0d1020aa; }
 .contextual-offer-status strong, .contextual-offer-status small { display: block; margin-top: 4px; }
 .contextual-offer-status .quote { margin: 7px 0 0; }
-.contextual-offer-response { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(100px, 1fr)); gap: 9px; }
+.contextual-offer-response { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .contextual-offer-response[hidden] { display: none; }
 .presentation-card { border-color: #41c7e855; background: linear-gradient(145deg, rgba(12, 29, 37, .95), rgba(14, 17, 24, .96)); }
 .presentation-controls { display: grid; grid-template-columns: 1.6fr .7fr; gap: 10px; margin-top: 16px; align-items: stretch; }
@@ -536,3 +536,12 @@ body.camera-app-fullscreen-active { overflow: hidden; }
   .vision-footer span:last-child { display: none; }
   .vision-corner { opacity: .58; }
 }
+
+.initiative-why { margin: .5rem 0 0; }
+.initiative-why .label { display: block; }
+.initiative-learned { margin-top: 12px; }
+.initiative-preferences { list-style: none; margin: .5rem 0; padding: 0; display: grid; gap: .5rem; }
+.initiative-preferences li { border: 1px solid var(--line, rgba(127, 127, 127, .25)); border-radius: 10px; padding: .55rem .7rem; display: grid; gap: .25rem; }
+.initiative-preferences li[data-state="disabled"] { opacity: .7; }
+.initiative-preference-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; justify-content: space-between; }
+.initiative-preference-controls .compact { padding: .2rem .6rem; }

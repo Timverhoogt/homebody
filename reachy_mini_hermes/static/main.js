@@ -415,6 +415,8 @@ function updateStatus(payload) {
   $("initiative-reason").textContent = initiativeTopic
     ? `${initiativeReason} · ${initiativeTopic}`
     : initiativeReason;
+  $("initiative-explanation").textContent = String(initiative.latest_explanation || "Nothing has happened yet.");
+  renderInitiativePreferences(Array.isArray(initiative.preferences) ? initiative.preferences : [], initiativeBlocked);
   $("initiative-budget").textContent = `${Number(initiative.initiatives_today || 0)} / ${Number(initiative.daily_budget || payload.config?.initiative_daily_budget || 0)} today · ${Number(initiative.initiatives_this_hour || 0)} / ${Number(initiative.hourly_budget || payload.config?.initiative_hourly_budget || 0)} this hour`;
   const contextualOffer = runtime.contextual_offer || {};
   const offerState = String(contextualOffer.state || "disabled");
@@ -430,6 +432,7 @@ function updateStatus(payload) {
   $("contextual-offer-response").hidden = !awaitingOfferResponse;
   $("contextual-offer-yes").disabled = !awaitingOfferResponse || initiativeRequestPending;
   $("contextual-offer-no").disabled = !awaitingOfferResponse || initiativeRequestPending;
+  $("contextual-offer-later").disabled = !awaitingOfferResponse || initiativeRequestPending;
   const presentation = runtime.shared_physical_context || {};
   const presentationEnabled = Boolean(payload.config?.shared_physical_context_enabled);
   const presentationState = String(presentation.state || "disabled");
@@ -761,7 +764,7 @@ async function refreshStatus() {
     $("presence-enabled").disabled = true;
     $("presence-acknowledgement-enabled").disabled = true;
     $("presence-badge").textContent = "Offline";
-    ["initiative-policy-enabled", "initiative-mode", "initiative-quiet-hours-enabled", "initiative-quiet-hours-start", "initiative-quiet-hours-end", "initiative-hourly-budget", "initiative-daily-budget", "contextual-offers-enabled", "contextual-offer-response-window", "contextual-offer-yes", "contextual-offer-no", "shared-physical-context-enabled", "presentation-window-seconds", "presentation-start", "presentation-stop"].forEach((id) => {
+    ["initiative-policy-enabled", "initiative-mode", "initiative-quiet-hours-enabled", "initiative-quiet-hours-start", "initiative-quiet-hours-end", "initiative-hourly-budget", "initiative-daily-budget", "contextual-offers-enabled", "contextual-offer-response-window", "contextual-offer-yes", "contextual-offer-no", "contextual-offer-later", "initiative-preferences-reset", "shared-physical-context-enabled", "presentation-window-seconds", "presentation-start", "presentation-stop"].forEach((id) => {
       $(id).disabled = true;
     });
     $("initiative-badge").textContent = "Offline";
@@ -985,9 +988,11 @@ async function respondToContextualOffer(responseValue) {
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
-    $("initiative-message").textContent = responseValue === "yes"
-      ? "Accepted. Reachy will only read the prepared help; no action was executed."
-      : "Dismissed. This topic now observes dismissal backoff.";
+    $("initiative-message").textContent = {
+      yes: "Accepted. Reachy will only read the prepared help; no action was executed.",
+      no: "Declined. Reachy will offer this kind of help less often.",
+      later: "Snoozed. Reachy will wait a few hours before offering this kind of help again.",
+    }[responseValue];
     $("initiative-message").className = "message ok";
   } catch (error) {
     $("initiative-message").textContent = String(error);
@@ -1000,6 +1005,102 @@ async function respondToContextualOffer(responseValue) {
 
 $("contextual-offer-yes").addEventListener("click", () => respondToContextualOffer("yes"));
 $("contextual-offer-no").addEventListener("click", () => respondToContextualOffer("no"));
+$("contextual-offer-later").addEventListener("click", () => respondToContextualOffer("later"));
+
+// Learned preferences: rebuilt only when they change, so polling never steals focus.
+let initiativePreferencesSignature = "";
+function renderInitiativePreferences(preferences, blocked) {
+  const signature = JSON.stringify([preferences, blocked, initiativeRequestPending]);
+  if (signature === initiativePreferencesSignature) return;
+  initiativePreferencesSignature = signature;
+  const list = $("initiative-preferences");
+  list.replaceChildren();
+  preferences.forEach((preference) => {
+    const item = document.createElement("li");
+    item.dataset.state = String(preference.state || "normal");
+    const heading = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = String(preference.label || preference.category);
+    const state = document.createElement("span");
+    state.className = "badge";
+    state.textContent = String(preference.state || "normal").replaceAll("_", " ");
+    heading.append(title, " ", state);
+    const explanation = document.createElement("small");
+    explanation.textContent = String(preference.explanation || "");
+    const controls = document.createElement("div");
+    controls.className = "initiative-preference-controls";
+    const allowed = document.createElement("label");
+    allowed.className = "checkbox-row compact";
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.checked = !preference.disabled;
+    toggle.disabled = blocked;
+    toggle.dataset.preferenceCategory = String(preference.category);
+    const toggleText = document.createElement("span");
+    toggleText.textContent = "Allowed";
+    allowed.append(toggle, toggleText);
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "secondary compact";
+    reset.textContent = "Forget";
+    reset.disabled = blocked;
+    reset.dataset.preferenceReset = String(preference.category);
+    controls.append(allowed, reset);
+    item.append(heading, explanation, controls);
+    list.appendChild(item);
+  });
+  $("initiative-preferences-reset").disabled = blocked;
+}
+
+async function updateInitiativePreferences(path, payload, successMessage) {
+  if (initiativeRequestPending) return;
+  initiativeRequestPending = true;
+  try {
+    const response = await fetchWithTimeout(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Reachy-Adult-UI": "unlocked" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(await responseDetail(response));
+    $("initiative-message").textContent = successMessage;
+    $("initiative-message").className = "message ok";
+  } catch (error) {
+    $("initiative-message").textContent = `Could not update learned preferences: ${error.message || error}`;
+    $("initiative-message").className = "message error";
+  } finally {
+    initiativeRequestPending = false;
+    initiativePreferencesSignature = "";
+    await refreshStatus();
+  }
+}
+
+$("initiative-preferences").addEventListener("change", (event) => {
+  const category = event.target?.dataset?.preferenceCategory;
+  if (!category) return;
+  const allowed = event.target.checked;
+  updateInitiativePreferences(
+    "/api/initiative/preferences",
+    { category, disabled: !allowed },
+    allowed ? "Category allowed again." : "Category turned off. Reachy will not take this initiative.",
+  );
+});
+$("initiative-preferences").addEventListener("click", (event) => {
+  const category = event.target?.dataset?.preferenceReset;
+  if (!category) return;
+  updateInitiativePreferences(
+    "/api/initiative/preferences/reset",
+    { category },
+    "Reachy forgot what it learned for this category.",
+  );
+});
+$("initiative-preferences-reset").addEventListener("click", () => {
+  if (!window.confirm("Forget everything Reachy learned about your initiative preferences?")) return;
+  updateInitiativePreferences(
+    "/api/initiative/preferences/reset",
+    {},
+    "Reachy forgot all learned initiative preferences.",
+  );
+});
 
 async function updatePresentationSettings() {
   if (presentationRequestPending) return;

@@ -491,6 +491,16 @@ class ProactiveMixin:
             self._initiative.record_dismissal(offer.topic, self._initiative_settings(config), category=offer.source)
         return {"ok": True, "token": token, "response": response, "action_executed": False}
 
+    def set_initiative_category_disabled(self, category: str, disabled: bool) -> list[dict[str, object]]:
+        """Owner control: turn one initiative category off or back on."""
+        self._initiative.preferences.set_disabled(category, disabled)
+        return self._initiative.preferences.public_status()
+
+    def reset_initiative_preferences(self, category: str | None = None) -> list[dict[str, object]]:
+        """Owner control: forget learned preferences for one category, or for all of them."""
+        self._initiative.preferences.reset(category)
+        return self._initiative.preferences.public_status()
+
     def cancel_contextual_offer(self, reason: str = "disabled") -> bool:
         """Cancel only the active contextual offer, preserving unrelated announcements."""
         token = self._contextual_offers.cancel_active(reason)

@@ -154,7 +154,25 @@ class ContextualOfferResponseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     token: int = Field(ge=1)
-    response: Literal["yes", "no"]
+    response: Literal["yes", "no", "later"]
+
+
+InitiativeCategory = Literal[
+    "presence", "calendar", "reminder", "timer", "home_assistant", "weather", "project", "presentation"
+]
+
+
+class InitiativePreferenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: InitiativeCategory
+    disabled: StrictBool
+
+
+class InitiativePreferenceResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: InitiativeCategory | None = None
 
 
 class RobotActionRequest(BaseModel):
@@ -416,6 +434,29 @@ class ReachyMiniHermes(ReachyMiniApp):
                 return self._runtime.respond_to_contextual_offer(request.token, request.response)
             except (ValueError, RuntimeError) as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        @self.settings_app.post("/api/initiative/preferences")
+        def set_initiative_preference(
+            request: InitiativePreferenceRequest,
+            x_reachy_adult_ui: str = Header(default=""),
+        ) -> dict[str, object]:
+            if x_reachy_adult_ui != "unlocked":
+                raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
+            if self._runtime is None:
+                raise HTTPException(status_code=409, detail="Voice runtime has not started")
+            preferences = self._runtime.set_initiative_category_disabled(request.category, request.disabled)
+            return {"ok": True, "preferences": preferences}
+
+        @self.settings_app.post("/api/initiative/preferences/reset")
+        def reset_initiative_preferences(
+            request: InitiativePreferenceResetRequest,
+            x_reachy_adult_ui: str = Header(default=""),
+        ) -> dict[str, object]:
+            if x_reachy_adult_ui != "unlocked":
+                raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
+            if self._runtime is None:
+                raise HTTPException(status_code=409, detail="Voice runtime has not started")
+            return {"ok": True, "preferences": self._runtime.reset_initiative_preferences(request.category)}
 
         @self.settings_app.post("/api/presentation/start")
         def start_presentation(

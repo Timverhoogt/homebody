@@ -129,7 +129,7 @@ def test_v44_ui_uses_dedicated_agent_workspace_and_contextual_offers() -> None:
     assert '"X-Reachy-Adult-UI": "unlocked"' in script
     assert 'if (!initiativeEditActive)' in script
     assert '$("initiative-badge").textContent = "Offline"' in script
-    assert 'reachy-hermes-shell-v47' in worker
+    assert 'reachy-hermes-shell-v48' in worker
 
 
 def test_shell_versions_agree_between_page_and_service_worker() -> None:
@@ -226,3 +226,25 @@ def test_power_actions_report_failures_and_countdowns_are_not_live_regions() -> 
     assert javascript.count("if (!response.ok) throw new Error(await responseDetail(response));") >= 2
     assert '<section class="card kids-hero" aria-live' not in html
     assert '<div class="presentation-status-grid" aria-live' not in html
+
+
+def test_initiative_card_explains_decisions_and_exposes_learned_preferences_safely() -> None:
+    html = (STATIC / "index.html").read_text()
+    javascript = (STATIC / "main.js").read_text()
+    for element_id in (
+        "initiative-explanation",
+        "initiative-preferences",
+        "initiative-preferences-reset",
+        "contextual-offer-later",
+    ):
+        assert f'id="{element_id}"' in html
+    assert "Why did Reachy do that?" in html
+    assert "never learns new permissions" in html
+    assert 'respondToContextualOffer("later")' in javascript
+    assert 'fetchWithTimeout(path, {' in javascript
+    assert '"/api/initiative/preferences/reset"' in javascript
+    # Preference labels and explanations come from the runtime: render them as text only.
+    renderer = javascript[javascript.index("function renderInitiativePreferences") :]
+    renderer = renderer[: renderer.index("async function updateInitiativePreferences")]
+    assert "innerHTML" not in renderer
+    assert "textContent" in renderer
