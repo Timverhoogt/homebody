@@ -10,6 +10,9 @@ ExecStart=%h/.hermes/hermes-agent/venv/bin/python %h/reachy_mini_hermes/companio
 Restart=on-failure
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
+# OpenClaw instead of, or besides, Hermes (see companion/README.md). Keep the token in a 0600 file:
+# Environment=REACHY_AGENT_BACKENDS=hermes,openclaw
+# EnvironmentFile=%h/.config/reachy-bridge/openclaw.env   # OPENCLAW_GATEWAY_TOKEN=...
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

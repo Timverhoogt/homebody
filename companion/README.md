@@ -2,7 +2,7 @@
 
 The companion bridge gives Reachy one authenticated endpoint for:
 
-- Hermes API Server chat;
+- Hermes API Server chat, OpenClaw Gateway chat, or both (see [Use OpenClaw](#use-openclaw-instead-of-or-besides-hermes));
 - model and voice discovery;
 - configured or explicitly selected STT/TTS providers;
 - a private OpenAI Realtime WebSocket;
@@ -82,6 +82,95 @@ Configure Reachy with:
 Bridge URL: http://<hermes-host-LAN-IP>:8643
 API key:    the same API_SERVER_KEY
 ```
+
+## Use OpenClaw instead of, or besides, Hermes
+
+The bridge can send Reachy's conversations to an [OpenClaw](https://docs.openclaw.ai) agent through the Gateway's OpenAI-compatible endpoint. Use it on its own, or next to Hermes Agent and switch between them in Reachy's Settings.
+
+### Safety model
+
+**An OpenClaw Gateway token is an owner/operator credential.** Anyone who can speak to Reachy is talking to the agent behind it. For Hermes, the bridge checks the agent's tool inventory before every request. OpenClaw offers no equivalent check over HTTP, so the bridge fails closed in other ways:
+
+- Reachy only reaches agents you list in `REACHY_OPENCLAW_AGENTS`, `reachy` by default. Whatever model id the app sends, the request goes to an allowlisted agent.
+- The owner's `main` or `default` agent is refused unless you set `REACHY_OPENCLAW_ALLOW_PRIMARY_AGENT=1`. Don't, unless that agent's tools are already safe for a room full of voices.
+- `x-openclaw-*` override headers, client tools and streaming are never forwarded. The Gateway token stays on the bridge host and Reachy never receives it.
+
+### 1. Prepare OpenClaw
+
+Create a dedicated agent for Reachy and restrict its tools and sandbox:
+
+```bash
+openclaw agents add reachy
+```
+
+Then edit `~/.openclaw/openclaw.json` (JSON5). Keep your other entries as they are, enable the chat endpoint, and restrict the `reachy` agent:
+
+```json5
+{
+  gateway: { http: { endpoints: { chatCompletions: { enabled: true } } } },
+  agents: {
+    entries: {
+      reachy: {
+        name: "Reachy",
+        sandbox: { mode: "all", scope: "agent" },
+        tools: { deny: ["exec", "process", "write", "edit", "apply_patch", "browser", "gateway"] },
+      },
+    },
+  },
+}
+```
+
+Exact field names can differ between OpenClaw versions; check with `openclaw agents list` and the OpenClaw [multi-agent sandbox and tools](https://docs.openclaw.ai/tools/multi-agent-sandbox-tools) guide. Restart the Gateway, then confirm the agent is offered:
+
+```bash
+curl -s http://127.0.0.1:18789/v1/models -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN"
+# lists openclaw/reachy
+```
+
+Keep the Gateway on loopback or a private network, as OpenClaw recommends.
+
+### 2. Run the bridge
+
+**OpenClaw only.** The bridge needs Python 3.11+ and `aiohttp` (`pyyaml` is optional). Hermes Agent is not required:
+
+```bash
+python3 -m venv ~/.venvs/reachy-bridge
+~/.venvs/reachy-bridge/bin/pip install aiohttp pyyaml
+
+export OPENCLAW_GATEWAY_TOKEN='your-gateway-token'      # stays on this host
+export API_SERVER_KEY="$(openssl rand -hex 32)"          # Reachy <-> bridge key; enter it in Reachy
+export OPENAI_API_KEY='your-openai-project-key'          # only for Realtime mode and Kids Mode
+~/.venvs/reachy-bridge/bin/python /path/to/companion/hermes_reachy_bridge.py \
+  --agent-backends openclaw --host 0.0.0.0 --port 8643
+```
+
+**Hermes and OpenClaw together.** Use Hermes' environment as above and add the backend:
+
+```bash
+OPENCLAW_GATEWAY_TOKEN='your-gateway-token' venv/bin/python /path/to/hermes_reachy_bridge.py \
+  --agent-backends hermes,openclaw --host 0.0.0.0
+```
+
+In Reachy → Settings → *Agent model*, choose *Hermes default model* or *OpenClaw agent · reachy*. Models named `openclaw/<agent>` go to OpenClaw; every other model goes to Hermes. With OpenClaw only, any model goes to the first allowlisted agent.
+
+| Variable / flag | Meaning |
+| --- | --- |
+| `--agent-backends` / `REACHY_AGENT_BACKENDS` | `hermes` (default), `openclaw`, or `hermes,openclaw`. |
+| `--openclaw-url` / `OPENCLAW_GATEWAY_URL` | Gateway base URL, default `http://127.0.0.1:18789`. A trailing `/v1` is accepted. |
+| `OPENCLAW_GATEWAY_TOKEN` or `OPENCLAW_GATEWAY_PASSWORD` | Gateway credential. Read from the environment or the Hermes profile `.env`, never from the command line. |
+| `--openclaw-agents` / `REACHY_OPENCLAW_AGENTS` | Comma-separated agent ids Reachy may use, default `reachy`. |
+| `REACHY_OPENCLAW_ALLOW_PRIMARY_AGENT=1` | Allow `main`/`default`. Not recommended. |
+
+### What works with OpenClaw
+
+| Feature | With OpenClaw |
+| --- | --- |
+| Pipeline conversation (wake word, STT, agent, TTS) | ✅ The agent answers; choose **ElevenLabs** for speech. |
+| Realtime conversation | ✅ The Realtime model delegates through an `ask_openclaw` tool. Needs `OPENAI_API_KEY`. |
+| Conversation memory | ✅ Each Reachy conversation maps to one OpenClaw session through the OpenAI `user` field. |
+| Kids Mode, Agent Mode broker, I Spy | ✅ These never used Hermes; they work the same. |
+| "Configured" or local Whisper speech | ❌ They run Hermes Agent's own speech tools. The bridge answers HTTP 409 and the Settings list hides them. |
+| Tool-inventory check before each request | ❌ Hermes-only. Rely on the dedicated, restricted `reachy` agent. |
 
 ## API surface
 
@@ -196,7 +285,8 @@ The bridge must not log bearer tokens, OpenAI keys, ElevenLabs keys, or response
 - The default bind address is `127.0.0.1`.
 - Bind to `0.0.0.0` only on a trusted LAN or VPN.
 - Every chat/audio/discovery/Realtime route uses constant-time bearer-token authentication.
-- Provider keys remain on the Hermes host.
+- Provider keys remain on the Hermes host. An OpenClaw Gateway token likewise stays on the bridge host and is never sent to Reachy.
+- OpenClaw requests only reach allowlisted agents (`REACHY_OPENCLAW_AGENTS`), never the owner's `main` agent by default.
 - The bearer token can invoke a tool-capable agent; treat it as an administrative credential.
 - For remote access, use TLS and an authenticated reverse proxy. Never expose raw port `8643` publicly.
 - Rotate both the bearer token and any provider credential after suspected disclosure.

@@ -30,6 +30,7 @@ from urllib.parse import quote, urlparse
 from aiohttp import ClientSession, ClientTimeout, FormData, web
 
 try:
+    from companion.agent_backends import OpenClawBackend, OpenClawConfig, OpenClawConfigError
     from companion.reachy_agent_broker import (
         BrokerRequest,
         BrokerUnavailableError,
@@ -42,6 +43,11 @@ try:
     )
     from companion.reachy_agent_runs import AgentRunManager, AgentRunValidationError
 except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.path.
+    from agent_backends import (  # type: ignore[no-redef]
+        OpenClawBackend,
+        OpenClawConfig,
+        OpenClawConfigError,
+    )
     from reachy_agent_broker import (  # type: ignore[no-redef]
         BrokerRequest,
         BrokerUnavailableError,
@@ -452,11 +458,17 @@ def _ispy_colour_clue(target: dict[str, Any], language: str) -> str:
     return f"I spy with my little eye, something that is {colour}."
 
 
+_AGENT_TOOL_NAMES = frozenset({"ask_hermes", "ask_openclaw"})
+
+
 def _build_realtime_tools(
     camera_enabled: bool,
     robot_tools_enabled: bool,
     agent_tools_enabled: bool = True,
     power_tools_enabled: bool = True,
+    *,
+    agent_tool_name: str = "ask_hermes",
+    agent_label: str = "Hermes",
 ) -> list[dict[str, Any]]:
     """Build the curated Realtime tool surface without exposing privileged credentials."""
     tools: list[dict[str, Any]] = []
@@ -464,8 +476,8 @@ def _build_realtime_tools(
         tools.append(
             {
                 "type": "function",
-                "name": "ask_hermes",
-                "description": "Use Hermes memory and tools to answer or perform the request.",
+                "name": agent_tool_name,
+                "description": f"Use {agent_label} memory and tools to answer or perform the request.",
                 "parameters": {
                     "type": "object",
                     "properties": {"request": {"type": "string"}},
@@ -609,7 +621,7 @@ def _completed_hermes_call(
     kind: str,
     event: dict[str, Any],
 ) -> tuple[str, dict[str, Any]] | None:
-    """Parse ask_hermes only after OpenAI marks the function-call item completed."""
+    """Parse the agent tool (ask_hermes or ask_openclaw) only after OpenAI marks the call completed."""
     if kind != "response.output_item.done":
         return None
     item = event.get("item")
@@ -619,7 +631,7 @@ def _completed_hermes_call(
     if (
         item.get("type") != "function_call"
         or item.get("status") != "completed"
-        or item.get("name") != "ask_hermes"
+        or item.get("name") not in _AGENT_TOOL_NAMES
         or not call_id
     ):
         return None
@@ -723,10 +735,26 @@ def _ispy_vision_request(openai_key: str) -> tuple[str, dict[str, str], dict[str
     return f"{base}/chat/completions", headers, {"model": model, "max_tokens": 700, "temperature": 0.2}
 
 class Bridge:
-    def __init__(self, *, api_key: str, hermes_url: str, profile: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        hermes_url: str,
+        profile: str | None = None,
+        backends: tuple[str, ...] = ("hermes",),
+        openclaw: OpenClawConfig | None = None,
+    ) -> None:
+        unknown = set(backends) - {"hermes", "openclaw"}
+        if not backends or unknown:
+            raise ValueError("Agent backends must be hermes and/or openclaw")
+        if "openclaw" in backends and openclaw is None:
+            raise ValueError("The openclaw backend needs an OpenClaw Gateway configuration")
         self.api_key = api_key
         self.hermes_url = hermes_url.rstrip("/")
         self.profile = profile
+        self.backends = tuple(dict.fromkeys(backends))
+        self.hermes_enabled = "hermes" in self.backends
+        self.openclaw = OpenClawBackend(openclaw) if "openclaw" in self.backends and openclaw else None
         self.http: ClientSession | None = None
         self._kids_sessions: dict[str, dict[str, Any]] = {}
         self._kids_speech_approvals: dict[str, dict[str, Any]] = {}
@@ -942,14 +970,47 @@ class Bridge:
             }
         return web.json_response({"ok": True, "state": state, "kids_live": self.kids_session_live()})
 
+    def _require_hermes_speech(self) -> None:
+        """The configured/local speech providers are Hermes Agent tools; say so plainly without Hermes."""
+        if not self.hermes_enabled:
+            raise web.HTTPConflict(
+                text="Configured speech uses Hermes Agent, which this bridge does not run. "
+                "Choose ElevenLabs speech or the Realtime conversation mode."
+            )
+
+    def _backend_for(self, model: str) -> str:
+        """Route a request: OpenClaw agent ids go to OpenClaw, everything else to Hermes when present."""
+        if self.openclaw is not None and (OpenClawBackend.claims(model) or not self.hermes_enabled):
+            return "openclaw"
+        if self.hermes_enabled:
+            return "hermes"
+        raise web.HTTPServiceUnavailable(text="No agent backend is configured")
+
+    def _agent_identity(self, model: str) -> tuple[str, str]:
+        """Return (tool name, spoken label) for the agent that serves this model."""
+        if self._backend_for(model) == "openclaw":
+            return OpenClawBackend.tool_name, OpenClawBackend.label
+        return "ask_hermes", "Hermes"
+
     async def health(self, request: web.Request) -> web.Response:
         hermes_ok = False
-        if self.http is not None:
+        if self.http is not None and self.hermes_enabled:
             try:
                 async with self.http.get(f"{self.hermes_url}/health") as response:
                     hermes_ok = response.status == 200
             except Exception:
                 hermes_ok = False
+        backends: list[dict[str, object]] = []
+        if self.hermes_enabled:
+            backends.append({"name": "hermes", "label": "Hermes Agent", "ok": hermes_ok})
+        if self.openclaw is not None:
+            openclaw_health = (
+                await self.openclaw.health(self.http)
+                if self.http is not None
+                else {"ok": False, "error": "Bridge HTTP client is not ready"}
+            )
+            backends.append({"name": "openclaw", "label": "OpenClaw", **openclaw_health})
+        agent_ok = bool(backends) and all(item.get("ok") is True for item in backends)
         providers: dict[str, str] = {}
         try:
             import yaml
@@ -961,10 +1022,13 @@ class Bridge:
                     providers[f"{section}_provider"] = str(value["provider"])
         except (ImportError, OSError, TypeError, ValueError):
             pass
+        legacy = {"hermes_api": hermes_ok} if self.hermes_enabled else {}
         return web.json_response(
             {
-                "status": "ok" if hermes_ok else "degraded",
-                "hermes_api": hermes_ok,
+                "status": "ok" if agent_ok else "degraded",
+                **legacy,
+                "agent_api": agent_ok,
+                "agent_backends": backends,
                 "realtime_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
                 "kids_chat_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
                 "kids_ispy_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
@@ -976,18 +1040,31 @@ class Bridge:
         )
 
     async def models(self, request: web.Request) -> web.Response:
-        """Expose only the model aliases configured by Hermes API Server."""
+        """Expose Hermes' configured model aliases and the allowlisted OpenClaw agents."""
         self.require_auth(request)
         if self.http is None:
             raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
-        headers = {"Authorization": f"Bearer {self.api_key}"}
-        async with self.http.get(f"{self.hermes_url}/v1/models", headers=headers) as upstream:
-            body = await upstream.read()
-            return web.Response(
-                status=upstream.status,
-                body=body,
-                content_type=upstream.content_type or "application/json",
-            )
+        if self.openclaw is None:
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+            async with self.http.get(f"{self.hermes_url}/v1/models", headers=headers) as upstream:
+                body = await upstream.read()
+                return web.Response(
+                    status=upstream.status,
+                    body=body,
+                    content_type=upstream.content_type or "application/json",
+                )
+        entries: list[dict[str, Any]] = []
+        if self.hermes_enabled:
+            try:
+                headers = {"Authorization": f"Bearer {self.api_key}"}
+                async with self.http.get(f"{self.hermes_url}/v1/models", headers=headers) as upstream:
+                    if upstream.status == 200:
+                        payload = await upstream.json(content_type=None)
+                        entries.extend(item for item in payload.get("data", []) if isinstance(item, dict))
+            except Exception:
+                _LOGGER.warning("Could not list Hermes models", exc_info=True)
+        entries.extend(self.openclaw.model_entries())
+        return web.json_response({"object": "list", "data": entries})
 
     async def voice_options(self, request: web.Request) -> web.Response:
         """Return credential-backed speech options without exposing credentials."""
@@ -995,14 +1072,17 @@ class Bridge:
         if self.http is None:
             raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
         eleven_key = _resolve_secret("ELEVENLABS_API_KEY", self.profile)
+        # "configured" and "local" speech run through Hermes Agent's own tools on this host.
         options: dict[str, object] = {
-            "stt": [
-                {"id": "configured", "label": "Hermes configured STT"},
-                {"id": "local", "label": "Local Whisper", "models": ["base"]},
-            ],
-            "tts": [
-                {"id": "configured", "label": "Hermes configured TTS"},
-            ],
+            "stt": (
+                [
+                    {"id": "configured", "label": "Hermes configured STT"},
+                    {"id": "local", "label": "Local Whisper", "models": ["base"]},
+                ]
+                if self.hermes_enabled
+                else []
+            ),
+            "tts": [{"id": "configured", "label": "Hermes configured TTS"}] if self.hermes_enabled else [],
         }
         if eleven_key:
             voices: list[dict[str, str]] = []
@@ -1066,13 +1146,23 @@ class Bridge:
         self.require_auth(request)
         if self.http is None:
             raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
-        await self._require_reachy_tool_boundary()
         try:
             payload = await request.json()
         except Exception as exc:
             raise web.HTTPBadRequest(text="Invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="Invalid JSON")
         if payload.get("stream"):
             raise web.HTTPBadRequest(text="The Reachy bridge currently requires stream=false")
+        if self._backend_for(str(payload.get("model") or "")) == "openclaw":
+            assert self.openclaw is not None
+            # The app's rotating conversation id becomes OpenClaw's per-conversation session.
+            session_id = (
+                request.headers.get("X-Hermes-Session-Id") or request.headers.get("X-Reachy-Device-Id") or "reachy"
+            )
+            status, body, content_type = await self.openclaw.chat(self.http, payload, session_id=session_id)
+            return web.Response(status=status, body=body, content_type=content_type)
+        await self._require_reachy_tool_boundary()
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -1633,6 +1723,11 @@ class Bridge:
     ) -> str:
         if self.http is None:
             raise RuntimeError("Bridge HTTP client is not ready")
+        if self._backend_for(model) == "openclaw":
+            assert self.openclaw is not None
+            return await self.openclaw.answer(
+                self.http, text, model=model, system_prompt=system_prompt, session_id=session_id
+            )
         await self._require_reachy_tool_boundary()
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -2378,11 +2473,14 @@ class Bridge:
         if not isinstance(agent_context, dict):
             agent_context = {}
         agent_request_id = str(config.get("agent_request_id") or "")
+        agent_tool_name, agent_label = self._agent_identity(agent_model)
         realtime_tools = _build_realtime_tools(
             camera_enabled,
             robot_tools_enabled,
             agent_tools_enabled,
             power_tools_enabled,
+            agent_tool_name=agent_tool_name,
+            agent_label=agent_label,
         )
         camera_instruction = (
             "The camera is still-image-only. When the user explicitly asks you to look, see, read, identify, "
@@ -2401,7 +2499,8 @@ class Bridge:
         power_instruction = (
             (
                 "When the user explicitly asks Reachy to enter Standby, Awake, Meeting, or Sleep, call "
-                "set_reachy_power_mode instead of ask_hermes. Use 30 minutes for Meeting when no duration is given. "
+                f"set_reachy_power_mode instead of {agent_tool_name}. "
+                "Use 30 minutes for Meeting when no duration is given. "
                 "Standby, Meeting, and Sleep end the current conversation immediately. Sleep also disables the wake "
                 "word, so never claim the user can wake Reachy by voice from Sleep; the UI or a physical control is "
                 "required. Do not change modes from casual phrases such as 'I am tired' unless they are clearly a "
@@ -2413,8 +2512,9 @@ class Bridge:
         agent_instruction = (
             (
                 "You may answer simple social conversation directly. For personal memory, current information, Home "
-                "Assistant, files, devices, or any consequential action, call ask_hermes and faithfully speak its "
-                "result. Never claim an action succeeded without that tool. "
+                "Assistant, files, devices, or any consequential action, "
+                f"call {agent_tool_name} and faithfully speak its result. "
+                "Never claim an action succeeded without that tool. "
             )
             if agent_tools_enabled
             else (
@@ -2423,7 +2523,7 @@ class Bridge:
             )
         )
         instructions = (
-            "You are Hermes, speaking through a Reachy Mini robot. Be concise, natural, and conversational. "
+            f"You are {agent_label}, speaking through a Reachy Mini robot. Be concise, natural, and conversational. "
             "Never say punctuation names or announce that you are awake. "
             + agent_instruction
             + camera_instruction
@@ -2565,8 +2665,8 @@ class Bridge:
                                     session_id=session_id,
                                 )
                             except Exception:
-                                _LOGGER.exception("Realtime ask_hermes failed")
-                                answer = "Hermes could not safely complete that request."
+                                _LOGGER.exception("Realtime %s failed", agent_tool_name)
+                                answer = f"{agent_label} could not safely complete that request."
                             await send_upstream_json(
                                 {
                                     "type": "conversation.item.create",
@@ -2591,7 +2691,7 @@ class Bridge:
                         except Exception as exc:
                             _LOGGER.exception("Realtime Hermes tool completion failed")
                             if not client.closed:
-                                failure = f"Hermes tool call failed ({type(exc).__name__})"
+                                failure = f"{agent_label} tool call failed ({type(exc).__name__})"
                                 await client.send_json({"type": "bridge.error", "error": failure})
                             await upstream.close()
 
@@ -2711,6 +2811,7 @@ class Bridge:
                             raise web.HTTPBadGateway(text="ElevenLabs transcription failed")
                 return web.json_response({"text": str(payload.get("text") or "").strip(), "provider": "elevenlabs"})
 
+            self._require_hermes_speech()
             _ensure_hermes_imports()
             from tools.transcription_tools import transcribe_audio
 
@@ -2874,6 +2975,7 @@ class Bridge:
                 headers={"X-Reachy-TTS-Provider": "elevenlabs"},
             )
 
+        self._require_hermes_speech()
         _ensure_hermes_imports()
         from tools.tts_tool import text_to_speech_tool
 
@@ -2907,8 +3009,15 @@ class Bridge:
                 pass
 
 
-def create_app(*, api_key: str, hermes_url: str, profile: str | None = None) -> web.Application:
-    bridge = Bridge(api_key=api_key, hermes_url=hermes_url, profile=profile)
+def create_app(
+    *,
+    api_key: str,
+    hermes_url: str,
+    profile: str | None = None,
+    backends: tuple[str, ...] = ("hermes",),
+    openclaw: OpenClawConfig | None = None,
+) -> web.Application:
+    bridge = Bridge(api_key=api_key, hermes_url=hermes_url, profile=profile, backends=backends, openclaw=openclaw)
     app = web.Application(
         client_max_size=_MAX_AUDIO_BYTES + 1024 * 1024,
         middlewares=[bridge.kids_latch_middleware],
@@ -2950,12 +3059,24 @@ def create_app(*, api_key: str, hermes_url: str, profile: str | None = None) -> 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Voice bridge between Reachy Mini and Hermes Agent")
+    parser = argparse.ArgumentParser(description="Voice bridge between Reachy Mini and Hermes Agent and/or OpenClaw")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host; use 0.0.0.0 only on a trusted LAN/VPN")
     parser.add_argument("--port", type=int, default=8643)
     parser.add_argument("--hermes-url", default="http://127.0.0.1:8642")
     parser.add_argument("--api-key", default="")
     parser.add_argument("--profile", default=None)
+    parser.add_argument(
+        "--agent-backends",
+        default=os.getenv("REACHY_AGENT_BACKENDS", "hermes"),
+        help="Comma-separated: hermes, openclaw, or both. openclaw/<agent> models go to OpenClaw; other models go "
+        "to Hermes when enabled, otherwise to the first allowlisted OpenClaw agent.",
+    )
+    parser.add_argument("--openclaw-url", default=None, help="OpenClaw Gateway URL (default $OPENCLAW_GATEWAY_URL)")
+    parser.add_argument(
+        "--openclaw-agents",
+        default=None,
+        help="Comma-separated OpenClaw agent ids Reachy may use (default $REACHY_OPENCLAW_AGENTS or 'reachy')",
+    )
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
@@ -2963,11 +3084,33 @@ def main() -> None:
         level=logging.DEBUG if args.debug else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    backends = tuple(part.strip().lower() for part in str(args.agent_backends).split(",") if part.strip())
+    if not backends or set(backends) - {"hermes", "openclaw"}:
+        parser.error("--agent-backends must list hermes and/or openclaw")
+    openclaw: OpenClawConfig | None = None
+    if "openclaw" in backends:
+        try:
+            openclaw = OpenClawConfig.from_env(
+                url=args.openclaw_url,
+                agents=args.openclaw_agents,
+                token=_resolve_secret("OPENCLAW_GATEWAY_TOKEN", args.profile)
+                or _resolve_secret("OPENCLAW_GATEWAY_PASSWORD", args.profile),
+            )
+        except OpenClawConfigError as exc:
+            parser.error(str(exc))
     api_key = _resolve_api_key(args.api_key, args.profile)
     if not api_key:
-        parser.error("No API key found. Pass --api-key or configure API_SERVER_KEY in the Hermes profile .env")
+        parser.error("No bridge API key found. Pass --api-key or set API_SERVER_KEY (Hermes profile .env or env)")
     web.run_app(
-        create_app(api_key=api_key, hermes_url=args.hermes_url, profile=args.profile), host=args.host, port=args.port
+        create_app(
+            api_key=api_key,
+            hermes_url=args.hermes_url,
+            profile=args.profile,
+            backends=backends,
+            openclaw=openclaw,
+        ),
+        host=args.host,
+        port=args.port,
     )
 
 

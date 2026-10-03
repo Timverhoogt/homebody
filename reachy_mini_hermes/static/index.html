@@ -681,12 +681,12 @@
     <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" hidden>
       <section class="card">
         <p class="label">Configuration</p>
-        <h2>Hermes connection and voice</h2>
-        <p class="muted">Run the companion bridge on the machine hosting Hermes Agent, then enter its trusted LAN URL and API key.</p>
+        <h2>Agent connection and voice</h2>
+        <p class="muted">Run the companion bridge on the machine hosting Hermes Agent or OpenClaw (or both), then enter its trusted LAN URL and API key.</p>
         <form id="settings-form">
           <label>Conversation mode
             <select id="conversation_mode" name="conversation_mode">
-              <option value="pipeline">Hermes pipeline · configurable agent, STT and TTS</option>
+              <option value="pipeline">Agent pipeline · configurable agent, STT and TTS</option>
               <option value="realtime">OpenAI Realtime · native speech-to-speech</option>
             </select>
           </label>
@@ -702,7 +702,7 @@
           <div class="grid-two">
             <label>Agent model
               <select id="model" name="model"><option value="hermes-agent">Hermes default model</option></select>
-              <small id="model-help">Available routes are provided by your Hermes Agent.</small>
+              <small id="model-help">Agents and model routes come from your bridge: Hermes Agent, OpenClaw, or both.</small>
             </label>
             <label>Language<input id="language" name="language" value="en" maxlength="12" /></label>
           </div>
