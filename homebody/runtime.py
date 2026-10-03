@@ -263,6 +263,10 @@ class HermesVoiceRuntime(
             return True
         with self._conversation_stop_generation_lock:
             return self._turn_stop_generation != self._conversation_stop_generation
+    def privacy_active(self) -> bool:
+        """True while privacy mode holds the microphone and camera off (read by agent access)."""
+        return self._privacy_requested.is_set()
+
     def status(self) -> dict[str, object]:
         with self._status_lock:
             payload = asdict(self._status)

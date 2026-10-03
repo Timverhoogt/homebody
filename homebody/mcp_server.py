@@ -264,44 +264,70 @@ class McpServer:
         status = runtime.status()
         kids = status.get("kids_mode") if isinstance(status.get("kids_mode"), dict) else {}
         presence = status.get("presence") if isinstance(status.get("presence"), dict) else {}
+        privacy_active = getattr(runtime, "privacy_active", None)
         return {
             "power_mode": str(status.get("power_mode") or "unknown"),
+            "privacy": bool(privacy_active()) if callable(privacy_active) else False,
             "activity": str(status.get("state") or "unknown"),
             "child_session": bool(kids.get("active") or kids.get("locked")),
             # None when presence sensing is off: the agent should not read "nobody home" into it.
             "someone_present": presence.get("level") in {"present", "attentive"} if presence.get("enabled") else None,
         }
 
+    @staticmethod
+    def _vision_unavailable_reason(config: AppConfig) -> str:
+        if not config.mcp_vision_enabled:
+            return "The owner has not allowed agents to ask what Reachy sees."
+        if not config.local_vision_enabled or not config.camera_enabled:
+            return "Looking needs the local vision model and On-demand camera turned on in Homebody settings."
+        return ""
+
+    @staticmethod
+    def _private_reason(state: dict[str, Any]) -> str:
+        """Why Reachy is not listening, speaking or looking right now; empty when it is available."""
+        if state["child_session"]:
+            return "Reachy is in a supervised child session and does not take agent requests now."
+        if state["privacy"]:
+            return "Reachy is in privacy mode: it is not listening, speaking or looking."
+        if state["power_mode"] in {"meeting", "sleep"}:
+            return f"Reachy is in {state['power_mode'].title()} mode: it is not listening, speaking or looking."
+        return ""
+
     def _get_status(self, runtime: Any, config: AppConfig) -> dict[str, Any]:
         state = self._state(runtime)
         mode = state["power_mode"]
-        private = mode in {"meeting", "sleep"}
-        child = state["child_session"]
-        can_announce = not private and not child
-        can_emote = mode == "awake" and not child
-        vision_ready = config.mcp_vision_enabled and config.local_vision_enabled and config.camera_enabled
-        can_look = bool(vision_ready and not private and not child)
+        blocked = self._private_reason(state)
+        why_not: dict[str, str] = {}
+        if blocked:
+            why_not = {"announce": blocked, "express_emotion": blocked, "look": blocked}
+        else:
+            if mode != "awake":
+                why_not["express_emotion"] = "Emotions work only while Reachy is Awake; it won't wake for one."
+            vision = self._vision_unavailable_reason(config)
+            if vision:
+                why_not["look"] = vision
         summary = {
             "power_mode": mode,
+            "privacy_mode": state["privacy"],
             "activity": state["activity"].replace("_", " "),
             "someone_present": state["someone_present"],
-            "can_announce": can_announce,
-            "can_express_emotion": can_emote,
-            "can_look": can_look,
+            "can_announce": "announce" not in why_not,
+            "can_express_emotion": "express_emotion" not in why_not,
+            "can_look": "look" not in why_not,
+            # Lets the agent explain an unavailable action instead of guessing.
+            "why_not": why_not,
         }
-        if child:
-            text = "Reachy is in a supervised child session, so it is not taking requests from agents right now."
-        elif private:
-            text = f"Reachy is in {mode.title()} mode: it is not listening, speaking or looking."
+        if blocked:
+            text = blocked
         else:
             text = f"Reachy is {mode} and {summary['activity']}."
-            if not can_emote:
-                text += " Emotions are available only while it is Awake."
+            text += "".join(f" {reason}" for key, reason in why_not.items())
         return _text_result(text, structured=summary)
 
-    def _refuse_if_child_session(self, runtime: Any) -> None:
-        if self._state(runtime)["child_session"]:
-            raise _ToolRefused("Reachy is in a supervised child session and does not take agent requests now.")
+    def _refuse_if_unavailable(self, runtime: Any) -> None:
+        reason = self._private_reason(self._state(runtime))
+        if reason:
+            raise _ToolRefused(reason)
 
     def _announce(self, runtime: Any, arguments: dict[str, Any]) -> dict[str, Any]:
         text = " ".join(str(arguments.get("text") or "").split())
@@ -309,7 +335,7 @@ class McpServer:
             raise _ToolRefused("Give Reachy something to say.")
         if len(text) > MAX_ANNOUNCEMENT_CHARS:
             raise _ToolRefused(f"Keep messages under {MAX_ANNOUNCEMENT_CHARS} characters.")
-        self._refuse_if_child_session(runtime)
+        self._refuse_if_unavailable(runtime)
         result = runtime.queue_announcement(text)
         depth = int(result.get("queue_depth") or 1)
         note = "Reachy will say it now." if depth <= 1 else f"Reachy will say it after {depth - 1} earlier message(s)."
@@ -319,7 +345,7 @@ class McpServer:
         emotion = str(arguments.get("emotion") or "").strip().lower()
         if emotion not in EMOTIONS:
             raise _ToolRefused(f"Unknown emotion. Choose one of: {', '.join(EMOTIONS)}.")
-        self._refuse_if_child_session(runtime)
+        self._refuse_if_unavailable(runtime)
         mode = self._state(runtime)["power_mode"]
         if mode != "awake":
             raise _ToolRefused(
@@ -332,7 +358,10 @@ class McpServer:
         question = " ".join(str(arguments.get("question") or "").split())[:MAX_QUESTION_CHARS]
         if not question:
             raise _ToolRefused("Ask Reachy a question about what it sees.")
-        self._refuse_if_child_session(runtime)
+        self._refuse_if_unavailable(runtime)  # Kids Mode and privacy explain themselves first
+        vision = self._vision_unavailable_reason(config)
+        if vision:
+            raise _ToolRefused(vision)
         seen = runtime.describe_camera_view(question, config=config)
         answer = str(seen.get("answer") or "")
         return _text_result(answer, structured={"answer": answer, "model": seen.get("model")})
