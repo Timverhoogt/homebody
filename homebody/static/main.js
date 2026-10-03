@@ -7,7 +7,7 @@ const fields = [
   "home_assistant_camera_enabled", "home_assistant_assist_enabled", "home_assistant_port",
   "realtime_model", "realtime_voice", "realtime_reasoning_effort",
   "local_vision_enabled", "local_vision_url", "local_vision_model", "local_ai_accelerator",
-  "mcp_enabled", "mcp_vision_enabled",
+  "mcp_enabled", "mcp_vision_enabled", "mcp_oauth_enabled", "mcp_public_url",
   "end_silence_seconds", "max_utterance_seconds", "vad_min_rms", "vad_noise_multiplier",
   "wake_keyword_threshold", "wake_keyword_score",
 ];
@@ -218,6 +218,7 @@ async function refreshMcpStatus() {
     const response = await fetchWithTimeout("/api/mcp/status", { cache: "no-store" });
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    renderOauthAgents(body.oauth || { agents: [] }, body.oauth_enabled);
     const message = $("mcp-message");
     if (message.classList.contains("ok") || message.classList.contains("error")) return;
     const state = !body.enabled ? "Agent access is off." : body.token_configured ? "Agent access is on." : "Agent access is on, but no token exists yet.";
@@ -228,11 +229,29 @@ async function refreshMcpStatus() {
   }
 }
 
+function renderOauthAgents(oauth, enabled) {
+  const list = $("mcp-oauth-agents");
+  list.replaceChildren();
+  if (!enabled) return;
+  if (!oauth.agents.length) {
+    const empty = document.createElement("li");
+    empty.textContent = "No hosted agents have connected yet.";
+    list.append(empty);
+  }
+  oauth.agents.forEach((agent) => {
+    const item = document.createElement("li");
+    item.textContent = `${agent.name}: ${agent.connected ? "connected" : "registered, not signed in"}`;
+    list.append(item);
+  });
+}
+
+const mcpButtons = ["mcp-token-button", "mcp-revoke-button", "mcp-approval-button", "mcp-oauth-disconnect-button"];
+
 async function mcpTokenAction(path, pendingText) {
   const message = $("mcp-message");
   message.textContent = pendingText;
   message.className = "message";
-  ["mcp-token-button", "mcp-revoke-button"].forEach((id) => { $(id).disabled = true; });
+  mcpButtons.forEach((id) => { $(id).disabled = true; });
   try {
     const response = await fetchWithTimeout(path, {
       method: "POST",
@@ -247,7 +266,7 @@ async function mcpTokenAction(path, pendingText) {
     message.className = "message error";
     return null;
   } finally {
-    ["mcp-token-button", "mcp-revoke-button"].forEach((id) => { $(id).disabled = false; });
+    mcpButtons.forEach((id) => { $(id).disabled = false; });
   }
 }
 
@@ -269,6 +288,28 @@ $("mcp-revoke-button").addEventListener("click", async () => {
   $("mcp-token").value = "";
   $("mcp-token-row").hidden = true;
   $("mcp-message").textContent = "Token revoked. No agent can reach Reachy until you create a new one.";
+  $("mcp-message").className = "message ok";
+});
+
+$("mcp-approval-button").addEventListener("click", async () => {
+  const body = await mcpTokenAction("/api/mcp/approval-code", "Creating an approval code…");
+  if (!body) return;
+  $("mcp-approval-code").value = body.code;
+  $("mcp-approval-row").hidden = false;
+  $("mcp-message").textContent = "Approval code ready. Type it on your agent's consent page within 10 minutes.";
+  $("mcp-message").className = "message ok";
+  window.setTimeout(() => {
+    $("mcp-approval-code").value = "";
+    $("mcp-approval-row").hidden = true;
+  }, body.expires_in * 1000);
+});
+
+$("mcp-oauth-disconnect-button").addEventListener("click", async () => {
+  if (!window.confirm("Disconnect every hosted agent? They must sign in and be approved again.")) return;
+  const body = await mcpTokenAction("/api/mcp/oauth/disconnect", "Disconnecting…");
+  if (!body) return;
+  renderOauthAgents(body, true);
+  $("mcp-message").textContent = "All hosted agents are disconnected.";
   $("mcp-message").className = "message ok";
 });
 

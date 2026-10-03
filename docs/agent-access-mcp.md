@@ -45,13 +45,51 @@ claude mcp add --transport http homebody http://<reachy-address>:8042/mcp \
 
 ## Hosted agents (ChatGPT dots, Grok Bot)
 
-Hosted agents run in their vendor's cloud. To reach Reachy they need a public HTTPS address, and usually an OAuth login rather than a bearer token. Homebody does not provide OAuth yet, so **do not** publish the endpoint to the internet with a bearer token alone. That is planned as a follow-up.
+Hosted agents run in their vendor's cloud, so they need a public HTTPS address and sign in with OAuth instead of a bearer token. Homebody acts as its own small OAuth 2.1 server, so you need no extra account. You approve each agent once with a one-time code.
 
-For your own devices away from home, use a private network such as Tailscale (tailnet only, never Funnel).
+**1. Publish only the agent paths over HTTPS.** Use a tunnel that terminates TLS, for example Cloudflare Tunnel, Tailscale Funnel or a reverse proxy on a VPS. Forward only these paths to `http://<reachy-address>:8042`:
+
+- `/mcp`
+- `/oauth/`
+- `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
+
+Homebody also protects itself. Any request that arrives with the public host name (`Host` or `X-Forwarded-Host`) can reach only those paths: the dashboard and every `/api/` route answer 404, and the static token is refused. Through the tunnel, OAuth is the only way in.
+
+**2. Turn on sign-in.** In **Settings → Agent access (MCP)**:
+
+1. Enter the tunnel's address in **Public HTTPS address**, for example `https://reachy.example.com`. Use no path.
+2. Turn on **Let hosted agents sign in (OAuth)** and save. If a bridge API key is set, enter it in *Current API key* first.
+
+**3. Connect the agent.** In the agent's connector or MCP settings, add `https://reachy.example.com/mcp`. The agent then:
+
+1. discovers the sign-in server;
+2. registers itself;
+3. opens Homebody's consent page in your browser, which shows the agent's name, where it will return to, and what it may do.
+
+**4. Approve it.** Press **Create approval code** in Settings and type the code on the consent page.
+
+- The code works once, for 10 minutes, and five wrong guesses burn it.
+- **Deny** sends the agent away without access.
+
+**Afterwards.**
+
+- Settings lists connected agents.
+- **Disconnect all hosted agents** signs every one out; they must be approved again.
+- Changing the public address also signs them out, because tokens are bound to it.
+
+How it works, for reviewers:
+
+- **Standards:** OAuth 2.1 with Protected Resource Metadata (RFC 9728), Authorization Server Metadata (RFC 8414) and Dynamic Client Registration (RFC 7591).
+- **Clients:** public clients only. PKCE S256 is required, and redirect URIs must match exactly.
+- **Tokens:** bound to `<public address>/mcp` with resource indicators (RFC 8707). Access tokens last one hour. Refresh tokens rotate, and replaying an old one ends that agent's access.
+- **Storage:** only hashes are kept, in `mcp-oauth.json` next to the config, with mode 0600.
+
+For your own devices away from home, a private network such as Tailscale (tailnet only, no Funnel) with the bearer token is simpler.
 
 ## Security notes
 
-- Off by default. The endpoint returns 404 until you turn it on and create a token.
+- Off by default. The endpoint returns 404 until you turn it on and create a token (or turn on agent sign-in).
+- OAuth sign-in and its public address need the current bridge API key to change, when one is set.
 - The token is a random 256-bit secret, compared in constant time; only its SHA-256 is stored.
 - Creating or revoking a token needs the current bridge API key, when one is set.
 - Requests carrying a browser `Origin` from another site are refused, which blocks DNS-rebinding tricks from web pages.
