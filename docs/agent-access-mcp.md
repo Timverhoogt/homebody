@@ -43,6 +43,15 @@ claude mcp add --transport http homebody http://<reachy-address>:8042/mcp \
 
 **Clients that only start local (stdio) servers.** Use a small stdio-to-HTTP adapter that can add headers, such as `mcp-remote`.
 
+**Check the connection.** `tools/mcp_check.py` needs only Python's standard library. It connects the way an agent does, lists the tools and prints Reachy's status, including why any action is unavailable right now. It is read-only unless you add `--say` or `--emotion`.
+
+```bash
+python tools/mcp_check.py http://<reachy-address>:8042/mcp --token <your token>
+python tools/mcp_check.py http://<reachy-address>:8042/mcp --token <your token> --say "Testing, one two"
+```
+
+`get_status` also returns `why_not`, a plain-language reason for every action that is unavailable, for example Sleep, privacy mode or "the local vision model is off". Agents relay that reason instead of guessing.
+
 ## Hosted agents (ChatGPT dots, Grok Bot)
 
 Hosted agents run in their vendor's cloud, so they need a public HTTPS address and sign in with OAuth instead of a bearer token. Homebody acts as its own small OAuth 2.1 server, so you need no extra account. You approve each agent once with a one-time code.
@@ -85,6 +94,26 @@ How it works, for reviewers:
 - **Storage:** only hashes are kept, in `mcp-oauth.json` next to the config, with mode 0600.
 
 For your own devices away from home, a private network such as Tailscale (tailnet only, no Funnel) with the bearer token is simpler.
+
+## Tested clients
+
+These were run against a live Homebody server, with a recording stand-in for the robot runtime:
+
+| Client | Transport and sign-in | Result |
+| --- | --- | --- |
+| Claude Code 2.1 (`claude mcp add --transport http`, as above) | Streamable HTTP, bearer token | ✅ Natural-language requests worked: status, announce and emotion. In Sleep and privacy mode the refusal was relayed with its reason. The look question was answered by the local vision model. |
+| Official TypeScript SDK 1.32, the stack most Node agents use | Streamable HTTP, bearer token | ✅ Connect, list tools, status, announce |
+| Official Python SDK 2.3, the stack Hermes Agent uses | Streamable HTTP, bearer token | ✅ Connect, list tools, call tools |
+| Official Python SDK 2.3 OAuth client | Spec-compliant OAuth: discovery from the 401, registration, PKCE, `resource` | ✅ Signed in after browser consent; then `express_emotion`. One-hour token with refresh. |
+| `mcp-remote` 0.14 (stdio adapter) | Its own OAuth client, through the public address | ✅ Discovery, registration and consent; callback; then `initialize` and `announce` over stdio |
+
+Still open:
+
+- a run on the robot itself (use `tools/mcp_check.py` above);
+- Hermes Agent and OpenClaw with their own model keys;
+- hosted agents (ChatGPT dots, Grok Bot) through a real tunnel.
+
+The steps are in `plan.md`.
 
 ## Security notes
 
