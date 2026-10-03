@@ -237,6 +237,7 @@ Requirements for the connected experience:
 - Pipeline mode: configured STT and TTS providers.
 - Realtime mode: an OpenAI API project key with access to `gpt-realtime-2.1`.
 - Kids Mode: OpenAI moderation/chat access plus an `ELEVENLABS_API_KEY` for fixed-policy Flash v2.5 streaming TTS.
+- Prefer European providers? Agent Mode, Kids chat and I Spy can use [Cortecs or LLMrouter.eu](companion/README.md#european-model-providers-cortecs-llmroutereu) instead of OpenAI; Realtime voice and Kids moderation stay with OpenAI.
 - Reachy and Hermes on a trusted LAN/VPN, or protected by TLS and an authenticated reverse proxy.
 
 ### 1. Prepare Hermes Agent

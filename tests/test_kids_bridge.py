@@ -228,7 +228,8 @@ def test_bridge_kids_route_has_moderation_on_both_sides_and_no_hermes_forwarding
     method = source.split("    async def kids_chat", 1)[1].split("    async def kids_ispy_select", 1)[0]
 
     assert method.count("await self._moderation_flagged") == 2
-    assert "https://api.openai.com/v1/chat/completions" in method
+    # The model call goes to the configured text provider; moderation stays OpenAI (checked above).
+    assert "self.llm.chat_url" in method and "self.llm.request(" in method
     assert "max_completion_tokens" in method
     assert '"store": False' in method
     assert "self.hermes_url" not in method

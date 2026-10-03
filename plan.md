@@ -159,6 +159,8 @@ These are deployment observations, not service-level guarantees. Hermes pipeline
 ## Deferred work
 
 - Run the two-button GPIO hardware acceptance in `OPERATIONS.md` on the Reachy Pi.
+- Run EU-provider acceptance with live Cortecs and LLMrouter.eu keys: Agent Mode tool loop, Kids chat, I Spy selection and judging with JSON-schema output.
+- Build Reachy as an MCP server so hosted agents (ChatGPT dots, Grok Bot) and Hermes/OpenClaw/Claude can use Reachy as a safety-gated tool.
 - Run OpenClaw acceptance against a live Gateway: a dedicated tool-restricted `reachy` agent, pipeline and Realtime (`ask_openclaw`) conversations, session continuity, and the Hermes + OpenClaw side-by-side setup.
 - Run first-light acceptance on each 🧪/◐ setup in `docs/hardware-setups.md`: Reachy SDK smoke test and app start on a Jetson Orin Nano (JetPack 6, uv-managed Python 3.11+), then local vision with Ollama and TensorRT gesture detection; app acceptance on a Mac and a Windows PC driving a Lite.
 - Persist parent lock/session recovery policy across process restarts if the deployment requires crash continuity.

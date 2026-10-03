@@ -172,6 +172,38 @@ In Reachy → Settings → *Agent model*, choose *Hermes default model* or *Open
 | "Configured" or local Whisper speech | ❌ They run Hermes Agent's own speech tools. The bridge answers HTTP 409 and the Settings list hides them. |
 | Tool-inventory check before each request | ❌ Hermes-only. Rely on the dedicated, restricted `reachy` agent. |
 
+## European model providers (Cortecs, LLMrouter.eu)
+
+The bridge calls a text model itself for Agent Mode (planning and the bounded tool loop), Kids Mode chat and I Spy (picking the object, judging guesses, guessing on the child's turn). By default those calls go to OpenAI in the US. To keep them with European providers, point them at an EU router:
+
+| `REACHY_LLM_PROVIDER` | Endpoint | API key variable | Notes |
+| --- | --- | --- | --- |
+| `openai` (default) | `https://api.openai.com/v1` | `OPENAI_API_KEY` | Existing behaviour and default models. |
+| `cortecs` | `https://api.cortecs.ai/v1` (Vienna) | `CORTECS_API_KEY` | Sends `eu_native: true`, so Cortecs only routes to providers based and regulated in the EU. Set `REACHY_CORTECS_EU_NATIVE=0` to allow all its GDPR-compliant providers. |
+| `llmrouter` | `https://proxy.llmrouter.eu/v1` (Germany) | `LLMROUTER_API_KEY` | |
+| `custom` | `REACHY_LLM_URL` | `REACHY_LLM_API_KEY` | Any OpenAI-compatible `/v1` endpoint. |
+
+Model names differ per router, so the bridge never guesses one. Set `REACHY_LLM_MODEL` for all three uses, or override per use with `REACHY_AGENT_MODEL`, `REACHY_KIDS_MODEL` and `REACHY_ISPY_MODEL`. The bridge refuses to start when one is missing. Pick models that support:
+
+- **Agent Mode:** tool calling and JSON-schema output.
+- **I Spy:** JSON-schema output, and image input for choosing the object. Alternatively, keep the I Spy frames fully local with `REACHY_ISPY_VISION_URL` (see the Realtime trust boundary section).
+- **Kids chat:** a capable instruction model; replies are still moderated and length-limited by the bridge.
+
+```bash
+REACHY_LLM_PROVIDER=cortecs
+CORTECS_API_KEY=your-cortecs-key
+REACHY_LLM_MODEL=mistral-medium-2508      # example; use a model your router lists
+```
+
+Two things deliberately stay with OpenAI:
+
+- **Realtime voice** (`gpt-realtime-2.1`). Neither router offers a realtime speech endpoint. Use the pipeline conversation mode to avoid it.
+- **Kids Mode moderation** (`omni-moderation-latest`). It is the hard safety boundary for child sessions, so Kids Mode still requires `OPENAI_API_KEY`. Only the moderation text is sent to OpenAI, not the chat itself.
+
+`/health` reports the active provider and its region as `text_provider`, plus `agent_model_available`.
+
+Hermes Agent and OpenClaw choose their own models. To run them on an EU router as well, add Cortecs or LLMrouter.eu there as an OpenAI-compatible custom provider (same base URL and key as above).
+
 ## API surface
 
 All `/v1/*` routes require:

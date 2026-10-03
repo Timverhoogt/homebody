@@ -1,0 +1,61 @@
+name: Sync Hugging Face Space
+
+# Mirrors `main` to the Hugging Face Space that backs the Reachy Mini app store
+# listing, but only after CI has passed on that commit.
+#
+# Setup: add a repository secret `HF_TOKEN` (a Hugging Face token with write
+# access to the Space). Optionally set a repository variable `HF_SPACE_ID` to
+# publish to a different Space.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-hf-space
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_SPACE_ID: ${{ vars.HF_SPACE_ID || 'Timbo89/reachy_mini_hermes' }}
+      SYNC_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Check token
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::error::Repository secret HF_TOKEN is not set; cannot publish to the Space."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SYNC_SHA }}
+      # Export only tracked files so local artefacts never reach the Space.
+      # GitHub-only files are left out; the Space keeps its own .gitattributes.
+      - name: Export tracked files
+        run: |
+          mkdir "$RUNNER_TEMP/space"
+          git archive --format=tar "$SYNC_SHA" -- . ':(exclude).github' ':(exclude).gitattributes' \
+            | tar -x -C "$RUNNER_TEMP/space"
+      - uses: astral-sh/setup-uv@v6
+      - name: Upload to Space
+        # --delete removes Space files that no longer exist in the repository
+        # (huggingface_hub never deletes .gitattributes).
+        run: |
+          uvx --from "huggingface_hub>=1.0,<3" hf upload "$HF_SPACE_ID" "$RUNNER_TEMP/space" . \
+            --repo-type space \
+            --delete "*" \
+            --commit-message "Sync from GitHub ${SYNC_SHA::7}" \
+            --commit-description "https://github.com/${{ github.repository }}/commit/${SYNC_SHA}"
