@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The dashboard screenshots in `docs/assets` were retaken with the Homebody header using the new, reproducible `docs/tools/capture_ui_screenshots.py`.
 - New defaults `~/.local/share/homebody/config.json`, `~/.cache/homebody/`, `HOMEBODY_CONFIG` and `HOMEBODY_MODEL_DIR`. Pre-rename config, caches and `REACHY_MINI_HERMES_*` variables are still used when present, and `reachy-mini-hermes` remains a CLI alias. See OPERATIONS.md for the upgrade steps.
 - The dashboard header, PWA description and status `wake_phrase` now read Homebody. Browser settings saved under the old `reachy-hermes-*` keys (open tab, Kids profile, agent run, announcement draft) carry over to `homebody-*` keys once; PWA shell v54.
+- Internal thread, task and temp-file names, and the camera's WebRTC peer name, now use a `homebody-` prefix instead of `reachy-hermes-`; PWA shell v55.
 - Home Assistant keeps the same ESPHome device identity and project name; only the displayed model and manufacturer read Homebody.
 - Added the local wake phrase **Hey Homebody** alongside Hey Hermes, Okay Nabu and Hey Reachy (BPE tokens verified against the bundled GigaSpeech KWS vocabulary; live-microphone acceptance pending).
 - README reworked around the always-on household story, and a CONTRIBUTING guide with the household promises added.

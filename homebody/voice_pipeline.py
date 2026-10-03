@@ -285,7 +285,7 @@ class PipelineVoiceMixin:
         avoids self-interruption; Realtime mode provides natural semantic VAD.
         """
         suffix = speech.extension if speech.extension.startswith(".") else ".audio"
-        with tempfile.NamedTemporaryFile(prefix="reachy-hermes-response-", suffix=suffix, delete=False) as output:
+        with tempfile.NamedTemporaryFile(prefix="homebody-response-", suffix=suffix, delete=False) as output:
             output.write(speech.data)
             path = Path(output.name)
         interrupted = False

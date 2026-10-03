@@ -143,10 +143,10 @@ def test_home_assistant_ui_exposes_nested_opt_ins_and_v44_assets() -> None:
         assert element_id in script
     assert "dedicated Awake switch to run guarded wake/standby transitions" in html
     assert "toggleHomeAssistantOptions" in script
-    assert "homebody-shell-v54" in worker
+    assert "homebody-shell-v55" in worker
     for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=54" in html
-        assert f'"/static/{asset}?v=54"' in worker
+        assert f"/static/{asset}?v=55" in html
+        assert f'"/static/{asset}?v=55"' in worker
 
 
 def test_runtime_provider_maps_native_daemon_telemetry_without_enabling_controls() -> None:
@@ -510,7 +510,7 @@ def test_real_aioesphome_client_sees_compatible_device_entities_states_and_camer
             assist_enabled=False,
             identity=DeviceIdentity("Reachy Mini E79627", "reachy-mini-e79627", "1643b6e79627"),
         )
-        client = APIClient("127.0.0.1", running.port, None, client_info="reachy-hermes-test")
+        client = APIClient("127.0.0.1", running.port, None, client_info="homebody-test")
         states: list[object] = []
         try:
             await client.connect(login=True)
@@ -589,7 +589,7 @@ def test_slow_camera_capture_does_not_block_protocol_requests() -> None:
             assist_enabled=False,
             identity=DeviceIdentity("Reachy Mini E79627", "reachy-mini-e79627", "1643b6e79627"),
         )
-        client = APIClient("127.0.0.1", running.port, None, client_info="reachy-hermes-nonblocking-test")
+        client = APIClient("127.0.0.1", running.port, None, client_info="homebody-nonblocking-test")
         states: list[object] = []
         try:
             await client.connect(login=True)
@@ -628,7 +628,7 @@ def test_real_aioesphome_client_round_trips_assist_start_pcm_events_and_stop() -
             assist_enabled=True,
             identity=DeviceIdentity("Reachy Mini E79627", "reachy-mini-e79627", "1643b6e79627"),
         )
-        client = APIClient("127.0.0.1", running.port, None, client_info="reachy-hermes-assist-test")
+        client = APIClient("127.0.0.1", running.port, None, client_info="homebody-assist-test")
         started = asyncio.Event()
         audio_received = asyncio.Event()
         stopped = asyncio.Event()

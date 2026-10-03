@@ -294,7 +294,7 @@
       const api = new window.GstWebRTCAPI({
         signalingServerUrl: `${signalingScheme}://${window.location.hostname}:8443`,
         reconnectionTimeout: 0,
-        meta: { name: "reachy-hermes-ui" },
+        meta: { name: "homebody-ui" },
         webrtcConfig: { iceServers: [] },
       });
       state.api = api;

@@ -746,7 +746,7 @@ async def start_esphome_server(
                 if isinstance(result, Exception):
                     _LOGGER.warning("Home Assistant state publish failed: %s", result)
 
-    publisher = asyncio.create_task(publish(), name="reachy-hermes-ha-state-publisher")
+    publisher = asyncio.create_task(publish(), name="homebody-ha-state-publisher")
     return RunningESPHomeServer(server=server, protocols=protocols, port=bound_port, _publisher=publisher)
 
 
@@ -1330,7 +1330,7 @@ class HomeAssistantBridge:
     def start(self, *, timeout: float = 10.0) -> None:
         if self._thread and self._thread.is_alive():
             return
-        self._thread = threading.Thread(target=self._run, name="reachy-hermes-home-assistant", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="homebody-home-assistant", daemon=True)
         self._thread.start()
         if not self._ready.wait(timeout):
             raise RuntimeError("Home Assistant bridge did not start in time")

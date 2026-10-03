@@ -458,7 +458,7 @@ class HermesVoiceRuntime(
             self._audio_ready = True
             self._announcement_worker = threading.Thread(
                 target=self._run_announcement_worker,
-                name="reachy-hermes-announcements",
+                name="homebody-announcements",
                 daemon=True,
             )
             self._announcement_worker.start()
@@ -473,7 +473,7 @@ class HermesVoiceRuntime(
             self._gesture_stop_requested.clear()
             self._gesture_worker = threading.Thread(
                 target=self._run_gesture_worker,
-                name="reachy-hermes-gestures",
+                name="homebody-gestures",
                 daemon=True,
             )
             self._gesture_worker.start()

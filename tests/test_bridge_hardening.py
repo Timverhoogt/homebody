@@ -90,9 +90,9 @@ def test_transcription_rejects_extra_file_parts_and_long_options(monkeypatch) ->
         response = await client.post("/v1/audio/transcriptions", headers=HEADERS, data=form)
         assert response.status == 400
 
-    leftovers_before = set(Path("/tmp").glob("reachy-hermes-stt-*"))
+    leftovers_before = set(Path("/tmp").glob("homebody-stt-*"))
     run_with_bridge(scenario, monkeypatch)
-    assert set(Path("/tmp").glob("reachy-hermes-stt-*")) == leftovers_before
+    assert set(Path("/tmp").glob("homebody-stt-*")) == leftovers_before
 
 
 def test_json_routes_refuse_oversized_bodies(monkeypatch) -> None:

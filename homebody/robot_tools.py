@@ -353,7 +353,7 @@ class ReachyRobotActions:
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
-        self._thread = threading.Thread(target=self._run, name="reachy-hermes-actions", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="homebody-actions", daemon=True)
         self._thread.start()
 
     def enqueue(

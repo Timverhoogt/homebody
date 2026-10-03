@@ -98,7 +98,7 @@ def test_motor_ui_serializes_power_transitions_and_reports_confirmed_state() -> 
     assert 'data-action-busy="true"' in style
     assert "position: fixed" in style
     assert 'data-action-busy="false"' in html
-    assert 'homebody-shell-v54' in worker
-    assert '/static/style.css?v=54' in html
-    assert '/static/camera.js?v=54' in html
-    assert '/static/main.js?v=54' in html
+    assert 'homebody-shell-v55' in worker
+    assert '/static/style.css?v=55' in html
+    assert '/static/camera.js?v=55' in html
+    assert '/static/main.js?v=55' in html
