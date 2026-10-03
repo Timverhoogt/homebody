@@ -159,7 +159,7 @@ These are deployment observations, not service-level guarantees. Hermes pipeline
 ## Deferred work
 
 - Run the two-button GPIO hardware acceptance in `OPERATIONS.md` on the Reachy Pi.
-- Run EU-provider acceptance with live Cortecs and LLMrouter.eu keys: Agent Mode tool loop, Kids chat, I Spy selection and judging with JSON-schema output.
+- Run EU-provider acceptance with live keys: `python tools/llm_provider_check.py --photo desk.jpg` once with Cortecs (start with `mistral-small-3.2-24b-instruct-2506`) and once with LLMrouter.eu, both with `OPENAI_API_KEY` set for Kids moderation. Record the working model names per router in `companion/README.md`. Keyless checks are done: endpoints, Cortecs `eu_native` and `json_schema` support per its API docs, and how each router reports a refused key.
 - Finish live MCP acceptance. Claude Code, the TypeScript and Python SDKs (bearer and OAuth) and `mcp-remote` (OAuth) are verified against a live server with a stand-in runtime; see `docs/agent-access-mcp.md`. Still open:
   - run `tools/mcp_check.py --say … --emotion happy` against the real robot in Awake, Standby, Sleep and privacy mode;
   - connect Hermes Agent and OpenClaw with their own model keys;

@@ -224,7 +224,7 @@ The bridge calls a text model itself for Agent Mode (planning and the bounded to
 | --- | --- | --- | --- |
 | `openai` (default) | `https://api.openai.com/v1` | `OPENAI_API_KEY` | Existing behaviour and default models. |
 | `cortecs` | `https://api.cortecs.ai/v1` (Vienna) | `CORTECS_API_KEY` | Sends `eu_native: true`, so Cortecs only routes to providers based and regulated in the EU. Set `REACHY_CORTECS_EU_NATIVE=0` to allow all its GDPR-compliant providers. |
-| `llmrouter` | `https://proxy.llmrouter.eu/v1` (Germany) | `LLMROUTER_API_KEY` | |
+| `llmrouter` | `https://proxy.llmrouter.eu/v1` (Germany) | `LLMROUTER_API_KEY` | Keys start with `sk-`. |
 | `custom` | `REACHY_LLM_URL` | `REACHY_LLM_API_KEY` | Any OpenAI-compatible `/v1` endpoint. |
 
 Model names differ per router, so the bridge never guesses one. Set `REACHY_LLM_MODEL` for all three uses, or override per use with `REACHY_AGENT_MODEL`, `REACHY_KIDS_MODEL` and `REACHY_ISPY_MODEL`. The bridge refuses to start when one is missing. Pick models that support:
@@ -233,11 +233,30 @@ Model names differ per router, so the bridge never guesses one. Set `REACHY_LLM_
 - **I Spy:** JSON-schema output, and image input for choosing the object. Alternatively, keep the I Spy frames fully local with `REACHY_ISPY_VISION_URL` (see the Realtime trust boundary section).
 - **Kids chat:** a capable instruction model; replies are still moderated and length-limited by the bridge.
 
+**Avoid reasoning models for I Spy and Kids chat.** The bridge keeps those answers short (40-800 tokens) so Reachy replies quickly. A reasoning model can spend that whole budget thinking and return nothing. Agent Mode has a larger budget.
+
+A good first choice on Cortecs is `mistral-small-3.2-24b-instruct-2506`. It takes images, calls tools and does JSON mode without reasoning, and it is served by OVH, Scaleway and Berget, all EU providers. It can serve all three uses. For a stronger Agent Mode, set `REACHY_AGENT_MODEL=mistral-large-2512`, which Mistral hosts in the EU.
+
 ```bash
 REACHY_LLM_PROVIDER=cortecs
 CORTECS_API_KEY=your-cortecs-key
-REACHY_LLM_MODEL=mistral-medium-2508      # example; use a model your router lists
+REACHY_LLM_MODEL=mistral-small-3.2-24b-instruct-2506
 ```
+
+**Check it before relying on it.** On the bridge machine, with the same environment, run:
+
+```bash
+python tools/llm_provider_check.py                 # add --photo desk.jpg to also test I Spy object picking
+```
+
+It starts the real bridge in-process, without opening a port, and runs every request Reachy makes against your provider:
+
+- I Spy judging and guessing (strict JSON schema);
+- Agent Mode planning (forced tool calls);
+- Agent Mode answers (tools plus JSON schema, with a tool round trip);
+- Kids chat (needs `OPENAI_API_KEY` for moderation).
+
+Each check passes or fails with a reason, such as a refused key, a model name the router does not list, or an answer cut off by a reasoning model. Prompts are synthetic, and nothing personal is sent unless you pass `--photo`.
 
 Two things deliberately stay with OpenAI:
 
