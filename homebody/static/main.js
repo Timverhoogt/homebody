@@ -7,6 +7,7 @@ const fields = [
   "home_assistant_camera_enabled", "home_assistant_assist_enabled", "home_assistant_port",
   "realtime_model", "realtime_voice", "realtime_reasoning_effort",
   "local_vision_enabled", "local_vision_url", "local_vision_model", "local_ai_accelerator",
+  "mcp_enabled", "mcp_vision_enabled",
   "end_silence_seconds", "max_utterance_seconds", "vad_min_rms", "vad_noise_multiplier",
   "wake_keyword_threshold", "wake_keyword_score",
 ];
@@ -193,6 +194,7 @@ $("local-vision-test-button").addEventListener("click", async () => {
       body: JSON.stringify({
         local_vision_url: $("local_vision_url").value.trim() || null,
         local_vision_model: $("local_vision_model").value.trim() || null,
+        current_api_key: $("current_api_key").value.trim() || null,
       }),
     }, 15000);
     const body = await response.json();
@@ -209,6 +211,69 @@ $("local-vision-test-button").addEventListener("click", async () => {
   }
 });
 
+$("mcp-endpoint").value = `${window.location.origin}/mcp`;
+
+async function refreshMcpStatus() {
+  try {
+    const response = await fetchWithTimeout("/api/mcp/status", { cache: "no-store" });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    const message = $("mcp-message");
+    if (message.classList.contains("ok") || message.classList.contains("error")) return;
+    const state = !body.enabled ? "Agent access is off." : body.token_configured ? "Agent access is on." : "Agent access is on, but no token exists yet.";
+    const usage = body.calls ? ` ${body.calls} request(s) so far; last: ${body.last_tool} (${body.last_result}).` : "";
+    message.textContent = state + usage;
+  } catch (error) {
+    // Status is informational; the settings form reports real errors.
+  }
+}
+
+async function mcpTokenAction(path, pendingText) {
+  const message = $("mcp-message");
+  message.textContent = pendingText;
+  message.className = "message";
+  ["mcp-token-button", "mcp-revoke-button"].forEach((id) => { $(id).disabled = true; });
+  try {
+    const response = await fetchWithTimeout(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_api_key: $("current_api_key").value.trim() }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    return body;
+  } catch (error) {
+    message.textContent = String(error.message || error);
+    message.className = "message error";
+    return null;
+  } finally {
+    ["mcp-token-button", "mcp-revoke-button"].forEach((id) => { $(id).disabled = false; });
+  }
+}
+
+$("mcp-token-button").addEventListener("click", async () => {
+  if (!window.confirm("Create a new agent token? Agents using the old token will lose access.")) return;
+  const body = await mcpTokenAction("/api/mcp/token", "Creating a token…");
+  if (!body) return;
+  $("mcp-token").value = body.token;
+  $("mcp-token-row").hidden = false;
+  $("mcp-token").select();
+  $("mcp-message").textContent = "Token created. Copy it now; it will not be shown again.";
+  $("mcp-message").className = "message ok";
+});
+
+$("mcp-revoke-button").addEventListener("click", async () => {
+  if (!window.confirm("Revoke the agent token? Every connected agent loses access.")) return;
+  const body = await mcpTokenAction("/api/mcp/token/revoke", "Revoking…");
+  if (!body) return;
+  $("mcp-token").value = "";
+  $("mcp-token-row").hidden = true;
+  $("mcp-message").textContent = "Token revoked. No agent can reach Reachy until you create a new one.";
+  $("mcp-message").className = "message ok";
+});
+
+refreshMcpStatus();
+
 $("local-vision-ask").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = $("local-vision-ask-button");
@@ -218,9 +283,11 @@ $("local-vision-ask").addEventListener("submit", async (event) => {
   answer.textContent = "Looking…";
   answer.classList.remove("error");
   try {
+    // The key stays in this field only; it is never stored by the page.
+    const key = $("local-vision-key").value.trim();
     const response = await fetchWithTimeout("/api/vision/describe", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({ question }),
     }, 90000);
     const body = await response.json();

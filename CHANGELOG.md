@@ -6,11 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- `POST /api/vision/describe` (the camera card's Ask box) now requires the bridge bearer token. Before, any LAN client could ask the local vision model to describe the room.
+- `POST /api/vision/test` needs the current API key to probe an unsaved vision URL, so it can no longer be used to make Reachy fetch from arbitrary hosts. Testing the saved server is unchanged.
+- The camera snapshot and agent reminder-delivery routes stay closed when no bridge API key is configured, instead of accepting an empty bearer token.
+
+### Fixed
+
+- GPIO buttons: a long press is now recognised from its edge timestamps, so holding green or red still means Standby or Sleep when the press and release arrive together after the monitor was busy with an earlier action.
+- GPIO buttons: saving new button settings while an action is still running no longer revives the old monitor or double-dispatches presses. Each monitor has its own stop signal, stale queued presses are dropped, and the new monitor waits for the old one to release the lines.
+- Realtime camera calls answered by the local vision model run on a worker thread, so a slow or unreachable vision server no longer freezes audio, barge-in and Stop for up to a minute.
+
 ### Changed
 
 - Renamed the app from Reachy Mini Hermes to **Homebody**: package `reachy-mini-homebody` 0.4.0, module `homebody`, Reachy app `reachy_mini_homebody`, class `Homebody` and CLI `homebody`. Hermes Agent remains the reference agent backend alongside OpenClaw.
 - New defaults `~/.local/share/homebody/config.json`, `~/.cache/homebody/`, `HOMEBODY_CONFIG` and `HOMEBODY_MODEL_DIR`. Pre-rename config, caches and `REACHY_MINI_HERMES_*` variables are still used when present, and `reachy-mini-hermes` remains a CLI alias. See OPERATIONS.md for the upgrade steps.
-- The dashboard header, PWA description and status `wake_phrase` now read Homebody. Browser settings saved under the old `reachy-hermes-*` keys (open tab, Kids profile, agent run, announcement draft) carry over to `homebody-*` keys once; PWA shell v52.
+- The dashboard header, PWA description and status `wake_phrase` now read Homebody. Browser settings saved under the old `reachy-hermes-*` keys (open tab, Kids profile, agent run, announcement draft) carry over to `homebody-*` keys once; PWA shell v54.
 - Home Assistant keeps the same ESPHome device identity and project name; only the displayed model and manufacturer read Homebody.
 - Added the local wake phrase **Hey Homebody** alongside Hey Hermes, Okay Nabu and Hey Reachy (BPE tokens verified against the bundled GigaSpeech KWS vocabulary; live-microphone acceptance pending).
 - README reworked around the always-on household story, and a CONTRIBUTING guide with the household promises added.
@@ -129,6 +141,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Docs: new hardware setups guide (docs/hardware-setups.md) with the supported setups (Lite + PC, Mac, Raspberry Pi, Jetson Orin Nano, and Wireless), a feature-by-setup matrix with reference-tested / supported / experimental labels, where Hermes and local AI can run, and setup notes per option including Jetson steps. README, the Space page, OPERATIONS and SECURITY now match it.
 - OpenClaw support: the companion bridge can route Reachy's conversations to an OpenClaw agent through the Gateway's OpenAI-compatible endpoint, instead of or alongside Hermes Agent (--agent-backends hermes,openclaw). Requests only reach allowlisted agents (REACHY_OPENCLAW_AGENTS, default reachy); the owner's main/default agent is refused unless explicitly allowed; x-openclaw-* overrides and client tools are never forwarded; the Gateway token stays on the bridge host. Realtime delegates through ask_openclaw, each Reachy conversation maps to one OpenClaw session, health/models report every backend, and Settings labels OpenClaw agents.
 - European model providers: the bridge's own text-model calls (Agent Mode planning and tool loop, Kids chat, I Spy selection/judging/guessing) can go to Cortecs (EU-only routing via eu_native), LLMrouter.eu or any OpenAI-compatible endpoint instead of OpenAI (REACHY_LLM_PROVIDER, REACHY_LLM_MODEL). Each provider gets only its own key; model names are required, never guessed. Realtime voice and Kids Mode moderation deliberately stay with OpenAI. /health reports the active provider and region.
+- Agent access (MCP): Homebody can serve a token-protected Model Context Protocol endpoint (/mcp, Streamable HTTP, stateless JSON) so Hermes Agent, OpenClaw, Claude Code and other MCP agents can use Reachy: get_status, announce, express_emotion and (opt-in) look_and_describe via the local vision model. Off by default; every tool goes through the existing Meeting/Sleep/privacy/Kids/motor gates, agents never wake Reachy for a gesture, calls are rate-limited, tokens are stored hashed and managed with the owner's API key, and foreign browser origins are refused. PWA shell v53.
 
 ### Build
 

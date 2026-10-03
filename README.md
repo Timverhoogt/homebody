@@ -57,6 +57,8 @@ Homebody owns the body: movement, safety, privacy, presence and the browser UI. 
 
 Homebody also works without any agent: the local dashboard, power and privacy states, guarded movement and camera controls run on their own.
 
+**Agents can also call Reachy.** With [agent access (MCP)](docs/agent-access-mcp.md) turned on, any MCP-capable agent can ask Reachy to speak a reminder, show an emotion, or describe what it sees through your local vision model. Hermes Agent, OpenClaw and Claude Code are examples. Every request follows the same Meeting, Sleep, privacy and Kids Mode rules as voice. It is off by default, needs a token, and never wakes Reachy for a gesture.
+
 ## Household promises
 
 These hold for everything that runs inside Homebody, including future contributions. [CONTRIBUTING.md](CONTRIBUTING.md#household-promises) explains how they apply to new code.
@@ -142,7 +144,7 @@ Reachy can answer camera questions with a vision model on hardware you own inste
 
 - **Local vision model.** Point Settings → *Local vision and AI acceleration* at any OpenAI-compatible vision server: Ollama, llama.cpp or vLLM.
   - The server can run on the robot computer itself (a Jetson Orin Nano, a GPU PC or an Apple Silicon Mac) or elsewhere on your LAN.
-  - With it on, Realtime camera requests and the camera card's **Ask** box send the frame only to that server. The conversation model receives just the text answer.
+  - With it on, Realtime camera requests and the camera card's **Ask** box send the frame only to that server. The conversation model receives just the text answer. The **Ask** box needs the bridge API key, because its answer describes the room.
   - Changing the server URL requires the current API key.
 - **Accelerated gesture detection.** The on-device hand-gesture models use TensorRT or CUDA on a Jetson, Core ML on a Mac, or DirectML on Windows when the installed onnxruntime offers them. They fall back to the CPU automatically.
 - **Kids I Spy.** The bridge host can send I Spy's frames to a local vision server (`REACHY_ISPY_VISION_URL`). Strict target validation and moderation still apply. See [companion/README.md](companion/README.md).
@@ -423,7 +425,7 @@ Reachy SDK downloads its small YuNet detector on first use. If the daemon report
 
 Realtime physical tools are local and allow-listed: `move_reachy_head`, `express_reachy_emotion`, and `dance_reachy`. They run in a serialized motion worker so microphone streaming remains responsive. Recorded-move audio is suppressed because Hermes remains the only voice source.
 
-An authenticated `POST /api/camera/snapshot` route can return one current JPEG for explicitly requested sharing or diagnostics. It requires the private bridge bearer token, the `camera` confirmation value, and disables response caching.
+An authenticated `POST /api/camera/snapshot` route can return one current JPEG for explicitly requested sharing or diagnostics. It requires the private bridge bearer token, the `camera` confirmation value, and disables response caching. Without a configured bridge key the route stays closed.
 
 ## Configuration storage
 

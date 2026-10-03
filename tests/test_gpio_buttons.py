@@ -54,6 +54,23 @@ def test_long_press_fires_once_while_held_and_release_adds_no_short() -> None:
     assert buttons.edge(release(RED, 4.5)) == []
 
 
+def test_long_press_is_recognised_when_press_and_release_arrive_together() -> None:
+    # The monitor was busy dispatching, so poll() never ran while the button was held.
+    buttons = classifier()
+
+    assert buttons.edge(press(GREEN, 1.0)) == []
+    assert buttons.edge(release(GREEN, 4.0)) == [ButtonEvent("green", "long")]
+    assert buttons.edge(press(RED, 5.0)) == []
+    assert buttons.edge(release(RED, 6.9)) == [ButtonEvent("red", "short")]
+
+
+def test_a_stuck_length_hold_released_in_one_batch_does_nothing() -> None:
+    buttons = classifier()
+
+    buttons.edge(press(RED, 0.0))
+    assert buttons.edge(release(RED, STUCK_SECONDS + 1.0)) == []
+
+
 def test_contact_bounce_inside_the_debounce_window_is_ignored() -> None:
     buttons = classifier()
     buttons.edge(press(GREEN, 1.0))
@@ -161,6 +178,48 @@ def test_service_isolates_a_failing_action_and_keeps_monitoring() -> None:
         wait_for(lambda: service.status()["last_error"] == "")
     finally:
         service.stop()
+
+
+def test_restart_never_revives_a_monitor_that_is_still_dispatching() -> None:
+    readers = [FakeReader(), FakeReader()]
+    opened: list[FakeReader] = []
+    release_dispatch = threading.Event()
+    handled: list[tuple[int, ButtonEvent]] = []
+
+    def backend(chip: str, offsets: list[int]) -> FakeReader:
+        opened.append(readers[len(opened)])
+        return opened[-1]
+
+    def dispatch(event: ButtonEvent) -> None:
+        handled.append((len(opened), event))
+        if len(handled) == 1:
+            release_dispatch.wait(timeout=5.0)
+
+    service = GpioButtonService(dispatch, backend=backend)
+    service.start(chip="/dev/gpiochip0", pins={"green": GREEN}, long_press_seconds=2.0)
+    first = opened[0]
+    # The first press blocks in dispatch; a second press queues behind it on the old monitor.
+    first.push(press(GREEN, 1.0), release(GREEN, 1.2), press(GREEN, 2.0), release(GREEN, 2.2))
+    wait_for(lambda: len(handled) == 1)
+
+    restarted = threading.Thread(
+        target=service.start,
+        kwargs={"chip": "/dev/gpiochip0", "pins": {"green": GREEN}, "long_press_seconds": 2.0},
+    )
+    restarted.start()
+    time.sleep(0.1)
+    release_dispatch.set()
+    restarted.join(timeout=5.0)
+
+    # The old monitor exits without acting on its stale queued press and releases its lines
+    # before the new one opens them.
+    wait_for(first.closed.is_set)
+    assert len(opened) == 2
+    assert handled == [(1, ButtonEvent("green", "short"))]
+    opened[1].push(press(GREEN, 10.0), release(GREEN, 10.2))
+    wait_for(lambda: len(handled) == 2)
+    assert handled[1] == (2, ButtonEvent("green", "short"))
+    service.stop()
 
 
 @pytest.mark.parametrize(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import socket
@@ -14,6 +15,7 @@ from fastapi import Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 from reachy_mini import ReachyMini, ReachyMiniApp
+from starlette.concurrency import run_in_threadpool
 
 from .agent_audit import AgentAuditLog
 from .bluetooth import BluetoothGamepadService
@@ -23,6 +25,7 @@ from .gpio_buttons import ButtonEvent, ButtonName, GpioButtonService
 from .hermes_client import HermesBridgeClient
 from .kids_mode import KidsProfile
 from .local_vision import LocalVisionClient, LocalVisionError
+from .mcp_server import PROTOCOL_VERSIONS, McpServer, new_token, token_digest, token_matches
 from .platform_info import host
 from .presence import PresenceObservation
 from .robot_tools import robot_control_options
@@ -96,6 +99,8 @@ class SettingsUpdate(BaseModel):
     local_vision_url: str | None = Field(default=None, max_length=2048)
     local_vision_model: str | None = Field(default=None, max_length=200)
     local_ai_accelerator: Literal["auto", "cpu"] | None = None
+    mcp_enabled: bool | None = None
+    mcp_vision_enabled: bool | None = None
 
 
 def _authorize_credential_change(current: AppConfig, merged: AppConfig, provided: str | None) -> None:
@@ -228,6 +233,21 @@ class GamepadEnabledRequest(BaseModel):
     enabled: bool
 
 
+class McpTokenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_api_key: str = Field(default="", max_length=4096)
+
+
+_MCP_MAX_BODY_BYTES = 64 * 1024
+
+
+def _same_origin(origin: str, request: Request) -> bool:
+    """MCP over HTTP must reject foreign browser origins (DNS-rebinding protection)."""
+    host = request.headers.get("host", "")
+    return origin.rstrip("/").split("://", 1)[-1] == host
+
+
 class VisionQuestionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -239,6 +259,7 @@ class LocalVisionTestRequest(BaseModel):
 
     local_vision_url: str | None = Field(default=None, max_length=2048)
     local_vision_model: str | None = Field(default=None, max_length=200)
+    current_api_key: str | None = Field(default=None, max_length=4096)
 
 
 class GpioButtonsRequest(BaseModel):
@@ -322,6 +343,7 @@ class Homebody(ReachyMiniApp):
         self._gamepad_config_lock = threading.Lock()
         self._gpio_buttons = GpioButtonService(self._handle_button_event)
         self._gpio_config_lock = threading.Lock()
+        self._mcp = McpServer(lambda: self._runtime)
         self._register_settings_routes()
 
     def _handle_gamepad_action(self, kind: str, action: str, value: str) -> bool:
@@ -896,8 +918,10 @@ class Homebody(ReachyMiniApp):
             request: AgentReminderDeliveryRequest,
             authorization: str = Header(default=""),
         ) -> dict[str, object]:
-            expected = f"Bearer {load_config().api_key}"
-            if not secrets.compare_digest(authorization, expected):
+            api_key = load_config().api_key
+            if not api_key:
+                raise HTTPException(status_code=503, detail="Reminder delivery authentication is not configured")
+            if not secrets.compare_digest(authorization, f"Bearer {api_key}"):
                 raise HTTPException(status_code=401, detail="Unauthorized")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -968,8 +992,10 @@ class Homebody(ReachyMiniApp):
             request: ConfirmationRequest,
             authorization: str = Header(default=""),
         ) -> Response:
-            expected = f"Bearer {load_config().api_key}"
-            if not secrets.compare_digest(authorization, expected):
+            api_key = load_config().api_key
+            if not api_key:
+                raise HTTPException(status_code=503, detail="Camera snapshot authentication is not configured")
+            if not secrets.compare_digest(authorization, f"Bearer {api_key}"):
                 raise HTTPException(status_code=401, detail="Unauthorized")
             if request.confirm.strip().lower() != "camera":
                 raise HTTPException(status_code=400, detail="Confirmation must be 'camera'")
@@ -985,8 +1011,109 @@ class Homebody(ReachyMiniApp):
                 headers={"Cache-Control": "no-store", "Content-Disposition": "inline"},
             )
 
+        @self.settings_app.post("/mcp", include_in_schema=False)
+        async def mcp_endpoint(request: Request) -> Response:
+            """Model Context Protocol over Streamable HTTP, answered with plain JSON (stateless)."""
+            config = load_config()
+            if not config.mcp_enabled or not config.mcp_token_sha256:
+                return JSONResponse(status_code=404, content={"detail": "Agent access (MCP) is turned off"})
+            origin = request.headers.get("origin", "")
+            if origin and not _same_origin(origin, request):
+                return JSONResponse(status_code=403, content={"detail": "Cross-origin MCP requests are not allowed"})
+            scheme, _, token = request.headers.get("authorization", "").partition(" ")
+            if scheme.lower() != "bearer" or not token_matches(token.strip(), config.mcp_token_sha256):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "A valid Homebody MCP token is required"},
+                    headers={"WWW-Authenticate": 'Bearer realm="homebody"'},
+                )
+            version = request.headers.get("mcp-protocol-version", "")
+            if version and version not in PROTOCOL_VERSIONS:
+                return JSONResponse(status_code=400, content={"detail": f"Unsupported MCP protocol version {version}"})
+            body = await request.body()
+            if len(body) > _MCP_MAX_BODY_BYTES:
+                return JSONResponse(status_code=413, content={"detail": "MCP request is too large"})
+            try:
+                message = json.loads(body)
+            except ValueError:
+                return JSONResponse(
+                    status_code=400,
+                    content={"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}},
+                )
+            if isinstance(message, list):
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32600, "message": "Batches are not supported"},
+                    },
+                )
+            answer = await run_in_threadpool(self._mcp.handle, message, config)
+            if answer is None:
+                return Response(status_code=202)
+            return JSONResponse(answer, headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.get("/mcp", include_in_schema=False)
+        @self.settings_app.delete("/mcp", include_in_schema=False)
+        def mcp_no_stream() -> Response:
+            # Stateless server: no server-initiated SSE stream and no sessions to delete.
+            return Response(status_code=405, headers={"Allow": "POST"})
+
+        @self.settings_app.get("/api/mcp/status")
+        def mcp_status() -> dict[str, object]:
+            config = load_config()
+            return {
+                "ok": True,
+                "enabled": config.mcp_enabled,
+                "vision_enabled": config.mcp_vision_enabled,
+                "token_configured": bool(config.mcp_token_sha256),
+                "endpoint_path": "/mcp",
+                **self._mcp.status(),
+            }
+
+        def _require_owner(provided: str) -> AppConfig:
+            current = load_config()
+            if current.api_key and not secrets.compare_digest(provided.strip(), current.api_key):
+                raise HTTPException(status_code=403, detail="Enter the current API key to manage agent access")
+            return current
+
+        @self.settings_app.post("/api/mcp/token")
+        def mcp_create_token(request: McpTokenRequest) -> dict[str, object]:
+            """Issue a new MCP token (replacing any old one). It is shown once and stored only as a hash."""
+            with config_transaction():
+                current = _require_owner(request.current_api_key)
+                token = new_token()
+                try:
+                    save_config(merge_config(current, {"mcp_token_sha256": token_digest(token)}))
+                except (OSError, ValueError) as exc:
+                    raise HTTPException(status_code=500, detail=f"Could not save the token: {exc}") from exc
+            return {"ok": True, "token": token, "endpoint_path": "/mcp"}
+
+        @self.settings_app.post("/api/mcp/token/revoke")
+        def mcp_revoke_token(request: McpTokenRequest) -> dict[str, object]:
+            with config_transaction():
+                current = _require_owner(request.current_api_key)
+                try:
+                    save_config(merge_config(current, {"mcp_token_sha256": ""}))
+                except (OSError, ValueError) as exc:
+                    raise HTTPException(status_code=500, detail=f"Could not revoke the token: {exc}") from exc
+            return {"ok": True, "token_configured": False}
+
         @self.settings_app.post("/api/vision/describe")
-        def describe_camera_view(request: VisionQuestionRequest) -> dict[str, object]:
+        def describe_camera_view(
+            request: VisionQuestionRequest,
+            authorization: str = Header(default=""),
+        ) -> dict[str, object]:
+            # A description reveals what the camera sees, so it needs the same key as a snapshot.
+            api_key = load_config().api_key
+            if not api_key:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Set a bridge API key before asking about the camera view",
+                )
+            if not secrets.compare_digest(authorization, f"Bearer {api_key}"):
+                raise HTTPException(status_code=401, detail="Enter the bridge API key to ask about the camera view")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
             try:
@@ -997,11 +1124,18 @@ class Homebody(ReachyMiniApp):
         @self.settings_app.post("/api/vision/test")
         def test_local_vision(request: LocalVisionTestRequest) -> dict[str, object]:
             # Test the values in the form before they are saved.
-            updates = {key: value for key, value in request.model_dump().items() if value is not None}
+            updates = {
+                key: value
+                for key, value in request.model_dump(exclude={"current_api_key"}).items()
+                if value is not None
+            }
+            current = load_config()
             try:
-                config = merge_config(load_config(), updates)
+                config = merge_config(current, updates)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
+            # Probing an unsaved URL makes Reachy fetch from it, so it needs the same key as saving it.
+            _authorize_credential_change(current, config, request.current_api_key)
             try:
                 with LocalVisionClient(config.local_vision_url, config.local_vision_model, timeout=10.0) as client:
                     return {"ok": True, **client.health()}
