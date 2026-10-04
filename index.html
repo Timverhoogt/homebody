@@ -9,7 +9,16 @@
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="#top" aria-label="Homebody home"><span class="brand-mark">H</span><span>Homebody</span></a>
+    <a class="brand" href="#top" aria-label="Homebody home">
+      <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+        <path d="M23 19 17 8M41 19 47 8" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" />
+        <circle cx="16.5" cy="7" r="2.8" fill="currentColor" /><circle cx="47.5" cy="7" r="2.8" fill="currentColor" />
+        <rect x="11" y="17" width="42" height="38" rx="16" fill="currentColor" />
+        <rect x="16.5" y="26" width="31" height="19" rx="9.5" class="brand-visor" />
+        <circle cx="26" cy="35.5" r="3.6" fill="#ff6b2c" /><circle cx="38" cy="35.5" r="3.6" fill="#8c7bff" />
+      </svg>
+      <span>Homebody</span>
+    </a>
     <nav aria-label="Primary navigation">
       <a href="#expect">Start here</a>
       <a href="#capabilities">Capabilities</a>
@@ -21,7 +30,7 @@
   <main id="top">
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">AN ALWAYS-ON HOME COMPANION FOR REACHY MINI</p>
+        <p class="eyebrow">An always-on home companion for Reachy Mini</p>
         <h1>Always home.<br /><em>Your agent.</em></h1>
         <p class="lede">Homebody gives Reachy Mini a home in your office or living room. It looks after power, safety and privacy all day, plays supervised games with your kids, and connects to the agent you already trust: Hermes Agent, OpenClaw or more to come. It also welcomes the games, stories and skills the community builds.</p>
         <div class="hero-actions">
@@ -35,7 +44,8 @@
         </div>
       </div>
 
-      <figure class="hero-media">
+      <figure class="hero-media display">
+        <div class="hero-media-top" aria-hidden="true"><span><i></i>Reachy Mini</span><span>Local · Private</span></div>
         <img src="docs/assets/hero-reachy.webp" width="800" height="450" alt="An actual Reachy Mini on a desk raising its antennas in an official Pollen Robotics demonstration." fetchpriority="high" />
         <figcaption>Actual Reachy Mini · official Pollen Robotics source, converted to a metadata-free static WebP under Apache-2.0.</figcaption>
       </figure>
@@ -43,17 +53,17 @@
 
     <section class="mode-strip" id="expect" aria-label="One robot, three roles">
       <article>
-        <p class="number">01 / DESK</p>
+        <p class="number">01 / Desk</p>
         <h2>A work companion</h2>
         <p>Ask questions, take notes, set reminders and hear announcements through your agent. Meeting mode stops the microphone and wake detection while you are on a call.</p>
       </article>
       <article>
-        <p class="number">02 / HOME</p>
+        <p class="number">02 / Home</p>
         <h2>The house's voice and face</h2>
         <p>Reach your home automation through your agent or the Home Assistant bridge. Empty-by-default allowlists keep it to what you have explicitly shared, and consequential actions wait for approval on your phone.</p>
       </article>
       <article>
-        <p class="number">03 / PLAY</p>
+        <p class="number">03 / Play</p>
         <h2>Supervised fun for kids</h2>
         <p>Buddy chat, stories, quizzes, riddles, calm-down time and I Spy, with adult controls and moderation. Kids never reach personal memory, smart-home control or power controls.</p>
       </article>
@@ -61,7 +71,7 @@
 
     <section class="capability-matrix section" id="capabilities">
       <div class="section-heading">
-        <p class="eyebrow">VERIFIED VS GATED</p>
+        <p class="eyebrow">Verified vs gated</p>
         <h2>Choose only what you need.</h2>
         <p>✅ means reference-tested. ◐ means implemented but still requires per-install or final hardware acceptance. 🧪 means implemented but not yet run on that hardware. See the <a href="https://github.com/Timverhoogt/homebody/blob/main/docs/hardware-setups.md" target="_blank" rel="noopener noreferrer" aria-label="Read the hardware setups and support guide (opens in a new tab)">hardware setups guide ↗</a> for every setup.</p>
       </div>
@@ -83,7 +93,7 @@
 
     <section class="architecture section" id="architecture">
       <div class="section-heading">
-        <p class="eyebrow">TRUST BOUNDARIES</p>
+        <p class="eyebrow">Trust boundaries</p>
         <h2>Local controls first.<br />Private bridge second.</h2>
         <p>The app host owns local wake, safety, privacy, movement and camera controls. The optional Hermes host keeps identity, memory, tools and provider credentials. Dashed paths cross into private or external systems.</p>
       </div>
@@ -99,7 +109,7 @@
 
     <section class="privacy section" id="privacy">
       <div class="section-heading compact">
-        <p class="eyebrow">PHYSICAL STATES</p>
+        <p class="eyebrow">Physical states</p>
         <h2>Privacy you can see.</h2>
       </div>
       <div class="state-table" role="table" aria-label="Power and privacy modes">
@@ -114,7 +124,7 @@
 
     <section class="visuals section" id="visuals">
       <div class="section-heading">
-        <p class="eyebrow">HARDWARE, SAFETY, PRIVACY</p>
+        <p class="eyebrow">Hardware, safety, privacy</p>
         <h2>See what the setup means.</h2>
         <p>Official Reachy Mini imagery explains the real hardware. The project-authored Pi diagram shows the conservative community topology—not a final attached mount and not Wireless equivalence.</p>
       </div>
@@ -152,7 +162,7 @@
 
     <section class="install section" id="install">
       <div class="install-copy">
-        <p class="eyebrow">OPEN SOURCE · EARLY ALPHA</p>
+        <p class="eyebrow">Open source · early alpha</p>
         <h2>Start with the right guide.</h2>
         <p>Baseline local evaluation needs Reachy Mini SDK 1.9+, Python 3.11+, supported Reachy hardware and a trusted local network. An agent (Hermes Agent or OpenClaw) and provider access are required only for the connected voice, Kids, vision and agent paths. Start folded and local: confirm Standby, wake with clear space, press Stop and verify safe fold before enabling camera or voice.</p>
         <div class="install-links">

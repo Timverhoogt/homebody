@@ -671,6 +671,7 @@ body.camera-app-fullscreen-active { overflow: hidden; }
   .tab-button.active::before { color: var(--orange-ink); opacity: .7; }
   .tab-button[data-profile-active="true"]::after { position: absolute; top: 8px; right: 10px; }
   .hero { grid-template-columns: 1fr; gap: 18px; margin-top: 14px; padding: 26px 20px 22px; border-radius: 24px; text-align: center; box-shadow: inset 0 0 0 1px #000, 0 0 0 4px var(--paper-2), 0 0 0 5.5px var(--ink); }
+  @media (prefers-color-scheme: dark) { .hero { box-shadow: inset 0 0 0 1px rgba(242, 236, 226, .12), 0 0 0 4px var(--paper-2), 0 0 0 5.5px rgba(242, 236, 226, .22); } }
   .hero-face svg { max-width: 160px; }
   .hero-ring { width: 180px; height: 180px; }
   .hero-label { justify-content: center; }
@@ -735,3 +736,36 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .initiative-preferences li[data-state="disabled"] { opacity: .7; }
 .initiative-preference-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; justify-content: space-between; }
 .initiative-preference-controls .compact { padding: .2rem .6rem; }
+
+/* Night: the same enclosure in dark, following the system setting. Displays stay a shade lighter than the enclosure. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --paper: #0f0e10;
+    --paper-2: #171518;
+    --paper-3: #1d1a1d;
+    --ink: #f2ece2;
+    --ink-2: #9b948a;
+    --rule: rgba(242, 236, 226, .3);
+    --line: rgba(242, 236, 226, .1);
+    --line-strong: rgba(242, 236, 226, .22);
+    --screen: #1a1719;
+    --screen-2: #252022;
+    --orange-text: #ff8a55;
+    --ok: #2fbf84;
+    --warn: #f2c25a;
+    --danger: #e0574a;
+    --danger-text: #ff8d7f;
+    --btn2-hover: rgba(242, 236, 226, .08);
+  }
+  body { background: var(--paper); }
+  .hero { box-shadow: inset 0 0 0 1px rgba(242, 236, 226, .12), 0 0 0 6px var(--paper-2), 0 0 0 7.5px rgba(242, 236, 226, .22); }
+  .topbar { border-bottom-color: var(--line-strong); }
+  .card.display, .display { border-color: rgba(242, 236, 226, .12) !important; }
+  .motor-command-bar { border-color: rgba(242, 236, 226, .12); }
+  .camera-viewer { border-color: rgba(242, 236, 226, .12); }
+  .hardware-scope-note { background: rgba(242, 194, 90, .08); }
+  input::placeholder, textarea::placeholder { color: #6f6860; }
+  .agent-step-list li[data-status="completed"]::before { color: #06281a; }
+  .kids-mascot { box-shadow: 0 20px 55px #000a; }
+}
