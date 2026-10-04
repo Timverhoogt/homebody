@@ -176,12 +176,18 @@ class OwnerBoundary:
         conn = HTTPConnection(scope)
         path = scope["path"]
         method = scope.get("method", "WEBSOCKET")
-        # Static shell and non-secret agent installation sources do not grant authority.
+        # Static shell, non-secret agent sources, the pairing/session endpoints, and
+        # the status endpoint (needed for the dashboard to load) do not grant authority.
         public = method in {"GET", "HEAD"} and (
             path in PUBLIC_FILES or path.startswith("/static/") or path.startswith("/agent-setup/")
         )
         machine = (method, path) in MACHINE_ROUTES
-        if public or machine:
+        owner_public = (
+            (method == "POST" and path == "/api/owner/pair")
+            or (method == "GET" and path in {"/api/owner/session", "/api/status"})
+            or (method == "OPTIONS" and path == "/api/owner/pair")
+        )
+        if public or machine or owner_public:
             return await self.app(scope, receive, send)
         origin = self.store.origin
         status, detail = 0, ""
@@ -247,7 +253,7 @@ def install_owner_auth(app: FastAPI, store: OwnerStore) -> None:
 
     @app.get("/api/owner/session")
     def session(request: Request):
-        owner = request.state.owner
+        owner = getattr(request.state, "owner", None)
         return {
             "owner": bool(owner),
             **(
