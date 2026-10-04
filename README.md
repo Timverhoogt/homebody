@@ -231,30 +231,51 @@ Pipeline mode supports selectable STT, TTS, agent model, voice, and continued co
 
 ## Features
 
-- Local **Hey Homebody**, **Hey Hermes**, **Okay Nabu**, and **Hey Reachy** wake phrases; cloud audio starts only after local detection.
-- Apache-2.0 open-vocabulary sherpa-onnx KWS model, downloaded and checksum-verified on first start.
-- Dual conversation modes: configurable Hermes pipeline and `gpt-realtime-2.1`.
-- Realtime semantic VAD, streaming audio, reasoning-effort selection, and natural interruption.
-- Pipeline interruption by saying **“Hey Homebody”**, **“Hey Hermes”**, **“Okay Nabu”**, or **“Hey Reachy”** while Reachy is speaking.
-- One `ask_hermes` Realtime delegation tool: normal Hermes routing in Conversation profile and a fixed owner-scoped T0–T3 broker in adult Agent profile.
-- Curated Realtime embodiment tools for looking, emotions, and authentic recorded Reachy dances.
-- Optional daemon-local face following, active only after the wake phrase for the current conversation.
-- Optional ESPHome-native Home Assistant bridge with stable existing entity keys, mDNS discovery, truthful unavailable states, independently gated robot/camera access, HA media announcements, and an opt-in Assist satellite audio path.
-- Optional wake-time microphone-array direction finding so Reachy turns once toward the speaker locally.
-- Privacy-preserving cameras: one JPEG is captured only when a visual request needs it, while an independent opt-in UI viewer connects directly to Reachy's local WebRTC feed.
-- Optional supervised camera-feed joystick: each pointer or keyboard gesture receives a fresh random server session, bounded pan/tilt uses small cancellable head steps with base assistance near the yaw edge, release holds the measured view, Center is explicit, and Stop/privacy/power/Kids/feed transitions invalidate delayed commands. The overlay remains off until both live camera and camera movement controls are enabled.
-- **Agent-led setup:** a one-time code lets Hermes Agent or OpenClaw install the bridge from the robot (SHA-256 checked), create a tool-restricted Reachy profile or agent, and pair. Reachy saves only a connection it has tested, and can also hand your agent an MCP token.
+### Voice and conversation
+
+- Local **Hey Homebody**, **Hey Hermes**, **Okay Nabu**, and **Hey Reachy** wake phrases. Cloud audio starts only after local detection.
+- Dual conversation modes: configurable Hermes pipeline and `gpt-realtime-2.1` speech-to-speech.
+- Realtime semantic VAD, streaming audio, reasoning-effort selection, natural interruption.
+- Say any wake phrase while Reachy is talking to interrupt pipeline playback.
+- One `ask_hermes` Realtime tool: normal Hermes routing in Conversation profile, a fixed owner-scoped T0–T3 broker in adult Agent profile.
+- Local look, emotion, and recorded-dance tools for Realtime embodiment.
 - Selectable ElevenLabs Scribe/TTS models and account voices without storing provider keys on Reachy.
-- Full announcement console with typed TTS, per-announcement provider/model/voice overrides, quick templates, repeat/pause controls, a bounded queue, independent Stop, and voice-only or safe wake/fold behavior.
-- Supervised **Kids Mode** with six age-aware activities—including I Spy—English/Dutch profiles, 15–60 minute parent-selected sessions, automatic safe folding, optional gentle voice-state motion, and a dedicated moderated no-agent pipeline that removes personal memory, files, messaging, devices, purchases, and power controls.
-- Kids I Spy alternates roles: Reachy turns its rotating base and head through a bounded five-frame `0° / −60° / −120° / +60° / +120°` desk search when choosing, with non-capturing 60° transit waypoints and a neutral return; then the child chooses a safe household object and gives clues while Reachy makes up to six guesses with small base-and-head thinking turns and no camera. Camera access is revoked before the return movement and guessing, targets use a strict broker schema, and bridge state is deleted on Stop/expiry.
-- Kids replies use ElevenLabs Flash v2.5 through a fixed private streaming endpoint; 24 kHz PCM is pushed to Reachy's speaker as chunks arrive, with the configured app voice retained as a failure fallback.
 - Stable Hermes memory scope plus rotating conversation sessions after inactivity.
-- Listening, processing, speaking, and error cues with optional voice-state motion.
+
+### Privacy, safety, and power
+
 - Standby, Awake, timed Meeting, Sleep, app-off, and confirmed Pi shutdown controls.
-- Motor torque disabled in Standby, Meeting, and Sleep.
-- Microphone capture stopped in Meeting and Sleep.
+- Motor torque disabled in Standby, Meeting, and Sleep. Microphone capture stopped in Meeting and Sleep.
 - Secrets stored with mode `0600`, masked in the UI, and excluded from logs.
+- Listening, processing, speaking, and error cues with optional voice-state motion.
+
+### Cameras and vision
+
+- Privacy-preserving cameras: one JPEG is captured only when a visual request needs it. An independent opt-in UI viewer connects directly to Reachy's local WebRTC feed.
+- Optional wake-time microphone-array direction finding so Reachy turns toward the speaker once, locally.
+- Optional daemon-local face following, active only after the wake phrase for the current conversation.
+- Optional supervised camera-feed joystick with fresh random server sessions per gesture, cancellable head steps, explicit Center and Stop, and transitions that invalidate delayed commands. The overlay stays off until both live camera and camera movement controls are enabled.
+
+### Home Assistant
+
+- Optional ESPHome-native bridge with stable existing entity keys, mDNS discovery, truthful unavailable states, independently gated robot/camera access, HA media announcements, and an opt-in Assist satellite audio path.
+
+### Kids Mode
+
+- Supervised **Kids Mode** with six age-aware activities, English/Dutch profiles, 15–60 minute parent-selected sessions, automatic safe folding, and a dedicated moderated no-agent pipeline that removes personal memory, files, messaging, devices, purchases, and power controls.
+- I Spy alternates roles: Reachy searches across five bounded base/head poses, then the child picks a household object and gives clues while Reachy guesses. Camera access is revoked before the return movement and guessing; targets use a strict broker schema; bridge state is deleted on Stop or expiry.
+- Kids replies stream through ElevenLabs Flash v2.5 as 24 kHz PCM, with the configured app voice as a fallback.
+
+### Agent-led setup and MCP
+
+- **Agent-led setup:** a one-time code lets Hermes Agent or OpenClaw install the bridge from the robot (SHA-256 checked), create a tool-restricted Reachy profile or agent, and pair. Reachy saves only a connection it has tested, and can also hand your agent an MCP token.
+
+### Announcements
+
+- Full announcement console with typed TTS, per-announcement provider/model/voice overrides, quick templates, repeat/pause controls, a bounded queue, independent Stop, and voice-only or safe wake/fold behavior.
+
+### Platform
+
 - Reachy Mini App SDK lifecycle and app-store discovery.
 
 ## Baseline requirements
@@ -402,11 +423,17 @@ The in-app UI is organized into five keyboard-accessible tabs:
 - **Robot** — safe manual look directions, conservative 1/2.5/5/10 mm or degree head precision controls, separate 5/15/30/60° rotating-base steps within ±120°, live pose readout, independent centering, curated emotions, three recorded dances, stop movement, and an opt-in local WebRTC camera viewer.
 - **Settings** — Hermes bridge, voice, embodiment, privacy, and advanced timing configuration.
 
-Remote motor controls expose the confirmed torque/fold state and keep **Wake & enable**, **Fold & disable**, and cooperative **Stop action** together at the top of the Robot tab. A nine-way bounded head pad adds diagonal looks. Precision controls can nudge X/Y/Z in 1, 2.5, 5, or 10 mm steps and roll/pitch/yaw by the same number of degrees. Rotating-base control has separate 5°, 15°, 30°, and 60° steps, couples head yaw to preserve the SDK head/body relationship, asks for clear-space confirmation at 30° and 60°, and clamps at ±120° inside the SDK's ±160° safety range; measured pose readback remains visible beside the controls. Head, base, or both can be centered independently. Expression presets describe their motion character; dance presets label compact, medium, and wide movement, with an extra clear-space confirmation for the wide Energetic move. Controls use the same serialized semantic action worker as Realtime—the browser cannot submit raw joints, arbitrary move names, shell commands, or motor calibration. A manual movement from Standby first completes Reachy's native wake motion and leaves it Awake. Power transitions pause all presets, additional taps are rejected while an action is active, privacy is rechecked immediately before execution, and Meeting/Sleep block movement. **Stop action** remains available during semantic movement, cancels active plus queued work without changing power mode or initiating a new pose, and preserves the voice playback pipeline. Safe folding is never interrupted. The UI is intended only for a trusted LAN/VPN.
+Remote motor controls expose the confirmed torque/fold state. **Wake & enable**, **Fold & disable**, and cooperative **Stop action** sit together at the top of the Robot tab. Below them: a nine-way bounded head pad for diagonal looks, precision controls for X/Y/Z in 1, 2.5, 5, or 10 mm steps and roll/pitch/yaw by the same degrees, and rotating-base steps in 5°, 15°, 30°, and 60° increments clamped at ±120°. Head yaw couples to base rotation to preserve the SDK head/body relationship. Expression presets describe their motion character; dance presets label compact, medium, and wide movement with an extra clear-space confirmation for the wide one.
 
-Kids Mode is deliberately separate from the normal Hermes agent session. A user selects an optional nickname, age band (4–6, 7–9, or 10–12), English or Dutch, a 15/30/45/60-minute limit, and one of Buddy chat, Story maker, Quiz quest, Riddle box, Calm corner, or **I Spy**. I Spy is the only Kids activity that can use the camera: it requires fresh camera opt-in for each session, visibly performs a bounded five-frame desk search at `0° / −60° / −120° / +60° / +120°` with non-capturing transit waypoints, and revokes camera access before returning the base to neutral and before the child starts guessing. Its strict bridge schema accepts only a stable, child-safe target visible across frames; local game state controls approved hints and reveals the answer by the sixth incorrect guess. After that round, roles alternate: the child chooses a safe household object and supplies one clue at a time, Reachy makes up to six schema-bounded guesses, and a confirmed answer or reveal automatically starts Reachy's next consented search round. Reachy's own search uses the rotating base and head across left/centre/right poses; on the child's choosing turn each new Reachy guess gets a small bounded base-and-head thinking turn without camera capture. Starting the mode directly from the trusted local dashboard opens a fresh, bounded child pipeline through the private `/v1/kids/chat` route, with pre/post moderation and no normal Hermes memory or tool session. Outside the explicitly consented I Spy search, camera, agent/delegation tools, files, messaging, Home Assistant, purchases, power tools, and explicit robot actions remain unavailable. Normalized, approved complete responses receive separate short-lived, single-use bridge capabilities for streaming and configured-TTS fallback, each bound to the child session and exact text, then stream through fixed-policy ElevenLabs Flash v2.5 as 24 kHz PCM—unmoderated model tokens are never sent directly to speech. Optional motion is limited to gentle local listening/thinking/speaking cues, except for I Spy's fixed bounded base-and-head search poses and its small camera-free player-turn guessing poses. Starting Kids Mode closes any prior conversation; ending it immediately invalidates the child session and deletes any I Spy target state; synchronous STT/chat/provider HTTP calls are not transport-aborted and may run until their bounded timeout, but their returned output is discarded. Ending also interrupts active streaming TTS and audio playback, cancels movement, clears queued speech, and runs the verified safe fold before torque release. A monotonic server timer enforces the limit and gives a five-minute warning. This is a supervised beta feature, not a babysitter, therapist, medical service, or emergency service; generative replies can still be wrong. Child audio goes to the configured STT provider, moderated child text and consented I Spy frames go to OpenAI, and approved reply text goes to ElevenLabs; the optional nickname is included in the deterministic ElevenLabs greeting. I Spy frame bytes are discarded after target selection and are not retained in child session state. Exclusion from Hermes memory is not a provider-retention guarantee—review each provider's data controls before use.
+All controls use the same serialized action worker as Realtime. The browser cannot submit raw joints, arbitrary move names, shell commands, or motor calibration. **Stop action** cancels active and queued work without changing power mode. Safe folding is never interrupted. The UI is for a trusted LAN/VPN only. See [docs/robot-controls.md](docs/robot-controls.md) for the full control enumeration.
 
-The [Reachy Mini I Spy](https://github.com/Timverhoogt/reachy-mini-i-spy) project originated as a focused extraction of the I Spy experience developed here and is now its own complete app and project. It has an independent Reachy entry point, UI, dedicated three-frame provider broker, safety contract, releases, issue tracker, and physical-acceptance lifecycle; it does not require the full Homebody app. This repository retains a separate integrated five-frame Kids Mode implementation. The projects share some target-selection lineage but keep camera, moderation, cancellation, motion, speech, release, and acceptance authority independent. A shared policy change should be reviewed against the standalone [safety contract](https://github.com/Timverhoogt/reachy-mini-i-spy/blob/main/docs/SAFETY_CONTRACT.md) and each affected project’s own regression suite.
+Kids Mode is deliberately separate from the normal Hermes agent session. A parent picks an optional nickname, age band (4–6, 7–9, or 10–12), English or Dutch, a 15–60 minute limit, and one of six activities: Buddy chat, Story maker, Quiz quest, Riddle box, Calm corner, or **I Spy**. I Spy is the only activity that uses the camera. It requires fresh camera opt-in for each session and revokes camera access before the guessing phase starts.
+
+Kids Mode opens a fresh, bounded child pipeline through the private `/v1/kids/chat` route, with pre/post moderation and no Hermes memory or tool session. Camera, agent tools, files, messaging, Home Assistant, purchases, and power controls are all unavailable outside the consented I Spy search. Replies stream through ElevenLabs Flash v2.5 as 24 kHz PCM; unmoderated model tokens are never sent directly to speech. Starting Kids Mode closes any prior conversation; ending it cancels movement, clears queued speech, runs the safe fold, and deletes I Spy state. A monotonic server timer enforces the limit with a five-minute warning.
+
+This is a supervised beta feature, not a babysitter, therapist, medical, or emergency service. Generative replies can still be wrong. Child audio goes to the configured STT provider, moderated text and consented I Spy frames go to OpenAI, and approved reply text goes to ElevenLabs. See [docs/kids-mode.md](docs/kids-mode.md) for the full safety model, I Spy target schema, and data-flow details.
+
+The [Reachy Mini I Spy](https://github.com/Timverhoogt/reachy-mini-i-spy) project started as a focused extraction of the I Spy experience here and is now its own complete app with its own entry point, UI, safety contract, and release cycle. This repository keeps a separate integrated five-frame Kids Mode implementation. The projects share some target-selection lineage but keep camera, moderation, motion, speech, and acceptance authority independent. A shared policy change should be reviewed against the standalone [safety contract](https://github.com/Timverhoogt/reachy-mini-i-spy/blob/main/docs/SAFETY_CONTRACT.md) and each project’s own regression suite.
 
 ### Bluetooth controllers
 
