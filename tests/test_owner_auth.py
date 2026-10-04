@@ -80,7 +80,8 @@ def test_csrf_origin_host_and_guest(owner):
         assert client.post("/api/power", headers=headers).status_code == 403
     assert client.get("/api/status", headers={"Host": "evil.test"}).status_code == 403
     assert client.get("/api/status", headers={"Origin": "https://evil.test"}).status_code == 403
-    assert client.get("/api/status", headers={"X-Forwarded-Host": "evil.test"}).status_code == 200
+    # Over HTTPS the forwarded host counts as the request host, so it must match too.
+    assert client.get("/api/status", headers={"X-Forwarded-Host": "evil.test"}).status_code == 403
     # /api/status is public: a bad cookie just means no session, not a 401.
     assert (
         client.get("/api/status", follow_redirects=False, headers={"Cookie": f"{COOKIE}=bad"}).status_code == 200
@@ -89,10 +90,19 @@ def test_csrf_origin_host_and_guest(owner):
 
 def test_tailscale_serve_forwarded_headers_only_from_loopback(owner):
     """Tailscale Serve proxies HTTPS to http://127.0.0.1:8042 and sends the public host in X-Forwarded-*."""
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
     store, code, _ = owner
     app = FastAPI()
     install_owner_auth(app, store)
-    forwarded = {"X-Forwarded-Host": "robot.example.ts.net", "X-Forwarded-Proto": "https", "Origin": ORIGIN}
+    # The SDK serves the dashboard with uvicorn's defaults, which rewrite the client from X-Forwarded-For.
+    app = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
+    forwarded = {
+        "X-Forwarded-Host": "robot.example.ts.net",
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-For": "100.64.0.7",
+        "Origin": ORIGIN,
+    }
     proxied = TestClient(app, base_url="http://127.0.0.1:8042", client=("127.0.0.1", 40000))
     paired = proxied.post("/api/owner/pair", json={"code": code}, headers=forwarded)
     assert paired.status_code == 200
