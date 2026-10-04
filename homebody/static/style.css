@@ -66,6 +66,9 @@ body {
   background: var(--paper) radial-gradient(ellipse at 50% -10%, #fff8ec 0, transparent 55%);
   -webkit-font-smoothing: antialiased;
 }
+.owner-access { width: min(900px, calc(100% - 48px)); margin: 24px auto; }
+.owner-access input { width: 100%; }
+.owner-access code { overflow-wrap: anywhere; }
 main { width: min(1180px, calc(100% - 48px)); margin: 0 auto; padding: calc(16px + env(safe-area-inset-top)) 0 calc(72px + env(safe-area-inset-bottom)); }
 
 /* Dark display surfaces: everything that shows what Reachy is doing right now. */

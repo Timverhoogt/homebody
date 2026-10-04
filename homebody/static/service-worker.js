@@ -6,6 +6,7 @@ const APP_SHELL = [
   "/static/gstwebrtc-api.js",
   "/static/camera.js?v=61",
   "/static/main.js?v=61",
+  "/static/owner.js?v=61",
   "/static/icon-192.png",
   "/static/icon-512.png",
   "/static/icon-maskable-512.png",

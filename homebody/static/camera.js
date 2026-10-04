@@ -300,7 +300,7 @@
     try {
       const signalingScheme = window.location.protocol === "https:" ? "wss" : "ws";
       const api = new window.GstWebRTCAPI({
-        signalingServerUrl: `${signalingScheme}://${window.location.hostname}:8443`,
+        signalingServerUrl: `${signalingScheme}://${window.location.host}/api/camera/signaling`,
         reconnectionTimeout: 0,
         meta: { name: "homebody-ui" },
         webrtcConfig: { iceServers: [] },

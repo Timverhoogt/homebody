@@ -21,6 +21,25 @@ def isolate_unit_tests_from_live_robot(monkeypatch):
 
     monkeypatch.setattr(socket.socket, "connect", connect)
 
+
+@pytest.fixture(autouse=True)
+def isolate_owner_boundary_for_legacy_unit_tests(monkeypatch, tmp_path, request):
+    """Existing route tests exercise handlers, not browser auth; owner tests cover the real boundary.
+
+    Keep their legacy caller/header assertions intact. No production bypass exists.
+    Every new owner test (including route inventory) runs the actual middleware.
+    """
+    monkeypatch.setenv("HOMEBODY_OWNER_DB", str(tmp_path / "owner.sqlite3"))
+    if request.module.__name__.split(".")[-1].startswith("test_owner"):
+        return
+    from homebody import owner_auth
+
+    async def handler_only(self, scope, receive, send):
+        await self.app(scope, receive, send)
+
+    monkeypatch.setattr(owner_auth.OwnerBoundary, "__call__", handler_only)
+
+
 # The bridge tests import ``companion.*`` from the checkout. The editable install maps that folder to
 # ``homebody.bridge`` through an import hook, which does not put the repository root on sys.path.
 _ROOT = str(Path(__file__).resolve().parents[1])
@@ -38,18 +57,25 @@ utils_module.interpolation.linear_pose_interpolation = lambda *args, **kwargs: [
 
 motion_module = ModuleType("reachy_mini.motion")
 motion_module.recorded_move = ModuleType("reachy_mini.motion.recorded_move")
+
+
 class FakeRecordedMoves:
     def __init__(self, *args, **kwargs):
         pass
+
+
 motion_module.recorded_move.RecordedMoves = FakeRecordedMoves
+
 
 class FakeReachyMini:
     def __init__(self, *args, **kwargs):
         pass
 
+
 class FakeReachyMiniApp:
     def __init__(self, *args, **kwargs):
         self.settings_app = FastAPI()
+
 
 reachy_module.ReachyMini = FakeReachyMini
 reachy_module.ReachyMiniApp = FakeReachyMiniApp

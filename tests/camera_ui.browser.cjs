@@ -19,6 +19,9 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
   await page.goto('http://homebody.test/');
   await page.addStyleTag({ path: path.join(staticDir, 'style.css') });
   await page.evaluate(({ fallback }) => {
+    document.querySelector('main').hidden = false;
+    document.querySelector('main').inert = false;
+    document.querySelector('#owner-pair-panel').hidden = true;
     document.querySelector('#panel-robot').hidden = false;
     document.querySelector('#panel-robot').classList.add('active');
     window.requests = [];

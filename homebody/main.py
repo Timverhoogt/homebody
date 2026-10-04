@@ -39,6 +39,8 @@ from .local_vision import LocalVisionClient, LocalVisionError
 from .mcp_oauth import OAuthError, OAuthServer
 from .mcp_public import PublicAgentListener, build_public_app
 from .mcp_server import PROTOCOL_VERSIONS, McpServer, new_token, token_digest, token_matches
+from .owner_auth import OwnerStore, default_owner_path, install_owner_auth, owner_authenticated
+from .owner_media import install_owner_media
 from .platform_info import host
 from .presence import PresenceObservation
 from .robot_tools import robot_control_options
@@ -127,7 +129,7 @@ def _authorize_credential_change(current: AppConfig, merged: AppConfig, provided
     routes such as the camera snapshot) or point the bridge URL at a host it controls
     and receive the real key on the next authenticated bridge call.
     """
-    if not current.api_key:
+    if owner_authenticated.get() or not current.api_key:
         return
     if (
         merged.bridge_url == current.bridge_url
@@ -355,6 +357,7 @@ class KidsModeRequest(BaseModel):
     motion_enabled: bool = True
     camera_consent: bool = False
 
+
 class AgentProfileRequest(BaseModel):
     profile: Literal["conversation", "agent"]
 
@@ -400,6 +403,9 @@ class Homebody(ReachyMiniApp):
         self._oauth = OAuthServer(default_config_path().with_name("mcp-oauth.json"))
         self._agent_listener = PublicAgentListener(self._build_public_app)
         self._register_settings_routes()
+        if self.settings_app is not None:
+            install_owner_auth(self.settings_app, OwnerStore(default_owner_path()))
+            install_owner_media(self.settings_app, lambda: self._runtime)
 
     def _handle_gamepad_action(self, kind: str, action: str, value: str) -> bool:
         """Route controller input through the same safety gates as the Robot tab."""
@@ -480,6 +486,8 @@ class Homebody(ReachyMiniApp):
                 return JSONResponse(status_code=404, content={"detail": "Not found"})
             allowed = {
                 "/api/status",
+                "/api/owner/session",
+                "/api/owner/logout",
                 "/api/kids/stop",
                 "/api/robot/stop",
                 "/api/agent/stop",
@@ -595,7 +603,7 @@ class Homebody(ReachyMiniApp):
             request: ContextualOfferResponseRequest,
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -609,7 +617,7 @@ class Homebody(ReachyMiniApp):
             request: InitiativePreferenceRequest,
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -621,7 +629,7 @@ class Homebody(ReachyMiniApp):
             request: InitiativePreferenceResetRequest,
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -631,7 +639,7 @@ class Homebody(ReachyMiniApp):
         def start_presentation(
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -644,7 +652,7 @@ class Homebody(ReachyMiniApp):
         def stop_presentation(
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -672,9 +680,7 @@ class Homebody(ReachyMiniApp):
             if self._runtime is not None:
                 # Start, stop or move the hosted-agent listener; outside run() nothing listens.
                 self._agent_listener.sync(merged)
-            if self._runtime is not None and (
-                not merged.camera_feed_enabled or not merged.camera_controls_enabled
-            ):
+            if self._runtime is not None and (not merged.camera_feed_enabled or not merged.camera_controls_enabled):
                 revoke_camera_control = getattr(self._runtime, "revoke_camera_control", None)
                 if callable(revoke_camera_control):
                     revoke_camera_control()
@@ -682,9 +688,7 @@ class Homebody(ReachyMiniApp):
                 cancel_contextual_offer = getattr(self._runtime, "cancel_contextual_offer", None)
                 if callable(cancel_contextual_offer):
                     cancel_contextual_offer("contextual_offers_disabled")
-            if self._runtime is not None and (
-                not merged.shared_physical_context_enabled or not merged.camera_enabled
-            ):
+            if self._runtime is not None and (not merged.shared_physical_context_enabled or not merged.camera_enabled):
                 stop_presentation = getattr(self._runtime, "stop_presentation_window", None)
                 if callable(stop_presentation):
                     stop_presentation("shared_physical_context_disabled")
@@ -702,7 +706,7 @@ class Homebody(ReachyMiniApp):
             update: AgentProfileRequest,
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -737,7 +741,7 @@ class Homebody(ReachyMiniApp):
         def agent_activity(
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -773,7 +777,7 @@ class Homebody(ReachyMiniApp):
             request: AgentRunPreviewRequest,
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -787,9 +791,7 @@ class Homebody(ReachyMiniApp):
                     run = client.preview_agent_run(request.goal, context, request_id=request_id)
                 finally:
                     client.close()
-                if not self._runtime._finish_agent_request(
-                    request_id, context.session_generation, succeeded=True
-                ):
+                if not self._runtime._finish_agent_request(request_id, context.session_generation, succeeded=True):
                     raise HTTPException(status_code=423, detail="Agent run preview became stale")
                 self._runtime.record_agent_run_event("previewed", run)
                 return {"run": run}
@@ -799,9 +801,7 @@ class Homebody(ReachyMiniApp):
                 raise
             except Exception as exc:
                 if request_id and context is not None:
-                    self._runtime._finish_agent_request(
-                        request_id, context.session_generation, succeeded=False
-                    )
+                    self._runtime._finish_agent_request(request_id, context.session_generation, succeeded=False)
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
 
         def agent_run_action(
@@ -809,7 +809,7 @@ class Homebody(ReachyMiniApp):
             request: AgentRunRequest,
             x_reachy_adult_ui: str,
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -839,7 +839,7 @@ class Homebody(ReachyMiniApp):
         def agent_run_current(
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -908,7 +908,7 @@ class Homebody(ReachyMiniApp):
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
             """Approve one exact action body; edits require a new approval."""
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -939,7 +939,7 @@ class Homebody(ReachyMiniApp):
         def pending_agent_approval(
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -962,7 +962,7 @@ class Homebody(ReachyMiniApp):
             request: AgentPendingApprovalRequest,
             x_reachy_adult_ui: str = Header(default=""),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
@@ -1032,8 +1032,10 @@ class Homebody(ReachyMiniApp):
             config = load_config()
             if not config.configured:
                 return {
-                    "configured": False, "detail": "Connect your agent to load models and voices.",
-                    "models": [], "health": {},
+                    "configured": False,
+                    "detail": "Connect your agent to load models and voices.",
+                    "models": [],
+                    "health": {},
                 }
             try:
                 client = HermesBridgeClient(config)
@@ -1049,8 +1051,10 @@ class Homebody(ReachyMiniApp):
             config = load_config()
             if not config.configured:
                 return {
-                    "configured": False, "detail": "Connect your agent to load models and voices.",
-                    "stt": [], "tts": [],
+                    "configured": False,
+                    "detail": "Connect your agent to load models and voices.",
+                    "stt": [],
+                    "tts": [],
                 }
             try:
                 client = HermesBridgeClient(config)
@@ -1139,7 +1143,11 @@ class Homebody(ReachyMiniApp):
 
         def _require_owner(provided: str) -> AppConfig:
             current = load_config()
-            if current.api_key and not secrets.compare_digest(provided.strip(), current.api_key):
+            if (
+                not owner_authenticated.get()
+                and current.api_key
+                and not secrets.compare_digest(provided.strip(), current.api_key)
+            ):
                 raise HTTPException(status_code=403, detail="Enter the current API key to manage agent access")
             return current
 
@@ -1545,7 +1553,7 @@ class Homebody(ReachyMiniApp):
         def start_camera_control(
             x_reachy_adult_ui: str | None = Header(default=None),
         ) -> dict[str, object]:
-            if x_reachy_adult_ui != "unlocked":
+            if not owner_authenticated.get() and x_reachy_adult_ui != "unlocked":
                 raise HTTPException(status_code=403, detail="An unlocked adult UI action is required")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
