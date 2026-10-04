@@ -1,3 +1,11 @@
+/* Text-only update notes stay readable on a phone; native modal provides focus trapping. */
+.update-notice { display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; margin:1rem 0; padding:1rem; border:1px solid var(--line); border-radius:12px; }
+.update-notice span { flex:1; }
+#update-dialog { box-sizing:border-box; width:min(720px,calc(100vw - 24px)); max-height:85vh; overflow:auto; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:16px; padding:24px; }
+#update-dialog::backdrop { background:rgba(0,0,0,.5); }
+#update-notes, #update-history pre { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; line-height:1.5; }
+#updates-card details { margin-top:1rem; }
+
 /* Homebody dashboard
    A cream enclosure with dark displays set into it. Live state (what Reachy is doing right now)
    lives on a display; controls and settings sit on the enclosure. Serif for the human side,

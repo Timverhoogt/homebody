@@ -77,6 +77,12 @@ def test_app_notification_wiring_and_phone_layout(browser_page):
     page.clock.resume()
     page.evaluate("() => new Promise(requestAnimationFrame)")
     page.screenshot(path=".pytest_cache/notification-browser/phone.png", animations="disabled")
+    # Screenshot duration is host-dependent; keyboard checks use non-expiring pending fixtures.
+    page.evaluate("""() => {
+        HomebodyNotifications.clear();
+        for (let i = 0; i < 3; i++)
+            HomebodyNotifications.show('Keyboard fixture ' + i, {kind: 'pending'});
+    }""")
     page.locator(".notification-dismiss").first.focus()
     page.keyboard.press("Enter")
     assert page.locator(".notification:visible").count() == 2

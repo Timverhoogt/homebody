@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=65">
+  <link rel="stylesheet" href="/static/style.css?v=66">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -55,6 +55,12 @@
         <button type="button" class="tab-button" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings">Settings</button>
       </nav>
     </header>
+
+    <aside id="update-notice" class="update-notice" hidden aria-label="Software update">
+      <span id="update-notice-text"></span>
+      <button type="button" id="update-open" class="secondary">Review update</button>
+      <button type="button" id="update-later" class="secondary">Later</button>
+    </aside>
 
     <section class="display hero status-card" aria-label="Current state">
       <div class="hero-face" aria-hidden="true">
@@ -716,6 +722,17 @@
     </div>
 
     <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" hidden>
+      <section class="card" id="updates-card" aria-labelledby="updates-title">
+        <p class="label">Software</p><h2 id="updates-title">Updates</h2>
+        <p id="update-current">Checking installed version…</p>
+        <p class="muted">Stable releases from Timverhoogt/homebody only. Installation requires verified folded Standby and a separately configured updater. No daemon or agent bridge upgrades.</p>
+        <div class="actions">
+          <button type="button" id="update-check" class="secondary">Check for updates</button>
+          <button type="button" id="update-preview" class="secondary" disabled>Preview release notes</button>
+        </div>
+        <p id="update-status" role="status" aria-live="polite">Reading saved progress…</p>
+        <details><summary>Update history and release notes</summary><div id="update-history"></div></details>
+      </section>
       <section class="card" id="agent-setup-card">
         <p class="label">Easiest setup</p>
         <h2>Connect your agent</h2>
@@ -896,12 +913,22 @@
       </section>
     </div>
   </main>
+  <dialog id="update-dialog" aria-labelledby="update-dialog-title">
+    <h2 id="update-dialog-title">Homebody release notes</h2>
+    <pre id="update-notes"></pre>
+    <div class="actions">
+      <button type="button" id="update-install" disabled>Install this update…</button>
+      <button type="button" id="update-ack" hidden>Got it</button>
+      <button type="button" id="update-close" class="secondary">Close</button>
+    </div>
+  </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=65"></script>
-  <script src="/static/owner.js?v=65"></script>
+  <script src="/static/notifications.js?v=66"></script>
+  <script src="/static/owner.js?v=66"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=65"></script>
-  <script src="/static/main.js?v=65"></script>
+  <script src="/static/camera.js?v=66"></script>
+  <script src="/static/main.js?v=66"></script>
+  <script src="/static/updates.js?v=66"></script>
 </body>
 </html>

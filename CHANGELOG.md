@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Owner-only Homebody update notice and explicit install flow with accumulated release notes, persistent Later, progress, and a completion changelog retained until acknowledged (PWA shell v66).
+- An independent unprivileged updater for one documented Linux/Python 3.11/Reachy SDK 1.9.x immutable-slot user-service topology. It preserves settings and dependencies, verifies exact release identity and folded Standby startup health, and recovers interrupted or failed jobs to the prior artifact; unresolved recovery is reported as rollback_failed.
+- Canonical-repository, draft-release-bound wheel/manifest build workflow (no automatic publication), plus one-time setup and service examples in [managed update operations](docs/managed-updates.md). Target systemd/robot acceptance remains required; no deployment is implied.
+
 ### Security
 
 - Hosted agents are now approved per request in Settings on the home network instead of with a shared approval code typed on the public consent page. Settings shows the agent's name, return address, registration age and a match code that the consent page repeats, so a phishing sign-in link cannot borrow an approval meant for another agent, and strangers can no longer burn the owner's code by guessing.

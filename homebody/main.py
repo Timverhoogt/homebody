@@ -45,6 +45,8 @@ from .platform_info import host
 from .presence import PresenceObservation
 from .robot_tools import robot_control_options
 from .runtime import HermesVoiceRuntime
+from .update_api import register as register_updates
+from .updates import installed_identity
 
 _LOGGER = logging.getLogger(__name__)
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -406,6 +408,8 @@ class Homebody(ReachyMiniApp):
         self._agent_listener = PublicAgentListener(self._build_public_app)
         self._register_settings_routes()
         if self.settings_app is not None:
+            register_updates(self.settings_app, lambda: self._runtime, default_config_path().parent / "updates")
+        if self.settings_app is not None:
             install_owner_auth(self.settings_app, OwnerStore(default_owner_path()))
             install_owner_media(self.settings_app, lambda: self._runtime)
 
@@ -538,6 +542,7 @@ class Homebody(ReachyMiniApp):
                 config_error = "Configuration is unavailable" if child_locked else str(exc)
             return {
                 "app": "homebody",
+                "release": installed_identity(),
                 "wake_phrase": "Hey Homebody",
                 "wake_phrases": ["Hey Homebody", "Hey Hermes", "Okay Nabu", "Hey Reachy"],
                 "config": config_payload,

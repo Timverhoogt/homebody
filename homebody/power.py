@@ -266,6 +266,8 @@ class PowerMixin:
 
     def _set_motor_mode(self, enabled: bool, *, wake: bool = False) -> None:
         """Change motor torque through the daemon's supported local API or fail explicitly."""
+        if enabled and self.stop_event.is_set():
+            raise RuntimeError("Runtime is stopping; motor enable is blocked")
         mode = "enabled" if enabled else "disabled"
         try:
             response = httpx.post(f"http://127.0.0.1:8000/api/motors/set_mode/{mode}", timeout=5.0)

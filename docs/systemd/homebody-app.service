@@ -1,0 +1,17 @@
+[Unit]
+Description=Homebody managed app (sole runtime owner)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/homebody-managed
+Environment=PYTHONPATH=%h/.local/share/homebody-managed/current
+Environment=PYTHONNOUSERSITE=1
+Environment=HOMEBODY_CONFIG=%h/.local/share/homebody/config.json
+Environment=HOMEBODY_UPDATER_CONFIG=%h/.config/homebody/updater.json
+ExecStart=%h/.local/share/homebody-managed/deps/bin/python -m homebody.main
+Restart=no
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target

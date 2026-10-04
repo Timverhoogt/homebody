@@ -333,6 +333,29 @@ class HermesVoiceRuntime(
                 }
         return payload
 
+    def reserve_update(self, enqueue: Callable[[], object]) -> object:
+        """Journal the one owner-approved job while idle, then quiesce without moving hardware.
+
+        Motor transitions serialize wake/Kids admission. The voice slot is acquired nonblocking
+        (voice paths may own it before acquiring the motor lock). Shutdown wins all later wakes.
+        """
+        from .updates import require_safe
+
+        with self._motor_transition_lock:
+            if not self._voice_activity_lock.acquire(blocking=False):
+                raise ValueError("Update cannot start while voice activity is active")
+            try:
+                with self._kids_lock:
+                    if not self.control_ready or self.stop_event.is_set():
+                        raise ValueError("Runtime is not ready for an update")
+                    require_safe(self.status())
+                    job = enqueue()
+                    self._control_ready.clear()
+                    self.stop_event.set()
+                    return job
+            finally:
+                self._voice_activity_lock.release()
+
     @property
     def control_ready(self) -> bool:
         """Return whether external controls may begin hardware transitions."""
