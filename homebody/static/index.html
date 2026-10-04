@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=67">
+  <link rel="stylesheet" href="/static/style.css?v=68">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -46,6 +46,7 @@
         </svg>
         <span>Homebody</span>
       </div>
+      <button type="button" id="agent-connection-badge" class="agent-connection-badge" data-state="unknown"><span class="agent-connection-dot" aria-hidden="true"></span><span id="agent-connection-label" role="status" aria-live="polite">Connection unknown</span></button>
       <nav class="tabs" role="tablist" aria-label="Homebody controls">
         <button type="button" class="tab-button active" id="tab-dashboard" role="tab" aria-selected="true" aria-controls="panel-dashboard" data-tab="dashboard">Home</button>
         <button type="button" class="tab-button" id="tab-agent" role="tab" aria-selected="false" aria-controls="panel-agent" data-tab="agent">Agent</button>
@@ -731,6 +732,12 @@
     </div>
 
     <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" hidden>
+      <section id="agent-connection-details" class="card" tabindex="-1" aria-labelledby="agent-connection-title">
+        <h2 id="agent-connection-title">Agent connection</h2>
+        <p id="agent-connection-detail">Waiting for a fresh connection check.</p>
+        <p class="muted">Connection is independent of robot power and privacy. Checking never starts speech, microphones, cameras or motors.</p>
+        <button type="button" id="agent-connection-retry" class="secondary">Retry connection check</button>
+      </section>
       <section class="card" id="agent-setup-card">
         <p class="label">Easiest setup</p>
         <h2>Connect your agent</h2>
@@ -913,10 +920,11 @@
   </main>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=67"></script>
-  <script src="/static/owner.js?v=67"></script>
+  <script src="/static/notifications.js?v=68"></script>
+  <script src="/static/owner.js?v=68"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=67"></script>
-  <script src="/static/main.js?v=67"></script>
+  <script src="/static/camera.js?v=68"></script>
+  <script src="/static/agent-connection.js?v=68"></script>
+  <script src="/static/main.js?v=68"></script>
 </body>
 </html>

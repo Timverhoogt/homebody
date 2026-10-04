@@ -1228,10 +1228,13 @@ async function refreshStatus() {
   try {
     const response = await fetchWithTimeout("/api/status", { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    updateStatus(await response.json());
+    const body = await response.json();
+    updateStatus(body);
+    window.HomebodyAgentConnection?.update(body.agent_connection);
     statusRefreshHealthy = true;
   } catch (error) {
     statusRefreshHealthy = false;
+    window.HomebodyAgentConnection?.offline();
     if (window.ReachyCamera?.isActive()) {
       window.ReachyCamera.stop("Camera stopped because Hermes status is unavailable.");
     }
