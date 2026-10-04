@@ -28,7 +28,7 @@ def test_camera_viewer_uses_private_webrtc_without_public_stun_or_audio() -> Non
     camera = (STATIC / "camera.js").read_text()
 
     assert 'window.location.protocol === "https:" ? "wss" : "ws"' in camera
-    assert 'signalingServerUrl: `${signalingScheme}://${window.location.hostname}:8443`' in camera
+    assert 'signalingServerUrl: `${signalingScheme}://${window.location.host}/api/camera/signaling`' in camera
     assert "webrtcConfig: { iceServers: [] }" in camera
     assert "stun:" not in camera
     assert "track.enabled = false" in camera

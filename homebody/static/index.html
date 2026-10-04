@@ -13,10 +13,28 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=60">
+  <link rel="stylesheet" href="/static/style.css?v=61">
 </head>
 <body>
-  <main>
+  <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
+    <h1 id="owner-pair-title">Pair this device as Owner</h1>
+    <p>Private household controls. Generate a one-time code on the robot with
+      <code>python -m homebody.owner_auth pair --origin https://YOUR-ROBOT.ts.net</code>.</p>
+    <form id="owner-pair-form">
+      <label>Device name <input id="owner-name" maxlength="64" autocomplete="off" placeholder="My phone"></label>
+      <label>One-time pairing code <input id="owner-pair-code" type="password" maxlength="128" autocomplete="off" required></label>
+      <button id="owner-pair-button" type="submit">Pair and remember this device</button>
+    </form>
+    <p id="owner-message" role="status">Checking this device…</p>
+  </section>
+  <details id="owner-device-controls" class="owner-access" hidden>
+    <summary id="owner-device-name">Owner device</summary>
+    <p>Remembered for 30 days. Only pair devices you control. Kids Mode still locks adult controls.</p>
+    <button type="button" id="owner-logout">Forget this device</button>
+    <button type="button" id="owner-devices-refresh">Manage remembered devices</button>
+    <ul id="owner-device-list"></ul><p id="owner-devices-message" role="status"></p>
+  </details>
+  <main hidden inert>
     <header class="topbar">
       <div class="wordmark" aria-hidden="true">
         <svg viewBox="0 0 64 64" focusable="false">
@@ -656,16 +674,17 @@
               <span>PRIVATE LINK // NO CLOUD VIDEO</span>
             </div>
           </div>
+          <button type="button" id="camera-control-fullscreen-exit" class="camera-overlay-exit">Exit fullscreen</button>
           <div id="camera-control-overlay" class="camera-control-overlay" data-handedness="right" hidden>
-            <button type="button" id="camera-control-fullscreen-exit" class="camera-overlay-exit secondary">Exit fullscreen</button>
             <button type="button" id="camera-control-stop" class="camera-overlay-stop danger" aria-label="Emergency Stop camera movement">Stop movement</button>
             <div class="camera-control-cluster">
-              <div id="camera-joystick" class="camera-joystick" role="application" tabindex="0" aria-label="Camera pan and tilt joystick" aria-describedby="camera-control-help">
+              <div id="camera-joystick" class="camera-joystick" role="application" tabindex="0" aria-label="Camera pan and tilt joystick" aria-describedby="camera-control-help camera-control-status">
                 <span class="camera-joystick-crosshair" aria-hidden="true"></span>
                 <span id="camera-joystick-knob" class="camera-joystick-knob" aria-hidden="true"></span>
               </div>
               <span id="camera-control-help" class="sr-only">Drag or use arrow keys to pan and tilt. Releasing holds the current measured view.</span>
               <button type="button" id="camera-control-center" class="camera-center-button">Center head &amp; base</button>
+              <button type="button" id="camera-control-settings" class="camera-center-button" hidden>Movement settings</button>
               <span id="camera-control-status" class="camera-control-status" role="status">Release holds the current view</span>
             </div>
           </div>
@@ -676,6 +695,7 @@
         </div>
         <div class="actions camera-actions">
           <button type="button" id="camera-live-start">Start live camera</button>
+          <button type="button" id="camera-wake-control" class="secondary">Wake &amp; start camera controls</button>
           <button type="button" id="camera-live-stop" class="secondary" disabled>Stop camera</button>
           <button type="button" id="camera-live-fullscreen" class="secondary" disabled>Fullscreen</button>
           <button type="button" id="camera-test-button" class="secondary">Capture one local test frame</button>
@@ -876,8 +896,9 @@
       </section>
     </div>
   </main>
+  <script src="/static/owner.js?v=61"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=60"></script>
-  <script src="/static/main.js?v=60"></script>
+  <script src="/static/camera.js?v=61"></script>
+  <script src="/static/main.js?v=61"></script>
 </body>
 </html>

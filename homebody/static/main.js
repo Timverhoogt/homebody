@@ -876,6 +876,7 @@ function updateStatus(payload) {
   const headSafelyFolded = Boolean(runtime.head_safely_folded);
   const controlsBlocked = ["meeting", "sleep"].includes(powerMode)
     || kidsActive || robotBusy || manualActionPending || powerTransitionPending;
+  $("camera-wake-control").disabled = kidsActive || kidsLocked || powerTransitionPending || manualActionPending;
   $("power-mode-badge").textContent = powerMode;
   $("robot-mode-badge").textContent = robotBusy ? "moving" : powerMode;
   const robotActionLabels = {
@@ -912,7 +913,7 @@ function updateStatus(payload) {
     button.disabled = controlsBlocked;
   });
   $("emotion-select").disabled = controlsBlocked;
-  $("robot-stop-button").disabled = powerTransitionPending;
+  $("robot-stop-button").disabled = false;
   const readinessText = powerTransitionPending
     ? "Changing motor power — manual presets are paused"
     : robotBusy
@@ -2466,6 +2467,34 @@ $("agent-stop-button").addEventListener("click", async () => {
   }
 });
 
+$("camera-wake-control").addEventListener("click", async () => {
+  const button = $("camera-wake-control");
+  const message = $("robot-message");
+  button.disabled = true;
+  message.textContent = "Saving camera movement preference…";
+  try {
+    const response = await fetch("/api/settings", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ camera_feed_enabled: true, camera_controls_enabled: true }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || "Could not save camera preferences");
+    loaded = false;
+    await setPowerMode("awake", 60, message);
+    // setPowerMode reports its own failures. Never start video on a failed or stale wake.
+    const statusResponse = await fetch("/api/status", { cache: "no-store" });
+    if (!statusResponse.ok) throw new Error("Could not verify Awake; camera was not started");
+    const status = await statusResponse.json();
+    if (status.runtime?.power_mode !== "awake" || status.runtime?.motors_enabled !== true) {
+      throw new Error("Awake motors were not confirmed; camera was not started");
+    }
+    await refreshStatus();
+    $("camera-live-start").click();
+  } catch (error) {
+    message.textContent = String(error.message || error); message.className = "message error";
+  } finally { button.disabled = false; }
+});
+
 let powerToastTimer;
 function showPowerToast(text, kind = "pending") {
   let toast = $("power-toast");
@@ -2497,7 +2526,7 @@ async function setPowerMode(mode, durationMinutes = 60, message = $("power-messa
   showPowerToast(labels[mode] || "Switching power mode…");
   document.querySelectorAll("[data-power], .manual-control").forEach((button) => { button.disabled = true; });
   $("emotion-select").disabled = true;
-  $("robot-stop-button").disabled = true;
+  $("robot-stop-button").disabled = false;
   if (mode !== "awake" && window.ReachyCamera?.isActive()) {
     window.ReachyCamera.stop(`Camera stopped before switching to ${mode}.`);
   }

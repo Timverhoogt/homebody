@@ -124,7 +124,7 @@ def test_camera_viewer_contains_optional_accessible_control_overlay() -> None:
     assert "align-items: center" in exit_rule
     assert "justify-content: center" in exit_rule
     assert "env(safe-area-inset-bottom)" in style
-    assert ".camera-viewer:fullscreen .camera-control-overlay" in style
+    assert ".camera-viewer:fullscreen .camera-overlay-exit" in style
     assert ".camera-viewer.camera-app-fullscreen" in style
 
 

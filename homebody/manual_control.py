@@ -171,6 +171,10 @@ class ManualControlMixin:
                 if self._actions.busy or self._actions.pending_count:
                     raise RuntimeError("Robot is busy")
                 with self._camera_control_lock:
+                    if self._camera_control_session_live_locked():
+                        raise RuntimeError(
+                            "Another camera gesture owns movement. Release it or press Stop, then retry."
+                        )
                     pose = self.robot_pose()
                     stream = CameraJoystickStream()
                     result = self._actions.enqueue(
