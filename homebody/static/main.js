@@ -474,11 +474,13 @@ $("local-vision-ask").addEventListener("submit", async (event) => {
   answer.textContent = "Looking…";
   answer.classList.remove("error");
   try {
-    // The key stays in this field only; it is never stored by the page.
+    // The key is optional: an owner session authorises the request without it.
     const key = $("local-vision-key").value.trim();
+    const headers = { "Content-Type": "application/json" };
+    if (key) headers.Authorization = `Bearer ${key}`;
     const response = await fetchWithTimeout("/api/vision/describe", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      headers,
       body: JSON.stringify({ question }),
     }, 90000);
     const body = await response.json();

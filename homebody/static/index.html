@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=62">
+  <link rel="stylesheet" href="/static/style.css?v=63">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -707,8 +707,8 @@
             <input id="local-vision-question" type="text" maxlength="300" placeholder="What is on the desk?" />
             <button type="submit" id="local-vision-ask-button">Ask</button>
           </div>
-          <label for="local-vision-key">Bridge API key</label>
-          <input id="local-vision-key" type="password" autocomplete="off" placeholder="Needed because the answer describes your room" />
+          <label for="local-vision-key">Bridge API key <span class="muted">(optional if paired)</span></label>
+          <input id="local-vision-key" type="password" autocomplete="off" placeholder="The bridge key from Settings. Skip if paired as Owner." />
           <p id="local-vision-answer" class="local-vision-answer" aria-live="polite"></p>
         </form>
         <p id="camera-message" class="message" role="status" aria-live="polite"></p>
@@ -896,9 +896,9 @@
       </section>
     </div>
   </main>
-  <script src="/static/owner.js?v=62"></script>
+  <script src="/static/owner.js?v=63"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=62"></script>
-  <script src="/static/main.js?v=62"></script>
+  <script src="/static/camera.js?v=63"></script>
+  <script src="/static/main.js?v=63"></script>
 </body>
 </html>

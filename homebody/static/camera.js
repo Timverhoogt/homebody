@@ -351,7 +351,7 @@
     const visualX = unitX * boundedMagnitude * radius;
     const visualY = unitY * boundedMagnitude * radius;
     byId("camera-joystick-knob").style.transform = `translate(calc(-50% + ${visualX}px), calc(-50% + ${visualY}px))`;
-    return { pan: unitX * scaledMagnitude, tilt: unitY * scaledMagnitude };
+    return { pan: unitX * scaledMagnitude, tilt: -unitY * scaledMagnitude };
   }
 
   async function sendControlCommand() {
@@ -561,7 +561,7 @@
     });
   }
   joystick.addEventListener("keydown", (event) => {
-    const vectors = { ArrowLeft: [-0.55, 0], ArrowRight: [0.55, 0], ArrowUp: [0, -0.55], ArrowDown: [0, 0.55] };
+    const vectors = { ArrowLeft: [-0.55, 0], ArrowRight: [0.55, 0], ArrowUp: [0, 0.55], ArrowDown: [0, -0.55] };
     const vector = vectors[event.key];
     if (!vector || !controlsAllowed()) return;
     event.preventDefault();

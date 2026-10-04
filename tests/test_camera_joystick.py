@@ -333,9 +333,9 @@ def test_runtime_policy_revocation_cancels_and_invalidates_active_camera_control
 def test_camera_pointer_and_keyboard_vertical_controls_follow_sdk_pitch_convention() -> None:
     camera = (STATIC / "camera.js").read_text()
 
-    assert "tilt: unitY * scaledMagnitude" in camera
-    assert "ArrowUp: [0, -0.55]" in camera
-    assert "ArrowDown: [0, 0.55]" in camera
+    assert "tilt: -unitY * scaledMagnitude" in camera
+    assert "ArrowUp: [0, 0.55]" in camera
+    assert "ArrowDown: [0, -0.55]" in camera
 
 
 def test_camera_pointer_move_sends_immediately_through_the_in_flight_guard() -> None:

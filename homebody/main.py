@@ -1309,15 +1309,19 @@ class Homebody(ReachyMiniApp):
             request: VisionQuestionRequest,
             authorization: str = Header(default=""),
         ) -> dict[str, object]:
-            # A description reveals what the camera sees, so it needs the same key as a snapshot.
+            # A description reveals what the camera sees. An owner session
+            # authorises it directly; otherwise the raw bridge key is required.
             api_key = load_config().api_key
             if not api_key:
                 raise HTTPException(
                     status_code=503,
-                    detail="Set a bridge API key before asking about the camera view",
+                    detail="Connect your agent in Settings first. The Ask box uses the bridge API key.",
                 )
-            if not secrets.compare_digest(authorization, f"Bearer {api_key}"):
-                raise HTTPException(status_code=401, detail="Enter the bridge API key to ask about the camera view")
+            if not owner_authenticated.get() and not secrets.compare_digest(authorization, f"Bearer {api_key}"):
+                raise HTTPException(
+                    status_code=401,
+                    detail="Pair this device as Owner, or enter the bridge API key.",
+                )
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
             try:
