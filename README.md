@@ -1,8 +1,8 @@
 ---
 title: Homebody
 emoji: 🏡
-colorFrom: indigo
-colorTo: yellow
+colorFrom: yellow
+colorTo: red
 sdk: static
 pinned: false
 short_description: Always-on home companion for Reachy Mini

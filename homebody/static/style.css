@@ -69,6 +69,17 @@ body {
 .owner-access { width: min(900px, calc(100% - 48px)); margin: 24px auto; }
 .owner-access input { width: 100%; }
 .owner-access code { overflow-wrap: anywhere; }
+#owner-pair-panel { max-width: 560px; padding-top: clamp(24px, 8vh, 96px); }
+#owner-pair-panel h1 { margin: 0 0 14px; font-family: var(--serif); font-size: clamp(2.4rem, 5vw, 3.4rem); font-weight: 400; line-height: .95; letter-spacing: -.02em; }
+#owner-pair-panel > p { color: var(--ink-2); line-height: 1.6; }
+#owner-pair-panel form { display: grid; gap: 16px; margin-top: 22px; }
+#owner-pair-panel button { width: 100%; }
+#owner-message { margin-top: 14px; font-size: .9rem; color: var(--ink-2); }
+#owner-device-controls { padding: 14px 0 0; border-top: 1px solid var(--line); }
+#owner-device-controls > summary { font-family: var(--mono); font-size: .72rem; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+#owner-device-controls > summary::after { width: 26px; height: 26px; font-size: .9rem; }
+#owner-device-controls button { margin: 8px 8px 0 0; }
+#owner-device-list { margin: 12px 0 0; padding-left: 18px; color: var(--ink-2); line-height: 1.6; }
 main { width: min(1180px, calc(100% - 48px)); margin: 0 auto; padding: calc(16px + env(safe-area-inset-top)) 0 calc(72px + env(safe-area-inset-bottom)); }
 
 /* Dark display surfaces: everything that shows what Reachy is doing right now. */
@@ -188,12 +199,12 @@ input[type="range"] { min-height: 0; padding: 0; border: 0; background: transpar
 .checkbox-row span, .checkbox-row strong, .checkbox-row small { display: block; min-width: 0; }
 .checkbox-row small { margin-top: 3px; color: var(--muted); font-weight: 400; line-height: 1.35; }
 details { border-top: 1px solid var(--line); padding-top: 15px; }
-summary { cursor: pointer; color: var(--text); font-weight: 650; }
-summary::marker { color: var(--orange-text); font-size: .8em; }
-.disclosure > summary, .disclosure-card > summary { list-style: none; }
-.disclosure > summary::-webkit-details-marker, .disclosure-card > summary::-webkit-details-marker { display: none; }
-.disclosure > summary::after, .disclosure-card > summary::after { content: "+"; flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; border: 1.5px solid var(--rule); border-radius: 50%; color: var(--text); font-family: var(--mono); font-size: 1rem; }
-.disclosure[open] > summary::after, .disclosure-card[open] > summary::after { content: "−"; }
+/* Every disclosure uses the same control: the title on the left, a round + / − key on the right. */
+summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; list-style: none; cursor: pointer; color: var(--text); font-weight: 650; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; border: 1.5px solid var(--rule); border-radius: 50%; color: var(--text); font-family: var(--mono); font-size: 1rem; font-weight: 400; transition: background .15s ease; }
+summary:hover::after { background: var(--btn2-hover); }
+details[open] > summary::after { content: "−"; }
 .precision-group.disclosure { padding-top: 18px; }
 .precision-group.disclosure:not([open]) > summary { margin-bottom: 0; }
 .disclosure-card { padding: 0; overflow: hidden; }
