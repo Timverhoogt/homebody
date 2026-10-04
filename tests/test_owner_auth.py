@@ -87,6 +87,23 @@ def test_csrf_origin_host_and_guest(owner):
     )
 
 
+def test_tailscale_serve_forwarded_headers_only_from_loopback(owner):
+    """Tailscale Serve proxies HTTPS to http://127.0.0.1:8042 and sends the public host in X-Forwarded-*."""
+    store, code, _ = owner
+    app = FastAPI()
+    install_owner_auth(app, store)
+    forwarded = {"X-Forwarded-Host": "robot.example.ts.net", "X-Forwarded-Proto": "https", "Origin": ORIGIN}
+    proxied = TestClient(app, base_url="http://127.0.0.1:8042", client=("127.0.0.1", 40000))
+    paired = proxied.post("/api/owner/pair", json={"code": code}, headers=forwarded)
+    assert paired.status_code == 200
+    # The browser holds the Secure cookie over HTTPS; the proxy passes it on over plain HTTP.
+    cookie = paired.headers["set-cookie"].split(";")[0]
+    assert proxied.get("/api/owner/session", headers={**forwarded, "Cookie": cookie}).json()["owner"] is True
+    # The same headers from any other client are ignored, so the origin gate still applies.
+    lan = TestClient(app, base_url="http://127.0.0.1:8042", client=("192.168.1.20", 40000))
+    assert lan.get("/api/owner/session", headers={**forwarded, "Cookie": cookie}).status_code == 403
+
+
 def test_pair_origin_and_throttle(owner):
     _, code, client = owner
     assert client.post("/api/owner/pair", json={"code": code}).status_code == 403

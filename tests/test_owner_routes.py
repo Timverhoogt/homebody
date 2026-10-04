@@ -107,6 +107,7 @@ def test_agent_checks_setup_status_without_owner_pairing(application):
     robot, client, code = application
     robot._agent_setup.start("hermes", mcp=True)
     robot._agent_setup.record_error("bridge unreachable at http://10.0.0.5:8643")
+    # The agent may use the robot's LAN or tailnet address, off the configured origin.
     guest = TestClient(robot.settings_app, base_url="http://100.64.27.89:8042")
     status = guest.get("/api/agent-setup/status")
     assert status.status_code == 200, status.text

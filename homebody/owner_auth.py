@@ -166,14 +166,16 @@ def default_owner_path() -> Path:
     return Path(os.environ.get("HOMEBODY_OWNER_DB", str(default_config_path().with_name("owner.sqlite3"))))
 
 
+TRUSTED_PROXIES = {"127.0.0.1", "::1"}
+
+
 def _effective_origin(conn: HTTPConnection) -> str:
-    """Reconstruct the public origin, honouring X-Forwarded-* proxy headers."""
-    host = conn.headers.get("x-forwarded-host") or conn.headers.get("host", "")
-    scheme = conn.headers.get("x-forwarded-proto") or conn.url.scheme
-    if "," in host:
-        host = host.split(",")[0].strip()
-    if "," in scheme:
-        scheme = scheme.split(",")[0].strip()
+    """Reconstruct the public origin. X-Forwarded-* is trusted only from a local proxy (Tailscale Serve)."""
+    host = conn.headers.get("host", "")
+    scheme = {"ws": "http", "wss": "https"}.get(conn.url.scheme, conn.url.scheme)
+    if conn.client and conn.client.host in TRUSTED_PROXIES:
+        host = conn.headers.get("x-forwarded-host", host).split(",")[0].strip()
+        scheme = conn.headers.get("x-forwarded-proto", scheme).split(",")[0].strip()
     return f"{scheme}://{host}"
 
 
@@ -187,17 +189,20 @@ class OwnerBoundary:
         conn = HTTPConnection(scope)
         path = scope["path"]
         method = scope.get("method", "WEBSOCKET")
-        # Static shell, non-secret agent sources, the pairing/session endpoints, and
-        # the status endpoint (needed for the dashboard to load) do not grant authority.
+        # Static shell and non-secret agent sources do not grant authority.
         public = method in {"GET", "HEAD"} and (
             path in PUBLIC_FILES or path.startswith("/static/") or path.startswith("/agent-setup/")
         )
         machine = (method, path) in MACHINE_ROUTES
+        # Pairing, session info and status work without a session (the dashboard loads and pairs
+        # before any device is registered), but still only on the configured origin.
         owner_public = (
             (method == "POST" and path == "/api/owner/pair")
             or (method == "GET" and path in {"/api/owner/session", "/api/status", "/api/agent-setup/status"})
             or (method == "OPTIONS" and path == "/api/owner/pair")
         )
+        # The agent may reach the robot by its LAN address; off-origin it gets the guest view, not a 403.
+        guest_anywhere = method == "GET" and path == "/api/agent-setup/status"
         if public or machine:
             return await self.app(scope, receive, send)
         origin = self.store.origin
@@ -205,13 +210,12 @@ class OwnerBoundary:
         session = None
         if not origin:
             status, detail = 503, "Owner access needs local provisioning; see docs/owner-access.md"
-        elif owner_public:
-            # Public endpoints skip the origin gate but still honour an existing session cookie.
-            session = self.store.session(conn.cookies.get(COOKIE))
         elif _effective_origin(conn) != origin:
-            status, detail = 403, "Use the configured private HTTPS address"
+            if not guest_anywhere:
+                status, detail = 403, "Use the configured private HTTPS address"
         elif conn.headers.get("origin") not in {None, origin}:
-            status, detail = 403, "Foreign browser origin rejected"
+            if not guest_anywhere:
+                status, detail = 403, "Foreign browser origin rejected"
         else:
             session = self.store.session(conn.cookies.get(COOKIE))
             if not session and not owner_public:
