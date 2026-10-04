@@ -436,12 +436,10 @@ button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--orange); }
   padding: 4px 7px;
   border-radius: 6px;
   color: #fff;
-  background: #000a;
+  background: #101218;
   font-size: .7rem;
   text-align: center;
 }
-.camera-viewer:fullscreen .camera-control-overlay,
-.camera-viewer.camera-app-fullscreen .camera-control-overlay { display: block; }
 .camera-viewer.camera-app-fullscreen {
   position: fixed;
   inset: 0;
@@ -457,7 +455,7 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 @media (max-width: 650px), (max-height: 520px) {
   .camera-control-cluster { bottom: max(10px, env(safe-area-inset-bottom)); }
   .camera-joystick { width: 112px; height: 112px; }
-  .camera-control-status { display: none; }
+  .camera-control-status { font-size: .65rem; }
   .camera-overlay-stop { min-height: 44px; padding: 0 12px; }
 }
 

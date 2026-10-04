@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=60">
+  <link rel="stylesheet" href="/static/style.css?v=61">
 </head>
 <body>
   <main>
@@ -656,16 +656,17 @@
               <span>PRIVATE LINK // NO CLOUD VIDEO</span>
             </div>
           </div>
+          <button type="button" id="camera-control-fullscreen-exit" class="camera-overlay-exit">Exit fullscreen</button>
           <div id="camera-control-overlay" class="camera-control-overlay" data-handedness="right" hidden>
-            <button type="button" id="camera-control-fullscreen-exit" class="camera-overlay-exit secondary">Exit fullscreen</button>
             <button type="button" id="camera-control-stop" class="camera-overlay-stop danger" aria-label="Emergency Stop camera movement">Stop movement</button>
             <div class="camera-control-cluster">
-              <div id="camera-joystick" class="camera-joystick" role="application" tabindex="0" aria-label="Camera pan and tilt joystick" aria-describedby="camera-control-help">
+              <div id="camera-joystick" class="camera-joystick" role="application" tabindex="0" aria-label="Camera pan and tilt joystick" aria-describedby="camera-control-help camera-control-status">
                 <span class="camera-joystick-crosshair" aria-hidden="true"></span>
                 <span id="camera-joystick-knob" class="camera-joystick-knob" aria-hidden="true"></span>
               </div>
               <span id="camera-control-help" class="sr-only">Drag or use arrow keys to pan and tilt. Releasing holds the current measured view.</span>
               <button type="button" id="camera-control-center" class="camera-center-button">Center head &amp; base</button>
+              <button type="button" id="camera-control-settings" class="camera-center-button" hidden>Movement settings</button>
               <span id="camera-control-status" class="camera-control-status" role="status">Release holds the current view</span>
             </div>
           </div>
@@ -877,7 +878,7 @@
     </div>
   </main>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=60"></script>
-  <script src="/static/main.js?v=60"></script>
+  <script src="/static/camera.js?v=61"></script>
+  <script src="/static/main.js?v=61"></script>
 </body>
 </html>

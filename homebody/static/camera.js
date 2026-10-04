@@ -86,13 +86,20 @@
     const overlay = byId("camera-control-overlay");
     const joystick = byId("camera-joystick");
     const allowed = controlsAllowed();
-    overlay.hidden = !(state.stream && state.controlsEnabled);
+    // Visibility is not permission: keep the opt-in and runtime gates in controlsAllowed().
+    overlay.hidden = !state.stream;
     overlay.dataset.handedness = state.controlsHandedness;
     joystick.setAttribute("aria-disabled", String(!allowed));
     byId("camera-control-center").disabled = !allowed;
-    byId("camera-control-stop").disabled = !(state.stream && state.controlsEnabled);
-    if (!overlay.hidden && !allowed) setControlStatus("Movement unavailable until Awake and idle");
-    else if (!state.controlPointerId) setControlStatus("Release holds the current view");
+    // Stop remains available even if the movement opt-in was just revoked.
+    byId("camera-control-stop").disabled = !state.stream;
+    byId("camera-control-settings").hidden = state.controlsEnabled;
+    if (!state.controlsEnabled) setControlStatus("Enable Camera movement controls in Settings, then Save settings.");
+    else if (!state.enabled || !state.stream) setControlStatus("Start the local live camera to move the view");
+    else if (state.powerMode !== "awake") setControlStatus("Wake Reachy before moving the camera");
+    else if (!state.motorsEnabled) setControlStatus("Movement unavailable: motors are off. Wake Reachy first.");
+    else if (!allowed) setControlStatus("Reachy is busy. Wait or use Stop movement.");
+    else if (state.controlPointerId === null) setControlStatus("Release holds the current view");
   }
 
   function updateButtons() {
@@ -166,6 +173,7 @@
     } else {
       setControlStatus(reason);
     }
+    if (!controlsAllowed()) updateControls();
   }
 
   function detachStream() {
@@ -502,8 +510,28 @@
     byId("camera-live-fullscreen").textContent = "Fullscreen";
   }
 
+  async function openControlSettings() {
+    // Navigate to the existing opt-in; never enable movement as a side effect of viewing.
+    void endControlGesture("Controls stopped for Settings");
+    try {
+      if (state.appFullscreen) setAppFullscreen(false);
+      if (document.fullscreenElement) await document.exitFullscreen();
+    } catch (error) {
+      setControlStatus(`Exit fullscreen before opening Settings: ${String(error)}`);
+      return;
+    }
+    const tab = document.querySelector('[data-tab="settings"]');
+    if (!tab || tab.hidden) return;
+    tab.click();
+    const setting = byId("camera_controls_enabled");
+    const section = setting.closest("details");
+    if (section) section.open = true;
+    setting.scrollIntoView({ block: "center" });
+    setting.focus({ preventScroll: true });
+  }
+
   async function fullscreen() {
-    await endControlGesture("Gesture cancelled for fullscreen change");
+    void endControlGesture("Gesture cancelled for fullscreen change");
     const viewer = byId("camera-viewer");
     try {
       if (state.appFullscreen) {
@@ -544,6 +572,13 @@
   byId("camera-live-stop").addEventListener("click", () => stop());
   byId("camera-live-fullscreen").addEventListener("click", () => { void fullscreen(); });
   byId("camera-control-fullscreen-exit").addEventListener("click", () => { void fullscreen(); });
+  byId("camera-control-settings").addEventListener("click", () => { void openControlSettings(); });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.appFullscreen) {
+      void endControlGesture("Controls stopped for fullscreen exit");
+      setAppFullscreen(false);
+    }
+  });
   byId("camera-control-center").addEventListener("click", () => { void centerCamera(); });
   byId("camera-control-stop").addEventListener("click", () => { void emergencyStop(); });
   window.addEventListener("pagehide", () => stop("Camera stopped because the page closed."));
