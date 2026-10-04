@@ -170,6 +170,8 @@ def _effective_origin(conn: HTTPConnection) -> str:
     """Reconstruct the public origin, honouring X-Forwarded-* proxy headers."""
     host = conn.headers.get("x-forwarded-host") or conn.headers.get("host", "")
     scheme = conn.headers.get("x-forwarded-proto") or conn.url.scheme
+    # A WebSocket shares its page's HTTPS origin.
+    scheme = {"ws": "http", "wss": "https"}.get(scheme, scheme)
     if "," in host:
         host = host.split(",")[0].strip()
     if "," in scheme:
@@ -205,9 +207,6 @@ class OwnerBoundary:
         session = None
         if not origin:
             status, detail = 503, "Owner access needs local provisioning; see docs/owner-access.md"
-        elif owner_public:
-            # Public endpoints skip the origin gate but still honour an existing session cookie.
-            session = self.store.session(conn.cookies.get(COOKIE))
         elif _effective_origin(conn) != origin:
             status, detail = 403, "Use the configured private HTTPS address"
         elif conn.headers.get("origin") not in {None, origin}:

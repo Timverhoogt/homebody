@@ -80,7 +80,8 @@ def test_csrf_origin_host_and_guest(owner):
         assert client.post("/api/power", headers=headers).status_code == 403
     assert client.get("/api/status", headers={"Host": "evil.test"}).status_code == 403
     assert client.get("/api/status", headers={"Origin": "https://evil.test"}).status_code == 403
-    assert client.get("/api/status", headers={"X-Forwarded-Host": "evil.test"}).status_code == 200
+    # Proxy headers are honoured, so a spoofed forwarded host is rejected like a bad Host.
+    assert client.get("/api/status", headers={"X-Forwarded-Host": "evil.test"}).status_code == 403
     # /api/status is public: a bad cookie just means no session, not a 401.
     assert (
         client.get("/api/status", follow_redirects=False, headers={"Cookie": f"{COOKIE}=bad"}).status_code == 200
