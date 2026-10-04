@@ -69,6 +69,10 @@ def _serve(route: Route) -> None:
     elif path.startswith("static/") and (STATIC / path[len("static/") :]).is_file():
         file = STATIC / path[len("static/") :]
         route.fulfill(path=str(file), content_type=mimetypes.guess_type(file.name)[0] or "application/octet-stream")
+    elif path == "api/owner/session":
+        # The dashboard stays hidden until a remembered Owner device is confirmed; this is a synthetic one.
+        owner = {"owner": True, "name": "Demo device", "csrf": "capture"}
+        route.fulfill(content_type="application/json", body=json.dumps(owner))
     elif path == "api/status":
         route.fulfill(content_type="application/json", body=json.dumps(SYNTHETIC_STATUS))
     elif path == "api/agent-setup/start":
