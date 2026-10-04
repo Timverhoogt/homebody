@@ -166,16 +166,18 @@ def default_owner_path() -> Path:
     return Path(os.environ.get("HOMEBODY_OWNER_DB", str(default_config_path().with_name("owner.sqlite3"))))
 
 
-TRUSTED_PROXIES = {"127.0.0.1", "::1"}
-
-
 def _effective_origin(conn: HTTPConnection) -> str:
-    """Reconstruct the public origin. X-Forwarded-* is trusted only from a local proxy (Tailscale Serve)."""
+    """Reconstruct the public origin. X-Forwarded-* is trusted only from a local proxy (Tailscale Serve).
+
+    The peer address cannot tell: the SDK serves the dashboard with uvicorn's defaults, which
+    replace a loopback peer with its X-Forwarded-For client. uvicorn applies X-Forwarded-Proto
+    only from trusted (by default loopback) peers, so take the scheme from the scope and honour
+    X-Forwarded-Host only once that scheme is HTTPS.
+    """
     host = conn.headers.get("host", "")
     scheme = {"ws": "http", "wss": "https"}.get(conn.url.scheme, conn.url.scheme)
-    if conn.client and conn.client.host in TRUSTED_PROXIES:
+    if scheme == "https":
         host = conn.headers.get("x-forwarded-host", host).split(",")[0].strip()
-        scheme = conn.headers.get("x-forwarded-proto", scheme).split(",")[0].strip()
     return f"{scheme}://{host}"
 
 
