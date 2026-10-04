@@ -726,7 +726,7 @@
           </label>
           <label class="toggle-row"><span><strong>Also let my agent use Reachy</strong><small>Adds Reachy as an MCP tool for your agent: speak a message, show an emotion, check status.</small></span><input id="agent-setup-mcp" type="checkbox" /></label>
         </div>
-        <small class="muted">If a bridge API key is already set, enter it under <em>Current API key</em> below first.</small>
+        <small class="muted">If a bridge API key is already set and you are not paired as Owner, enter it under <em>Current API key</em> below first.</small>
         <div class="actions">
           <button type="button" id="agent-setup-button">Create setup message</button>
           <button type="button" id="agent-setup-cancel" class="secondary" hidden>Cancel setup</button>
@@ -744,7 +744,7 @@
       <section class="card">
         <p class="label">Configuration</p>
         <h2>Agent connection and voice</h2>
-        <p class="muted">Run the companion bridge on the machine hosting Hermes Agent or OpenClaw (or both), then enter its trusted LAN URL and API key.</p>
+        <p class="muted">Run the companion bridge on the machine hosting Hermes Agent or OpenClaw (or both), then enter its trusted LAN URL and API key. The API key is the bridge's <code>API_SERVER_KEY</code> environment variable — the same key your agent uses to reach the bridge.</p>
         <form id="settings-form">
           <label>Conversation mode
             <select id="conversation_mode" name="conversation_mode">
@@ -758,8 +758,8 @@
           <label>API key
             <input id="api_key" name="api_key" type="password" placeholder="Leave masked value unchanged" autocomplete="off" />
           </label>
-          <label>Current API key
-            <input id="current_api_key" name="current_api_key" type="password" placeholder="Only needed to change or test a new bridge URL, API key, or vision server" autocomplete="off" />
+          <label>Current API key <span class="muted">(skip if paired as Owner)</span>
+            <input id="current_api_key" name="current_api_key" type="password" placeholder="Only needed when not paired as Owner" autocomplete="off" />
           </label>
           <div class="grid-two">
             <label>Agent model
@@ -841,7 +841,7 @@
                 <label>Sign-in listener port<input id="mcp_public_port" name="mcp_public_port" type="number" min="1024" max="65535" step="1" value="8043" /><small>Point the tunnel at this port, for example http://127.0.0.1:8043.</small></label>
               </div>
               <p id="mcp-listener-status" class="muted compact-note" role="status" aria-live="polite"></p>
-              <label class="toggle-row"><span><strong>Let hosted agents sign in (OAuth)</strong><small>Needs agent access and the public address. Changing this needs the current API key, when one is set.</small></span><input id="mcp_oauth_enabled" name="mcp_oauth_enabled" type="checkbox" /></label>
+              <label class="toggle-row"><span><strong>Let hosted agents sign in (OAuth)</strong><small>Needs agent access and the public address. Changing this needs the current API key (or pair as Owner).</small></span><input id="mcp_oauth_enabled" name="mcp_oauth_enabled" type="checkbox" /></label>
               <div class="actions">
                 <button type="button" id="mcp-oauth-disconnect-button" class="danger">Disconnect all hosted agents</button>
               </div>

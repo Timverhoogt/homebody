@@ -13,6 +13,13 @@
     if (!session.owner) window.ReachyCamera?.stop('Owner session ended. Pair this device to continue.');
     const keyField = byId('current_api_key');
     if (keyField) keyField.closest('label')?.setAttribute('hidden', '');
+    // The Ask box uses the owner session; hide the key field when paired.
+    const visionKey = byId('local-vision-key');
+    if (visionKey) {
+      visionKey.setAttribute('hidden', session.owner ? '' : 'hidden');
+      const visionKeyLabel = document.querySelector('label[for="local-vision-key"]');
+      if (visionKeyLabel) visionKeyLabel.setAttribute('hidden', session.owner ? '' : 'hidden');
+    }
   }
   async function check() {
     try {
