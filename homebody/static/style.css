@@ -91,10 +91,16 @@ main { width: min(1180px, calc(100% - 48px)); margin: 0 auto; padding: calc(16px
 .display input, .display select, .display textarea { color: var(--screen-ink); background: var(--screen-2); border-color: var(--screen-line); }
 
 /* Top bar */
-.topbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 28px; padding: 12px 0 14px; border-bottom: 1.5px solid var(--rule); background: var(--paper); }
+.topbar { flex-wrap: wrap; position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 28px; padding: 12px 0 14px; border-bottom: 1.5px solid var(--rule); background: var(--paper); }
 .wordmark { display: flex; align-items: center; gap: 10px; color: var(--ink); font-family: var(--serif); font-size: 1.5rem; letter-spacing: -.01em; }
 .wordmark svg { width: 30px; height: 30px; flex: 0 0 auto; }
 .wordmark-visor { fill: var(--paper); }
+.agent-connection-badge { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; min-height: 44px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 999px; background: var(--paper); color: var(--ink); font-size: .8rem; white-space: nowrap; }
+.agent-connection-dot { width: 9px; height: 9px; border-radius: 50%; background: #85858b; flex: 0 0 auto; }
+.agent-connection-badge[data-state="connected"] .agent-connection-dot { background: #24814b; }
+.agent-connection-badge[data-state="checking"] .agent-connection-dot { background: #b77d00; }
+.agent-connection-badge[data-state="unavailable"] .agent-connection-dot { background: #c03938; }
+@media (max-width: 420px) { .agent-connection-badge { padding: 8px; font-size: .75rem; } }
 .tabs { margin-left: auto; display: flex; gap: 4px; counter-reset: tab; }
 .tab-button { position: relative; min-height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 15px; border: 0; border-radius: 999px; color: var(--ink-2); background: transparent; font-size: .9rem; font-weight: 600; counter-increment: tab; }
 .tab-button::before { content: counter(tab, decimal-leading-zero); color: var(--ink-2); font-family: var(--mono); font-size: .62rem; font-weight: 500; opacity: .75; }

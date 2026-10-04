@@ -19,6 +19,7 @@ from reachy_mini import ReachyMini, ReachyMiniApp
 from starlette.concurrency import run_in_threadpool
 
 from .agent_audit import AgentAuditLog
+from .agent_connection import AgentConnectionMonitor
 from .agent_setup import (
     AgentSetup,
     SetupError,
@@ -402,6 +403,7 @@ class Homebody(ReachyMiniApp):
         self._gpio_config_lock = threading.Lock()
         self._mcp = McpServer(lambda: self._runtime)
         self._agent_setup = AgentSetup()
+        self._agent_connection = AgentConnectionMonitor()
         self._oauth = OAuthServer(default_config_path().with_name("mcp-oauth.json"))
         self._agent_listener = PublicAgentListener(self._build_public_app)
         self._register_settings_routes()
@@ -543,6 +545,11 @@ class Homebody(ReachyMiniApp):
                 "config": config_payload,
                 "config_error": config_error,
                 "runtime": runtime_payload,
+                "agent_connection": (
+                    {"state": "unknown", "label": "Agent", "detail": "Adult settings are locked.", "fresh_for_ms": 0}
+                    if child_locked or config_error
+                    else self._agent_connection.snapshot(config)
+                ),
                 "host": host().as_dict(),
             }
 
@@ -1007,6 +1014,14 @@ class Homebody(ReachyMiniApp):
             except (ValueError, RuntimeError) as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
             return {"ok": True, "item_id": request.item_id, "delivery": queued}
+
+        @self.settings_app.post("/api/agent-connection/retry")
+        def retry_agent_connection() -> dict[str, object]:
+            runtime = self._runtime.status() if self._runtime is not None else {}
+            if runtime.get("kids_mode", {}).get("locked") is True:
+                raise HTTPException(status_code=423, detail="Adult settings are locked")
+            self._agent_connection.invalidate()
+            return self._agent_connection.snapshot(load_config())
 
         @self.settings_app.post("/api/test-connection")
         def test_connection(update: SettingsUpdate | None = None) -> dict[str, object]:

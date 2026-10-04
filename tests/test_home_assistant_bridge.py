@@ -145,8 +145,8 @@ def test_home_assistant_ui_exposes_nested_opt_ins_and_v44_assets() -> None:
     assert "toggleHomeAssistantOptions" in script
     assert "homebody-shell-v" in worker
     for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=67" in html
-        assert f'"/static/{asset}?v=67"' in worker
+        assert f"/static/{asset}?v=68" in html
+        assert f'"/static/{asset}?v=68"' in worker
 
 
 def test_runtime_provider_maps_native_daemon_telemetry_without_enabling_controls() -> None:
