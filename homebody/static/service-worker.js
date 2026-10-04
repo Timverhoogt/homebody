@@ -1,11 +1,11 @@
-const CACHE_NAME = "homebody-shell-v59";
+const CACHE_NAME = "homebody-shell-v60";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
-  "/static/style.css?v=59",
+  "/static/style.css?v=60",
   "/static/gstwebrtc-api.js",
-  "/static/camera.js?v=59",
-  "/static/main.js?v=59",
+  "/static/camera.js?v=60",
+  "/static/main.js?v=60",
   "/static/icon-192.png",
   "/static/icon-512.png",
   "/static/icon-maskable-512.png",

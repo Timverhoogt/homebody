@@ -2466,9 +2466,35 @@ $("agent-stop-button").addEventListener("click", async () => {
   }
 });
 
+let powerToastTimer;
+function showPowerToast(text, kind = "pending") {
+  let toast = $("power-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "power-toast";
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    document.body.appendChild(toast);
+  }
+  clearTimeout(powerToastTimer);
+  toast.className = `power-toast ${kind}`;
+  toast.textContent = text;
+  toast.hidden = false;
+  if (kind !== "pending") powerToastTimer = setTimeout(() => { toast.hidden = true; }, kind === "error" ? 15000 : 6000);
+}
+
 async function setPowerMode(mode, durationMinutes = 60, message = $("power-message")) {
   if (powerTransitionPending) return;
   powerTransitionPending = true;
+  const labels = { awake: "Waking…", standby: "Folding…", sleep: "Sleeping…", meeting: "Starting meeting…" };
+  const activeButtons = [...document.querySelectorAll("[data-power]")].filter((button) => button.dataset.power === mode);
+  activeButtons.forEach((button) => {
+    button.dataset.idleLabel = button.textContent;
+    button.textContent = labels[mode] || "Switching…";
+    button.classList.add("power-pending");
+    button.setAttribute("aria-busy", "true");
+  });
+  showPowerToast(labels[mode] || "Switching power mode…");
   document.querySelectorAll("[data-power], .manual-control").forEach((button) => { button.disabled = true; });
   $("emotion-select").disabled = true;
   $("robot-stop-button").disabled = true;
@@ -2502,10 +2528,18 @@ async function setPowerMode(mode, durationMinutes = 60, message = $("power-messa
         ? "Reachy awake · motor torque enabled"
         : `Power mode: ${body.runtime.power_mode}`;
     message.className = "message ok";
+    showPowerToast(message.textContent, "ok");
   } catch (error) {
     message.textContent = String(error);
     message.className = "message error";
+    showPowerToast(message.textContent, "error");
   } finally {
+    activeButtons.forEach((button) => {
+      button.textContent = button.dataset.idleLabel;
+      delete button.dataset.idleLabel;
+      button.classList.remove("power-pending");
+      button.removeAttribute("aria-busy");
+    });
     powerTransitionPending = false;
     await refreshStatus();
   }
@@ -2513,8 +2547,7 @@ async function setPowerMode(mode, durationMinutes = 60, message = $("power-messa
 
 document.querySelectorAll("[data-power]").forEach((button) => {
   button.addEventListener("click", () => {
-    const panel = button.closest("[data-panel]");
-    const message = panel.closest("#panel-robot") ? $("robot-message") : $("power-message");
+    const message = button.closest("#panel-robot") ? $("robot-message") : $("power-message");
     setPowerMode(button.dataset.power, Number(button.dataset.minutes || 60), message);
   });
 });

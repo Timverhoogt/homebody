@@ -772,3 +772,11 @@ body.camera-app-fullscreen-active { overflow: hidden; }
   .agent-step-list li[data-status="completed"]::before { color: #06281a; }
   .kids-mascot { box-shadow: 0 20px 55px #000a; }
 }
+/* Power feedback stays visible above mobile navigation. */
+.power-toast { position: fixed; bottom: calc(6rem + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 10000; max-width: min(90vw, 36rem); padding: 1rem 1.25rem; background: #222720; color: #fff9eb; border: 2px solid #f29a58; border-radius: 12px; box-shadow: 0 6px 24px #0005; }
+.power-toast[hidden] { display: none; }
+.power-toast.error { border-color: #e76a62; }
+.power-toast.ok { border-color: #90bc82; }
+.power-pending::before { content: ""; display: inline-block; width: .8em; height: .8em; margin-right: .5em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: power-spin .8s linear infinite; }
+@keyframes power-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .power-pending::before { animation: none; } }
