@@ -594,4 +594,4 @@ def test_bluetooth_ui_exposes_pairing_mapping_and_v35_assets() -> None:
     assert "/api/bluetooth/scan" in script
     assert "/api/bluetooth/gamepad" in script
     assert "if (body.last_error) throw new Error(body.last_error);" in script
-    assert "homebody-shell-v58" in worker
+    assert "homebody-shell-v59" in worker

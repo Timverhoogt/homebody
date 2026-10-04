@@ -1,8 +1,25 @@
+import socket
 import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
 from fastapi import FastAPI
+
+
+@pytest.fixture(autouse=True)
+def isolate_unit_tests_from_live_robot(monkeypatch):
+    """Allow loopback test servers, never the robot daemon or external services."""
+    original = socket.socket.connect
+
+    def connect(sock, address):
+        if isinstance(address, tuple):
+            host, port = address[:2]
+            if host not in {"127.0.0.1", "::1"} or port in {8000, 8042, 6053, 8642, 8643}:
+                raise ConnectionRefusedError("Unit tests cannot contact live robot or agent services")
+        return original(sock, address)
+
+    monkeypatch.setattr(socket.socket, "connect", connect)
 
 # The bridge tests import ``companion.*`` from the checkout. The editable install maps that folder to
 # ``homebody.bridge`` through an import hook, which does not put the repository root on sys.path.

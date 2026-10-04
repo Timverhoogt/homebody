@@ -972,6 +972,10 @@ async function loadModels() {
     const response = await fetch("/api/models", { cache: "no-store" });
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    if (body.configured === false) {
+      $("model-help").textContent = body.detail;
+      return;
+    }
     select.replaceChildren();
     (body.models || []).forEach((model) => {
       const option = document.createElement("option");
@@ -1061,6 +1065,10 @@ async function loadVoiceOptions() {
     const response = await fetch("/api/voice-options", { cache: "no-store" });
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    if (body.configured === false) {
+      $("voice-provider").textContent = body.detail;
+      return;
+    }
     voiceOptions = body;
     replaceOptions(
       $("stt_provider"), body.stt || [], currentConfig?.stt_provider || "configured", (item) => item.label,
