@@ -403,6 +403,30 @@ Open the settings page:
 http://REACHY_HOST:8042
 ```
 
+### Pair a phone or browser
+
+The settings page needs an owner pairing code. Generate one on the Reachy host as the app user:
+
+```bash
+python3 -m homebody.owner_auth pair --origin https://your-robot.example.net
+```
+
+This prints a one-time code valid for 10 minutes. Open your HTTPS origin in a browser, enter the code, and your device is remembered for 30 days.
+
+**The CLI must use the same `$HOME` as the running app.** Managed installs (Reachy Mini Lite, Jetson) often set `HOME` to a service directory like `/opt/reachy-mini-lite/state/home`. If you SSH in as a different user or with a different `$HOME`, the CLI will write the code to the wrong database and pairing will fail. Either run the command as the app user, or pass the database path explicitly:
+
+```bash
+python3 -m homebody.owner_auth pair --origin https://your-robot.example.net \
+  --db /opt/reachy-mini-lite/state/home/.local/share/homebody/owner.sqlite3
+```
+
+You can find the running app's database with `HOMEBODY_OWNER_DB` or by checking the process environment:
+
+```bash
+ls -la /proc/$(pgrep -f homebody.main)/cwd 2>/dev/null
+cat /proc/$(pgrep -f homebody.main)/environ 2>/dev/null | tr '\0' '\n' | grep ^HOME=
+```
+
 Under **Connect your agent**, create a setup message and send it to Hermes Agent or OpenClaw; the agent fills in the bridge for you ([how it works](docs/agent-setup.md)). To set it up by hand instead, enter:
 
 - **Bridge URL:** `http://HERMES_HOST:8643`

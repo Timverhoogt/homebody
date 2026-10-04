@@ -315,8 +315,13 @@ def install_owner_auth(app: FastAPI, store: OwnerStore) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Homebody local owner-device provisioning (run as the app user)")
-    parser.add_argument("--db", type=Path, default=None)
+    parser = argparse.ArgumentParser(
+        description="Homebody local owner-device provisioning (run as the app user; use --db if $HOME differs)"
+    )
+    parser.add_argument(
+        "--db", type=Path, default=None,
+        help="owner database path (defaults to $HOME/.local/share/homebody/owner.sqlite3)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     pairing = sub.add_parser("pair", help="Print a single-use code valid for ten minutes; does not start hardware")
     pairing.add_argument("--origin", required=True)
