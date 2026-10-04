@@ -5,6 +5,7 @@
   let session = { owner: false };
   let ready;
   function render() {
+    window.HomebodyNotifications?.setSuppressed("owner", !session.owner);
     byId('owner-pair-panel').hidden = session.owner;
     byId('owner-device-controls').hidden = !session.owner;
     document.querySelector('main').hidden = !session.owner;
@@ -77,7 +78,10 @@
       const response = await window.fetch('/api/owner/logout', { method: 'POST' });
       if (!response.ok) throw new Error('Could not forget this device. Try again.');
       location.reload();
-    } catch (error) { byId('owner-devices-message').textContent = String(error.message || error); }
+    } catch (error) {
+      byId('owner-devices-message').textContent = String(error.message || error);
+      window.HomebodyNotifications?.show(`Owner devices: ${error.message || error}`, { id: 'owner-devices', kind: 'error' });
+    }
   });
   byId('owner-devices-refresh').addEventListener('click', async () => {
     const list = byId('owner-device-list');
@@ -101,11 +105,18 @@
             if (!result.ok) throw new Error('Revocation failed; retry.');
             if (device.id === session.device_id) location.reload();
             else row.remove();
-          } catch (error) { button.disabled = false; byId('owner-devices-message').textContent = error.message; }
+          } catch (error) {
+            button.disabled = false;
+            byId('owner-devices-message').textContent = error.message;
+            window.HomebodyNotifications?.show(`Owner devices: ${error.message || error}`, { id: 'owner-devices', kind: 'error' });
+          }
         });
         row.append(name, button); list.append(row);
       }
-    } catch (error) { byId('owner-devices-message').textContent = String(error.message || error); }
+    } catch (error) {
+      byId('owner-devices-message').textContent = String(error.message || error);
+      window.HomebodyNotifications?.show(`Owner devices: ${error.message || error}`, { id: 'owner-devices', kind: 'error' });
+    }
   });
   ready = check();
 })();

@@ -40,6 +40,8 @@
     const messageElement = byId("camera-message");
     messageElement.textContent = message;
     messageElement.className = `message ${kind}`;
+    if (kind === "error") window.HomebodyNotifications?.show(`Camera: ${message}`, { id: "camera-stream", kind });
+    else if (kind === "ok") window.HomebodyNotifications?.dismiss("camera-stream");
   }
 
   function setControlStatus(message) {
@@ -146,6 +148,7 @@
       setControlStatus(reason || "View held");
     } catch (error) {
       setControlStatus(`Control release: ${String(error)}`);
+      window.HomebodyNotifications?.show(`Camera movement: ${error.message || error}`, { id: "camera-movement", kind: "error" });
     }
   }
 
@@ -367,11 +370,13 @@
         pan: state.desiredPan,
         tilt: state.desiredTilt,
       });
+      window.HomebodyNotifications?.dismiss("camera-movement");
       setControlStatus("Moving · release to hold");
     } catch (error) {
       const message = String(error);
       if (!message.includes("Robot is busy")) {
         setControlStatus(message);
+        window.HomebodyNotifications?.show(`Camera movement: ${message}`, { id: "camera-movement", kind: "error" });
         await endControlGesture("Control stopped after rejection");
       }
     } finally {
@@ -411,6 +416,7 @@
       state.controlTimer = window.setInterval(() => { void sendControlCommand(); }, CAMERA_CONTROL_INTERVAL_MS);
     } catch (error) {
       setControlStatus(`Blocked: ${String(error)}`);
+      window.HomebodyNotifications?.show(`Camera movement: ${error.message || error}`, { id: "camera-movement", kind: "error" });
       await endControlGesture("Movement blocked");
     }
   }
@@ -444,6 +450,7 @@
       await endControlGesture("Camera centered");
     } catch (error) {
       setControlStatus(`Center blocked: ${String(error)}`);
+      window.HomebodyNotifications?.show(`Camera movement: ${error.message || error}`, { id: "camera-movement", kind: "error" });
       await endControlGesture("Center stopped");
     }
   }
@@ -470,6 +477,7 @@
       window.setTimeout(() => { void endControlGesture("Keyboard movement complete"); }, 400);
     } catch (error) {
       setControlStatus(`Keyboard movement blocked: ${String(error)}`);
+      window.HomebodyNotifications?.show(`Camera movement: ${error.message || error}`, { id: "camera-movement", kind: "error" });
       await endControlGesture("Keyboard movement blocked");
     }
   }
@@ -481,6 +489,7 @@
       setControlStatus("Movement stopped");
     } catch (error) {
       setControlStatus(`Stop error: ${String(error)}`);
+      window.HomebodyNotifications?.show(`Camera movement: ${error.message || error}`, { id: "camera-movement", kind: "error" });
     }
   }
 

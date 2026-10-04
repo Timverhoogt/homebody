@@ -202,19 +202,23 @@ $("local-vision-test-button").addEventListener("click", async () => {
     message.textContent = body.model_listed
       ? `Connected. ${body.model} is available.`
       : `Connected, but ${body.model} is not listed. Available: ${(body.models || []).join(", ") || "none"}.`;
-    message.className = body.model_listed ? "message ok" : "message error";
+    notifyFeedback(message, body.model_listed ? "ok" : "error");
   } catch (error) {
     message.textContent = String(error.message || error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     button.disabled = false;
   }
 });
 
 let agentSetupTimer = null;
+let previousSetupState = null;
 
 function describeAgentSetup(status) {
   const message = $("agent-setup-status");
+  const changed = previousSetupState !== status.state;
+  const wasWaiting = previousSetupState === "waiting";
+  previousSetupState = status.state;
   const waiting = status.state === "waiting";
   $("agent-setup-cancel").hidden = !waiting;
   if (!waiting && agentSetupTimer) {
@@ -228,6 +232,7 @@ function describeAgentSetup(status) {
   } else if (status.state === "paired") {
     message.textContent = `Connected to ${status.agent_name || status.agent} at ${status.bridge_url}. Say "Hey Homebody" to talk.`;
     message.className = "message ok";
+    if (changed && wasWaiting) notifyFeedback(message, "ok");
     $("agent-setup-message-row").hidden = true;
     $("agent-setup-copy-row").hidden = true;
     loaded = false;  // let the next status refresh show the new bridge settings
@@ -236,6 +241,7 @@ function describeAgentSetup(status) {
       ? "Setup stopped after too many wrong codes. Create a new message."
       : "The setup message expired. Create a new one.";
     message.className = "message error";
+    if (changed && wasWaiting) notifyFeedback(message, "error");
   } else if (status.state === "cancelled") {
     message.textContent = "Setup cancelled.";
     message.className = "message";
@@ -281,7 +287,7 @@ $("agent-setup-button").addEventListener("click", async () => {
     watchAgentSetup();
   } catch (error) {
     message.textContent = String(error.message || error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     button.disabled = false;
   }
@@ -313,7 +319,7 @@ $("agent-setup-cancel").addEventListener("click", async () => {
     describeAgentSetup(body);
   } catch (error) {
     $("agent-setup-status").textContent = String(error.message || error);
-    $("agent-setup-status").className = "message error";
+    notifyFeedback($("agent-setup-status"), "error");
   }
 });
 
@@ -397,7 +403,7 @@ function renderOauthPending(pending, enabled) {
           $("mcp-message").textContent = label === "Approve"
             ? "Approved. Press Continue on the agent's sign-in page."
             : "Denied. The agent cannot use this request.";
-          $("mcp-message").className = "message ok";
+          notifyFeedback($("mcp-message"), "ok");
         });
         item.append(" ", button);
       });
@@ -422,7 +428,7 @@ async function mcpTokenAction(path, pendingText, extra = {}) {
     return body;
   } catch (error) {
     message.textContent = String(error.message || error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
     return null;
   } finally {
     mcpButtons.forEach((id) => { $(id).disabled = false; });
@@ -437,7 +443,7 @@ $("mcp-token-button").addEventListener("click", async () => {
   $("mcp-token-row").hidden = false;
   $("mcp-token").select();
   $("mcp-message").textContent = "Token created. Copy it now; it will not be shown again.";
-  $("mcp-message").className = "message ok";
+  notifyFeedback($("mcp-message"), "ok");
 });
 
 $("mcp-revoke-button").addEventListener("click", async () => {
@@ -447,7 +453,7 @@ $("mcp-revoke-button").addEventListener("click", async () => {
   $("mcp-token").value = "";
   $("mcp-token-row").hidden = true;
   $("mcp-message").textContent = "Token revoked. No agent can reach Reachy until you create a new one.";
-  $("mcp-message").className = "message ok";
+  notifyFeedback($("mcp-message"), "ok");
 });
 
 $("mcp-oauth-disconnect-button").addEventListener("click", async () => {
@@ -456,7 +462,7 @@ $("mcp-oauth-disconnect-button").addEventListener("click", async () => {
   if (!body) return;
   renderOauthAgents(body, true);
   $("mcp-message").textContent = "All hosted agents are disconnected.";
-  $("mcp-message").className = "message ok";
+  notifyFeedback($("mcp-message"), "ok");
 });
 
 refreshMcpStatus();
@@ -473,6 +479,7 @@ $("local-vision-ask").addEventListener("submit", async (event) => {
   button.disabled = true;
   answer.textContent = "Looking…";
   answer.classList.remove("error");
+  window.HomebodyNotifications.show("Local vision: answering your question…", { id: "vision-question", kind: "pending" });
   try {
     // The key is optional: an owner session authorises the request without it.
     const key = $("local-vision-key").value.trim();
@@ -485,10 +492,12 @@ $("local-vision-ask").addEventListener("submit", async (event) => {
     }, 90000);
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    window.HomebodyNotifications.show("Local vision: answer ready below the camera.", { id: "vision-question", kind: "ok" });
     answer.textContent = `${body.answer} (${body.model}, ${(body.latency_ms / 1000).toFixed(1)} s, on your hardware)`;
   } catch (error) {
     answer.textContent = String(error.message || error);
     answer.classList.add("error");
+    window.HomebodyNotifications.show(`Local vision: ${answer.textContent}`, { id: "vision-question", kind: "error" });
   } finally {
     button.disabled = false;
   }
@@ -632,7 +641,8 @@ registerPwa();
 function setMessage(text, kind = "") {
   const el = $("form-message");
   el.textContent = text;
-  el.className = `message ${kind}`;
+  if (kind) notifyFeedback(el, kind);
+  else el.className = "message";
 }
 
 function fillConfig(config) {
@@ -765,6 +775,7 @@ function updateStatus(payload) {
   const kidsActive = Boolean(kidsMode.active);
   const kidsCameraActive = Boolean(kidsMode.camera_active);
   const kidsLocked = Boolean(kidsMode.locked);
+  window.HomebodyNotifications.setSuppressed("kids", kidsLocked);
   const agent = runtime.agent || {};
   const agentProfile = agent.profile || "conversation";
   agentProfileActive = agentProfile === "agent";
@@ -1371,10 +1382,10 @@ async function updatePresenceSettings() {
     $("presence-message").textContent = $("presence-enabled").checked
       ? "Presence is ready for trusted local signals."
       : "Proactive Presence is off.";
-    $("presence-message").className = "message ok";
+    notifyFeedback($("presence-message"), "ok");
   } catch (error) {
     $("presence-message").textContent = String(error);
-    $("presence-message").className = "message error";
+    notifyFeedback($("presence-message"), "error");
   } finally {
     presenceRequestPending = false;
     await refreshStatus();
@@ -1412,10 +1423,10 @@ async function updateInitiativeSettings() {
         ? "Initiative is active. Contextual offers may ask one yes/no question."
         : "Initiative eligibility is active. Contextual offers remain off.")
       : "Initiative policy is off.";
-    $("initiative-message").className = "message ok";
+    notifyFeedback($("initiative-message"), "ok");
   } catch (error) {
     $("initiative-message").textContent = String(error);
-    $("initiative-message").className = "message error";
+    notifyFeedback($("initiative-message"), "error");
   } finally {
     initiativeRequestPending = false;
     await refreshStatus();
@@ -1447,10 +1458,10 @@ async function respondToContextualOffer(responseValue) {
       no: "Declined. Reachy will offer this kind of help less often.",
       later: "Snoozed. Reachy will wait a few hours before offering this kind of help again.",
     }[responseValue];
-    $("initiative-message").className = "message ok";
+    notifyFeedback($("initiative-message"), "ok");
   } catch (error) {
     $("initiative-message").textContent = String(error);
-    $("initiative-message").className = "message error";
+    notifyFeedback($("initiative-message"), "error");
   } finally {
     initiativeRequestPending = false;
     await refreshStatus();
@@ -1517,10 +1528,10 @@ async function updateInitiativePreferences(path, payload, successMessage) {
     });
     if (!response.ok) throw new Error(await responseDetail(response));
     $("initiative-message").textContent = successMessage;
-    $("initiative-message").className = "message ok";
+    notifyFeedback($("initiative-message"), "ok");
   } catch (error) {
     $("initiative-message").textContent = `Could not update learned preferences: ${error.message || error}`;
-    $("initiative-message").className = "message error";
+    notifyFeedback($("initiative-message"), "error");
   } finally {
     initiativeRequestPending = false;
     initiativePreferencesSignature = "";
@@ -1573,10 +1584,10 @@ async function updatePresentationSettings() {
     $("presentation-message").textContent = $("shared-physical-context-enabled").checked
       ? "Shared physical context is ready. Start remains an explicit action."
       : "Shared physical context is off.";
-    $("presentation-message").className = "message ok";
+    notifyFeedback($("presentation-message"), "ok");
   } catch (error) {
     $("presentation-message").textContent = `Could not update presentation settings: ${error.message}`;
-    $("presentation-message").className = "message error";
+    notifyFeedback($("presentation-message"), "error");
   } finally {
     presentationRequestPending = false;
     await refreshStatus();
@@ -1600,10 +1611,10 @@ async function setPresentationWindow(active) {
     $("presentation-message").textContent = active
       ? "Local presentation window active. Hold the item or text steady in the center of Reachy's view."
       : "Presentation window stopped; ephemeral visual features were cleared.";
-    $("presentation-message").className = "message ok";
+    notifyFeedback($("presentation-message"), "ok");
   } catch (error) {
     $("presentation-message").textContent = `Presentation window failed: ${error.message}`;
-    $("presentation-message").className = "message error";
+    notifyFeedback($("presentation-message"), "error");
   } finally {
     presentationRequestPending = false;
     await refreshStatus();
@@ -1719,7 +1730,7 @@ $("kids-start-button").addEventListener("click", async () => {
   const message = $("kids-message");
   if (profile.activity === "ispy" && !profile.camera_consent) {
     message.textContent = "Allow the narrow camera search for this I Spy start.";
-    message.className = "message error";
+    notifyFeedback(message, "error");
     $("kids-ispy-camera-consent").focus();
     return;
   }
@@ -1739,10 +1750,10 @@ $("kids-start-button").addEventListener("click", async () => {
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     message.textContent = "Kids Mode is active. Reachy is giving the child-safe greeting now.";
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     kidsRequestPending = false;
     await refreshStatus();
@@ -1759,10 +1770,10 @@ $("kids-stop-button").addEventListener("click", async () => {
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     message.textContent = "Kids Mode ended. Reachy is safely folded in Standby.";
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     kidsRequestPending = false;
     await refreshStatus();
@@ -1793,7 +1804,7 @@ $("announcement-send").addEventListener("click", async () => {
   const message = $("announcement-message");
   if (!text) {
     message.textContent = "Enter announcement text first.";
-    message.className = "message error";
+    notifyFeedback(message, "error");
     announcementText.focus();
     return;
   }
@@ -1820,12 +1831,12 @@ $("announcement-send").addEventListener("click", async () => {
     message.textContent = body.queue_depth > 1
       ? `Queued behind ${body.queue_depth - 1} announcement${body.queue_depth === 2 ? "" : "s"}.`
       : "Announcement accepted. Reachy is preparing to speak.";
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
     announcementText.value = "";
     announcementText.dispatchEvent(new Event("input"));
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     announcementRequestPending = false;
     await refreshStatus();
@@ -1847,10 +1858,10 @@ $("announcement-stop").addEventListener("click", async () => {
     message.textContent = body.active_cancelled
       ? `Announcement stopped${body.queued_cleared ? ` and ${body.queued_cleared} queued cleared` : ""}.`
       : `${body.queued_cleared} queued announcement${body.queued_cleared === 1 ? "" : "s"} cleared.`;
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     await refreshStatus();
   }
@@ -1871,10 +1882,10 @@ $("camera-test-button").addEventListener("click", async () => {
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     message.textContent = `Camera ready: ${body.bytes} byte JPEG captured locally`;
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     button.disabled = false;
   }
@@ -2009,11 +2020,11 @@ async function bluetoothCommand(path, payload, pendingText) {
     renderBluetooth(body);
     if (body.last_error) throw new Error(body.last_error);
     message.textContent = "Bluetooth controller settings updated.";
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     await refreshBluetooth();
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   }
 }
 
@@ -2156,12 +2167,12 @@ async function saveGpioSettings() {
     renderGpio(body);
     if (body.last_error) throw new Error(body.last_error);
     message.textContent = payload.enabled ? "Physical buttons are on." : "Physical buttons are off.";
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     gpioFormDirty = false;
     await refreshGpio();
     message.textContent = String(error.message || error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   }
 }
 
@@ -2192,10 +2203,10 @@ async function sendPrecisionRobotAction(axis, delta) {
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     message.textContent = `${isCenter ? axis.replace("_", " ") : `${axis} ${delta > 0 ? "+" : ""}${delta}`} started · Reachy is ${body.power_mode}`;
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     manualActionPending = false;
     await refreshStatus();
@@ -2220,10 +2231,10 @@ async function sendManualRobotAction(action, value) {
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     message.textContent = `${action === "look" ? "Look" : action} ${value} started · Reachy is ${body.power_mode}`;
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     manualActionPending = false;
     await refreshStatus();
@@ -2288,10 +2299,10 @@ $("robot-stop-button").addEventListener("click", async () => {
         : body.queued_cancelled
           ? `Cleared ${body.queued_cancelled} queued movement${body.queued_cancelled === 1 ? "" : "s"}`
           : "Robot is already stopped";
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     button.disabled = false;
     await refreshStatus();
@@ -2303,14 +2314,14 @@ async function previewAgentRun() {
   const goal = $("agent-run-goal").value.trim();
   if (!goal) {
     $("agent-message").textContent = "Enter a concrete goal before previewing a plan.";
-    $("agent-message").className = "message error";
+    notifyFeedback($("agent-message"), "error");
     return;
   }
   agentRunRequestPending = true;
   renderAgentRun();
   const message = $("agent-message");
   message.textContent = "Creating an exact bounded plan; nothing is running yet…";
-  message.className = "message";
+  notifyFeedback(message, "pending");
   try {
     const response = await fetch("/api/agent/run/preview", {
       method: "POST",
@@ -2323,10 +2334,10 @@ async function previewAgentRun() {
     agentRunId = String(body.run.run_id || "");
     window.sessionStorage.setItem("homebody-agent-run-id", agentRunId);
     message.textContent = "Plan ready. Review every step and exact argument, then press Start.";
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     agentRunRequestPending = false;
     renderAgentRun();
@@ -2346,7 +2357,7 @@ async function sendAgentRunAction(action, stepId = "") {
     approve: "Applying one exact phone approval…",
   };
   message.textContent = labels[action] || "Updating Agent run…";
-  message.className = "message";
+  notifyFeedback(message, "pending");
   try {
     const response = await fetch(`/api/agent/run/${action}`, {
       method: "POST",
@@ -2359,10 +2370,10 @@ async function sendAgentRunAction(action, stepId = "") {
     message.textContent = action === "approve"
       ? "Exact step approved; the bounded run will continue until its next boundary."
       : `Agent run ${String(body.run.status || action).replaceAll("_", " ")}.`;
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     agentRunRequestPending = false;
     renderAgentRun();
@@ -2412,10 +2423,10 @@ async function setAgentProfile(profile) {
     message.textContent = profile === "agent"
       ? "Agent profile active. Reversible owner tools are available; consequential actions pause for exact phone approval."
       : "Conversation profile active.";
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     agentRequestPending = false;
     await refreshStatus();
@@ -2438,12 +2449,12 @@ $("agent-approve-button").addEventListener("click", async () => {
     const body = await response.json();
     if (!response.ok || body.verified !== true) throw new Error(body.detail || `HTTP ${response.status}`);
     message.textContent = "Exact action completed and verified.";
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
     pendingAgentApproval = null;
     $("agent-approval-sheet").hidden = true;
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     agentRequestPending = false;
     await refreshStatus();
@@ -2459,10 +2470,10 @@ $("agent-stop-button").addEventListener("click", async () => {
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     message.textContent = "Agent work stopped; pending approvals and late results are invalid.";
-    message.className = "message ok";
+    notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);
-    message.className = "message error";
+    notifyFeedback(message, "error");
   } finally {
     agentRequestPending = false;
     await refreshStatus();
@@ -2493,25 +2504,31 @@ $("camera-wake-control").addEventListener("click", async () => {
     await refreshStatus();
     $("camera-live-start").click();
   } catch (error) {
-    message.textContent = String(error.message || error); message.className = "message error";
+    message.textContent = String(error.message || error); notifyFeedback(message, "error");
   } finally { button.disabled = false; }
 });
 
-let powerToastTimer;
+// One operation ID updates progress in place instead of overwriting unrelated notices.
 function showPowerToast(text, kind = "pending") {
-  let toast = $("power-toast");
-  if (!toast) {
-    toast = document.createElement("div");
-    toast.id = "power-toast";
-    toast.setAttribute("role", "status");
-    toast.setAttribute("aria-live", "polite");
-    document.body.appendChild(toast);
-  }
-  clearTimeout(powerToastTimer);
-  toast.className = `power-toast ${kind}`;
-  toast.textContent = text;
-  toast.hidden = false;
-  if (kind !== "pending") powerToastTimer = setTimeout(() => { toast.hidden = true; }, kind === "error" ? 15000 : 6000);
+  window.HomebodyNotifications.show(text, { id: "power-transition", kind });
+}
+
+// Keep details at the control; surface action outcomes consistently across tabs.
+function notifyFeedback(message, kind) {
+  message.className = `message ${kind}`;
+  const labels = {
+    "form-message": "Settings", "agent-message": "Agent", "kids-message": "Kids Mode",
+    "announcement-message": "Announcement", "robot-message": "Robot",
+    "presence-message": "Presence", "initiative-message": "Initiative",
+    "presentation-message": "Presentation", "bluetooth-message": "Controller",
+    "gpio-message": "Buttons", "camera-message": "Camera",
+    "agent-setup-status": "Agent setup", "local-vision-message": "Local vision", "mcp-message": "Agent access",
+  };
+  // Fast motor commands remain quiet on success. Never toast polling/telemetry.
+  if (!labels[message.id] || (message.id === "robot-message" && kind !== "error")) return;
+  window.HomebodyNotifications.show(`${labels[message.id]}: ${message.textContent}`, {
+    id: `feedback-${message.id}`, kind,
+  });
 }
 
 async function setPowerMode(mode, durationMinutes = 60, message = $("power-message")) {
@@ -2596,6 +2613,7 @@ async function responseDetail(response) {
 function setPowerMessage(text, kind) {
   $("power-message").textContent = text;
   $("power-message").className = `message ${kind}`;
+  window.HomebodyNotifications.show(text, { id: "app-lifecycle", kind });
 }
 
 $("app-off-button").addEventListener("click", async () => {
