@@ -51,7 +51,11 @@ def test_desktop_hosts_offer_no_gpio_controller_or_remote_power_off(system: str,
     assert info.accelerated is True
 
 
-def test_generic_linux_pc_gets_controller_but_not_remote_power_off() -> None:
+def test_generic_linux_pc_gets_controller_but_not_remote_power_off(monkeypatch) -> None:
+    from pathlib import Path
+
+    original_exists = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda p: False if str(p) == "/etc/nv_tegra_release" else original_exists(p))
     info = detect_host(system="Linux", model="", gpio_chips=[], providers=["CPUExecutionProvider"])
 
     assert info.kind == "linux"

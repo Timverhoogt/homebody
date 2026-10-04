@@ -269,9 +269,17 @@ def interpolate_head_pose(start: object, target: object, ratio: float) -> object
 
 
 def _default_library_factory() -> object:
+    from huggingface_hub import snapshot_download
+    from huggingface_hub.errors import LocalEntryNotFoundError
     from reachy_mini.motion.recorded_move import RecordedMoves
 
-    return RecordedMoves("pollen-robotics/reachy-mini-emotions-library")
+    dataset = "pollen-robotics/reachy-mini-emotions-library"
+    # This public dataset must not inherit an expired robot OAuth login.
+    try:
+        snapshot_download(dataset, repo_type="dataset", token=False, local_files_only=True)
+    except LocalEntryNotFoundError:
+        snapshot_download(dataset, repo_type="dataset", token=False)
+    return RecordedMoves(dataset)
 
 
 def completed_robot_tool_call(kind: str, payload: dict[str, object]) -> RobotToolCall | None:

@@ -1012,19 +1012,31 @@ class Homebody(ReachyMiniApp):
                 config: AppConfig = load_config()
                 if update is not None:
                     config = merge_config(config, update.model_dump(exclude_none=True))
+                if not config.configured:
+                    raise HTTPException(
+                        status_code=409, detail="Connect your agent first, or enter its bridge URL and API key."
+                    )
                 client = HermesBridgeClient(config)
                 try:
                     health = client.health()
                 finally:
                     client.close()
                 return {"ok": True, "health": health}
+            except HTTPException:
+                raise
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
 
         @self.settings_app.get("/api/models")
         def models() -> dict[str, object]:
+            config = load_config()
+            if not config.configured:
+                return {
+                    "configured": False, "detail": "Connect your agent to load models and voices.",
+                    "models": [], "health": {},
+                }
             try:
-                client = HermesBridgeClient(load_config())
+                client = HermesBridgeClient(config)
                 try:
                     return {"models": client.models(), "health": client.health()}
                 finally:
@@ -1034,8 +1046,14 @@ class Homebody(ReachyMiniApp):
 
         @self.settings_app.get("/api/voice-options")
         def voice_options() -> dict[str, object]:
+            config = load_config()
+            if not config.configured:
+                return {
+                    "configured": False, "detail": "Connect your agent to load models and voices.",
+                    "stt": [], "tts": [],
+                }
             try:
-                client = HermesBridgeClient(load_config())
+                client = HermesBridgeClient(config)
                 try:
                     return client.voice_options()
                 finally:
