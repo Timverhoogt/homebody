@@ -9,6 +9,10 @@ const APP_SHELL = [
   "/static/icon-192.png",
   "/static/icon-512.png",
   "/static/icon-maskable-512.png",
+  "/static/InstrumentSerif-Regular.woff2",
+  "/static/InstrumentSerif-Italic.woff2",
+  "/static/DMMono-Regular.woff2",
+  "/static/DMMono-Medium.woff2",
 ];
 
 self.addEventListener("install", (event) => {

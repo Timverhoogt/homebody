@@ -689,14 +689,58 @@ function renderHost(hostInfo) {
   document.querySelector(".gpio-card").hidden = !hostInfo.gpio_supported;
 }
 
+// The hero reads the runtime state as a sentence; the accent lands on the last word.
+const STATE_HEADLINES = {
+  standby: ["Standing", "by."],
+  awake: ["Awake", "."],
+  waiting_for_wake_word: ["Waiting for", "a wake word."],
+  listening: ["Listening", "…"],
+  looking: ["Taking", "a look."],
+  thinking: ["Thinking", "…"],
+  speaking: ["Speaking", "."],
+  meeting: ["In a", "meeting."],
+  sleep: ["Fast", "asleep."],
+  sleeping: ["Fast", "asleep."],
+  starting: ["Waking", "up…"],
+  stopping: ["Winding", "down."],
+  shutting_down: ["Shutting", "down."],
+  error: ["Something's", "wrong."],
+  configuration_error: ["Needs", "setup."],
+  disconnected: ["Out of", "reach."],
+};
+
+function renderStateHeadline(state) {
+  const headline = $("runtime-state");
+  headline.replaceChildren();
+  const parts = STATE_HEADLINES[state];
+  if (!parts) {
+    const words = String(state || "unknown").replaceAll("_", " ");
+    headline.textContent = `${words.charAt(0).toUpperCase()}${words.slice(1)}.`;
+    return;
+  }
+  const accent = document.createElement("em");
+  accent.textContent = parts[1];
+  headline.append(`${parts[0]} `, accent);
+}
+
+function renderTelemetry(entries) {
+  Object.entries(entries).forEach(([key, [level, text]]) => {
+    const name = key === "camera" ? "camera" : key;
+    $(`tele-${name}`).textContent = text;
+    $(`tele-${name}-led`).className = level;
+  });
+}
+
 function updateStatus(payload) {
   renderHost(payload.host);
   const config = payload.config || {};
   $("local-vision-ask").hidden = !(config.local_vision_enabled && config.camera_enabled);
   const runtime = payload.runtime || {};
   const state = runtime.state || "unknown";
-  $("runtime-state").textContent = state.replaceAll("_", " ");
+  renderStateHeadline(state);
   $("runtime-detail").textContent = runtime.detail || "";
+  // The hero face reads this to open, half-close or shut Reachy's eyes.
+  document.body.dataset.runtimeState = state;
   $("last-transcript").textContent = runtime.transcript || "—";
   $("last-response").textContent = runtime.response_preview || "—";
   const powerMode = runtime.power_mode || "unknown";
@@ -884,6 +928,32 @@ function updateStatus(payload) {
     $("motor-state-live").textContent = motorAnnouncement;
     lastMotorAnnouncement = motorAnnouncement;
   }
+  renderTelemetry({
+    mic: kidsActive
+      ? ["on", "Kids session"]
+      : ["meeting", "sleep"].includes(powerMode)
+        ? ["off", "Off"]
+        : powerMode === "awake"
+          ? ["on", ["listening", "thinking", "speaking"].includes(state) ? "Open" : "Listening"]
+          : ["warn", "Wake word only"],
+    camera: kidsCameraActive
+      ? ["on", "I Spy search"]
+      : config.camera_enabled || config.camera_feed_enabled
+        ? ["warn", config.camera_feed_enabled ? "Local viewer allowed" : "On demand only"]
+        : ["off", "Off"],
+    motors: robotBusy
+      ? ["on", "Moving"]
+      : motorsEnabled === true
+        ? ["on", headSafelyFolded ? "Torque on · folded" : "Torque on"]
+        : motorsEnabled === false
+          ? ["off", headSafelyFolded ? "Torque released" : "Off · pose unconfirmed"]
+          : ["off", "Unknown"],
+    agent: kidsActive
+      ? ["warn", "Locked out"]
+      : agentProfile === "agent"
+        ? ["on", "Agent session"]
+        : ["warn", "Conversation only"],
+  });
   document.querySelectorAll("[data-power]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.power === powerMode));
     button.disabled = kidsActive || powerTransitionPending || manualActionPending;
@@ -1120,8 +1190,10 @@ async function refreshStatus() {
     if (window.ReachyCamera?.isActive()) {
       window.ReachyCamera.stop("Camera stopped because Hermes status is unavailable.");
     }
-    $("runtime-state").textContent = "Disconnected";
+    renderStateHeadline("disconnected");
     $("runtime-detail").textContent = String(error);
+    document.body.dataset.runtimeState = "disconnected";
+    renderTelemetry({ mic: ["off", "Unknown"], camera: ["off", "Unknown"], motors: ["off", "Unknown"], agent: ["off", "Unreachable"] });
     $("status-dot").className = "status-dot error";
     $("robot-mode-badge").textContent = "offline";
     $("motor-state").textContent = "Motor state unavailable";

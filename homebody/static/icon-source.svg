@@ -1,25 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
   <title id="title">Homebody</title>
-  <desc id="desc">A friendly Reachy robot face in a glowing purple and orange orb.</desc>
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#7b61ff"/>
-      <stop offset="1" stop-color="#ff7a45"/>
-    </linearGradient>
-    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="14"/>
-    </filter>
-  </defs>
-  <rect width="512" height="512" rx="112" fill="#17121f"/>
-  <circle cx="256" cy="256" r="174" fill="url(#bg)" opacity=".28" filter="url(#glow)"/>
-  <circle cx="256" cy="256" r="166" fill="url(#bg)"/>
-  <path d="M256 102v54" stroke="#fff8f1" stroke-width="20" stroke-linecap="round"/>
-  <circle cx="256" cy="91" r="18" fill="#fff8f1"/>
-  <rect x="130" y="158" width="252" height="211" rx="88" fill="#fff8f1"/>
-  <rect x="158" y="196" width="196" height="116" rx="54" fill="#17121f"/>
-  <circle cx="213" cy="253" r="18" fill="#ff9a68"/>
-  <circle cx="299" cy="253" r="18" fill="#9a89ff"/>
-  <path d="M209 334c25 20 69 20 94 0" fill="none" stroke="#17121f" stroke-width="16" stroke-linecap="round"/>
-  <path d="M128 225l-31 20m287-20 31 20" fill="none" stroke="#fff8f1" stroke-width="18" stroke-linecap="round"/>
-  <path d="M205 399h102" stroke="#fff8f1" stroke-width="20" stroke-linecap="round"/>
+  <desc id="desc">A friendly Reachy robot face on an orange tile.</desc>
+  <rect width="512" height="512" rx="112" fill="#ff6b2c"/>
+  <g transform="translate(96 76) scale(2)">
+    <path d="M54 50 40 18M106 50 120 18" fill="none" stroke="#f4ede1" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="39" cy="15" r="7" fill="#f4ede1"/><circle cx="121" cy="15" r="7" fill="#f4ede1"/>
+    <rect x="26" y="44" width="108" height="92" rx="40" fill="#f4ede1"/>
+    <rect x="40" y="66" width="80" height="46" rx="23" fill="#17140f"/>
+    <circle cx="64" cy="89" r="8.5" fill="#ff6b2c"/><circle cx="96" cy="89" r="8.5" fill="#8c7bff"/>
+    <path d="M58 150h44" stroke="#f4ede1" stroke-width="8" stroke-linecap="round" opacity=".75"/>
+  </g>
 </svg>
