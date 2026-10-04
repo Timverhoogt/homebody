@@ -9,7 +9,7 @@ from test_owner_auth import ORIGIN, pair
 
 from homebody.config import AppConfig
 from homebody.main import Homebody
-from homebody.owner_auth import MACHINE_ROUTES
+from homebody.owner_auth import COOKIE, MACHINE_ROUTES
 
 
 @pytest.fixture
@@ -120,6 +120,12 @@ def test_agent_checks_setup_status_without_owner_pairing(application):
     }
     assert pair(client, code).status_code == 200
     assert "10.0.0.5" in client.get("/api/agent-setup/status").json()["last_error"]
+    # An Owner cookie only counts through the private HTTPS address.
+    stolen = {"Cookie": f"{COOKIE}={client.cookies.get(COOKIE)}"}
+    assert "last_error" not in guest.get("/api/agent-setup/status", headers=stolen).json()
+    # Other owner-public routes keep the address gate.
+    assert guest.get("/api/status").status_code == 403
+    assert guest.post("/api/owner/pair", json={"code": code}, headers={"Origin": ORIGIN}).status_code == 403
 
 
 def test_kids_cannot_be_bypassed_and_stop_stays_accessible(application):
