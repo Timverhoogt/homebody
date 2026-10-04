@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -237,6 +238,11 @@ def build(monkeypatch: pytest.MonkeyPatch, config: AppConfig, bridge: httpx.Clie
     return app, TestClient(app.settings_app, base_url="http://192.168.1.50:8042"), stored
 
 
+def as_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests bypass the Owner boundary (see conftest); make handlers see a paired Owner."""
+    monkeypatch.setattr(main_module, "owner_authenticated", SimpleNamespace(get=lambda: True))
+
+
 def pair(client: TestClient, code: str, **overrides: Any) -> httpx.Response:
     body = {"code": code, "backend": "hermes", "bridge_url": BRIDGE, "api_key": KEY, "agent_name": "Hermes on box"}
     body.update(overrides)
@@ -271,6 +277,9 @@ def test_full_pairing_saves_the_bridge_only_after_verifying_it(monkeypatch: pyte
     assert answer["mcp"]["url"] == "http://192.168.1.50:8042/mcp" and token_matches(token, saved.mcp_token_sha256)
 
     status = client.get("/api/agent-setup/status").json()
+    assert status["state"] == "paired" and "bridge_url" not in status and "agent_name" not in status
+    as_owner(monkeypatch)
+    status = client.get("/api/agent-setup/status").json()
     assert status["state"] == "paired" and status["bridge_url"] == BRIDGE and status["agent_name"] == "Hermes on box"
     assert pair(client, started["code"]).status_code == 410  # single use
 
@@ -283,6 +292,9 @@ def test_a_failing_bridge_keeps_the_code_and_saves_nothing(monkeypatch: pytest.M
     failed = pair(client, code)
     assert failed.status_code == 424 and "broad host tools" in failed.json()["error"]
     assert len(stored) == 1
+    status = client.get("/api/agent-setup/status").json()
+    assert status["state"] == "waiting" and "last_error" not in status
+    as_owner(monkeypatch)
     status = client.get("/api/agent-setup/status").json()
     assert status["state"] == "waiting" and "broad host tools" in status["last_error"]
 

@@ -30,7 +30,12 @@ def test_every_registered_private_route_rejects_guest(application):
     for route in robot.settings_app.routes:
         path = getattr(route, "path", "")
         for method in getattr(route, "methods", ()):
-            if not path.startswith("/api/") or path in {"/api/owner/session", "/api/owner/pair", "/api/status"}:
+            if not path.startswith("/api/") or path in {
+                "/api/owner/session",
+                "/api/owner/pair",
+                "/api/status",
+                "/api/agent-setup/status",
+            }:
                 continue
             if (method, path) in MACHINE_ROUTES:
                 continue
@@ -95,6 +100,25 @@ def test_owner_settings_without_old_key_and_no_runtime_side_effect(application, 
     assert client.post("/api/agent-setup/start", json={"backend": "hermes"}, headers=headers).status_code == 200
     # Paired owner no longer needs cosmetic adult headers, but actual runtime readiness remains mandatory.
     assert client.post("/api/camera-control/session", headers=headers).status_code == 409
+
+
+def test_agent_checks_setup_status_without_owner_pairing(application):
+    """The agent's machine is never Owner-paired; it sees the setup state but not the bridge or errors."""
+    robot, client, code = application
+    robot._agent_setup.start("hermes", mcp=True)
+    robot._agent_setup.record_error("bridge unreachable at http://10.0.0.5:8643")
+    guest = TestClient(robot.settings_app, base_url="http://100.64.27.89:8042")
+    status = guest.get("/api/agent-setup/status")
+    assert status.status_code == 200, status.text
+    assert status.json() == {
+        "state": "waiting",
+        "backend": "hermes",
+        "agent": "Hermes Agent",
+        "mcp": True,
+        "expires_in": status.json()["expires_in"],
+    }
+    assert pair(client, code).status_code == 200
+    assert "10.0.0.5" in client.get("/api/agent-setup/status").json()["last_error"]
 
 
 def test_kids_cannot_be_bypassed_and_stop_stays_accessible(application):
