@@ -43,6 +43,16 @@ try:
         validate_capability_arguments,
     )
     from companion.reachy_agent_runs import AgentRunManager, AgentRunValidationError
+    from companion.warm_agents import (
+        AgentSpec,
+        HermesAgentFactory,
+        WarmAgentBoundaryError,
+        WarmAgentBusy,
+        WarmAgentPool,
+        WarmAgentSettings,
+        WarmAgentTurnError,
+        WarmAgentUnavailable,
+    )
 except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.path.
     from agent_backends import (  # type: ignore[no-redef]
         OpenClawBackend,
@@ -61,6 +71,16 @@ except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.pa
         validate_capability_arguments,
     )
     from reachy_agent_runs import AgentRunManager, AgentRunValidationError  # type: ignore[no-redef]
+    from warm_agents import (  # type: ignore[no-redef]
+        AgentSpec,
+        HermesAgentFactory,
+        WarmAgentBoundaryError,
+        WarmAgentBusy,
+        WarmAgentPool,
+        WarmAgentSettings,
+        WarmAgentTurnError,
+        WarmAgentUnavailable,
+    )
 
 _LOGGER = logging.getLogger("hermes_reachy_bridge")
 _MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -74,6 +94,7 @@ _KIDS_LANGUAGES = frozenset({"en", "nl"})
 _KIDS_HISTORY_TTL_SECONDS = 2 * 60 * 60
 _KIDS_HISTORY_LIMIT = 64
 _KIDS_SESSION_ID_RE = re.compile(r"kids-[0-9a-f]{32}\Z")
+_WARM_SESSION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9:._-]{0,159}\Z")
 _KIDS_SPEECH_APPROVAL_TTL_SECONDS = 5 * 60
 _KIDS_SPEECH_APPROVAL_LIMIT = 256
 # Kids sessions last at most 60 minutes on Reachy; the bridge latch expires shortly after even
@@ -149,8 +170,43 @@ _ISPY_COLOUR_COPY = {
     },
 }
 _REACHY_PROHIBITED_TOOLS = frozenset(
-    {"terminal", "process", "execute_code", "read_file", "write_file", "search_files", "patch"}
+    {
+        "terminal",
+        "process",
+        "execute_code",
+        "read_file",
+        "write_file",
+        "search_files",
+        "patch",
+        # Indirect routes to the same power: sub-agents and scheduled jobs can request any toolset,
+        # skills written now run later in the owner's full agent, and raw browser/desktop control.
+        "delegate_task",
+        "cronjob",
+        "skill_manage",
+        "computer_use",
+        "browser_cdp",
+        "browser_console",
+    }
 )
+_TOOL_BOUNDARY_HINT = (
+    "disable them for the api_server platform of the Hermes profile Reachy uses, "
+    "e.g. `hermes -p reachy tools disable --platform api_server terminal file code_execution`"
+)
+
+
+def _enabled_hermes_tools(payload: object) -> set[str] | None:
+    """Enabled tool names from ``/v1/toolsets``: a bare list, or ``{"data": [...]}`` since Hermes 0.19."""
+    if isinstance(payload, dict):
+        payload = payload.get("data")
+    if not isinstance(payload, list):
+        return None
+    return {
+        str(tool)
+        for toolset in payload
+        if isinstance(toolset, dict) and toolset.get("enabled") is True
+        for tool in toolset.get("tools", [])
+        if isinstance(tool, str)
+    }
 _PRIVATE_INTENT_PATTERNS = {
     "get_home_status": re.compile(
         r"(?i)\b(home(?: assistant)?|smart[- ]?home|sensor|device|entity|temperature|humidity|"
@@ -748,6 +804,7 @@ class Bridge:
         backends: tuple[str, ...] = ("hermes",),
         openclaw: OpenClawConfig | None = None,
         llm: TextModelProvider | None = None,
+        warm_agents: WarmAgentPool | None = None,
     ) -> None:
         unknown = set(backends) - {"hermes", "openclaw"}
         if not backends or unknown:
@@ -783,6 +840,21 @@ class Bridge:
         )
         self._presence_last_occupied: bool | None = None
         self._presence_task: asyncio.Task[None] | None = None
+        # Opt-in warm Hermes agents for the pipeline and Realtime ask_hermes routes.
+        if warm_agents is None:
+            settings = WarmAgentSettings.from_env()
+            if not self.hermes_enabled:
+                settings = WarmAgentSettings()
+            warm_agents = WarmAgentPool(
+                HermesAgentFactory(
+                    ensure_imports=_ensure_hermes_imports,
+                    hermes_home=_hermes_home(profile),
+                    prohibited_tools=_REACHY_PROHIBITED_TOOLS,
+                    profile=profile,
+                ),
+                settings,
+            )
+        self.warm_agents = warm_agents
 
     def _issue_kids_speech_approval(self, session_id: str, text: str) -> str:
         """Create a short-lived, single-use capability for one exact moderated reply."""
@@ -818,6 +890,7 @@ class Bridge:
 
     async def start(self, app: web.Application) -> None:
         self.http = ClientSession(timeout=ClientTimeout(total=180, connect=10))
+        await self.warm_agents.start()
         if self._presence_entity_id and self._presence_url:
             self._presence_task = asyncio.create_task(
                 self._presence_loop(),
@@ -825,6 +898,7 @@ class Bridge:
             )
 
     async def stop(self, app: web.Application) -> None:
+        await self.warm_agents.close()
         presence_task = self._presence_task
         self._presence_task = None
         if presence_task is not None:
@@ -967,6 +1041,8 @@ class Bridge:
             raise web.HTTPBadRequest(text="Invalid Kids Mode session state") from exc
         if state == "active":
             self._mark_kids_live(session_id)
+            # No warm adult agent, with its conversation and memory scope, outlives a Kids start.
+            await self.warm_agents.evict(reason="kids")
         else:
             self._end_kids_live(session_id)
             self._kids_sessions.pop(session_id, None)
@@ -1018,7 +1094,15 @@ class Bridge:
                 hermes_ok = False
         backends: list[dict[str, object]] = []
         if self.hermes_enabled:
-            backends.append({"name": "hermes", "label": "Hermes Agent", "ok": hermes_ok})
+            hermes_entry: dict[str, object] = {"name": "hermes", "label": "Hermes Agent", "ok": hermes_ok}
+            if hermes_ok:
+                # A reachable Hermes that exposes broad tools would refuse every Reachy turn; say so here.
+                boundary_status, boundary_reason = await self._tool_boundary_problem()
+                if boundary_status:
+                    hermes_entry.update(ok=False, error=boundary_reason)
+            else:
+                hermes_entry["error"] = f"Hermes API server is not reachable at {self.hermes_url}"
+            backends.append(hermes_entry)
         if self.openclaw is not None:
             openclaw_health = (
                 await self.openclaw.health(self.http)
@@ -1054,6 +1138,10 @@ class Bridge:
                 "kids_ispy_vision": "local" if os.getenv("REACHY_ISPY_VISION_URL", "").strip() else "openai",
                 "kids_tts_streaming_available": bool(_resolve_secret("ELEVENLABS_API_KEY", self.profile)),
                 "realtime_model": "gpt-realtime-2.1",
+                "warm_agents": {
+                    "enabled": self.warm_agents.settings.enabled,
+                    "available": self.warm_agents.status()["available"],
+                },
                 **providers,
             }
         )
@@ -1135,31 +1223,34 @@ class Bridge:
             )
         return web.json_response(options)
 
-    async def _require_reachy_tool_boundary(self) -> None:
-        """Fail closed unless this Hermes API profile excludes broad host authority."""
+    async def _tool_boundary_problem(self) -> tuple[int, str]:
+        """``(0, "")`` when the Hermes API profile excludes broad host tools, else an HTTP status and reason."""
         if self.http is None:
-            raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
+            return 503, "Bridge HTTP client is not ready"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
             async with self.http.get(f"{self.hermes_url}/v1/toolsets", headers=headers) as response:
                 if response.status != 200:
                     raise RuntimeError("capability discovery failed")
                 payload = await response.json(content_type=None)
-        except web.HTTPException:
-            raise
-        except Exception as exc:
-            raise web.HTTPServiceUnavailable(text="Reachy capability boundary is unavailable") from exc
-        if not isinstance(payload, list):
-            raise web.HTTPServiceUnavailable(text="Reachy capability boundary is unavailable")
-        enabled_tools = {
-            str(tool)
-            for toolset in payload
-            if isinstance(toolset, dict) and toolset.get("enabled") is True
-            for tool in toolset.get("tools", [])
-            if isinstance(tool, str)
-        }
-        if enabled_tools & _REACHY_PROHIBITED_TOOLS:
+        except Exception:
+            return 503, "Reachy capability boundary is unavailable"
+        enabled_tools = _enabled_hermes_tools(payload)
+        if enabled_tools is None:
+            return 503, "Reachy capability boundary is unavailable"
+        broad = sorted(enabled_tools & _REACHY_PROHIBITED_TOOLS)
+        if broad:
+            return 403, f"Hermes exposes broad host tools to Reachy ({', '.join(broad)}); {_TOOL_BOUNDARY_HINT}"
+        return 0, ""
+
+    async def _require_reachy_tool_boundary(self) -> None:
+        """Fail closed unless this Hermes API profile excludes broad host authority."""
+        status, reason = await self._tool_boundary_problem()
+        if status == 403:
+            _LOGGER.warning("Blocked a Reachy request: %s", reason)
             raise web.HTTPForbidden(text="Reachy requests are blocked from broad host capabilities")
+        if status:
+            raise web.HTTPServiceUnavailable(text=reason)
 
     async def chat(self, request: web.Request) -> web.Response:
         self.require_auth(request)
@@ -1182,6 +1273,41 @@ class Bridge:
             status, body, content_type = await self.openclaw.chat(self.http, payload, session_id=session_id)
             return web.Response(status=status, body=body, content_type=content_type)
         await self._require_reachy_tool_boundary()
+        warm = self._warm_chat_request(request, payload)
+        if warm is not None:
+            spec, user_message = warm
+            try:
+                turn = await self.warm_agents.run_turn(spec, user_message)
+            except WarmAgentUnavailable as exc:
+                _LOGGER.info("Warm Hermes agent unavailable, using the API server: %s", exc)
+                self.warm_agents.record_fallback(spec.route)
+            except WarmAgentBusy as exc:
+                raise web.HTTPTooManyRequests(text=str(exc)) from exc
+            except WarmAgentBoundaryError as exc:
+                raise web.HTTPForbidden(text=str(exc)) from exc
+            except WarmAgentTurnError as exc:
+                raise web.HTTPBadGateway(text=str(exc)) from exc
+            else:
+                return web.json_response(
+                    {
+                        "id": f"chatcmpl-{secrets.token_hex(12)}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": str(payload.get("model") or ""),
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {"role": "assistant", "content": turn.text},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": turn.usage(),
+                    },
+                    headers={
+                        "X-Hermes-Session-Id": spec.session_id,
+                        "X-Reachy-Warm-Agent": "hit" if turn.warm else turn.rebuild_reason,
+                    },
+                )
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -1201,6 +1327,48 @@ class Bridge:
                 content_type=upstream.content_type or "application/json",
                 headers=response_headers,
             )
+
+    def _warm_chat_request(self, request: web.Request, payload: dict[str, Any]) -> tuple[AgentSpec, str] | None:
+        """Return the warm-agent turn for a plain Reachy pipeline request, or None to use HTTP.
+
+        Only the shape the Reachy app sends qualifies: the default model alias, system messages and
+        one final user message, all plain text, with a session id. Anything else keeps the API
+        server's full request handling.
+        """
+        if not self.warm_agents.accepts("pipeline", str(payload.get("model") or "")):
+            return None
+        if set(payload) - {"model", "messages", "stream"}:
+            return None
+        session_id = request.headers.get("X-Hermes-Session-Id", "").strip()
+        memory_scope = request.headers.get("X-Hermes-Session-Key", "").strip()
+        if not _WARM_SESSION_RE.fullmatch(session_id):
+            return None
+        if memory_scope and not _WARM_SESSION_RE.fullmatch(memory_scope):
+            return None
+        messages = payload.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return None
+        if not all(isinstance(item, dict) and isinstance(item.get("content"), str) for item in messages):
+            return None
+        *leading, last = messages
+        if last.get("role") != "user" or any(item.get("role") != "system" for item in leading):
+            return None
+        user_message = last["content"].strip()
+        if not user_message:
+            return None
+        system_prompt = "\n".join(item["content"] for item in leading).strip()
+        return AgentSpec("pipeline", session_id, system_prompt, memory_scope), user_message
+
+    async def warm_agents_status(self, request: web.Request) -> web.Response:
+        """Sanitized warm-agent state and per-route usage for the owner."""
+        self.require_auth(request)
+        return web.json_response(self.warm_agents.status(), headers={"Cache-Control": "no-store"})
+
+    async def warm_agents_evict(self, request: web.Request) -> web.Response:
+        """Close every warm agent now; the next turn on each route starts cold."""
+        self.require_auth(request)
+        evicted = await self.warm_agents.evict(reason="owner")
+        return web.json_response({"ok": True, "evicted": evicted}, headers={"Cache-Control": "no-store"})
 
     async def _moderation_flagged(self, text: str, openai_key: str) -> bool:
         """Fail closed when OpenAI moderation cannot establish a safe text boundary."""
@@ -1750,6 +1918,13 @@ class Bridge:
                 self.http, text, model=model, system_prompt=system_prompt, session_id=session_id
             )
         await self._require_reachy_tool_boundary()
+        if self.warm_agents.accepts("realtime", model) and _WARM_SESSION_RE.fullmatch(session_id):
+            spec = AgentSpec("realtime", session_id, system_prompt)
+            try:
+                return (await self.warm_agents.run_turn(spec, text)).text
+            except WarmAgentUnavailable as exc:
+                _LOGGER.info("Warm Hermes agent unavailable, using the API server: %s", exc)
+                self.warm_agents.record_fallback("realtime")
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -3038,6 +3213,7 @@ def create_app(
     backends: tuple[str, ...] = ("hermes",),
     openclaw: OpenClawConfig | None = None,
     llm: TextModelProvider | None = None,
+    warm_agents: WarmAgentPool | None = None,
 ) -> web.Application:
     bridge = Bridge(
         api_key=api_key,
@@ -3046,6 +3222,7 @@ def create_app(
         backends=backends,
         openclaw=openclaw,
         llm=llm,
+        warm_agents=warm_agents,
     )
     app = web.Application(
         client_max_size=_MAX_AUDIO_BYTES + 1024 * 1024,
@@ -3084,6 +3261,8 @@ def create_app(
     app.router.add_post("/v1/kids/speech/fallback", bridge.kids_speech_fallback)
     app.router.add_post("/v1/audio/transcriptions", bridge.transcribe)
     app.router.add_post("/v1/audio/speech", bridge.speech)
+    app.router.add_get("/v1/warm-agents", bridge.warm_agents_status)
+    app.router.add_delete("/v1/warm-agents", bridge.warm_agents_evict)
     return app
 
 

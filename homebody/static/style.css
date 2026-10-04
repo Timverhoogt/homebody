@@ -736,6 +736,9 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .initiative-preferences li[data-state="disabled"] { opacity: .7; }
 .initiative-preference-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; justify-content: space-between; }
 .initiative-preference-controls .compact { padding: .2rem .6rem; }
+.mcp-pending-list { display: grid; gap: 10px; margin: 8px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
+.mcp-pending-list li { line-height: 1.5; }
+.mcp-pending-list button { margin-top: 6px; padding: 8px 12px; min-height: 0; }
 
 /* Night: the same enclosure in dark, following the system setting. Displays stay a shade lighter than the enclosure. */
 @media (prefers-color-scheme: dark) {

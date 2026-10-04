@@ -156,16 +156,36 @@ These are deployment observations, not service-level guarantees. Hermes pipeline
 - License: Apache-2.0 with retained third-party notices.
 - GitHub is the source/release surface; the Hugging Face static Space is the public app page and mirrored app-discovery repository.
 
-## Deferred work
+## Next steps
 
-- Run the two-button GPIO hardware acceptance in `OPERATIONS.md` on the Reachy Pi.
-- Run EU-provider acceptance with live Cortecs and LLMrouter.eu keys: Agent Mode tool loop, Kids chat, I Spy selection and judging with JSON-schema output.
-- Run live MCP acceptance with Claude Code, Hermes Agent and OpenClaw on the home network, and with hosted agents (ChatGPT dots, Grok Bot) through an HTTPS tunnel using OAuth sign-in; record which vendors support dynamic client registration.
-- Run OpenClaw acceptance against a live Gateway: a dedicated tool-restricted `reachy` agent, pipeline and Realtime (`ask_openclaw`) conversations, session continuity, and the Hermes + OpenClaw side-by-side setup.
-- Run first-light acceptance on each 🧪/◐ setup in `docs/hardware-setups.md`: Reachy SDK smoke test and app start on a Jetson Orin Nano (JetPack 6, uv-managed Python 3.11+), then local vision with Ollama and TensorRT gesture detection; app acceptance on a Mac and a Windows PC driving a Lite.
-- Persist parent lock/session recovery policy across process restarts if the deployment requires crash continuity.
-- Add phrase-specific real-room acoustic acceptance recordings and tune per-keyword score/threshold only from measured false-positive/false-negative data.
-- Replace the raw watchdog TCP media probe with a WebSocket-aware check to remove benign handshake warnings.
+Updated 2026-10-03. Agent Mode 0.1–0.6 and warm Hermes agents have shipped; see `docs/plans/2026-07-19-agent-mode-roadmap.md` for the agent roadmap status.
+
+### Build
+
+- Agent Mode Phase 6, Maintenance 0.1: separate disabled-by-default toggle with phone plus admin PIN; sanitized diagnostics first, then allowlisted service restart, signed update with checksum verification, redacted support bundle and rollback. Test update, rollback and interrupted-update recovery on a non-production install. Never in Realtime schemas or Kids Mode.
 - Add local offline STT/TTS fallback for deployments that require operation without cloud providers.
-- Add route-specific warm Hermes-agent reuse with session serialization, cache signatures, lifecycle controls, and usage accounting.
+- Replace the raw watchdog TCP media probe with a WebSocket-aware check to remove benign handshake warnings.
+- Persist parent lock/session recovery policy across process restarts if the deployment requires crash continuity.
 - Expand simulated robot integration tests. GitHub Actions (`.github/workflows/ci.yml`) now runs lint, JavaScript syntax checks, the full suite with the Reachy SDK stubbed, and the package build. A CI image with the real Reachy SDK/GStreamer imports is still open.
+
+### Live acceptance
+
+- Run live acceptance of warm Hermes agents (`REACHY_HERMES_WARM_AGENTS=1`) against the deployed Hermes Agent release: confirm `/v1/warm-agents` reports available, and measure pipeline and `ask_hermes` latency warm versus the plain API server.
+- Run the Agent Mode physical and live gates on the reference Reachy: the roadmap's section 7 demonstration, Phase 3 camera and motion races on both units, and Agent 0.5 cancellation and restart checks.
+- Run EU-provider acceptance with live keys: `python tools/llm_provider_check.py --photo desk.jpg` once with Cortecs (start with `mistral-small-3.2-24b-instruct-2506`) and once with LLMrouter.eu, both with `OPENAI_API_KEY` set for Kids moderation. Record the working model names per router in `companion/README.md`. Keyless checks are done: endpoints, Cortecs `eu_native` and `json_schema` support per its API docs, and how each router reports a refused key.
+- Finish live MCP acceptance. Claude Code, the TypeScript and Python SDKs (bearer and OAuth) and `mcp-remote` (OAuth) are verified against a live server with a stand-in runtime; see `docs/agent-access-mcp.md`. Still open:
+  - run `tools/mcp_check.py --say … --emotion happy` against the real robot in Awake, Standby, Sleep and privacy mode;
+  - connect Hermes Agent and OpenClaw with their own model keys;
+  - connect ChatGPT dots and Grok Bot through an HTTPS tunnel with OAuth sign-in, and record which vendors support dynamic client registration.
+- Run agent-led setup (`docs/agent-setup.md`) with real agents and models: paste the Settings message to Hermes Agent and to OpenClaw on a computer next to the robot, approve the plan, and confirm voice works. The flow is verified with Claude Code acting as each agent against fresh Hermes 0.19 and OpenClaw 2026.9.8 installs (stand-in model); real agents may word or order steps differently.
+- Finish OpenClaw acceptance on the robot. The bridge side is verified against a live OpenClaw 2026.9.8 Gateway with a recording stand-in model; see `companion/README.md`. Covered: health, model list, pipeline turns, `ask_openclaw`, per-conversation sessions, allowlist, header stripping, Hermes side by side, and the minimal-profile tool policy. Still open:
+  - speak to Reachy through OpenClaw with a real model, in both pipeline and Realtime modes;
+  - run the self-check question from the docs.
+
+### Hardware and acoustics
+
+- Run the two-button GPIO hardware acceptance on the Reachy Pi with `tools/gpio_acceptance.py` (`preflight`, `wiring`, then `run --stuck`; see `OPERATIONS.md`). Attach the three reports. The tool is verified end to end against the real button service with simulated lines and robot; the physical run is what remains.
+- Pair a DualShock controller with the Reachy Mini Wireless and verify the mapping.
+- Verify **Hey Homebody** with live microphone input (so far checked only against the KWS vocabulary).
+- Add phrase-specific real-room acoustic acceptance recordings and tune per-keyword score/threshold only from measured false-positive/false-negative data.
+- Run first-light acceptance on each 🧪/◐ setup in `docs/hardware-setups.md`: Reachy SDK smoke test and app start on a Jetson Orin Nano (JetPack 6, uv-managed Python 3.11+), then local vision with Ollama and TensorRT gesture detection; app acceptance on a Mac and a Windows PC driving a Lite.

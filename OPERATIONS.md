@@ -70,7 +70,14 @@ The app manager may report `running` several seconds before the settings server 
 
 ## Companion bridge deployment
 
-The bridge normally runs directly from the checked-out repository. After bridge code or Hermes-host credentials change:
+**Agent-led setups** (Settings → Connect your agent, see [docs/agent-setup.md](docs/agent-setup.md)) keep a copy of the bridge next to the agent:
+
+- Hermes: `~/.hermes/homebody-bridge/`, running with `--profile reachy`;
+- OpenClaw: `~/.openclaw/homebody-bridge/`, in its own venv with `bridge.env`.
+
+The bridge service is called `homebody-bridge`. After upgrading Homebody, create a new setup message and send it to the agent: the guide is safe to repeat. The agent keeps the existing profile or agent, downloads the bridge that matches the new version, restarts it and pairs again. To move the bridge to another computer, do the same from that computer.
+
+Manually deployed bridges normally run directly from the checked-out repository. After bridge code or Hermes-host credentials change:
 
 ```bash
 systemctl --user restart hermes-reachy-bridge.service
@@ -291,7 +298,28 @@ Safety behaviour:
 - Debounce is applied in the kernel (libgpiod, 30 ms) and again in the app.
 - A missing `gpiod` library, a busy line, or missing permissions only disables the buttons. Reachy keeps running and the reason is logged.
 
-Acceptance:
+Acceptance, guided: `tools/gpio_acceptance.py` (standard library only, plus the `gpiod` package Homebody already uses on the Pi) walks through the steps below and confirms each from the app's own state. It records each check as PASS, FAIL or SKIP in a Markdown report to keep with the acceptance record. Have an adult at the robot and clear space around it.
+
+```bash
+# On the Pi, as the app's service user:
+python3 tools/gpio_acceptance.py preflight     # gpiod v2, chip access, gpio group, who owns lines 17/27
+# Turn the buttons off in Robot → Physical buttons (frees the lines), then:
+python3 tools/gpio_acceptance.py wiring        # each button: idle level, 3 clean presses, bounce, no crosstalk
+# Turn the buttons on again. From the Pi or any computer on the LAN:
+python3 tools/gpio_acceptance.py run --url http://reachy-mini.local:8042 [--stuck]
+```
+
+`run` asks for a typed `yes` before anything moves. It then tells you each press to make and checks the outcome:
+
+- the button event counter;
+- power mode;
+- speech state;
+- Kids Mode state;
+- the head fold.
+
+It covers every step below. Startup ownership is tested by re-opening the lines, as an app start does, while you hold green. `--stuck` adds the 30 s stuck-button lockout. `--skip-voice` skips the stop-during-an-answer step when no agent bridge is connected, and `--skip-kids` skips the Kids step. `/api/gpio/status` now numbers every button gesture and records its result, and counts the presses each button ignored. That is what lets the tool tell two identical presses apart and prove an ignored press really was ignored.
+
+The steps, for reference or a manual run:
 
 1. Confirm the app's service user can open the chip: `ls -l /dev/gpiochip0` (group `gpio`), and `groups` lists `gpio`. Restart the Reachy daemon after changing groups.
 2. Confirm no other process owns the lines: `gpioinfo | grep -E "line +(17|27):"` shows them unused before the app starts and `consumer="homebody"` afterwards.

@@ -20,6 +20,8 @@ There is no raw motor or joint control, no image download, no microphone access,
 1. Open Homebody → **Settings → Agent access (MCP)**.
 2. Turn on **Allow agent access** and save settings.
 3. Optionally turn on **Let agents ask what Reachy sees**. This needs the local vision model and On-demand camera; see [hardware setups](hardware-setups.md).
+Quicker with Hermes Agent or OpenClaw: tick **Also let my agent use Reachy** under Settings → **Connect your agent** ([agent-led setup](agent-setup.md)). The agent then turns agent access on, receives its own token while pairing and adds Homebody to its MCP configuration itself. Otherwise:
+
 4. Press **Create new token**. If a bridge API key is set, enter it in *Current API key* first. Copy the token: it is shown once and only a hash is stored. **Revoke token** cuts every agent off.
 
 The endpoint is `http://<reachy-address>:8042/mcp`, shown in the same section.
@@ -43,33 +45,50 @@ claude mcp add --transport http homebody http://<reachy-address>:8042/mcp \
 
 **Clients that only start local (stdio) servers.** Use a small stdio-to-HTTP adapter that can add headers, such as `mcp-remote`.
 
+**Check the connection.** `tools/mcp_check.py` needs only Python's standard library. It connects the way an agent does, lists the tools and prints Reachy's status, including why any action is unavailable right now. It is read-only unless you add `--say` or `--emotion`.
+
+```bash
+python tools/mcp_check.py http://<reachy-address>:8042/mcp --token <your token>
+python tools/mcp_check.py http://<reachy-address>:8042/mcp --token <your token> --say "Testing, one two"
+```
+
+`get_status` also returns `why_not`, a plain-language reason for every action that is unavailable, for example Sleep, privacy mode or "the local vision model is off". Agents relay that reason instead of guessing.
+
 ## Hosted agents (ChatGPT dots, Grok Bot)
 
-Hosted agents run in their vendor's cloud, so they need a public HTTPS address and sign in with OAuth instead of a bearer token. Homebody acts as its own small OAuth 2.1 server, so you need no extra account. You approve each agent once with a one-time code.
+Hosted agents run in their vendor's cloud, so they need a public HTTPS address and sign in with OAuth instead of a bearer token. Homebody acts as its own small OAuth 2.1 server, so you need no extra account. You approve each agent once, in Settings on your home network.
 
-**1. Publish only the agent paths over HTTPS.** Use a tunnel that terminates TLS, for example Cloudflare Tunnel, Tailscale Funnel or a reverse proxy on a VPS. Forward only these paths to `http://<reachy-address>:8042`:
+**1. Point an HTTPS tunnel at the sign-in listener, never at the dashboard.** While sign-in is on, Homebody runs a second, separate listener (default `127.0.0.1:8043`) that serves only:
 
-- `/mcp`
-- `/oauth/`
-- `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
+- `/mcp`, which accepts OAuth access tokens only, never the static token;
+- `/oauth/` (register, authorize, token, revoke);
+- `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`.
 
-Homebody also protects itself. Any request that arrives with the public host name (`Host` or `X-Forwarded-Host`) can reach only those paths: the dashboard and every `/api/` route answer 404, and the static token is refused. Through the tunnel, OAuth is the only way in.
+Every other path there answers 404. The dashboard on port `8042` serves none of these routes, so the tunnel can only reach what is meant to be public, whatever `Host` header your proxy sends. Use a tunnel that terminates TLS and point it at the listener, for example:
+
+- Cloudflare Tunnel: `service: http://127.0.0.1:8043`
+- Tailscale Funnel: `tailscale funnel --bg 8043`
+- a reverse proxy on a VPS: `proxy_pass http://<reachy-address>:8043;` (then set **Sign-in listener address** to `0.0.0.0`, or to the address the proxy reaches, and firewall the port to the proxy)
+
+Never point a tunnel at port `8042`. As a backstop, the dashboard answers 404 to any request carrying the public host name, but a proxy that rewrites `Host` would bypass that check.
 
 **2. Turn on sign-in.** In **Settings → Agent access (MCP)**:
 
 1. Enter the tunnel's address in **Public HTTPS address**, for example `https://reachy.example.com`. Use no path.
+1. Leave **Sign-in listener address** and **port** at `127.0.0.1` and `8043` unless your tunnel runs on another machine. Settings shows whether the listener is running.
 2. Turn on **Let hosted agents sign in (OAuth)** and save. If a bridge API key is set, enter it in *Current API key* first.
 
 **3. Connect the agent.** In the agent's connector or MCP settings, add `https://reachy.example.com/mcp`. The agent then:
 
 1. discovers the sign-in server;
 2. registers itself;
-3. opens Homebody's consent page in your browser, which shows the agent's name, where it will return to, and what it may do.
+3. opens Homebody's consent page in your browser, which shows the agent's name, where it will return to, what it may do and a four-character match code.
 
-**4. Approve it.** Press **Create approval code** in Settings and type the code on the consent page.
+**4. Approve that exact request in Settings.** Open **Settings → Agent access** on your home network. Under **Waiting for your approval**, find the request whose code and return address match the consent page, and press **Approve**. Then press **Continue** on the consent page.
 
-- The code works once, for 10 minutes, and five wrong guesses burn it.
-- **Deny** sends the agent away without access.
+- Nothing typed on the consent page grants access, so a sign-in link someone else sends you cannot trick you into approving their agent. Settings shows what Homebody itself knows: the agent's name, its return address, the code and how long ago it registered.
+- Requests expire after 10 minutes. If you see a request you did not start, press **Deny**.
+- **Deny** on the consent page also sends the agent away without access.
 
 **Afterwards.**
 
@@ -85,6 +104,26 @@ How it works, for reviewers:
 - **Storage:** only hashes are kept, in `mcp-oauth.json` next to the config, with mode 0600.
 
 For your own devices away from home, a private network such as Tailscale (tailnet only, no Funnel) with the bearer token is simpler.
+
+## Tested clients
+
+These were run against a live Homebody server, with a recording stand-in for the robot runtime:
+
+| Client | Transport and sign-in | Result |
+| --- | --- | --- |
+| Claude Code 2.1 (`claude mcp add --transport http`, as above) | Streamable HTTP, bearer token | ✅ Natural-language requests worked: status, announce and emotion. In Sleep and privacy mode the refusal was relayed with its reason. The look question was answered by the local vision model. |
+| Official TypeScript SDK 1.32, the stack most Node agents use | Streamable HTTP, bearer token | ✅ Connect, list tools, status, announce |
+| Official Python SDK 2.3, the stack Hermes Agent uses | Streamable HTTP, bearer token | ✅ Connect, list tools, call tools |
+| Official Python SDK 2.3 OAuth client | Spec-compliant OAuth: discovery from the 401, registration, PKCE, `resource` | ✅ Signed in after browser consent; then `express_emotion`. One-hour token with refresh. |
+| `mcp-remote` 0.14 (stdio adapter) | Its own OAuth client, through the public address | ✅ Discovery, registration and consent; callback; then `initialize` and `announce` over stdio |
+
+Still open:
+
+- a run on the robot itself (use `tools/mcp_check.py` above);
+- Hermes Agent and OpenClaw with their own model keys;
+- hosted agents (ChatGPT dots, Grok Bot) through a real tunnel.
+
+The steps are in `plan.md`.
 
 ## Security notes
 

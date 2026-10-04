@@ -2,8 +2,9 @@
 
 The page is served from homebody/static inside a headless browser. Every request is answered
 locally: /api/status returns the synthetic, non-private status below, /api/robot/options returns
-the app's real allowlists, and everything else gets an empty 404, so nothing reaches a network,
-robot or camera. Captures are 1440x900 and saved as metadata-free WebP.
+the app's real allowlists, the agent-setup routes return the example message below, and everything
+else gets an empty 404, so nothing reaches a network, robot or camera. Page captures are 1440x900;
+the agent-setup capture is that card alone. All are saved as metadata-free WebP.
 
     uv pip install playwright pillow
     python docs/tools/capture_ui_screenshots.py [--chromium /path/to/chrome]
@@ -42,6 +43,22 @@ SYNTHETIC_STATUS = {
 }
 
 
+# An example setup message: the stock reachy-mini.local name and a made-up one-time code.
+_SETUP_STATUS = {"state": "waiting", "backend": "hermes", "agent": "Hermes Agent", "mcp": True, "expires_in": 1740}
+SYNTHETIC_SETUP = {
+    "ok": True,
+    "code": "K7QM-3XRP",
+    "message": (
+        "Please connect my Reachy Mini robot (Homebody app) to you, Hermes Agent, on this computer. Read and follow "
+        "the setup guide at http://reachy-mini.local:8042/agent-setup/hermes.md. The one-time setup code is "
+        "K7QM-3XRP; it is valid for 30 minutes and only for that robot. Also add Reachy as an MCP tool for yourself, "
+        "as the guide describes. Before you install software, change your configuration or start a service, tell me "
+        "what you will do and wait for my OK. Never send keys or tokens anywhere except that robot's pairing address."
+    ),
+    **_SETUP_STATUS,
+}
+
+
 def _serve(route: Route) -> None:
     rest = route.request.url.split("://", 1)[1]
     path = rest.split("/", 1)[1].split("?", 1)[0] if "/" in rest else ""
@@ -54,6 +71,10 @@ def _serve(route: Route) -> None:
         route.fulfill(path=str(file), content_type=mimetypes.guess_type(file.name)[0] or "application/octet-stream")
     elif path == "api/status":
         route.fulfill(content_type="application/json", body=json.dumps(SYNTHETIC_STATUS))
+    elif path == "api/agent-setup/start":
+        route.fulfill(content_type="application/json", body=json.dumps(SYNTHETIC_SETUP))
+    elif path == "api/agent-setup/status":
+        route.fulfill(content_type="application/json", body=json.dumps(_SETUP_STATUS))
     elif path == "api/robot/options":
         route.fulfill(content_type="application/json", body=json.dumps(robot_control_options()))
     else:
@@ -78,6 +99,12 @@ def main() -> None:
         page.wait_for_timeout(500)
         captures["ui-robot"] = Path(tmp) / "robot.png"
         page.screenshot(path=str(captures["ui-robot"]))
+        page.click("#tab-settings")
+        page.check("#agent-setup-mcp")
+        page.click("#agent-setup-button")
+        page.wait_for_function("document.getElementById('agent-setup-status').textContent.startsWith('Waiting')")
+        captures["ui-agent-setup"] = Path(tmp) / "agent-setup.png"
+        page.locator("#agent-setup-card").screenshot(path=str(captures["ui-agent-setup"]))
         browser.close()
         for name, png in captures.items():
             # Re-encoding through Pillow writes no EXIF or XMP metadata.

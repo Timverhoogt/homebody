@@ -10,15 +10,25 @@ import subprocess
 import threading
 from pathlib import Path
 from typing import Literal
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
-from fastapi import Header, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 from reachy_mini import ReachyMini, ReachyMiniApp
 from starlette.concurrency import run_in_threadpool
 
 from .agent_audit import AgentAuditLog
+from .agent_setup import (
+    AgentSetup,
+    SetupError,
+    bridge_file,
+    bridge_manifest,
+    probe_bridge,
+    render_guide,
+    robot_url,
+    setup_message,
+)
 from .bluetooth import BluetoothGamepadService
 from .config import AppConfig, config_transaction, default_config_path, load_config, merge_config, save_config
 from .contextual_offers import ContextualOffer
@@ -26,7 +36,8 @@ from .gpio_buttons import ButtonEvent, ButtonName, GpioButtonService
 from .hermes_client import HermesBridgeClient
 from .kids_mode import KidsProfile
 from .local_vision import LocalVisionClient, LocalVisionError
-from .mcp_oauth import CONSENT_HEADERS, OAuthError, OAuthServer, consent_page
+from .mcp_oauth import OAuthError, OAuthServer
+from .mcp_public import PublicAgentListener, build_public_app
 from .mcp_server import PROTOCOL_VERSIONS, McpServer, new_token, token_digest, token_matches
 from .platform_info import host
 from .presence import PresenceObservation
@@ -105,6 +116,8 @@ class SettingsUpdate(BaseModel):
     mcp_vision_enabled: bool | None = None
     mcp_oauth_enabled: bool | None = None
     mcp_public_url: str | None = Field(default=None, max_length=300)
+    mcp_public_bind: str | None = Field(default=None, max_length=64)
+    mcp_public_port: int | None = Field(default=None, ge=1024, le=65535)
 
 
 def _authorize_credential_change(current: AppConfig, merged: AppConfig, provided: str | None) -> None:
@@ -124,6 +137,8 @@ def _authorize_credential_change(current: AppConfig, merged: AppConfig, provided
         # Publishing agent sign-in to the internet is an owner decision.
         and merged.mcp_public_url == current.mcp_public_url
         and merged.mcp_oauth_enabled == current.mcp_oauth_enabled
+        and merged.mcp_public_bind == current.mcp_public_bind
+        and merged.mcp_public_port == current.mcp_public_port
     ):
         return
     if not provided or not secrets.compare_digest(provided.strip(), current.api_key):
@@ -240,16 +255,31 @@ class GamepadEnabledRequest(BaseModel):
     enabled: bool
 
 
+class AgentSetupStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    backend: Literal["hermes", "openclaw"]
+    mcp: StrictBool = False
+    current_api_key: str = Field(default="", max_length=4096)
+
+
+_AGENT_SETUP_MAX_BODY_BYTES = 16 * 1024
+
+
 class McpTokenRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     current_api_key: str = Field(default="", max_length=4096)
 
 
+class McpOAuthDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_api_key: str = Field(default="", max_length=4096)
+    pending_id: str = Field(min_length=1, max_length=64)
+
+
 _MCP_MAX_BODY_BYTES = 64 * 1024
-
-
-_PUBLIC_PATH_PREFIXES = ("/mcp", "/oauth/", "/.well-known/oauth-")
 
 
 def _public_host(config: AppConfig) -> str:
@@ -366,7 +396,9 @@ class Homebody(ReachyMiniApp):
         self._gpio_buttons = GpioButtonService(self._handle_button_event)
         self._gpio_config_lock = threading.Lock()
         self._mcp = McpServer(lambda: self._runtime)
+        self._agent_setup = AgentSetup()
         self._oauth = OAuthServer(default_config_path().with_name("mcp-oauth.json"))
+        self._agent_listener = PublicAgentListener(self._build_public_app)
         self._register_settings_routes()
 
     def _handle_gamepad_action(self, kind: str, action: str, value: str) -> bool:
@@ -441,8 +473,10 @@ class Homebody(ReachyMiniApp):
                 public_request = _arrived_on_public_host(request, load_config())
             except Exception:
                 public_request = False
-            # Through the public tunnel only agent sign-in and MCP exist; the dashboard never does.
-            if public_request and not request.url.path.startswith(_PUBLIC_PATH_PREFIXES):
+            # Hosted agents use the separate public listener (mcp_public_port). If a tunnel is pointed
+            # at the dashboard port by mistake, nothing here answers it. This is only a backstop: a
+            # proxy that rewrites Host is not caught, which is why the public routes live elsewhere.
+            if public_request:
                 return JSONResponse(status_code=404, content={"detail": "Not found"})
             allowed = {
                 "/api/status",
@@ -635,6 +669,9 @@ class Homebody(ReachyMiniApp):
                 _LOGGER.error("Could not save Homebody settings: %s", exc)
                 raise HTTPException(status_code=500, detail="Settings could not be saved on Reachy") from exc
             _LOGGER.info("Homebody settings updated at %s (secret values redacted)", path)
+            if self._runtime is not None:
+                # Start, stop or move the hosted-agent listener; outside run() nothing listens.
+                self._agent_listener.sync(merged)
             if self._runtime is not None and (
                 not merged.camera_feed_enabled or not merged.camera_controls_enabled
             ):
@@ -1045,65 +1082,20 @@ class Homebody(ReachyMiniApp):
         async def mcp_endpoint(request: Request) -> Response:
             """Model Context Protocol over Streamable HTTP, answered with plain JSON (stateless)."""
             config = load_config()
-            oauth_on = config.mcp_oauth_enabled and bool(config.mcp_public_url)
-            if not config.mcp_enabled or not (config.mcp_token_sha256 or oauth_on):
+            if not config.mcp_enabled or not config.mcp_token_sha256:
                 return JSONResponse(status_code=404, content={"detail": "Agent access (MCP) is turned off"})
             origin = request.headers.get("origin", "")
             if origin and not _same_origin(origin, request):
                 return JSONResponse(status_code=403, content={"detail": "Cross-origin MCP requests are not allowed"})
             scheme, _, token = request.headers.get("authorization", "").partition(" ")
-            token = token.strip()
-            # The never-expiring static token works on the home network only; through the public
-            # tunnel agents must sign in with OAuth.
-            static_ok = not _arrived_on_public_host(request, config) and token_matches(
-                token, config.mcp_token_sha256
-            )
-            authorized = scheme.lower() == "bearer" and (
-                static_ok
-                or (
-                    oauth_on
-                    and self._oauth.validate_access_token(
-                        token, resource=OAuthServer.resource_url(config.mcp_public_url)
-                    )
-                )
-            )
-            if not authorized:
-                challenge = 'Bearer realm="homebody"'
-                if oauth_on:
-                    # Tells MCP clients where to start the OAuth flow (RFC 9728).
-                    metadata = f"{config.mcp_public_url}/.well-known/oauth-protected-resource/mcp"
-                    challenge += f', resource_metadata="{metadata}"'
+            # Home network only, with the static token. Hosted agents sign in on the public listener.
+            if scheme.lower() != "bearer" or not token_matches(token.strip(), config.mcp_token_sha256):
                 return JSONResponse(
                     status_code=401,
                     content={"detail": "A valid Homebody MCP token is required"},
-                    headers={"WWW-Authenticate": challenge},
+                    headers={"WWW-Authenticate": 'Bearer realm="homebody"'},
                 )
-            version = request.headers.get("mcp-protocol-version", "")
-            if version and version not in PROTOCOL_VERSIONS:
-                return JSONResponse(status_code=400, content={"detail": f"Unsupported MCP protocol version {version}"})
-            body = await request.body()
-            if len(body) > _MCP_MAX_BODY_BYTES:
-                return JSONResponse(status_code=413, content={"detail": "MCP request is too large"})
-            try:
-                message = json.loads(body)
-            except ValueError:
-                return JSONResponse(
-                    status_code=400,
-                    content={"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}},
-                )
-            if isinstance(message, list):
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "jsonrpc": "2.0",
-                        "id": None,
-                        "error": {"code": -32600, "message": "Batches are not supported"},
-                    },
-                )
-            answer = await run_in_threadpool(self._mcp.handle, message, config)
-            if answer is None:
-                return Response(status_code=202)
-            return JSONResponse(answer, headers={"Cache-Control": "no-store"})
+            return await self._answer_mcp(request, config)
 
         @self.settings_app.get("/mcp", include_in_schema=False)
         @self.settings_app.delete("/mcp", include_in_schema=False)
@@ -1122,6 +1114,7 @@ class Homebody(ReachyMiniApp):
                 "endpoint_path": "/mcp",
                 "oauth_enabled": config.mcp_oauth_enabled,
                 "public_url": config.mcp_public_url,
+                "public_listener": self._agent_listener.status(),
                 "oauth": self._oauth.public_status(),
                 **self._mcp.status(),
             }
@@ -1131,6 +1124,103 @@ class Homebody(ReachyMiniApp):
             if current.api_key and not secrets.compare_digest(provided.strip(), current.api_key):
                 raise HTTPException(status_code=403, detail="Enter the current API key to manage agent access")
             return current
+
+        # -- agent-led setup: the owner's agent connects itself (see agent_setup.py) -------------------
+
+        @self.settings_app.post("/api/agent-setup/start")
+        def agent_setup_start(request: AgentSetupStartRequest, http_request: Request) -> dict[str, object]:
+            """Create a one-time setup code and the message the owner pastes to their agent."""
+            _require_owner(request.current_api_key)
+            code = self._agent_setup.start(request.backend, mcp=request.mcp)
+            base = robot_url(http_request.headers.get("host", ""), http_request.url.scheme)
+            return {
+                "ok": True,
+                "code": code,
+                "message": setup_message(request.backend, base, code, mcp=request.mcp),
+                "guide_url": f"{base}/agent-setup/{request.backend}.md",
+                **self._agent_setup.status(),
+            }
+
+        @self.settings_app.post("/api/agent-setup/cancel")
+        def agent_setup_cancel(request: McpTokenRequest) -> dict[str, object]:
+            _require_owner(request.current_api_key)
+            self._agent_setup.cancel()
+            return {"ok": True, **self._agent_setup.status()}
+
+        @self.settings_app.get("/api/agent-setup/status")
+        def agent_setup_status() -> dict[str, object]:
+            return self._agent_setup.status()
+
+        @self.settings_app.get("/agent-setup/{backend}.md", include_in_schema=False)
+        def agent_setup_guide(backend: str, request: Request) -> PlainTextResponse:
+            try:
+                guide = render_guide(backend, robot_url(request.headers.get("host", ""), request.url.scheme))
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail="Unknown agent") from exc
+            return PlainTextResponse(
+                guide, media_type="text/markdown; charset=utf-8", headers={"Cache-Control": "no-store"}
+            )
+
+        @self.settings_app.get("/agent-setup/bridge/manifest.json", include_in_schema=False)
+        def agent_setup_bridge_manifest() -> dict[str, object]:
+            from . import __version__  # noqa: PLC0415
+
+            return {"homebody_version": __version__, "files": bridge_manifest()}
+
+        @self.settings_app.get("/agent-setup/bridge/{name}", include_in_schema=False)
+        def agent_setup_bridge_file(name: str) -> FileResponse:
+            try:
+                path = bridge_file(name)
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail="Not a bridge file") from exc
+            return FileResponse(path, media_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.post("/api/agent-setup/pair")
+        async def agent_setup_pair(request: Request) -> JSONResponse:
+            """The agent finishes setup: setup code + its bridge address and key. Saved only once verified."""
+            body = await request.body()
+            if len(body) > _AGENT_SETUP_MAX_BODY_BYTES:
+                return JSONResponse(status_code=413, content={"ok": False, "error": "Request too large"})
+            try:
+                payload = json.loads(body or b"{}")
+                if not isinstance(payload, dict):
+                    raise SetupError("Send a JSON object")
+                code, backend, bridge, key = AgentSetup.validate_pair_request(payload)
+                self._agent_setup.redeem(code, backend)
+                try:
+                    health = await run_in_threadpool(probe_bridge, bridge, key, backend)
+                except SetupError as exc:
+                    self._agent_setup.record_error(str(exc))
+                    raise
+                mcp_token = ""
+                with config_transaction():
+                    current = load_config()
+                    changes: dict[str, object] = {"bridge_url": bridge, "api_key": key}
+                    if self._agent_setup.status().get("mcp"):
+                        mcp_token = new_token()
+                        changes.update(mcp_enabled=True, mcp_token_sha256=token_digest(mcp_token))
+                    save_config(merge_config(current, changes))
+                self._agent_setup.complete(bridge, agent_name=str(payload.get("agent_name") or ""))
+            except json.JSONDecodeError:
+                return JSONResponse(status_code=400, content={"ok": False, "error": "Send a JSON object"})
+            except SetupError as exc:
+                return JSONResponse(status_code=exc.status, content={"ok": False, "error": str(exc)})
+            except (OSError, ValueError) as exc:
+                return JSONResponse(status_code=500, content={"ok": False, "error": f"Could not save: {exc}"})
+            _LOGGER.info("Agent setup paired %s at %s", backend, bridge)
+            answer: dict[str, object] = {
+                "ok": True,
+                "message": "Reachy is connected. Say 'Hey Homebody' to talk.",
+                "realtime_available": bool(health.get("realtime_available")),
+            }
+            if mcp_token:
+                base = robot_url(request.headers.get("host", ""), request.url.scheme)
+                answer["mcp"] = {
+                    "url": f"{base}/mcp",
+                    "headers": {"Authorization": f"Bearer {mcp_token}"},
+                    "note": "Shown once. Store it only in your own MCP configuration.",
+                }
+            return JSONResponse(answer, headers={"Cache-Control": "no-store"})
 
         @self.settings_app.post("/api/mcp/token")
         def mcp_create_token(request: McpTokenRequest) -> dict[str, object]:
@@ -1154,103 +1244,32 @@ class Homebody(ReachyMiniApp):
                     raise HTTPException(status_code=500, detail=f"Could not revoke the token: {exc}") from exc
             return {"ok": True, "token_configured": False}
 
-        @self.settings_app.post("/api/mcp/approval-code")
-        def mcp_approval_code(request: McpTokenRequest) -> dict[str, object]:
-            """A one-time code the owner types on the consent page to let a hosted agent connect."""
+        @self.settings_app.post("/api/mcp/oauth/approve")
+        def mcp_oauth_approve(request: McpOAuthDecisionRequest) -> dict[str, object]:
+            """Approve one specific hosted-agent request; its consent page then lets the agent continue."""
             config = _require_owner(request.current_api_key)
             if not (config.mcp_enabled and config.mcp_oauth_enabled):
                 raise HTTPException(status_code=409, detail="Turn on agent access and agent sign-in first")
-            return {"ok": True, "code": self._oauth.new_approval_code(), "expires_in": 600}
+            try:
+                self._oauth.owner_decide(request.pending_id, approve=True)
+            except OAuthError as exc:
+                raise HTTPException(status_code=409, detail=exc.description) from exc
+            return {"ok": True, **self._oauth.public_status()}
+
+        @self.settings_app.post("/api/mcp/oauth/deny")
+        def mcp_oauth_deny(request: McpOAuthDecisionRequest) -> dict[str, object]:
+            _require_owner(request.current_api_key)
+            try:
+                self._oauth.owner_decide(request.pending_id, approve=False)
+            except OAuthError as exc:
+                raise HTTPException(status_code=409, detail=exc.description) from exc
+            return {"ok": True, **self._oauth.public_status()}
 
         @self.settings_app.post("/api/mcp/oauth/disconnect")
         def mcp_oauth_disconnect(request: McpTokenRequest) -> dict[str, object]:
             _require_owner(request.current_api_key)
             self._oauth.disconnect_all()
             return {"ok": True, **self._oauth.public_status()}
-
-        def _oauth_config() -> AppConfig:
-            config = load_config()
-            if not (config.mcp_enabled and config.mcp_oauth_enabled and config.mcp_public_url):
-                raise HTTPException(status_code=404, detail="Not found")
-            return config
-
-        def _oauth_error(exc: OAuthError) -> JSONResponse:
-            return JSONResponse(status_code=exc.status, content=exc.body(), headers={"Cache-Control": "no-store"})
-
-        @self.settings_app.get("/.well-known/oauth-protected-resource", include_in_schema=False)
-        @self.settings_app.get("/.well-known/oauth-protected-resource/mcp", include_in_schema=False)
-        def oauth_resource_metadata() -> dict[str, object]:
-            return OAuthServer.protected_resource_metadata(_oauth_config().mcp_public_url)
-
-        @self.settings_app.get("/.well-known/oauth-authorization-server", include_in_schema=False)
-        def oauth_server_metadata() -> dict[str, object]:
-            return OAuthServer.authorization_server_metadata(_oauth_config().mcp_public_url)
-
-        @self.settings_app.post("/oauth/register", include_in_schema=False)
-        async def oauth_register(request: Request) -> JSONResponse:
-            _oauth_config()
-            body = await request.body()
-            if len(body) > 16 * 1024:
-                return JSONResponse(status_code=413, content={"error": "invalid_client_metadata"})
-            try:
-                payload = json.loads(body or b"{}")
-                return JSONResponse(status_code=201, content=self._oauth.register(payload))
-            except ValueError:
-                return JSONResponse(status_code=400, content={"error": "invalid_client_metadata"})
-            except OAuthError as exc:
-                return _oauth_error(exc)
-
-        @self.settings_app.get("/oauth/authorize", include_in_schema=False)
-        def oauth_authorize(request: Request) -> HTMLResponse:
-            config = _oauth_config()
-            params = {key: value for key, value in request.query_params.items()}
-            try:
-                pending = self._oauth.start_authorization(
-                    params, resource=OAuthServer.resource_url(config.mcp_public_url)
-                )
-            except OAuthError as exc:
-                # Never redirect to an unverified URI; show the problem instead.
-                html = consent_page(None, error=exc.description)
-                return HTMLResponse(html, status_code=400, headers=CONSENT_HEADERS)
-            return HTMLResponse(consent_page(pending, vision=config.mcp_vision_enabled), headers=CONSENT_HEADERS)
-
-        @self.settings_app.post("/oauth/authorize", include_in_schema=False)
-        async def oauth_authorize_decision(request: Request) -> Response:
-            config = _oauth_config()
-            body = await request.body()
-            form = {key: values[0] for key, values in parse_qs(body.decode("utf-8", "replace")[:4096]).items()}
-            pending_id = form.get("pending_id", "")
-            if form.get("action") == "deny":
-                target = self._oauth.deny(pending_id)
-                if target is None:
-                    return HTMLResponse(consent_page(None), status_code=400, headers=CONSENT_HEADERS)
-                return RedirectResponse(target, status_code=303, headers=CONSENT_HEADERS)
-            try:
-                target = self._oauth.approve(pending_id, form.get("approval_code", ""))
-            except OAuthError as exc:
-                pending = self._oauth.pending(pending_id)
-                html = consent_page(pending, error=exc.description, vision=config.mcp_vision_enabled)
-                return HTMLResponse(html, status_code=400, headers=CONSENT_HEADERS)
-            return RedirectResponse(target, status_code=303, headers=CONSENT_HEADERS)
-
-        @self.settings_app.post("/oauth/token", include_in_schema=False)
-        async def oauth_token(request: Request) -> JSONResponse:
-            config = _oauth_config()
-            body = await request.body()
-            form = {key: values[0] for key, values in parse_qs(body.decode("utf-8", "replace")[:8192]).items()}
-            try:
-                tokens = self._oauth.exchange(form, resource=OAuthServer.resource_url(config.mcp_public_url))
-            except OAuthError as exc:
-                return _oauth_error(exc)
-            return JSONResponse(tokens, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
-
-        @self.settings_app.post("/oauth/revoke", include_in_schema=False)
-        async def oauth_revoke(request: Request) -> Response:
-            _oauth_config()
-            body = await request.body()
-            form = {key: values[0] for key, values in parse_qs(body.decode("utf-8", "replace")[:4096]).items()}
-            self._oauth.revoke_token(form.get("token", ""))
-            return Response(status_code=200)
 
         @self.settings_app.post("/api/vision/describe")
         def describe_camera_view(
@@ -1645,6 +1664,47 @@ class Homebody(ReachyMiniApp):
             threading.Timer(0.8, poweroff).start()
             return {"ok": True, "state": "shutting_down"}
 
+    def _build_public_app(self) -> FastAPI:
+        """The hosted-agent app served on mcp_public_port; it shares the OAuth store and MCP tools."""
+        return build_public_app(
+            oauth=self._oauth,
+            config_loader=lambda: load_config(),
+            answer_mcp=self._answer_mcp,
+            same_origin=_same_origin,
+        )
+
+    async def _answer_mcp(self, request: Request, config: AppConfig) -> Response:
+        """Answer one authorized MCP JSON-RPC request; shared by the home and public listeners."""
+        version = request.headers.get("mcp-protocol-version", "")
+        body = await request.body()
+        if len(body) > _MCP_MAX_BODY_BYTES:
+            return JSONResponse(status_code=413, content={"detail": "MCP request is too large"})
+        try:
+            message = json.loads(body)
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}},
+            )
+        if isinstance(message, list):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32600, "message": "Batches are not supported"},
+                },
+            )
+        # A newer client may send its own latest version on initialize, where the version is still being
+        # negotiated in the body. Afterwards it must use the version Homebody chose.
+        initializing = isinstance(message, dict) and message.get("method") == "initialize"
+        if version and version not in PROTOCOL_VERSIONS and not initializing:
+            return JSONResponse(status_code=400, content={"detail": f"Unsupported MCP protocol version {version}"})
+        answer = await run_in_threadpool(self._mcp.handle, message, config)
+        if answer is None:
+            return Response(status_code=202)
+        return JSONResponse(answer, headers={"Cache-Control": "no-store"})
+
     def run(self, reachy_mini: ReachyMini, stop_event: threading.Event) -> None:
         """Run wake detection, gamepad monitoring, and serialized Hermes voice turns."""
         current = load_config()
@@ -1662,8 +1722,10 @@ class Homebody(ReachyMiniApp):
             if startup_config.gamepad_enabled:
                 self._bluetooth.set_gamepad_enabled(True)
             self._start_gpio_buttons(startup_config)
+            self._agent_listener.sync(startup_config)
             self._runtime.run()
         finally:
+            self._agent_listener.close()
             self._gpio_buttons.close()
             self._bluetooth.close()
 

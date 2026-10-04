@@ -11,6 +11,7 @@ from homebody.main import Homebody
 from homebody.mcp_server import (
     ANNOUNCEMENTS_PER_TEN_MINUTES,
     CALLS_PER_MINUTE,
+    PROTOCOL_VERSIONS,
     McpServer,
     new_token,
     token_digest,
@@ -118,13 +119,58 @@ def test_status_explains_what_reachy_can_do_now() -> None:
     assert result["isError"] is False
     assert result["structuredContent"] == {
         "power_mode": "standby",
+        "privacy_mode": False,
         "activity": "waiting for wake word",
         "someone_present": True,
         "can_announce": True,
         "can_express_emotion": False,
         "can_look": False,
+        "why_not": {
+            "express_emotion": "Emotions work only while Reachy is Awake; it won't wake for one.",
+            "look": "The owner has not allowed agents to ask what Reachy sees.",
+        },
     }
-    assert "only while it is Awake" in result["content"][0]["text"]
+    assert "only while Reachy is Awake" in result["content"][0]["text"]
+
+    # Live acceptance with Claude Code showed agents guessing why looking was unavailable.
+    vision_off = call(McpServer(lambda: FakeRuntime()), "get_status", config=enabled_config(mcp_vision_enabled=True))
+    assert "local vision model" in vision_off["result"]["structuredContent"]["why_not"]["look"]
+    ready = enabled_config(mcp_vision_enabled=True, local_vision_enabled=True, camera_enabled=True)
+    awake = call(McpServer(lambda: FakeRuntime()), "get_status", config=ready)["result"]["structuredContent"]
+    assert awake["why_not"] == {} and awake["can_look"] and awake["can_announce"]
+
+
+class PrivateRuntime(FakeRuntime):
+    def privacy_active(self) -> bool:
+        return True
+
+
+@pytest.mark.parametrize(
+    ("runtime", "reason"),
+    [
+        (PrivateRuntime(), "privacy mode"),
+        (FakeRuntime(power_mode="sleep"), "Sleep mode"),
+        (FakeRuntime(power_mode="meeting"), "Meeting mode"),
+        (FakeRuntime(kids=True), "child session"),
+    ],
+)
+def test_private_states_refuse_every_action_with_the_reason(runtime: FakeRuntime, reason: str) -> None:
+    server = McpServer(lambda: runtime)
+    config = enabled_config(mcp_vision_enabled=True, local_vision_enabled=True, camera_enabled=True)
+
+    status = call(server, "get_status", config=config)["result"]
+    assert reason in status["content"][0]["text"]
+    structured = status["structuredContent"]
+    assert not (structured["can_announce"] or structured["can_express_emotion"] or structured["can_look"])
+    for name, arguments in (
+        ("announce", {"text": "Hello"}),
+        ("express_emotion", {"emotion": "happy"}),
+        ("look_and_describe", {"question": "What is on the desk?"}),
+    ):
+        refused = call(server, name, arguments, config=config)["result"]
+        assert refused["isError"] is True and reason in refused["content"][0]["text"]
+    # Refused before the runtime is touched, not only by the runtime's own gates.
+    assert runtime.announcements == [] and runtime.actions == [] and runtime.questions == []
 
 
 def test_announce_queues_a_short_message_and_respects_the_runtime_gates() -> None:
@@ -171,7 +217,7 @@ def test_emotions_only_play_while_awake_and_never_wake_reachy() -> None:
 
 def test_look_and_describe_returns_text_only() -> None:
     runtime = FakeRuntime()
-    config = enabled_config(mcp_vision_enabled=True)
+    config = enabled_config(mcp_vision_enabled=True, local_vision_enabled=True, camera_enabled=True)
     question = {"question": "What is on the desk?"}
     result = call(McpServer(lambda: runtime), "look_and_describe", question, config)["result"]
 
@@ -236,7 +282,12 @@ def test_endpoint_transport_rules(monkeypatch: pytest.MonkeyPatch) -> None:
     assert foreign.status_code == 403
     same = client.post("/mcp", json=INIT, headers={**AUTH, "Origin": "http://testserver"})
     assert same.status_code == 200
-    assert client.post("/mcp", json=INIT, headers={**AUTH, "MCP-Protocol-Version": "1999-01-01"}).status_code == 400
+    # A newer client announces its own latest version while negotiating; Homebody answers with one it speaks.
+    newer = client.post("/mcp", json=INIT, headers={**AUTH, "MCP-Protocol-Version": "2025-11-25"})
+    assert newer.status_code == 200 and newer.json()["result"]["protocolVersion"] in PROTOCOL_VERSIONS
+    listing = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
+    assert client.post("/mcp", json=listing, headers={**AUTH, "MCP-Protocol-Version": "1999-01-01"}).status_code == 400
+    assert client.post("/mcp", json=listing, headers={**AUTH, "MCP-Protocol-Version": "2025-06-18"}).status_code == 200
     note = client.post("/mcp", json={"jsonrpc": "2.0", "method": "notifications/initialized"}, headers=AUTH)
     assert note.status_code == 202
     assert client.post("/mcp", json=[INIT], headers=AUTH).status_code == 400

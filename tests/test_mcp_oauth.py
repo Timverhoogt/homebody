@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import secrets
 from pathlib import Path
 from typing import Any
@@ -13,8 +14,10 @@ from homebody.config import AppConfig
 from homebody.main import Homebody
 from homebody.mcp_oauth import (
     ACCESS_TOKEN_SECONDS,
-    APPROVAL_CODE_ATTEMPTS,
     MAX_CLIENTS,
+    MAX_PENDING,
+    MAX_PENDING_PER_CLIENT,
+    UNAPPROVED_CLIENT_SECONDS,
     OAuthError,
     OAuthServer,
     consent_page,
@@ -60,7 +63,8 @@ def granted(server: OAuthServer) -> tuple[str, str, dict[str, Any]]:
     client_id = server.register({"client_name": "Test agent", "redirect_uris": [REDIRECT]})["client_id"]
     code_verifier = verifier()
     pending = server.start_authorization(authorize_params(client_id, code_verifier), resource=RESOURCE)
-    target = server.approve(pending.pending_id, server.new_approval_code())
+    server.owner_decide(pending.pending_id, approve=True)
+    target = server.complete(pending.pending_id)
     code = parse_qs(urlparse(target).query)["code"][0]
     form = {
         "grant_type": "authorization_code",
@@ -115,8 +119,53 @@ def test_registration_allows_loopback_and_limits_clients() -> None:
     assert loopback["client_name"] == "a b" and loopback["token_endpoint_auth_method"] == "none"
     for _ in range(MAX_CLIENTS - 1):
         server.register({"redirect_uris": [REDIRECT]})
+    # Strangers cannot lock the owner out: the oldest never-approved registration makes room.
+    newest = server.register({"redirect_uris": [REDIRECT]})["client_id"]
+    assert newest in server._clients and loopback["client_id"] not in server._clients
+    for client in server._clients.values():
+        client["approved_at"] = 1
     with pytest.raises(OAuthError, match="Too many"):
         server.register({"redirect_uris": [REDIRECT]})
+
+
+def test_open_authorization_requests_are_bounded() -> None:
+    server = OAuthServer(None)
+    flooding = server.register({"redirect_uris": [REDIRECT]})["client_id"]
+    for _ in range(MAX_PENDING_PER_CLIENT * 4):
+        server.start_authorization(authorize_params(flooding, verifier()), resource=RESOURCE)
+    assert len(server._pending) == MAX_PENDING_PER_CLIENT
+
+    others = [server.register({"redirect_uris": [REDIRECT]})["client_id"] for _ in range(MAX_CLIENTS - 1)]
+    for client_id in others * MAX_PENDING_PER_CLIENT:
+        server.start_authorization(authorize_params(client_id, verifier()), resource=RESOURCE)
+    assert len(server._pending) == MAX_PENDING
+    # The newest request always gets in, so a real connection is delayed at worst, never refused.
+    latest = server.start_authorization(authorize_params(flooding, verifier()), resource=RESOURCE)
+    assert server.pending(latest.pending_id) is not None and len(server._pending) == MAX_PENDING
+
+
+def test_unapproved_registrations_expire_but_approved_agents_stay() -> None:
+    clock = Clock()
+    server = OAuthServer(None, clock=clock)
+    stale = server.register({"redirect_uris": [REDIRECT]})["client_id"]
+    approved, _verifier, _tokens = granted(server)
+    pending = server.start_authorization(authorize_params(stale, verifier()), resource=RESOURCE)
+
+    clock.now += UNAPPROVED_CLIENT_SECONDS + 1
+    server.register({"redirect_uris": [REDIRECT]})
+    assert stale not in server._clients and approved in server._clients
+    # Its open request went with it, so a late approval cannot resurrect it.
+    assert server.pending(pending.pending_id) is None
+
+
+def test_approval_fails_when_the_registration_was_evicted() -> None:
+    server = OAuthServer(None)
+    client_id = server.register({"redirect_uris": [REDIRECT]})["client_id"]
+    pending = server.start_authorization(authorize_params(client_id, verifier()), resource=RESOURCE)
+    server.owner_decide(pending.pending_id, approve=True)
+    server._clients.pop(client_id)
+    with pytest.raises(OAuthError, match="registration expired"):
+        server.complete(pending.pending_id)
 
 
 def test_authorize_rejects_unknown_clients_bad_redirects_and_missing_pkce() -> None:
@@ -146,39 +195,72 @@ def test_authorize_rejects_unknown_clients_bad_redirects_and_missing_pkce() -> N
     assert wrong_scope.value.error == "invalid_scope"
 
 
-def test_approval_code_is_single_use_attempt_limited_and_expires() -> None:
+def test_only_the_owner_approved_request_can_complete() -> None:
     clock = Clock()
     server = OAuthServer(None, clock=clock)
-    client_id = server.register({"redirect_uris": [REDIRECT]})["client_id"]
+    client_id = server.register({"client_name": "dots", "redirect_uris": [REDIRECT]})["client_id"]
 
     def start() -> str:
         return server.start_authorization(authorize_params(client_id, verifier()), resource=RESOURCE).pending_id
 
-    pending_id = start()
-    with pytest.raises(OAuthError, match="No valid approval code"):
-        server.approve(pending_id, "ABCD-EFGH")
+    mine, theirs = start(), start()
+    # Nothing the agent side does can grant access before the owner decides.
+    with pytest.raises(OAuthError, match="Not approved yet") as waiting:
+        server.complete(mine)
+    assert waiting.value.error == "authorization_pending"
 
-    code = server.new_approval_code()
-    assert len(code) == 9 and code[4] == "-"
-    target = server.approve(pending_id, code.lower().replace("-", " "))  # forgiving about case and separators
-    assert target.startswith(REDIRECT + "?") and "state=xyz" in target
+    listed = {item["id"]: item for item in server.pending_for_owner()}
+    assert listed[mine]["agent"] == "dots" and listed[mine]["returns_to"] == "agent.example"
+    assert len(listed[mine]["match_code"]) == 4 and listed[mine]["approved"] is False
+
+    server.owner_decide(mine, approve=True)
+    # Approving one request never lets a different (possibly phishing) request through.
+    with pytest.raises(OAuthError, match="Not approved yet"):
+        server.complete(theirs)
+    target = server.complete(mine)
+    assert target.startswith(REDIRECT + "?") and "code=" in target and "state=xyz" in target
     with pytest.raises(OAuthError, match="expired"):
-        server.approve(pending_id, code)  # the pending request is used up
-    with pytest.raises(OAuthError, match="No valid approval code"):
-        server.approve(start(), code)  # and so is the code
+        server.complete(mine)  # used up
 
-    code = server.new_approval_code()
-    pending_id = start()
-    for _ in range(APPROVAL_CODE_ATTEMPTS):
-        with pytest.raises(OAuthError, match="not right"):
-            server.approve(pending_id, "WRONG-CODE")
-    with pytest.raises(OAuthError, match="No valid approval code"):
-        server.approve(pending_id, code)  # guessing burned the code
+    server.owner_decide(theirs, approve=False)
+    denied = server.complete(theirs)
+    assert "error=access_denied" in denied and "code=" not in denied
 
-    code = server.new_approval_code()
+    late = start()
     clock.now += 601
-    with pytest.raises(OAuthError):
-        server.approve(start(), code)
+    with pytest.raises(OAuthError, match="expired"):
+        server.owner_decide(late, approve=True)
+
+
+def test_there_is_no_shared_code_for_strangers_to_guess_or_burn() -> None:
+    server = OAuthServer(None)
+    client_id = server.register({"redirect_uris": [REDIRECT]})["client_id"]
+    pending = server.start_authorization(authorize_params(client_id, verifier()), resource=RESOURCE)
+    for _ in range(50):
+        with pytest.raises(OAuthError, match="Not approved yet"):
+            server.complete(pending.pending_id)
+    server.owner_decide(pending.pending_id, approve=True)
+    assert "code=" in server.complete(pending.pending_id)
+
+
+def test_damaged_store_records_are_dropped_not_crashed_on(tmp_path: Path) -> None:
+    path = tmp_path / "mcp-oauth.json"
+    server = OAuthServer(path)
+    client_id, _verifier, tokens = granted(server)
+
+    payload = json.loads(path.read_text())
+    payload["clients"]["hbc_broken"] = {"name": 5}
+    payload["grants"]["orphan"] = {"client_id": "hbc_gone", "resource": RESOURCE, "refresh": "x", "used": []}
+    payload["grants"]["bad"] = ["not", "a", "dict"]
+    payload["access"]["deadbeef"] = {"grant_id": "orphan", "resource": RESOURCE, "expires_at": 9e12}
+    payload["access"]["cafe"] = {"grant_id": next(iter(payload["grants"])), "resource": RESOURCE}
+    path.write_text(json.dumps(payload))
+
+    reloaded = OAuthServer(path)
+    assert set(reloaded._clients) == {client_id}
+    assert set(reloaded._grants) == set(server._grants)
+    assert reloaded.validate_access_token(tokens["access_token"], resource=RESOURCE)
+    assert reloaded.public_status()["agents"] == [{"name": "Test agent", "connected": True}]
 
 
 def test_deny_redirects_with_access_denied() -> None:
@@ -197,7 +279,8 @@ def test_code_exchange_checks_pkce_binding_and_is_single_use() -> None:
 
     def fresh_code(code_verifier: str) -> str:
         pending = server.start_authorization(authorize_params(client_id, code_verifier), resource=RESOURCE)
-        return parse_qs(urlparse(server.approve(pending.pending_id, server.new_approval_code())).query)["code"][0]
+        server.owner_decide(pending.pending_id, approve=True)
+        return parse_qs(urlparse(server.complete(pending.pending_id)).query)["code"][0]
 
     code_verifier = verifier()
     code = fresh_code(code_verifier)
@@ -279,7 +362,7 @@ def test_revocation_and_disconnect() -> None:
     _client_id, _verifier, tokens = granted(server)
     server.disconnect_all()
     assert not server.validate_access_token(tokens["access_token"], resource=RESOURCE)
-    assert server.public_status() == {"agents": [], "approval_code_active": False}
+    assert server.public_status() == {"agents": [], "pending": []}
 
 
 def test_state_persists_as_hashes_with_private_permissions(tmp_path: Path) -> None:
@@ -354,50 +437,68 @@ def oauth_config(**overrides: Any) -> AppConfig:
     return AppConfig(**values)
 
 
-def build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, config: AppConfig) -> tuple[Homebody, TestClient]:
+class FakeListener:
+    def __init__(self) -> None:
+        self.synced: list[AppConfig] = []
+
+    def sync(self, config: AppConfig) -> None:
+        self.synced.append(config)
+
+    def status(self) -> dict[str, object]:
+        return {"running": False, "address": "", "error": ""}
+
+    def close(self) -> None:
+        pass
+
+
+def build(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, config: AppConfig
+) -> tuple[Homebody, TestClient, TestClient]:
+    """The app, a client for the home dashboard port, and one for the public hosted-agent listener."""
     stored = [config]
     monkeypatch.setattr(main_module, "load_config", lambda: stored[-1])
     monkeypatch.setattr(main_module, "save_config", lambda value: stored.append(value))
     app = Homebody(False)
     app._oauth = OAuthServer(tmp_path / "mcp-oauth.json")
+    app._agent_listener = FakeListener()  # type: ignore[assignment]
     app._runtime = FakeRuntime()  # type: ignore[assignment]
-    return app, TestClient(app.settings_app)
+    return app, TestClient(app.settings_app), TestClient(app._build_public_app())
 
 
 def test_oauth_routes_are_hidden_until_turned_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _app, client = build(monkeypatch, tmp_path, AppConfig(mcp_enabled=True, mcp_token_sha256=token_digest(STATIC)))
-    assert client.get("/.well-known/oauth-protected-resource/mcp").status_code == 404
-    assert client.get("/.well-known/oauth-authorization-server").status_code == 404
-    assert client.post("/oauth/register", json={"redirect_uris": [REDIRECT]}).status_code == 404
+    _app, client, public = build(
+        monkeypatch, tmp_path, AppConfig(mcp_enabled=True, mcp_token_sha256=token_digest(STATIC))
+    )
+    assert public.get("/.well-known/oauth-protected-resource/mcp").status_code == 404
+    assert public.get("/.well-known/oauth-authorization-server").status_code == 404
+    assert public.post("/oauth/register", json={"redirect_uris": [REDIRECT]}).status_code == 404
+    assert public.post("/mcp", json=INIT).status_code == 404
     challenge = client.post("/mcp", json=INIT).headers["www-authenticate"]
     assert "resource_metadata" not in challenge
-    assert client.post("/api/mcp/approval-code", json={}).status_code == 409
+    assert client.post("/api/mcp/oauth/approve", json={"pending_id": "x"}).status_code == 409
 
 
 def test_full_hosted_agent_flow_over_http(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _app, client = build(monkeypatch, tmp_path, oauth_config())
-    public = {"Host": "reachy.example.com"}
+    _app, client, agent = build(monkeypatch, tmp_path, oauth_config())
 
-    unauthorized = client.post("/mcp", json=INIT, headers=public)
+    unauthorized = agent.post("/mcp", json=INIT)
     assert unauthorized.status_code == 401
     assert (
         f'resource_metadata="{PUBLIC}/.well-known/oauth-protected-resource/mcp"'
         in (unauthorized.headers["www-authenticate"])
     )
-    metadata = client.get("/.well-known/oauth-protected-resource/mcp", headers=public).json()
+    metadata = agent.get("/.well-known/oauth-protected-resource/mcp").json()
     assert metadata["resource"] == RESOURCE
-    server_metadata = client.get("/.well-known/oauth-authorization-server", headers=public).json()
+    server_metadata = agent.get("/.well-known/oauth-authorization-server").json()
     assert server_metadata["issuer"] == PUBLIC
 
-    registered = client.post(
-        "/oauth/register", json={"client_name": "dots", "redirect_uris": [REDIRECT]}, headers=public
-    )
+    registered = agent.post("/oauth/register", json={"client_name": "dots", "redirect_uris": [REDIRECT]})
     assert registered.status_code == 201
     client_id = registered.json()["client_id"]
-    assert client.post("/oauth/register", content=b"{nope", headers=public).status_code == 400
+    assert agent.post("/oauth/register", content=b"{nope").status_code == 400
 
     code_verifier = verifier()
-    page = client.get("/oauth/authorize", params=authorize_params(client_id, code_verifier), headers=public)
+    page = agent.get("/oauth/authorize", params=authorize_params(client_id, code_verifier))
     assert page.status_code == 200 and "dots" in page.text
     assert (
         page.headers["x-frame-options"] == "DENY"
@@ -405,29 +506,26 @@ def test_full_hosted_agent_flow_over_http(monkeypatch: pytest.MonkeyPatch, tmp_p
     )
     pending_id = page.text.split('name="pending_id" value="')[1].split('"')[0]
 
-    bad = client.get(
+    bad = agent.get(
         "/oauth/authorize", params=authorize_params(client_id, code_verifier, redirect_uri="https://evil.example/cb")
     )
     assert bad.status_code == 400 and "location" not in bad.headers
 
-    approval = client.post("/api/mcp/approval-code", json={}).json()["code"]
-    wrong = client.post(
-        "/oauth/authorize",
-        data={"pending_id": pending_id, "approval_code": "AAAA-AAAA", "action": "approve"},
-        headers=public,
-        follow_redirects=False,
+    waiting = agent.post(
+        "/oauth/authorize", data={"pending_id": pending_id, "action": "continue"}, follow_redirects=False
     )
-    assert wrong.status_code == 400 and "not right" in wrong.text
-    approved = client.post(
-        "/oauth/authorize",
-        data={"pending_id": pending_id, "approval_code": approval, "action": "approve"},
-        headers=public,
-        follow_redirects=False,
+    assert waiting.status_code == 200 and "Not approved yet" in waiting.text and "location" not in waiting.headers
+    pending = client.get("/api/mcp/status").json()["oauth"]["pending"]
+    assert [item["id"] for item in pending] == [pending_id]
+    assert pending[0]["match_code"] in page.text and pending[0]["returns_to"] in page.text
+    assert client.post("/api/mcp/oauth/approve", json={"pending_id": pending_id}).status_code == 200
+    approved = agent.post(
+        "/oauth/authorize", data={"pending_id": pending_id, "action": "continue"}, follow_redirects=False
     )
     assert approved.status_code == 303 and approved.headers["location"].startswith(REDIRECT + "?")
     code = parse_qs(urlparse(approved.headers["location"]).query)["code"][0]
 
-    token = client.post(
+    token = agent.post(
         "/oauth/token",
         data={
             "grant_type": "authorization_code",
@@ -437,70 +535,98 @@ def test_full_hosted_agent_flow_over_http(monkeypatch: pytest.MonkeyPatch, tmp_p
             "code_verifier": code_verifier,
             "resource": RESOURCE,
         },
-        headers=public,
     )
     assert token.status_code == 200 and token.headers["cache-control"] == "no-store"
     access = token.json()["access_token"]
 
-    ok = client.post("/mcp", json=INIT, headers={**public, "Authorization": f"Bearer {access}"})
+    ok = agent.post("/mcp", json=INIT, headers={"Authorization": f"Bearer {access}"})
     assert ok.status_code == 200 and ok.json()["result"]["serverInfo"]["name"] == "homebody"
 
     agents = client.get("/api/mcp/status").json()["oauth"]["agents"]
     assert agents == [{"name": "dots", "connected": True}]
 
-    reused = client.post("/oauth/token", data={"grant_type": "authorization_code", "code": code}, headers=public)
+    reused = agent.post("/oauth/token", data={"grant_type": "authorization_code", "code": code})
     assert reused.status_code == 400 and reused.json()["error"] == "invalid_request"
 
-    assert client.post("/oauth/revoke", data={"token": access}, headers=public).status_code == 200
-    assert client.post("/mcp", json=INIT, headers={**public, "Authorization": f"Bearer {access}"}).status_code == 401
+    assert agent.post("/oauth/revoke", data={"token": access}).status_code == 200
+    assert agent.post("/mcp", json=INIT, headers={"Authorization": f"Bearer {access}"}).status_code == 401
 
 
 def test_deny_over_http(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    app, client = build(monkeypatch, tmp_path, oauth_config())
+    app, _client, agent = build(monkeypatch, tmp_path, oauth_config())
     client_id = app._oauth.register({"redirect_uris": [REDIRECT]})["client_id"]
     pending = app._oauth.start_authorization(authorize_params(client_id, verifier()), resource=RESOURCE)
 
-    denied = client.post(
+    denied = agent.post(
         "/oauth/authorize", data={"pending_id": pending.pending_id, "action": "deny"}, follow_redirects=False
     )
     assert denied.status_code == 303 and "error=access_denied" in denied.headers["location"]
-    again = client.post(
+    again = agent.post(
         "/oauth/authorize", data={"pending_id": pending.pending_id, "action": "deny"}, follow_redirects=False
     )
     assert again.status_code == 400
 
 
-def test_public_host_only_reaches_agent_routes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _app, client = build(monkeypatch, tmp_path, oauth_config())
+def test_dashboard_port_never_serves_hosted_agents(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _app, client, agent = build(monkeypatch, tmp_path, oauth_config())
 
-    for path in ("/", "/api/status", "/api/config", "/api/mcp/status"):
+    # The OAuth endpoints do not exist on the dashboard port at all.
+    for path in ("/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource/mcp"):
+        assert client.get(path).status_code == 404
+    assert client.post("/oauth/register", json={"redirect_uris": [REDIRECT]}).status_code == 404
+    # A tunnel pointed at the dashboard port by mistake gets nothing when it keeps the public Host.
+    for path in ("/", "/api/status", "/api/mcp/status", "/mcp"):
         assert client.get(path, headers={"Host": "reachy.example.com"}).status_code == 404
         assert client.get(path, headers={"X-Forwarded-Host": "REACHY.example.com"}).status_code == 404
-    assert client.post("/api/mcp/approval-code", json={}, headers={"Host": "reachy.example.com"}).status_code == 404
     assert client.get("/api/status").status_code == 200  # the home network still sees everything
-
-    # The never-expiring static token is for the home network only.
     static = {"Authorization": f"Bearer {STATIC}"}
     assert client.post("/mcp", json=INIT, headers=static).status_code == 200
-    assert client.post("/mcp", json=INIT, headers={**static, "Host": "reachy.example.com"}).status_code == 401
+
+
+def test_public_listener_serves_only_agent_routes_whatever_the_host(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _app, _client, agent = build(monkeypatch, tmp_path, oauth_config())
+    static = {"Authorization": f"Bearer {STATIC}"}
+    # A proxy that rewrites Host (nginx default, ngrok --host-header=rewrite) changes nothing here.
+    for headers in ({}, {"Host": "reachy.example.com"}, {"Host": "127.0.0.1:8043"}):
+        for path in ("/", "/api/status", "/api/config", "/api/mcp/status", "/static/main.js"):
+            assert agent.get(path, headers=headers).status_code == 404
+        assert agent.post("/api/mcp/oauth/approve", json={}, headers=headers).status_code == 404
+        assert agent.post("/api/settings", json={}, headers=headers).status_code == 404
+        # The never-expiring static token is for the home network only.
+        assert agent.post("/mcp", json=INIT, headers={**static, **headers}).status_code == 401
+        assert agent.get("/.well-known/oauth-authorization-server", headers=headers).status_code == 200
+
+
+def test_saving_settings_moves_the_public_listener(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    app, client, _agent = build(monkeypatch, tmp_path, oauth_config())
+    saved = client.post("/api/settings", json={"mcp_public_port": 8443})
+    assert saved.status_code == 200, saved.text
+    assert app._agent_listener.synced[-1].mcp_public_port == 8443  # type: ignore[attr-defined]
 
 
 def test_owner_routes_need_the_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    app, client = build(monkeypatch, tmp_path, oauth_config(api_key="owner-key"))
+    app, client, _agent = build(monkeypatch, tmp_path, oauth_config(api_key="owner-key"))
     granted(app._oauth)
+    client_id = app._oauth.register({"redirect_uris": [REDIRECT]})["client_id"]
+    pending = app._oauth.start_authorization(authorize_params(client_id, verifier()), resource=RESOURCE)
 
-    assert client.post("/api/mcp/approval-code", json={}).status_code == 403
+    decision = {"pending_id": pending.pending_id}
+    assert client.post("/api/mcp/oauth/approve", json=decision).status_code == 403
+    assert client.post("/api/mcp/oauth/deny", json={**decision, "current_api_key": "wrong"}).status_code == 403
     assert client.post("/api/mcp/oauth/disconnect", json={"current_api_key": "wrong"}).status_code == 403
-    created = client.post("/api/mcp/approval-code", json={"current_api_key": "owner-key"})
-    assert created.status_code == 200 and created.json()["expires_in"] == 600
-    assert client.get("/api/mcp/status").json()["oauth"]["approval_code_active"] is True
+    approved = client.post("/api/mcp/oauth/approve", json={**decision, "current_api_key": "owner-key"})
+    assert approved.status_code == 200 and approved.json()["pending"][0]["approved"] is True
+    gone = client.post("/api/mcp/oauth/approve", json={"pending_id": "nope", "current_api_key": "owner-key"})
+    assert gone.status_code == 409
 
     disconnected = client.post("/api/mcp/oauth/disconnect", json={"current_api_key": "owner-key"})
     assert disconnected.status_code == 200 and disconnected.json()["agents"] == []
 
 
 def test_turning_on_sign_in_needs_the_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _app, client = build(monkeypatch, tmp_path, AppConfig(api_key="owner-key", mcp_enabled=True))
+    _app, client, _agent = build(monkeypatch, tmp_path, AppConfig(api_key="owner-key", mcp_enabled=True))
     update = {"mcp_oauth_enabled": True, "mcp_public_url": PUBLIC}
 
     assert client.post("/api/settings", json=update).status_code == 403

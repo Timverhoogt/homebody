@@ -547,3 +547,34 @@ def test_robot_tab_has_the_physical_button_card_wired_to_the_gpio_routes() -> No
     assert '"/api/gpio/status"' in script and '"/api/gpio/buttons"' in script
     # Status text is rendered with textContent, never as HTML.
     assert "gpio-last-event\").innerHTML" not in script
+
+
+def test_status_numbers_each_gesture_and_counts_ignored_presses() -> None:
+    reader = FakeReader(pressed={17})  # green held at start
+    outcomes = iter([None, RuntimeError("not ready")])
+
+    def dispatch(event: ButtonEvent) -> None:
+        error = next(outcomes)
+        if error:
+            raise error
+
+    service = GpioButtonService(dispatch, backend=lambda chip, offsets: reader)
+    service.start(chip="/dev/gpiochip0", pins={"green": 17, "red": 27}, long_press_seconds=2.0)
+    try:
+        now = time.monotonic()
+        assert service.status()["buttons"]["green"] == {"presses": 0, "ignored": 0, "held": True, "armed": False}
+        reader.push(EdgeSample(17, False, now))  # release of the held button: ignored
+        reader.push(EdgeSample(17, True, now + 0.1), EdgeSample(17, False, now + 0.2))
+        reader.push(EdgeSample(27, True, now + 0.3), EdgeSample(27, False, now + 0.4))
+        wait_for(lambda: service.status()["event_count"] == 2)
+        status = service.status()
+        assert status["buttons"]["green"]["ignored"] == 1 and status["buttons"]["green"]["presses"] == 1
+        events = status["recent_events"]
+        assert [(e["seq"], e["event"], e["result"]) for e in events] == [
+            (1, "green short", "applied"),
+            (2, "red short", "error: not ready"),
+        ]
+        assert all(isinstance(e["at"], float) for e in events)
+    finally:
+        service.stop()
+    assert service.status()["buttons"] == {} and service.status()["event_count"] == 2

@@ -147,6 +147,11 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 400; letter-spacing: -.02em
 
 /* Visual grid */
 .visuals .hero-actions { margin-top: 32px; }
+.agent-setup .agent-steps { margin-top: 64px; border-top: 1.5px solid var(--rule); }
+.agent-setup .agent-steps h2 { font-size: clamp(1.5rem, 2.4vw, 2rem); }
+.agent-setup-shot { margin-top: 48px; }
+.agent-setup-shot img { aspect-ratio: auto; }
+.agent-setup-shot figcaption a { color: var(--ink); }
 .visual-grid { margin-top: 64px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
 .visual-card { margin: 0; overflow: hidden; border: 1.5px solid var(--rule); border-radius: 20px; background: var(--paper-3); }
 .visual-card-wide { grid-column: 1 / -1; }
