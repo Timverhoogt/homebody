@@ -49,7 +49,7 @@ def test_pair_once_remember_revoke(owner):
     assert (
         client.post("/api/owner/revoke", json={"device_id": session["device_id"]}, headers=headers).status_code == 200
     )
-    assert client.get("/api/status").status_code == 401
+    assert client.get("/api/status").status_code == 200  # public: needed for dashboard load
     assert store.session(client.cookies.get(COOKIE)) is None
 
 
@@ -65,12 +65,14 @@ def test_expiry_and_no_plaintext_credentials(owner):
     assert code.encode() not in store.path.read_bytes()
     with store.connect() as db:
         db.execute("UPDATE devices SET expires = ?", (time.time() - 1,))
-    assert client.get("/api/status").status_code == 401
+    # /api/status is public (dashboard load); session reflects the expired device.
+    assert client.get("/api/status").status_code == 200
+    assert client.get("/api/owner/session").json()["owner"] is False
 
 
 def test_csrf_origin_host_and_guest(owner):
     _, code, client = owner
-    assert client.get("/api/status").status_code == 401
+    assert client.get("/api/status").status_code == 200  # public: dashboard loads without pairing
     assert client.post("/api/power", headers={"X-Reachy-Adult-UI": "unlocked"}).status_code == 401
     assert pair(client, code).status_code == 200
     csrf = client.get("/api/owner/session").json()["csrf"]
@@ -79,7 +81,10 @@ def test_csrf_origin_host_and_guest(owner):
     assert client.get("/api/status", headers={"Host": "evil.test"}).status_code == 403
     assert client.get("/api/status", headers={"Origin": "https://evil.test"}).status_code == 403
     assert client.get("/api/status", headers={"X-Forwarded-Host": "evil.test"}).status_code == 200
-    assert client.get("/api/status", follow_redirects=False, headers={"Cookie": f"{COOKIE}=bad"}).status_code == 401
+    # /api/status is public: a bad cookie just means no session, not a 401.
+    assert (
+        client.get("/api/status", follow_redirects=False, headers={"Cookie": f"{COOKIE}=bad"}).status_code == 200
+    )
 
 
 def test_pair_origin_and_throttle(owner):

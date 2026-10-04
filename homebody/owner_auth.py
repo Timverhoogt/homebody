@@ -187,7 +187,7 @@ class OwnerBoundary:
             or (method == "GET" and path in {"/api/owner/session", "/api/status"})
             or (method == "OPTIONS" and path == "/api/owner/pair")
         )
-        if public or machine or owner_public:
+        if public or machine:
             return await self.app(scope, receive, send)
         origin = self.store.origin
         status, detail = 0, ""
@@ -200,15 +200,13 @@ class OwnerBoundary:
             status, detail = 403, "Foreign browser origin rejected"
         else:
             session = self.store.session(conn.cookies.get(COOKIE))
-            pairing = method == "POST" and path == "/api/owner/pair"
-            session_info = method == "GET" and path == "/api/owner/session"
-            if not session and not pairing and not session_info:
+            if not session and not owner_public:
                 status, detail = 401, "Pair this device as Owner first"
             elif method not in {"GET", "HEAD", "OPTIONS"}:
                 if conn.headers.get("origin") != origin:
                     status, detail = 403, "Same-origin request required"
                 elif (
-                    not pairing
+                    not owner_public
                     and method != "WEBSOCKET"
                     and not secrets.compare_digest(
                         conn.headers.get("x-homebody-csrf", ""), session["csrf"] if session else ""

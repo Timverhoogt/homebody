@@ -30,7 +30,7 @@ def test_every_registered_private_route_rejects_guest(application):
     for route in robot.settings_app.routes:
         path = getattr(route, "path", "")
         for method in getattr(route, "methods", ()):
-            if not path.startswith("/api/") or path in {"/api/owner/session", "/api/owner/pair"}:
+            if not path.startswith("/api/") or path in {"/api/owner/session", "/api/owner/pair", "/api/status"}:
                 continue
             if (method, path) in MACHINE_ROUTES:
                 continue
