@@ -590,10 +590,23 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .bluetooth-pairing-grid { display: grid; grid-template-columns: minmax(240px, 1fr) 1.5fr; align-items: end; gap: 14px; }
 .bluetooth-actions { justify-content: flex-start; }
 .bluetooth-actions button { min-height: 44px; }
-.local-vision-ask { display: grid; gap: 8px; margin: 14px 0 0; }
+.local-vision-ask { display: grid; gap: 12px; margin: 18px 0 0; }
 .local-vision-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
-.local-vision-answer { margin: 0; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.local-vision-credentials { color: var(--muted); font-size: .8rem; }
+.local-vision-credentials summary { cursor: pointer; padding: 8px 0; }
+.local-vision-credentials label { margin: 8px 0; }
+.local-vision-result { min-width: 0; padding: 20px; border: 1px solid var(--line-strong); border-left: 3px solid var(--orange); background: var(--paper-3); }
+.local-vision-result-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.local-vision-result-header h3 { margin: 0; font-size: 1.15rem; }
+.local-vision-result-header button { min-height: 44px; font-size: .75rem; padding: 8px 12px; }
+.local-vision-result-question { margin: 12px 0; color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+.local-vision-answer { margin: 0; color: var(--text); font-family: system-ui, sans-serif; font-size: 1rem; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.local-vision-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: .7rem; overflow-wrap: anywhere; }
+.local-vision-badge { border: 1px solid var(--line-strong); padding: 4px 7px; color: var(--text); }
+.local-vision-result[data-state="loading"] .local-vision-answer { color: var(--muted); }
+.local-vision-result[data-state="error"] { border-left-color: var(--danger-text); }
 .local-vision-answer.error { color: var(--danger-text); }
+@media (max-width: 480px) { .local-vision-result { padding: 16px; } }
 .gpio-gestures { display: grid; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
 .gpio-gestures li { display: flex; align-items: flex-start; gap: 10px; color: var(--muted); line-height: 1.45; }
 .gpio-gestures strong { color: var(--text); }

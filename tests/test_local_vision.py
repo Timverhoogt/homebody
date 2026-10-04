@@ -444,4 +444,5 @@ def test_settings_and_camera_card_expose_local_vision() -> None:
         assert f'name="{element}"' in html
         assert f'"{element}"' in script
     assert 'id="local-vision-ask"' in html and "/api/vision/describe" in script and "/api/vision/test" in script
-    assert "answer.textContent = `${body.answer}" in script
+    assert "answer.textContent = body.answer" in script
+    assert 'id="local-vision-meta"' in html

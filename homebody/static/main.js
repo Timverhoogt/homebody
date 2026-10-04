@@ -471,15 +471,36 @@ window.setInterval(() => {
   if ($("mcp_oauth_enabled").checked && !document.hidden) refreshMcpStatus();
 }, 5000);
 
+$("local-vision-copy").addEventListener("click", async () => {
+  const button = $("local-vision-copy");
+  const text = $("local-vision-answer").textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    button.textContent = "Copied";
+  } catch (_error) {
+    window.HomebodyNotifications.show("Could not copy. Select the answer text to copy it manually.", { kind: "error" });
+  }
+});
+
 $("local-vision-ask").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = $("local-vision-ask-button");
+  if (button.disabled) return;
   const answer = $("local-vision-answer");
+  const result = $("local-vision-result");
   const question = $("local-vision-question").value.trim() || "What do you see?";
   button.disabled = true;
-  answer.textContent = "Looking…";
+  button.textContent = "Looking…";
+  result.hidden = false;
+  result.dataset.state = "loading";
+  result.setAttribute("aria-busy", "true");
+  $("local-vision-result-title").textContent = "Looking at the scene";
+  $("local-vision-result-question").textContent = question;
+  $("local-vision-copy").hidden = true;
+  $("local-vision-copy").textContent = "Copy answer";
+  $("local-vision-meta").hidden = true;
+  answer.textContent = "Asking the model on your hardware. The first answer can take longer while it loads.";
   answer.classList.remove("error");
-  window.HomebodyNotifications.show("Local vision: answering your question…", { id: "vision-question", kind: "pending" });
   try {
     // The key is optional: an owner session authorises the request without it.
     const key = $("local-vision-key").value.trim();
@@ -491,14 +512,24 @@ $("local-vision-ask").addEventListener("submit", async (event) => {
       body: JSON.stringify({ question }),
     }, 90000);
     const body = await response.json();
-    if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
-    window.HomebodyNotifications.show("Local vision: answer ready below the camera.", { id: "vision-question", kind: "ok" });
-    answer.textContent = `${body.answer} (${body.model}, ${(body.latency_ms / 1000).toFixed(1)} s, on your hardware)`;
+    if (!response.ok || body.ok === false) throw new Error(body.detail || `HTTP ${response.status}`);
+    if (typeof body.answer !== "string" || !body.answer.trim()) throw new Error("The model returned an empty answer. Try asking again.");
+    answer.textContent = body.answer;
+    result.dataset.state = "ready";
+    $("local-vision-result-title").textContent = "Local vision answer";
+    $("local-vision-model").textContent = typeof body.model === "string" ? body.model : "Model not reported";
+    $("local-vision-timing").textContent = Number.isFinite(body.latency_ms) && body.latency_ms >= 0 ? `${(body.latency_ms / 1000).toFixed(1)} s` : "";
+    $("local-vision-meta").hidden = false;
+    $("local-vision-copy").hidden = false;
   } catch (error) {
+    result.dataset.state = "error";
+    $("local-vision-result-title").textContent = "Could not answer";
     answer.textContent = String(error.message || error);
     answer.classList.add("error");
     window.HomebodyNotifications.show(`Local vision: ${answer.textContent}`, { id: "vision-question", kind: "error" });
   } finally {
+    result.setAttribute("aria-busy", "false");
+    button.textContent = "Ask";
     button.disabled = false;
   }
 });

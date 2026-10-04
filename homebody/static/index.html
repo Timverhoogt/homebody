@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=65">
+  <link rel="stylesheet" href="/static/style.css?v=67">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -707,9 +707,24 @@
             <input id="local-vision-question" type="text" maxlength="300" placeholder="What is on the desk?" />
             <button type="submit" id="local-vision-ask-button">Ask</button>
           </div>
-          <label for="local-vision-key">Bridge API key <span class="muted">(optional if paired)</span></label>
-          <input id="local-vision-key" type="password" autocomplete="off" placeholder="The bridge key from Settings. Skip if paired as Owner." />
-          <p id="local-vision-answer" class="local-vision-answer" aria-live="polite"></p>
+          <details class="local-vision-credentials">
+            <summary>Advanced: bridge API key</summary>
+            <label for="local-vision-key">Bridge API key</label>
+            <input id="local-vision-key" type="password" autocomplete="off" placeholder="The bridge key from Settings" />
+          </details>
+          <section id="local-vision-result" class="local-vision-result" data-state="idle" aria-busy="false" aria-labelledby="local-vision-result-title" hidden>
+            <div class="local-vision-result-header">
+              <h3 id="local-vision-result-title">Local vision answer</h3>
+              <button id="local-vision-copy" type="button" class="secondary" hidden>Copy answer</button>
+            </div>
+            <p id="local-vision-result-question" class="local-vision-result-question"></p>
+            <p id="local-vision-answer" class="local-vision-answer" role="status" aria-live="polite"></p>
+            <div id="local-vision-meta" class="local-vision-meta" hidden>
+              <span class="local-vision-badge">Processed locally</span>
+              <span id="local-vision-model"></span>
+              <span id="local-vision-timing"></span>
+            </div>
+          </section>
         </form>
         <p id="camera-message" class="message" role="status" aria-live="polite"></p>
       </section>
@@ -898,10 +913,10 @@
   </main>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=65"></script>
-  <script src="/static/owner.js?v=65"></script>
+  <script src="/static/notifications.js?v=67"></script>
+  <script src="/static/owner.js?v=67"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=65"></script>
-  <script src="/static/main.js?v=65"></script>
+  <script src="/static/camera.js?v=67"></script>
+  <script src="/static/main.js?v=67"></script>
 </body>
 </html>
