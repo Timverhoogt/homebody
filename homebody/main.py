@@ -266,6 +266,8 @@ class AgentSetupStartRequest(BaseModel):
 
 
 _AGENT_SETUP_MAX_BODY_BYTES = 16 * 1024
+# What a device without an Owner session (the agent's own machine) may see of the setup status.
+_AGENT_SETUP_PUBLIC_STATUS = frozenset({"state", "backend", "agent", "mcp", "expires_in"})
 
 
 class McpTokenRequest(BaseModel):
@@ -1175,7 +1177,12 @@ class Homebody(ReachyMiniApp):
 
         @self.settings_app.get("/api/agent-setup/status")
         def agent_setup_status() -> dict[str, object]:
-            return self._agent_setup.status()
+            # The agent checks this from its own machine before pairing, without an Owner session,
+            # so guests see only the setup state; the bridge address and errors stay Owner-only.
+            status = self._agent_setup.status()
+            if not owner_authenticated.get():
+                status = {k: v for k, v in status.items() if k in _AGENT_SETUP_PUBLIC_STATUS}
+            return status
 
         @self.settings_app.get("/agent-setup/{backend}.md", include_in_schema=False)
         def agent_setup_guide(backend: str, request: Request) -> PlainTextResponse:

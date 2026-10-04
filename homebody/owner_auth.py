@@ -195,7 +195,7 @@ class OwnerBoundary:
         machine = (method, path) in MACHINE_ROUTES
         owner_public = (
             (method == "POST" and path == "/api/owner/pair")
-            or (method == "GET" and path in {"/api/owner/session", "/api/status"})
+            or (method == "GET" and path in {"/api/owner/session", "/api/status", "/api/agent-setup/status"})
             or (method == "OPTIONS" and path == "/api/owner/pair")
         )
         if public or machine:
