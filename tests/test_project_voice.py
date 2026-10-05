@@ -120,10 +120,48 @@ def test_discover_read_and_followup_re_read_real_source(tmp_path, monkeypatch):
     assert len(payloads) == 5
     assert any(item.get("content") == first for item in payloads[3]["messages"])
     assert "Selected project ID from this live session: photo" in payloads[3]["messages"][0]["content"]
+    followup_tools = payloads[3]["tools"]
+    assert [tool["function"]["name"] for tool in followup_tools] == ["read_project_roadmap"]
+    assert followup_tools[0]["function"]["parameters"]["properties"]["project_id"]["enum"] == ["photo"]
     results = [json.loads(item["content"]) for item in payloads[4]["messages"] if item.get("role") == "tool"]
     assert results[-1]["data"]["text"].endswith("3|Next: regression tests")
     assert results[-1]["data"]["execution_available"] is False
     assert not any(item["data"].get("text", "").endswith("Next: colour pipeline") for item in results)
+    manifest_read = next(item for item in bridge.agent_broker.manifest() if item["id"] == "read_project_roadmap")
+    manifest_schema = manifest_read["arguments_schema"]
+    assert isinstance(manifest_schema, dict)
+    assert "enum" not in manifest_schema["properties"]["project_id"]
+
+
+@pytest.mark.parametrize(
+    ("capability", "arguments"),
+    [("list_projects", {}), ("read_project_roadmap", {"project_id": "other"})],
+)
+def test_followup_refuses_rediscovery_or_another_registered_project(tmp_path, monkeypatch, capability, arguments):
+    bridge = setup(
+        tmp_path, monkeypatch,
+        [call("read_project_roadmap", {"project_id": "photo"}),
+         answer("Photo roadmap next: colour pipeline", ["read_project_roadmap"]),
+         call(capability, arguments),
+         answer("Other project's private content", [capability])],
+    )
+    (tmp_path / "other.md").write_text("# Other project\nNext: unrelated private milestone\n")
+    bridge.agent_broker.config.projects = ProjectCatalog.from_json(json.dumps({
+        "photo": {"title": "Photo", "root": str(tmp_path), "roadmap": "roadmap.md"},
+        "other": {"title": "Other", "root": str(tmp_path), "roadmap": "other.md"},
+    }))
+
+    async def scenario():
+        await ask(bridge, "Read the photo project roadmap")
+        with pytest.raises(BrokerValidationError, match="selected project roadmap"):
+            await ask(bridge, "What's next?")
+        async with bridge.agent_broker.project_conversation("reachy-a", BrokerContext.parse(context())) as lease:
+            assert lease.selected_project_id == "photo"
+        provider = bridge.http
+        assert isinstance(provider, FixtureHttp)
+        assert len(provider.payloads) == 3
+
+    asyncio.run(scenario())
 
 
 def test_project_history_is_device_scoped_and_not_used_for_unrelated_questions(tmp_path, monkeypatch):
