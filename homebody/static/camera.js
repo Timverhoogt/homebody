@@ -40,7 +40,11 @@
     const messageElement = byId("camera-message");
     messageElement.textContent = message;
     messageElement.className = `message ${kind}`;
-    if (kind === "error") window.HomebodyNotifications?.show(`Camera: ${message}`, { id: "camera-stream", kind });
+    if (kind === "error") {
+      if (window.HomebodyNotifications?.show(message, { id: "camera-stream", kind, title: "Camera" })) {
+        messageElement.className += " message-surfaced";
+      }
+    }
     else if (kind === "ok") window.HomebodyNotifications?.dismiss("camera-stream");
   }
 

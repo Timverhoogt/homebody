@@ -650,7 +650,7 @@ $("install-button").addEventListener("click", async () => {
     $("install-status").textContent = "Installing";
     $("install-help").hidden = true;
     $("install-message").textContent = "Installation accepted. Homebody is being added to your home screen.";
-    $("install-message").className = "message ok";
+    notifyFeedback($("install-message"), "ok");
   } else {
     updateInstallUi();
     $("install-message").textContent = "Installation dismissed. You can try again from Chrome's menu.";
@@ -664,7 +664,7 @@ async function registerPwa() {
     await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
   } catch (error) {
     $("install-message").textContent = `App installation support could not start: ${String(error)}`;
-    $("install-message").className = "message error";
+    notifyFeedback($("install-message"), "error");
   }
 }
 registerPwa();
@@ -672,8 +672,7 @@ registerPwa();
 function setMessage(text, kind = "") {
   const el = $("form-message");
   el.textContent = text;
-  if (kind) notifyFeedback(el, kind);
-  else el.className = "message";
+  notifyFeedback(el, kind || "pending");
 }
 
 function fillConfig(config) {
@@ -2544,7 +2543,7 @@ $("camera-wake-control").addEventListener("click", async () => {
 
 // One operation ID updates progress in place instead of overwriting unrelated notices.
 function showPowerToast(text, kind = "pending") {
-  window.HomebodyNotifications.show(text, { id: "power-transition", kind });
+  return window.HomebodyNotifications?.show(text, { id: "power-transition", kind, title: "Reachy power" });
 }
 
 // Keep details at the control; surface action outcomes consistently across tabs.
@@ -2555,14 +2554,16 @@ function notifyFeedback(message, kind) {
     "announcement-message": "Announcement", "robot-message": "Robot",
     "presence-message": "Presence", "initiative-message": "Initiative",
     "presentation-message": "Presentation", "bluetooth-message": "Controller",
-    "gpio-message": "Buttons", "camera-message": "Camera",
+    "gpio-message": "Buttons", "camera-message": "Camera", "install-message": "Home-screen app",
     "agent-setup-status": "Agent setup", "local-vision-message": "Local vision", "mcp-message": "Agent access",
   };
   // Fast motor commands remain quiet on success. Never toast polling/telemetry.
   if (!labels[message.id] || (message.id === "robot-message" && kind !== "error")) return;
-  window.HomebodyNotifications.show(`${labels[message.id]}: ${message.textContent}`, {
-    id: `feedback-${message.id}`, kind,
+  const notice = window.HomebodyNotifications?.show(message.textContent, {
+    id: `feedback-${message.id}`, kind, title: labels[message.id],
   });
+  // Keep text as a fallback if notifications are unavailable, suppressed, or full.
+  if (notice) message.className += " message-surfaced";
 }
 
 async function setPowerMode(mode, durationMinutes = 60, message = $("power-message")) {
@@ -2598,6 +2599,7 @@ async function setPowerMode(mode, durationMinutes = 60, message = $("power-messa
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     const runtime = body.runtime || {};
+    if (runtime.power_mode !== mode) throw new Error("Requested power mode was not confirmed by the robot runtime");
     if (mode === "awake" && (runtime.power_mode !== "awake" || runtime.motors_enabled !== true)) {
       throw new Error("Awake was not confirmed by the robot runtime");
     }
@@ -2608,13 +2610,15 @@ async function setPowerMode(mode, durationMinutes = 60, message = $("power-messa
       ? "Reachy folded safely · motor torque disabled"
       : mode === "awake"
         ? "Reachy awake · motor torque enabled"
-        : `Power mode: ${body.runtime.power_mode}`;
+        : mode === "sleep"
+          ? "Sleep mode enabled. Reachy is resting."
+          : "Meeting mode enabled. Reachy will stay quiet.";
     message.className = "message ok";
-    showPowerToast(message.textContent, "ok");
+    if (showPowerToast(message.textContent, "ok")) message.className += " message-surfaced";
   } catch (error) {
     message.textContent = String(error);
     message.className = "message error";
-    showPowerToast(message.textContent, "error");
+    if (showPowerToast(message.textContent, "error")) message.className += " message-surfaced";
   } finally {
     activeButtons.forEach((button) => {
       button.textContent = button.dataset.idleLabel;
@@ -2647,7 +2651,9 @@ async function responseDetail(response) {
 function setPowerMessage(text, kind) {
   $("power-message").textContent = text;
   $("power-message").className = `message ${kind}`;
-  window.HomebodyNotifications.show(text, { id: "app-lifecycle", kind });
+  if (window.HomebodyNotifications?.show(text, { id: "app-lifecycle", kind, title: "Reachy" })) {
+    $("power-message").className += " message-surfaced";
+  }
 }
 
 $("app-off-button").addEventListener("click", async () => {
