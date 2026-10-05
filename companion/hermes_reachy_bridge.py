@@ -2185,6 +2185,15 @@ class Bridge:
             for capability in self.agent_broker.manifest()
             if not project_read_only or capability["id"] in {"list_projects", "read_project_roadmap"}
         ]
+        if project_followup:
+            tools = [tool for tool in tools if tool["function"]["name"] == "read_project_roadmap"]
+            # Replace the local schema rather than mutating the shared capability manifest.
+            tools[0]["function"]["parameters"] = {
+                "type": "object",
+                "properties": {"project_id": {"type": "string", "enum": [selected_project_id]}},
+                "required": ["project_id"],
+                "additionalProperties": False,
+            }
         messages: list[dict[str, object]] = [
             {
                 "role": "system",
@@ -2195,7 +2204,9 @@ class Bridge:
                     "read_project_roadmap, with one call per round. Only that read-only discovery-to-roadmap "
                     "sequence may use a "
                     "second tool round. Always re-read the roadmap for project progress or next-item questions; "
-                    "dialogue is context, not evidence. Cite source lines where useful; disclose truncation. "
+                    "dialogue is context, not evidence. Distinguish the named open milestone from the immediate "
+                    "next step: prioritize the latest explicit Next/status update rather than repeating an initial "
+                    "plan already recorded as implemented. Cite source lines where useful; disclose truncation. "
                     "Report recorded status, not verified implementation. Project execution is unavailable: "
                     "never say you started coding or that an artifact is ready to test. "
                     "Side effects "
@@ -2221,7 +2232,8 @@ class Bridge:
         if selected_project_id:
             messages[0]["content"] += (
                 f" Selected project ID from this live session: {selected_project_id}. "
-                "Use it for a roadmap follow-up; do not switch projects without the user naming another project."
+                "Use it for a roadmap follow-up; do not switch projects without the user naming another project. "
+                "For a follow-up, read only this selected roadmap directly; do not rediscover the project catalog."
             )
         used_capabilities: set[str] = set()
         has_evidence = False
@@ -2357,6 +2369,11 @@ class Bridge:
                 for _, capability_id, _ in parsed_calls
             ):
                 raise BrokerValidationError("project conversation refused a tool outside its read-only scope")
+            if project_followup and any(
+                capability_id != "read_project_roadmap" or arguments.get("project_id") != selected_project_id
+                for _, capability_id, arguments in parsed_calls
+            ):
+                raise BrokerValidationError("project follow-up permits only the selected project roadmap")
             if project_read_only and len(parsed_calls) != 1:
                 raise BrokerValidationError("project roadmap conversation requires one read at a time")
             project_discovery = (
