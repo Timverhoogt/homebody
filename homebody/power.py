@@ -55,6 +55,7 @@ class PowerMixin:
                     self._status.announcement_last_text = ""
         with self._motor_transition_lock:
             if mode in {"standby", "meeting", "sleep"}:
+                self._voice_workspace.clear()
                 self._request_conversation_stop()
             else:
                 self._conversation_stop_requested.clear()

@@ -60,6 +60,7 @@ from .voice_realtime import (
 from .voice_realtime import (
     realtime_response_id as realtime_response_id,
 )
+from .voice_workspace import VoiceWorkspace, VoiceWorkspaceMixin
 from .wakeword import WAKE_PROMPT as _WAKE_PROMPT
 from .wakeword import HeyHermesSpotter, ensure_kws_model
 
@@ -182,6 +183,7 @@ class HermesVoiceRuntime(
     ManualControlMixin,
     ProactiveMixin,
     AgentSessionMixin,
+    VoiceWorkspaceMixin,
     VisionMixin,
     HomeAssistantVoiceMixin,
     RealtimeVoiceMixin,
@@ -244,6 +246,7 @@ class HermesVoiceRuntime(
         self._init_kids_state()
         self._safety_gate = SafetyGate(_RuntimeSafetyProbe(self))
         self._init_agent_session_state()
+        self._voice_workspace = VoiceWorkspace()
 
     def _request_conversation_stop(self) -> None:
         """Stop the current voice turn; only a newly accepted wake may start another."""
@@ -510,6 +513,7 @@ class HermesVoiceRuntime(
 
     def _teardown_runtime(self) -> None:
         """Stop every runtime worker and media stream; safe after a partial start."""
+        self._voice_workspace.clear()
         bridge, self._home_assistant_bridge = self._home_assistant_bridge, None
         if bridge is not None:
             try:

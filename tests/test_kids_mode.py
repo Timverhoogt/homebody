@@ -616,8 +616,8 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     worker = (STATIC / "service-worker.js").read_text(encoding="utf-8")
     assert "homebody-shell-v" in worker
     for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=69" in html
-        assert f'"/static/{asset}?v=69"' in worker
+        assert f"/static/{asset}?v=70" in html
+        assert f'"/static/{asset}?v=70"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

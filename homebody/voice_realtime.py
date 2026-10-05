@@ -252,6 +252,8 @@ class RealtimeVoiceMixin:
             if agent_request_id:
                 self._finish_agent_request(agent_request_id, broker_context.session_generation, succeeded=False)
             raise
+        workspace_generation = self._workspace_lease()
+        self._workspace_event(workspace_generation, "activity", "Listening via Realtime")
         transcript_parts: list[str] = []
         response_parts: list[str] = []
         last_activity = time.monotonic()
@@ -332,6 +334,9 @@ class RealtimeVoiceMixin:
                         if active_response_id:
                             interrupted_response_ids.add(active_response_id)
                         if speaking or playback.audible(now):
+                            self._workspace_event(
+                                workspace_generation, "activity", "Reply interrupted; listening again",
+                            )
                             played_ms = playback.played_ms(now)
                             self._clear_streamed_audio()
                             if playback.item_id:
@@ -358,6 +363,11 @@ class RealtimeVoiceMixin:
                                 transcript_parts.append(text)
                             else:
                                 transcript_parts = [text]
+                            if kind.endswith(".completed"):
+                                self._workspace_event(
+                                    workspace_generation, "user", text,
+                                    key=str(payload.get("item_id") or ""),
+                                )
                             self._set_status(
                                 "thinking",
                                 "Hermes is responding",
@@ -439,6 +449,8 @@ class RealtimeVoiceMixin:
                         _LOGGER.info("Realtime robot tool %s: %s", robot_call.name, result)
                         self._set_status("thinking", "Hermes queued a Reachy action")
                     elif kind == "response.created":
+                        response_parts.clear()
+                        self._workspace_event(workspace_generation, "activity", "Realtime is responding")
                         active_response_id = event_response_id
                         last_activity = time.monotonic()
                         generation_done = False
@@ -455,7 +467,7 @@ class RealtimeVoiceMixin:
                             now = time.monotonic()
                             if not speaking:
                                 speaking = True
-                                response_parts.clear()
+                                self._workspace_event(workspace_generation, "activity", "Speaking the reply")
                                 self._set_status(
                                     "speaking",
                                     "Hermes Realtime is speaking",
@@ -477,8 +489,20 @@ class RealtimeVoiceMixin:
                             "Hermes Realtime is speaking",
                             response_preview="".join(response_parts)[-240:],
                         )
+                    elif kind in {"response.output_audio_transcript.done", "response.audio_transcript.done"}:
+                        self._workspace_event(
+                            workspace_generation, "assistant",
+                            str(payload.get("transcript") or "".join(response_parts)),
+                            key=event_response_id or active_response_id,
+                        )
                     elif kind in {"response.done", "response.output_audio.done", "response.audio.done"}:
                         if kind == "response.done":
+                            response = payload.get("response") or {}
+                            if isinstance(response, dict) and response.get("status") == "completed":
+                                self._workspace_event(
+                                    workspace_generation, "assistant", "".join(response_parts),
+                                    key=event_response_id or active_response_id,
+                                )
                             if not event_response_id or event_response_id == active_response_id:
                                 active_response_id = ""
                             with self._status_lock:
@@ -499,6 +523,7 @@ class RealtimeVoiceMixin:
             session_completed = True
         finally:
             session.close()
+            self._workspace_event(workspace_generation, "activity", "Realtime voice session ended")
             self._clear_streamed_audio()
             if agent_request_id:
                 self._finish_agent_request(

@@ -113,6 +113,10 @@ function renderAgentRun() {
   $("agent-run-resume-button").disabled = agentRunRequestPending || status !== "paused" || run?.resumable !== true;
   $("agent-run-cancel-button").disabled = agentRunRequestPending || !run || ["completed", "partial", "failed", "cancelled"].includes(status);
   $("agent-run-approve-button").hidden = status !== "waiting_approval" || activeStep?.status !== "waiting_approval";
+  if (status === "waiting_approval") {
+    window.HomebodyWorkspace?.show();
+    document.querySelector(".agent-advanced-actions").open = true;
+  }
   $("agent-run-approve-button").textContent = activeStep
     ? `Approve step ${String(activeStep.step_id).replace("step-", "")} exactly`
     : "Approve waiting step exactly";
@@ -805,6 +809,7 @@ function updateStatus(payload) {
   const kidsActive = Boolean(kidsMode.active);
   const kidsCameraActive = Boolean(kidsMode.camera_active);
   const kidsLocked = Boolean(kidsMode.locked);
+  window.HomebodyWorkspace?.update(runtime);
   window.HomebodyNotifications.setSuppressed("kids", kidsLocked);
   const agent = runtime.agent || {};
   const agentProfile = agent.profile || "conversation";
@@ -1233,6 +1238,7 @@ async function refreshStatus() {
     statusRefreshHealthy = true;
   } catch (error) {
     statusRefreshHealthy = false;
+    window.HomebodyWorkspace?.reset("Reachy is unreachable; conversation hidden.");
     window.HomebodyAgentConnection?.offline();
     if (window.ReachyCamera?.isActive()) {
       window.ReachyCamera.stop("Camera stopped because Hermes status is unavailable.");
@@ -1368,6 +1374,7 @@ async function refreshAgentActivity() {
     sheet.hidden = !pendingAgentApproval;
     $("agent-approve-button").disabled = !pendingAgentApproval || agentRequestPending;
     if (pendingAgentApproval) {
+      window.HomebodyWorkspace?.show();
       $("agent-current-task").textContent = "Waiting for exact phone approval";
       $("agent-approval-capability").textContent = String(pendingAgentApproval.capability_id || "").replaceAll("_", " ");
       $("agent-approval-arguments").textContent = JSON.stringify(pendingAgentApproval.arguments || {}, null, 2);

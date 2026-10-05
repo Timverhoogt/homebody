@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=69">
+  <link rel="stylesheet" href="/static/style.css?v=70">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -119,9 +119,9 @@
       <section class="card agent-card display">
         <div class="agent-hero">
           <div>
-            <p class="label">Owner-controlled workspace</p>
-            <h2>Agent Mode</h2>
-            <p class="muted">Create a bounded plan, review every exact step, then start. Consequential actions pause for phone approval.</p>
+            <p class="label">Your embodied companion</p>
+            <h2>Hermes, through Reachy</h2>
+            <p class="muted">A helpful presence at home. Speak to Reachy, and follow the conversation in your workspace.</p>
           </div>
           <span id="agent-profile-badge" class="badge">Conversation</span>
         </div>
@@ -133,9 +133,14 @@
         <p id="agent-message" class="message" role="status" aria-live="polite"></p>
       </section>
 
+      <div class="agent-view-switch" role="group" aria-label="Agent view">
+        <button type="button" id="agent-view-companion" aria-pressed="true">Companion</button>
+        <button type="button" id="agent-view-workspace" aria-pressed="false">Workspace</button>
+      </div>
+      <div id="agent-companion-view">
       <section class="card presence-card" aria-labelledby="presence-heading">
         <div class="section-heading">
-          <div><p class="label">Agent 0.6 · Goal 1</p><h2 id="presence-heading">Proactive Presence</h2></div>
+          <div><p class="label">Presence</p><h2 id="presence-heading">Proactive Presence</h2></div>
           <span id="presence-badge" class="badge">Off</span>
         </div>
         <p class="muted">Reachy can accept trusted local presence signals and acknowledge them with one subtle movement when already Awake.</p>
@@ -160,7 +165,7 @@
 
       <section class="card initiative-card" aria-labelledby="initiative-heading">
         <div class="section-heading">
-          <div><p class="label">Agent 0.6 · Goals 2–3</p><h2 id="initiative-heading">Initiative & Offers</h2></div>
+          <div><p class="label">Helpful timing</p><h2 id="initiative-heading">Initiative & Offers</h2></div>
           <span id="initiative-badge" class="badge">Off</span>
         </div>
         <p class="muted">A deterministic gate decides whether Reachy should remain silent, acknowledge physically, or prepare an offer candidate.</p>
@@ -226,7 +231,7 @@
 
       <section class="card presentation-card" aria-labelledby="presentation-heading">
         <div class="section-heading">
-          <div><p class="label">Agent 0.6 · Goal 4</p><h2 id="presentation-heading">Show Reachy something</h2></div>
+          <div><p class="label">Shared context</p><h2 id="presentation-heading">Show Reachy something</h2></div>
           <span id="presentation-badge" class="badge">Off</span>
         </div>
         <p class="muted">Start a short window only when you intentionally hold an object or text in the center of Reachy's view.</p>
@@ -253,9 +258,28 @@
         <p id="presentation-message" class="message" role="status" aria-live="polite"></p>
       </section>
 
-      <section class="card agent-run-sheet" aria-labelledby="agent-run-heading">
+      </div>
+      <div id="agent-workspace-view" hidden>
+      <section class="card voice-workspace" aria-labelledby="voice-workspace-heading">
         <div class="section-heading">
-          <div><p class="label">Plan and run</p><h2 id="agent-run-heading">What should Reachy accomplish?</h2></div>
+          <div><p class="label">Conversation</p><h2 id="voice-workspace-heading">Speak. See. Continue.</h2></div>
+          <span id="workspace-badge" class="badge">Not showing</span>
+        </div>
+        <p class="muted">Say “Hey Homebody” and talk to Hermes. This view shows accepted voice messages and actual activity—not private reasoning.</p>
+        <div class="workspace-toolbar">
+          <button type="button" id="workspace-start">Show next conversation</button>
+          <button type="button" id="workspace-clear" class="secondary">Stop showing &amp; clear</button>
+        </div>
+        <p class="muted compact-note">Owner-only · kept in memory for up to one hour · cleared by Kids, privacy, power changes or Stop. Showing this view does not start the microphone or grant new tools.</p>
+        <p id="workspace-state" role="status" aria-live="polite">Conversation display is off.</p>
+        <ol id="workspace-timeline" class="workspace-timeline" aria-label="Voice conversation"></ol>
+        <p class="muted compact-note">Project handoff and background coding are next on the roadmap. The controls below still run only bounded home actions.</p>
+      </section>
+      <details class="card agent-advanced-actions">
+        <summary><strong>Advanced home actions</strong><small>Preview a bounded plan and approve exact steps</small></summary>
+      <section class="agent-run-sheet" aria-labelledby="agent-run-heading">
+        <div class="section-heading">
+          <div><p class="label">Bounded home actions</p><h2 id="agent-run-heading">Preview an exact plan</h2></div>
           <span id="agent-run-badge" class="badge">No plan</span>
         </div>
         <label for="agent-run-goal" class="sr-only">Agent goal</label>
@@ -277,6 +301,7 @@
         <button type="button" id="agent-run-approve-button" class="agent-primary-approval" hidden>Approve waiting step exactly</button>
       </section>
 
+      </details>
       <section id="agent-approval-sheet" class="card agent-approval-sheet" hidden>
         <div class="section-heading"><div><p class="label">Approval required</p><h2>Review exact action</h2></div><span class="badge warning">One shot</span></div>
         <strong id="agent-approval-capability">—</strong>
@@ -286,7 +311,7 @@
       </section>
 
       <details class="card agent-session-details">
-        <summary><span><strong>Session details</strong><small>Capabilities, current task, approvals, and sanitized activity</small></span></summary>
+        <summary><span><strong>Tool activity &amp; session details</strong><small>Actual sanitized broker activity, capabilities and approvals</small></span></summary>
         <div class="agent-status-grid">
           <div><span class="label">Current task</span><p id="agent-current-task" class="quote">—</p></div>
           <div><span class="label">Pending approval</span><p id="agent-pending-approval" class="quote">None</p></div>
@@ -295,6 +320,7 @@
         <p class="label">Recent sanitized activity</p>
         <ol id="agent-activity" class="agent-activity"><li>No activity yet</li></ol>
       </details>
+      </div><!-- agent workspace view -->
     </div>
 
     <div id="panel-kids" class="tab-panel kids-panel" role="tabpanel" aria-labelledby="tab-kids" data-panel="kids" hidden>
@@ -920,11 +946,12 @@
   </main>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=69"></script>
-  <script src="/static/owner.js?v=69"></script>
+  <script src="/static/notifications.js?v=70"></script>
+  <script src="/static/owner.js?v=70"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=69"></script>
-  <script src="/static/agent-connection.js?v=69"></script>
-  <script src="/static/main.js?v=69"></script>
+  <script src="/static/camera.js?v=70"></script>
+  <script src="/static/agent-connection.js?v=70"></script>
+  <script src="/static/workspace.js?v=70"></script>
+  <script src="/static/main.js?v=70"></script>
 </body>
 </html>

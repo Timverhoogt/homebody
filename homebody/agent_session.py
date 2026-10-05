@@ -52,6 +52,7 @@ class AgentSessionMixin:
         with self._kids_lock:
             if self._kids_active or self._kids_locked:
                 raise RuntimeError("Agent profile is unavailable while Kids Mode is active or locked")
+            self._voice_workspace.clear()
             with self._agent_lock:
                 active_request_id = self._agent_active_request_id
                 self._agent_session_generation += 1
@@ -91,6 +92,8 @@ class AgentSessionMixin:
         # Only the internal, explicit session_changed reason may preserve the
         # voice loop. Unknown callers fail closed as a normal Stop request.
         safe_reason = reason if reason in allowed_reasons else "stopped"
+        if safe_reason != "session_changed":
+            self._voice_workspace.clear()
         with self._agent_lock:
             active_request_id = self._agent_active_request_id
             self._agent_session_generation += 1
