@@ -234,8 +234,9 @@ button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--orange); }
 .power-actions, .danger-actions, .robot-actions, .left-actions { justify-content: flex-start; flex-wrap: wrap; }
 .danger-actions { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .message { min-height: 1.3em; margin: 12px 0 0; color: var(--muted); font-size: .9rem; }
-.message.ok { color: var(--ok); }
-.message.error { color: var(--danger-text); }
+.message:not(:empty) { padding: .7rem .9rem; border: 1px solid var(--line); border-radius: 12px; color: var(--text); line-height: 1.5; }
+.message.ok { border-left: 3px solid var(--ok); }
+.message.error { border-left: 3px solid var(--danger-text); }
 
 /* Robot tab */
 .control-group { padding: 18px; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--paper-2); }
@@ -806,6 +807,12 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 /* Quiet, bounded notifications above phone navigation; never block controls beneath. */
 .notifications { position: fixed; bottom: calc(6rem + env(safe-area-inset-bottom)); right: max(1rem, env(safe-area-inset-right)); z-index: 10000; width: min(24rem, calc(100vw - 2rem)); max-height: calc(75dvh - 6rem); overflow-y: auto; display: grid; gap: .5rem; pointer-events: none; }
 .notification { display: flex; align-items: center; gap: .75rem; padding: .65rem .75rem .65rem 1rem; background: #222720; color: #fff9eb; border: 1px solid #ffffff30; border-left: 3px solid #b6ada0; border-radius: 12px; box-shadow: 0 6px 24px #0003; pointer-events: auto; animation: notification-enter .16s ease-out; }
+.message.message-surfaced { display: none; }
+.notification-title { display: block; margin-bottom: .2rem; font-size: .8rem; font-weight: 650; letter-spacing: .02em; color: #e1d7c6; }
+.notification-ok::before { content: "✓"; color: #a9ce9d; }
+.notification-error::before { content: "!"; color: #ffaaa3; }
+.notification-info::before { content: "i"; color: #e1d7c6; }
+.notification:not(.notification-pending)::before { flex-shrink: 0; width: 1.5rem; height: 1.5rem; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 50%; font: 600 .9rem system-ui, sans-serif; }
 .notification-text { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: system-ui, sans-serif; font-size: .9rem; line-height: 1.4; }
 .notification-queued { margin: 0; padding: .25rem .5rem; font: .8rem system-ui, sans-serif; color: #fff9eb; background: #222720; border-radius: 6px; }
 .notification-error { border-left-color: #e76a62; }

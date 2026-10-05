@@ -53,9 +53,9 @@
       item.node.hidden = index >= MAX_VISIBLE;
       if (item.node.hidden) pause(item);
       else {
-        if (item.announced !== item.text) {
-          (item.kind === "error" ? urgent : polite).textContent = item.text;
-          item.announced = item.text;
+        if (item.announced !== `${item.title}:${item.text}`) {
+          (item.kind === "error" ? urgent : polite).textContent = [item.title, item.text].filter(Boolean).join(": ");
+          item.announced = `${item.title}:${item.text}`;
         }
         resume(item);
       }
@@ -84,15 +84,16 @@
     }
   }
 
-  function show(text, { id, kind = "info" } = {}) {
+  function show(text, { id, kind = "info", title = "" } = {}) {
     if (suppressed.size) return null;
     text = String(text || "").trim();
     if (!text) return null;
     kind = ["pending", "ok", "error", "info"].includes(kind) ? kind : "info";
     ensureRegion();
-    const signature = `${kind}:${text}`;
+    title = String(title || "").trim();
+    const signature = `${kind}:${title}:${text}`;
     // Repeated status polls and retries must not spawn or re-time the same notice.
-    if (id && items.get(id)?.text === text && items.get(id)?.kind === kind) return id;
+    if (id && items.get(id)?.text === text && items.get(id)?.kind === kind && items.get(id)?.title === title) return id;
     if (!id && performance.now() - (recent.get(signature) ?? -Infinity) < 5000) return null;
     id ||= `notice-${++serial}`;
     let item = items.get(id);
@@ -125,7 +126,16 @@
     pause(item);
     item.kind = kind;
     item.text = text;
-    item.content.textContent = text;
+    item.title = title;
+    item.content.textContent = "";
+    if (title) {
+      const heading = document.createElement("strong");
+      heading.className = "notification-title";
+      heading.textContent = title;
+      const detail = document.createElement("span");
+      detail.textContent = text;
+      item.content.append(heading, detail);
+    } else item.content.textContent = text;
     item.node.className = `notification notification-${kind}`;
     item.remaining = kind === "error" || kind === "pending" ? null : 6000;
     recent.set(signature, performance.now());

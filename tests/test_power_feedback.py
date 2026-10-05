@@ -31,7 +31,8 @@ let fetch = () => {calls++; return new Promise(resolve => {resolveRequest=resolv
   assert.equal(home.textContent,'Waking…');
   assert.equal(home['aria-busy'],'true');
   assert.equal(home.disabled,true);
-  assert.equal(notices()[0].children[0].textContent,'Waking…');
+  assert.equal(notices()[0].children[0].children[0].textContent,'Reachy power');
+  assert.equal(notices()[0].children[0].children[1].textContent,'Waking…');
   assert.equal(timers.size,0);
   notices()[0].children[1].click();
   assert.equal(notices().length,0);
