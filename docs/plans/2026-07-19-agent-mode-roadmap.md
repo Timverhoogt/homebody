@@ -1,8 +1,8 @@
 # Reachy Mini Hermes Agent Mode Implementation Roadmap
 
-> **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
+> Work directly in small verified increments. Preserve the shipped safety boundaries; do not use delegation or task boards by default.
 
-**Goal:** Add an explicit adult-only Agent Mode that gives Reachy useful new capabilities through narrow, auditable tools while preserving fast Realtime conversation and deterministic privacy, Kids Mode, robot-safety, and approval boundaries.
+**Goal:** Make Reachy an embodied voice surface of the owner's Hermes: discuss real projects, authorize work, follow the conversation/activity, and return for testing across Homebody and Hermes Desktop. Preserve fast Realtime conversation, deterministic privacy, Kids Mode, robot safety, and explicit tool/approval boundaries.
 
 **Architecture:** Keep GPT Realtime as the low-latency voice front end and keep its direct tool list small. Route broad capabilities through `ask_hermes` into a Reachy-specific Agent Broker on the Hermes host. The broker owns capability allowlists, argument validation, risk classification, approval, cancellation, result validation, redaction, and audit history; neither Realtime nor a general model receives unrestricted authority.
 
@@ -10,7 +10,48 @@
 
 ---
 
-## Status and next steps (updated 2026-10-03)
+## Product direction and next steps (updated 2026-10-05)
+
+### North star: one Hermes, several surfaces
+
+Homebody is the embodied voice doorway into the owner's Hermes, not a separate task-planning robot. Companion behaviour (presence, helpful offers and explicit shared physical context) remains the primary Agent-page story. A separate simplified Hermes Desktop-style workspace shows the conversation and actual work, with tool activity folded into readable details. It must never invent progress or expose hidden reasoning.
+
+The desired end-to-end experience:
+
+1. Tim: “Hey Homebody, I want to work on the raw photo agent. Tell me about the roadmap.”
+2. Hermes reads the selected project's actual roadmap and work state: “We finished this part; next we can work on this.”
+3. Tim: “Let's work on this.” The same contextual session resolves “this” to the discussed next item, confirms scope, and starts the authorized work.
+4. Homebody shows user/assistant messages, actual tool starts/results and current activity. Reachy speaks concise milestones, not every tool call.
+5. Work continues independently of a listening timeout. Completion produces a truthful “Ready to test?” with an artifact/test link and the physical acceptance still needed.
+6. Hermes Desktop exposes Reachy as an identifiable embodied entity/surface of Hermes. Desktop, phone and voice refer to the same selected session/work item, with clear routing and Stop semantics—not cloned agents with unrelated memories.
+
+This sequence is the target, **not a claim that the existing bounded Agent Broker can code in arbitrary projects**. Keep the current restricted voice profile until a separate host-side project-work authorization and durable-run boundary exists. Do not silently grant terminal/file access or copy the owner's full credentials to Reachy.
+
+### Four delivery goals, in order
+
+**1. See the real conversation (first next item).** Separate Companion and Workspace views inside Agent. Add an owner-only, explicit opt-in, RAM-only timeline of accepted adult voice transcripts and assistant replies, plus actual voice stages and existing sanitized broker tool activity. Preserve ordinary status redaction. Bound event count, message length and session lifetime; clear on Kids/privacy/power teardown, reject late callbacks after clear, and provide Stop showing/Clear controls. No added tool authority or background work. Test actual pipeline and Realtime hooks, owner access, Kids locks, stale events and phone/desktop DOM rendering.
+
+**2. Carry a project conversation into authorized work.** Bind a selected project and stable Hermes session to voice; ground roadmap answers in actual repository data. Add an explicit owner opt-in and host-side allowlisted project-work launcher, with scope confirmation and existing command/external-action approvals. Subscribe to native Hermes session/run events instead of pretending a bounded broker plan is a coding agent. Preserve follow-up references (“this”), command cancellation, truthful tool statuses, connection-loss handling and durable work beyond the voice loop. Existing five-step broker plans become advanced home-action controls, not the main UX. Verify the raw-photo-agent example against the real project before claiming it works.
+
+**3. Close the work/test loop across surfaces.** Resume the same work after voice timeout/reconnect; expose pause/stop scope clearly. Speak bounded, privacy-safe milestones and a “Ready to test?” notification only after a real artifact and checks exist. Queue/expire notifications appropriately when Reachy is asleep, in Meeting, in Kids or private. Use the UI for detailed logs, diffs, evidence and approvals. Require owner-supervised physical voice acceptance.
+
+**4. Reachy in Hermes Desktop.** First inspect the deployed Desktop session/entity and native gateway/run contracts. Register a stable Reachy identity with presence, voice state and selected session; render and resume the shared transcript/work in Desktop. Keep identity, session, work and robot-control permissions distinct. Do not promise existing Desktop entity APIs until verified.
+
+### Side quest: install Hermes on the Jetson?
+
+**Decision for now: no second full Hermes installation.** Keep Hermes/project execution and credentials on the existing host; Reachy/Jetson owns microphone, speaker, wake detection, robot safety and optional local inference. Installing Hermes is not equivalent to running an LLM locally, and would not by itself solve shared-session identity or Desktop visibility. It risks duplicated memory/configuration, competing local work and a larger credential footprint without advancing the first goal.
+
+Reconsider an isolated, resource-bounded local Hermes runtime only for a measured need (offline household capability, standalone deployment or lower orchestration latency). Before choosing it, compare remote and local orchestration latency, RAM/CPU under the normal robot+vision workload, supervision/Stop/recovery, session synchronization and credential scope. No silent install, model load, provider-key copying or shared robotics dependency changes.
+
+### Implementation record
+
+- Goal 1 implementation: Companion/Workspace switch, accepted Pipeline and Realtime message hooks, real voice-stage events, owner/CSRF-protected RAM timeline, Clear/Stop/privacy/Kids/power invalidation, stale-producer/poll protection, and existing sanitized tool activity retained under details. Shell revision 70.
+- Verified locally: 872 non-browser tests, 23 Chromium UI checks (including 390px/1440px layouts, text-only rendering and late-poll privacy), Ruff and whitespace checks. Browser screenshots use explicit fixtures, not a live robot conversation.
+- Goal 1 is not deployed or physically accepted yet. Owner-supervised spoken conversation on Reachy remains the acceptance gate; no camera or motion test was run. Project work execution, unified Hermes tool streaming, durable job notifications and Desktop identity are **not** implemented by this increment.
+- Goals 2–4 remain planned.
+- The legacy Phase 0–6 material below is historical capability/security detail, not the new product priority.
+
+## Shipped capability baseline
 
 Since this plan was written the app was renamed Homebody: files listed under `reachy_mini_hermes/` now live in `homebody/`. `CHANGELOG.md` records each release in detail.
 
@@ -25,7 +66,7 @@ Since this plan was written the app was renamed Homebody: files listed under `re
 | Warm Hermes agents for pipeline and `ask_hermes` (off by default) | Shipped, awaiting live acceptance |
 | Phase 6 / Maintenance 0.1 | Not started |
 
-Next steps, in order:
+Legacy operational follow-ups (do not displace the four product goals above):
 
 1. **Live acceptance of what has shipped.** Every phase above passed mocked tests and review, but the exit gates also ask for physical and live-system checks. Run them on the reference Reachy: the section 7 demonstration, the Phase 3 camera and motion races on both units, and the Agent 0.5 cancellation and restart checks.
 2. **Warm Hermes agents.** Enable `REACHY_HERMES_WARM_AGENTS=1` on the Hermes host, confirm `/v1/warm-agents` reports available against the deployed Hermes release, and measure pipeline and `ask_hermes` latency warm versus the plain API server (baseline ~14 s and ~23 s).

@@ -746,6 +746,32 @@ class Homebody(ReachyMiniApp):
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+        def workspace_runtime() -> HermesVoiceRuntime:
+            if not owner_authenticated.get():
+                raise HTTPException(status_code=401, detail="A paired owner device is required")
+            if self._runtime is None:
+                raise HTTPException(status_code=409, detail="Voice runtime has not started")
+            return self._runtime
+
+        def workspace_payload(action: str) -> JSONResponse:
+            try:
+                payload = workspace_runtime().workspace(action)
+            except RuntimeError as exc:
+                raise HTTPException(status_code=423, detail=str(exc)) from exc
+            return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.get("/api/agent/workspace")
+        def agent_workspace() -> JSONResponse:
+            return workspace_payload("read")
+
+        @self.settings_app.post("/api/agent/workspace/start")
+        def agent_workspace_start() -> JSONResponse:
+            return workspace_payload("start")
+
+        @self.settings_app.post("/api/agent/workspace/clear")
+        def agent_workspace_clear() -> JSONResponse:
+            return workspace_payload("clear")
+
         @self.settings_app.get("/api/agent/activity")
         def agent_activity(
             x_reachy_adult_ui: str = Header(default=""),

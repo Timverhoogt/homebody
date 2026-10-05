@@ -827,3 +827,30 @@ button.notification-dismiss:focus-visible { outline: 2px solid #fff9eb; outline-
 .power-pending::before { content: ""; display: inline-block; width: .8em; height: .8em; margin-right: .5em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: power-spin .8s linear infinite; }
 @keyframes power-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .power-pending::before { animation: none; } }
+
+/* Companion first; an uncluttered conversation workspace beside it. */
+.agent-view-switch, .workspace-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.agent-view-switch button { min-height: 44px; background: transparent; color: inherit; border: 1px solid var(--line); }
+.agent-view-switch button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+#agent-companion-view[hidden], #agent-workspace-view[hidden] { display: none; }
+#agent-companion-view, #agent-workspace-view { min-width: 0; }
+#agent-companion-view > .card, #agent-workspace-view > .card { margin-bottom: 18px; }
+.voice-workspace { min-width: 0; }
+.workspace-timeline { display: flex; flex-direction: column; gap: 16px; list-style: none; margin: 22px 0 0; padding: 4px; max-height: 520px; overflow-y: auto; }
+.workspace-event { max-width: 90%; padding: 16px 18px; border: 1px solid var(--line); border-radius: 18px; overflow-wrap: anywhere; }
+.workspace-event strong { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.workspace-event p { margin: 8px 0 0; white-space: pre-wrap; line-height: 1.6; }
+.workspace-user { align-self: flex-end; background: rgba(140,123,255,.09); border-bottom-right-radius: 5px; }
+.workspace-assistant { align-self: flex-start; background: rgba(127,127,127,.04); border-bottom-left-radius: 5px; }
+.workspace-activity { align-self: flex-start; border: 0; border-left: 2px solid var(--line); border-radius: 0; padding: 3px 14px; font-size: 12px; opacity: .75; }
+.workspace-activity strong { display: none; }
+.workspace-activity p { margin: 0; }
+.workspace-empty { padding: 36px 18px; text-align: center; opacity: .7; line-height: 1.6; }
+.agent-advanced-actions summary { display: flex; flex-direction: column; gap: 6px; cursor: pointer; min-height: 44px; }
+.agent-advanced-actions summary small { opacity: .65; }
+.agent-advanced-actions .agent-run-sheet { margin-top: 24px; }
+@media (max-width: 600px) {
+  .workspace-event { max-width: 96%; padding: 13px 15px; }
+  .workspace-toolbar button { flex: 1 1 160px; min-height: 44px; }
+  .voice-workspace .section-heading { flex-wrap: wrap; }
+}

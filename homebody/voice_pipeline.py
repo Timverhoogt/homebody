@@ -32,6 +32,7 @@ class PipelineVoiceMixin:
     def _run_conversation(self, initial_config: AppConfig) -> None:
         config = initial_config
         client = self._new_bridge_client(config)
+        workspace_generation = None
 
         def conversation_is_current() -> bool:
             return not initial_config.kids_mode_enabled or self._kids_session_is_current(
@@ -65,6 +66,8 @@ class PipelineVoiceMixin:
                 # its samples cannot become the start of the user's utterance.
                 self._discard_audio(0.34)
 
+                workspace_generation = self._workspace_lease()
+                self._workspace_event(workspace_generation, "activity", "Listening for your voice")
                 endpoint = self._record_utterance(config)
                 if not endpoint.speech_detected or endpoint.samples.size == 0:
                     self._set_status("waiting_for_wake_word", "No speech detected")
@@ -75,6 +78,7 @@ class PipelineVoiceMixin:
                 self._play_asset("processing.wav")
                 if self._motion is not None:
                     self._motion.thinking()
+                self._workspace_event(workspace_generation, "activity", "Transcribing your voice")
                 self._set_status("transcribing", "Command received; transcribing")
                 transcript = client.transcribe(encode_wav(endpoint.samples, 16000))
                 if not transcript:
@@ -88,6 +92,8 @@ class PipelineVoiceMixin:
                     or self._effective_power_mode() in {"meeting", "sleep"}
                 ):
                     break
+                self._workspace_event(workspace_generation, "user", transcript)
+                self._workspace_event(workspace_generation, "activity", "Hermes is responding")
                 _LOGGER.info("Transcript accepted (%s characters)", len(transcript))
                 self._set_status(
                     "thinking",
@@ -129,6 +135,8 @@ class PipelineVoiceMixin:
                     or self._effective_power_mode() in {"meeting", "sleep"}
                 ):
                     break
+                self._workspace_event(workspace_generation, "assistant", response_text)
+                self._workspace_event(workspace_generation, "activity", "Preparing the spoken reply")
                 preserve_ispy_guess_motion = False
                 if (
                     client.config.kids_mode_enabled
@@ -202,6 +210,7 @@ class PipelineVoiceMixin:
                         or self._effective_power_mode() in {"meeting", "sleep"}
                     ):
                         break
+                    self._workspace_event(workspace_generation, "activity", "Speaking the reply")
                     self._set_status("speaking", "Reachy is speaking", tts_provider=speech.provider)
                     interrupted = self._play_response(
                         speech,
@@ -230,6 +239,10 @@ class PipelineVoiceMixin:
                         or self._effective_power_mode() in {"meeting", "sleep"}
                     ):
                         break
+                self._workspace_event(
+                    workspace_generation, "activity",
+                    "Reply interrupted" if interrupted else "Voice turn finished",
+                )
                 with self._status_lock:
                     self._status.turns_completed += 1
                 if interrupted:
@@ -241,6 +254,7 @@ class PipelineVoiceMixin:
             self._set_status("error", "Hermes bridge request failed", bridge_healthy=False)
             raise
         finally:
+            self._workspace_event(workspace_generation, "activity", "Voice session ended")
             client.close()
 
     def _record_utterance(

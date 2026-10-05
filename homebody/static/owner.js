@@ -11,6 +11,7 @@
     document.querySelector('main').hidden = !session.owner;
     document.querySelector('main').inert = !session.owner;
     byId('owner-device-name').textContent = session.owner ? `Owner · ${session.name}` : '';
+    if (!session.owner) window.HomebodyWorkspace?.reset("Pair an owner device to see conversations.");
     if (!session.owner) window.ReachyCamera?.stop('Owner session ended. Pair this device to continue.');
     const keyField = byId('current_api_key');
     if (keyField) keyField.closest('label')?.setAttribute('hidden', '');
