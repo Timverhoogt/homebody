@@ -47,8 +47,10 @@ Reconsider an isolated, resource-bounded local Hermes runtime only for a measure
 
 - Goal 1 implementation: Companion/Workspace switch, accepted Pipeline and Realtime message hooks, real voice-stage events, owner/CSRF-protected RAM timeline, Clear/Stop/privacy/Kids/power invalidation, stale-producer/poll protection, and existing sanitized tool activity retained under details. Shell revision 70.
 - Verified locally: 872 non-browser tests, 23 Chromium UI checks (including 390px/1440px layouts, text-only rendering and late-poll privacy), Ruff and whitespace checks. Browser screenshots use explicit fixtures, not a live robot conversation.
-- Goal 1 is not deployed or physically accepted yet. Owner-supervised spoken conversation on Reachy remains the acceptance gate; no camera or motion test was run. Project work execution, unified Hermes tool streaming, durable job notifications and Desktop identity are **not** implemented by this increment.
-- Goals 2–4 remain planned.
+- Goal 1 merged in [PR #65](https://github.com/Timverhoogt/homebody/pull/65), with green PR and post-merge CI. It is not deployed or physically accepted yet. Owner-supervised spoken conversation on Reachy remains the acceptance gate; no camera or motion test was run.
+- Goal 2a implemented locally: host-owned exact project/roadmap registration, private read-only catalog and roadmap capabilities, bounded line/hash/freshness evidence, narrow current-lease project follow-ups, fresh reads rather than cached answers, and actual RAM expiry/safety invalidation. Project discussions cannot invoke unrelated broker tools. See [project-voice.md](../project-voice.md). Tests exercise real files and authenticated HTTP with explicit provider fixtures, not a live-model/voice demo. The raw-photo-agent repository has not been found/registered on this host; no guessed status or location is supplied.
+- Next in goal 2: visible owner project/session selection; bind a verified native Hermes session rather than equating the current broker lease with Desktop identity; implement the separately scoped host-side project-work launcher and native run/tool-event streaming. Verify authorized scope and Stop/reconnect semantics before enabling coding. Project execution, durable job notifications and Desktop identity remain **unimplemented**; goal 2 is not complete.
+- Goals 3–4 remain planned.
 - The legacy Phase 0–6 material below is historical capability/security detail, not the new product priority.
 
 ## Shipped capability baseline
