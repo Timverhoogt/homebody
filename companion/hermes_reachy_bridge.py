@@ -32,6 +32,7 @@ from aiohttp import ClientSession, ClientTimeout, FormData, web
 try:
     from companion.agent_backends import OpenClawBackend, OpenClawConfig, OpenClawConfigError
     from companion.llm_providers import LLMProviderConfigError, TextModelProvider
+    from companion.native_workspace_routes import NativeWorkspaceRoutes
     from companion.reachy_agent_broker import (
         BrokerContext,
         BrokerRequest,
@@ -61,6 +62,7 @@ except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.pa
         OpenClawConfigError,
     )
     from llm_providers import LLMProviderConfigError, TextModelProvider  # type: ignore[no-redef]
+    from native_workspace_routes import NativeWorkspaceRoutes  # type: ignore[no-redef]
     from reachy_agent_broker import (  # type: ignore[no-redef]
         BrokerContext,
         BrokerRequest,
@@ -111,7 +113,9 @@ _KIDS_ENDED_MEMORY = 256
 # Adult capabilities the bridge refuses while any Kids session is live. Cancellation and session
 # publication stay available so Reachy can always wind adult work down.
 _KIDS_LATCHED_PREFIXES = ("/v1/chat/completions", "/v1/realtime", "/v1/agent/")
-_KIDS_LATCH_EXEMPT_PATHS = frozenset({"/v1/agent/session", "/v1/agent/run/cancel", "/v1/agent/run/pause"})
+_KIDS_LATCH_EXEMPT_PATHS = frozenset({
+    "/v1/agent/session", "/v1/agent/run/cancel", "/v1/agent/run/pause", "/v1/agent/native/stop",
+})
 _KIDS_LATCH_EXEMPT_PREFIXES = ("/v1/agent/cancel/",)
 _KIDS_MEDIA_TAG = re.compile(r"(?m)^\s*(?:\[\[audio_as_voice\]\]\s*)?MEDIA:\S+\s*$")
 _KIDS_MARKDOWN = re.compile(r"[`*_#>|]+")
@@ -805,7 +809,7 @@ def _ispy_vision_request(
     model = os.getenv("REACHY_ISPY_VISION_MODEL", "qwen2.5vl:3b").strip() or "qwen2.5vl:3b"
     return f"{base}/chat/completions", headers, {"model": model, "max_tokens": 700, "temperature": 0.2}
 
-class Bridge:
+class Bridge(NativeWorkspaceRoutes):
     def __init__(
         self,
         *,
@@ -837,6 +841,8 @@ class Bridge:
         self._kids_ended: dict[str, None] = {}
         self.agent_broker = ReachyAgentBroker()
         self.agent_runs = AgentRunManager()
+        self.init_native_workspace()
+        self._native_session_states = {}
         self._broker_tasks: dict[tuple[str, str], asyncio.Task[Any]] = {}
         self._broker_tasks_lock = asyncio.Lock()
         self._agent_ask_timeout_seconds = max(
@@ -901,6 +907,11 @@ class Bridge:
 
     async def start(self, app: web.Application) -> None:
         self.http = ClientSession(timeout=ClientTimeout(total=180, connect=10))
+        await self.start_native_workspace(
+            lambda name: (_resolve_api_key("", self.profile) if name == "API_SERVER_KEY"
+                          else _resolve_secret(name, self.profile)),
+            _hermes_home(self.profile),
+        )
         await self.warm_agents.start()
         if self._presence_entity_id and self._presence_url:
             self._presence_task = asyncio.create_task(
@@ -915,6 +926,7 @@ class Bridge:
         if presence_task is not None:
             presence_task.cancel()
             await asyncio.gather(presence_task, return_exceptions=True)
+        await self.stop_native_workspace()
         await self.agent_runs.shutdown()
         await self.agent_broker.actions.shutdown()
         async with self._broker_tasks_lock:
@@ -1052,6 +1064,9 @@ class Bridge:
             raise web.HTTPBadRequest(text="Invalid Kids Mode session state") from exc
         if state == "active":
             self._mark_kids_live(session_id)
+            if self.native_workspace is not None:
+                await asyncio.gather(*(self.invalidate_native_workspace(device)
+                                       for device in list(self.native_workspace.bindings)))
             # No warm adult agent, with its conversation and memory scope, outlives a Kids start.
             await self.warm_agents.evict(reason="kids")
         else:
@@ -1964,9 +1979,27 @@ class Bridge:
         self.require_auth(request)
         try:
             payload = await request.json()
-            if not isinstance(payload, dict) or set(payload) != {"context"}:
-                raise BrokerValidationError("session update must contain only context")
-            context = await self.agent_broker.establish_session(_device_id(request), payload["context"])
+            if (not isinstance(payload, dict) or "context" not in payload
+                    or set(payload) - {"context", "preserve_native"}
+                    or type(payload.get("preserve_native", False)) is not bool):
+                raise BrokerValidationError("invalid session update")
+            device = _device_id(request)
+            context = await self.agent_broker.establish_session(device, payload["context"])
+            if self.native_workspace is not None:
+                previous = self._native_session_states.get(device)
+                state = self.agent_broker._authorization_state(context)
+                safe = True
+                try:
+                    self.agent_broker.authorize_context(context)
+                except BrokerValidationError:
+                    safe = False
+                changed = previous is not None and previous != (context.session_generation, state)
+                preserve = safe and (not changed or (payload.get("preserve_native") is True
+                                                     and previous[1] == state))
+                self._native_session_states[device] = (context.session_generation, state)
+                await self.invalidate_native_workspace(device, preserve=preserve)
+                if preserve:
+                    await self.seed_native_project_conversation(device, context)
             return web.json_response(
                 {"ok": True, "session_generation": context.session_generation},
                 headers={"Cache-Control": "no-store"},
@@ -2130,6 +2163,9 @@ class Bridge:
     async def _agent_answer(self, text: str, *, context: dict[str, object], device_id: str) -> str:
         """Retain brief project dialogue in the current restricted broker lease."""
         parsed = BrokerContext.parse(context)
+        proposal = await self.native_voice_proposal(device_id, context, text)
+        if proposal is not None:
+            return proposal
         async with self.agent_broker.project_conversation(device_id, parsed) as lease:
             explicit = _has_explicit_private_intent(text, "read_project_roadmap")
             followup = bool(lease.selected_project_id) and re.fullmatch(
@@ -3339,6 +3375,7 @@ def create_app(
     app.router.add_post("/v1/agent/pending-approval", bridge.broker_pending_approval)
     app.router.add_post("/v1/agent/approve-pending", bridge.broker_approve_pending)
     app.router.add_post("/v1/agent/ask", bridge.broker_ask)
+    app.router.add_post("/v1/agent/native/{action}", bridge.native_workspace_action)
     app.router.add_post("/v1/agent/run/preview", bridge.broker_run_preview)
     app.router.add_post("/v1/agent/run/current", bridge.broker_run_current)
     app.router.add_post("/v1/agent/run/status", bridge.broker_run_status)

@@ -836,6 +836,11 @@ button.notification-dismiss:focus-visible { outline: 2px solid #fff9eb; outline-
 #agent-companion-view, #agent-workspace-view { min-width: 0; }
 #agent-companion-view > .card, #agent-workspace-view > .card { margin-bottom: 18px; }
 .voice-workspace { min-width: 0; }
+.workspace-native { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }
+.workspace-native select, .workspace-native textarea { width: 100%; max-width: 100%; }
+.workspace-native-approval { margin-top: 16px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; }
+.workspace-native-approval pre, #workspace-native-receipt { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; }
+#workspace-native-identity, #workspace-native-state { overflow-wrap: anywhere; }
 .workspace-timeline { display: flex; flex-direction: column; gap: 16px; list-style: none; margin: 22px 0 0; padding: 4px; max-height: 520px; overflow-y: auto; }
 .workspace-event { max-width: 90%; padding: 16px 18px; border: 1px solid var(--line); border-radius: 18px; overflow-wrap: anywhere; }
 .workspace-event strong { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }

@@ -14,6 +14,7 @@
   }
   function reset(message = "Conversation display is off.") {
     epoch += 1;
+    window.HomebodyNativeWorkspace?.reset();
     showing = false;
     signature = "";
     byId("workspace-timeline").replaceChildren();
@@ -23,6 +24,7 @@
   }
   function render(payload) {
     showing = payload.enabled === true;
+    window.HomebodyNativeWorkspace?.update(showing);
     byId("workspace-badge").textContent = showing ? "Showing live" : "Not showing";
     const events = Array.isArray(payload.events) ? payload.events : [];
     const next = `${payload.generation}:${events.map((event) => event.id).join(",")}`;

@@ -28,6 +28,8 @@ def workspace_browser():
                 route.fulfill(json={"owner": True, "name": "Browser fixture", "csrf": "fixture"})
             elif path == "/api/status":
                 route.fulfill(json={"config": {}, "runtime": runtime})
+            elif path.startswith("/api/agent/workspace/native/"):
+                route.fulfill(json={"targets": [], "messages": [], "events": [], "pending": None})
             elif path.startswith("/api/agent/workspace"):
                 if path.endswith("/start"):
                     fixture.update(enabled=True, seconds_remaining=3600)

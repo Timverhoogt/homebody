@@ -40,6 +40,7 @@ from .local_vision import LocalVisionClient, LocalVisionError
 from .mcp_oauth import OAuthError, OAuthServer
 from .mcp_public import PublicAgentListener, build_public_app
 from .mcp_server import PROTOCOL_VERSIONS, McpServer, new_token, token_digest, token_matches
+from .native_workspace_api import install_native_workspace_routes
 from .owner_auth import OwnerStore, default_owner_path, install_owner_auth, owner_authenticated
 from .owner_media import install_owner_media
 from .platform_info import host
@@ -753,9 +754,16 @@ class Homebody(ReachyMiniApp):
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
             return self._runtime
 
+        install_native_workspace_routes(
+            self.settings_app, workspace_runtime, load_config, lambda config: HermesBridgeClient(config),
+        )
+
         def workspace_payload(action: str) -> JSONResponse:
             try:
-                payload = workspace_runtime().workspace(action)
+                runtime = workspace_runtime()
+                payload = runtime.workspace(action)
+                if action == "clear":
+                    runtime.clear_native_workspace()
             except RuntimeError as exc:
                 raise HTTPException(status_code=423, detail=str(exc)) from exc
             return JSONResponse(payload, headers={"Cache-Control": "no-store"})
