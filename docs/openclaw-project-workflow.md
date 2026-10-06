@@ -38,7 +38,11 @@ Its WebSocket protocol exposes chat, agents, sessions, approvals and event famil
 
 The HTTP chat-completions interface is useful for basic conversation, but agent selection and a stable `user` or session-key override do not themselves implement Homebody's project policy, approval UI or progress contract. API credential holders are trusted principals; broad gateway credentials must remain on the host, never on Reachy.[1]
 
-## Recommended next increment
+## Implemented native increment (deployment disabled by default)
+
+The backend-neutral adapter, exact work approval, native progress/recovery and verified receipts are now implemented. See [native-workspace.md](native-workspace.md) for activation prerequisites, testing and the unresolved live OpenClaw credential-reference gate. This does not change the production read-only boundary automatically.
+
+## Original recommendation
 
 Build **one backend-neutral project/session adapter**, with a Hermes implementation and an OpenClaw Gateway implementation:
 

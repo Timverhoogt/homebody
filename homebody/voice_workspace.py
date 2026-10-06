@@ -116,6 +116,24 @@ class VoiceWorkspaceMixin:
                 return self._voice_workspace.clear()
             return self._voice_workspace.snapshot()
 
+    def clear_native_workspace(self) -> None:
+        """Revocation does not wait for network I/O under robot safety locks."""
+        config = self.config_loader()
+        if not config.api_key:
+            return
+
+        def revoke():
+            client = self._new_bridge_client(config)
+            try:
+                client.native_workspace_action("stop")
+            except Exception:
+                import logging
+                logging.getLogger(__name__).warning("Native Workspace stop could not be confirmed")
+            finally:
+                client.close()
+
+        threading.Thread(target=revoke, name="native-workspace-clear", daemon=True).start()
+
     def _workspace_lease(self) -> int | None:
         with self._motor_transition_lock, self._kids_lock:
             if not self._workspace_allowed():

@@ -248,12 +248,12 @@ class HermesBridgeClient:
             raise HermesBridgeError("Hermes returned an invalid Agent Mode capability manifest")
         return capabilities
 
-    def establish_agent_session(self, context: AgentBrokerContext) -> None:
+    def establish_agent_session(self, context: AgentBrokerContext, *, preserve_native: bool = False) -> None:
         """Publish this device's authoritative live generation to the broker."""
         response = self._client.post(
             f"{self.config.bridge_url}/v1/agent/session",
             headers=self._headers(),
-            json={"context": asdict(context)},
+            json={"context": asdict(context), **({"preserve_native": True} if preserve_native else {})},
         )
         self._raise_for_error(response, "Agent Mode session update")
         payload = response.json()
@@ -263,6 +263,16 @@ class HermesBridgeClient:
             or payload.get("session_generation") != context.session_generation
         ):
             raise HermesBridgeError("Hermes returned an invalid Agent Mode session acknowledgement")
+
+    def native_workspace_action(self, action: str, context: AgentBrokerContext | None = None, **fields):
+        if action not in {"read", "show", "bind", "prepare", "approve", "stop", "cancel"}:
+            raise ValueError("unsupported native Workspace action")
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/agent/native/{action}", headers=self._headers(),
+            json={**({"context": asdict(context)} if context is not None else {}), **fields},
+        )
+        self._raise_for_error(response, "Native Workspace")
+        return response.json()
 
     def execute_agent_capability(
         self,

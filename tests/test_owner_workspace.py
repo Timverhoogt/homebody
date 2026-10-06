@@ -66,3 +66,67 @@ def test_owner_workspace_kids_lock_and_revoked_owner(workspace_client):
     with store.connect() as db:
         db.execute("DELETE FROM devices")
     assert client.get("/api/agent/workspace").status_code == 401
+
+
+@pytest.mark.parametrize(
+    "action,body",
+    [
+        ("read", {}),
+        ("show", {}),
+        ("bind", {"target_id": "registered"}),
+        ("prepare", {"text": "Do work"}),
+        ("approve", {"approval_id": "exact"}),
+        ("cancel", {}),
+    ],
+)
+def test_owner_native_workspace_requires_pairing_and_csrf(workspace_client, action, body):
+    client, runtime, _store, code = workspace_client
+    path = f"/api/agent/workspace/native/{action}"
+    assert client.post(path, json=body, headers={"X-Reachy-Adult-UI": "unlocked"}).status_code == 401
+    headers = pair(client, code)
+    assert client.post(path, json=body).status_code == 403
+    assert client.post(path, json=body, headers=headers).status_code == 423
+    client.post("/api/agent/workspace/start", headers=headers)
+    assert client.post(path, json=body, headers=headers).status_code == 423  # conversation profile is not Agent
+    assert "registered" not in client.get("/api/status").text
+
+
+def test_owner_native_workspace_proxy_current_generation_and_privacy(workspace_client, monkeypatch):
+    client, runtime, store, code = workspace_client
+    calls = []
+
+    class FakeBridge:
+        def __init__(self, _config):
+            pass
+
+        def establish_agent_session(self, context, **options):
+            calls.append(("session", context.session_generation, options))
+
+        def native_workspace_action(self, action, context, **fields):
+            calls.append((action, context.session_generation, fields))
+            return {"targets": [], "messages": [{"role": "assistant", "text": "private native history"}]}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(main_module, "HermesBridgeClient", FakeBridge)
+    headers = pair(client, code)
+    runtime.set_capability_profile("agent", adult_ui_unlocked=True)
+    client.post("/api/agent/workspace/start", headers=headers)
+    response = client.post("/api/agent/workspace/native/read", json={}, headers=headers)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert "private native history" in response.text
+    assert "private native history" not in client.get("/api/status").text
+    assert calls[-1][1] == runtime._agent_session_generation
+    assert (
+        client.post(
+            "/api/agent/workspace/native/prepare", json={"text": "x", "root": "/"}, headers=headers
+        ).status_code
+        == 422
+    )
+    runtime.cancel_agent_work("privacy")
+    assert client.post("/api/agent/workspace/native/read", json={}, headers=headers).status_code == 423
+    with store.connect() as db:
+        db.execute("DELETE FROM devices")
+    assert client.post("/api/agent/workspace/native/read", json={}, headers=headers).status_code == 401

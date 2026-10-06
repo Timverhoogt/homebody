@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=70">
+  <link rel="stylesheet" href="/static/style.css?v=71">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -273,7 +273,37 @@
         <p class="muted compact-note">Owner-only · kept in memory for up to one hour · cleared by Kids, privacy, power changes or Stop. Showing this view does not start the microphone or grant new tools.</p>
         <p id="workspace-state" role="status" aria-live="polite">Conversation display is off.</p>
         <ol id="workspace-timeline" class="workspace-timeline" aria-label="Voice conversation"></ol>
-        <p class="muted compact-note">Project handoff and background coding are next on the roadmap. The controls below still run only bounded home actions.</p>
+        <section class="workspace-native" aria-labelledby="workspace-native-heading">
+          <div class="section-heading"><div><p class="label">Shared project session</p><h3 id="workspace-native-heading">Continue the real work</h3></div></div>
+          <p id="workspace-native-identity" class="muted">No native project selected.</p>
+          <label for="workspace-native-target">Owner-registered project and session</label>
+          <div class="workspace-toolbar">
+            <select id="workspace-native-target" aria-label="Project and native session"></select>
+            <button type="button" id="workspace-native-bind">Select session</button>
+          </div>
+          <p id="workspace-native-state" role="status" aria-live="polite">Show the conversation to select an owner-registered session.</p>
+          <ol id="workspace-native-timeline" class="workspace-timeline" aria-label="Native project conversation"></ol>
+          <label for="workspace-native-request">Exact request for the selected worker</label>
+          <textarea id="workspace-native-request" rows="3" maxlength="4000" placeholder="Discuss the next item, or describe the work you want to authorize."></textarea>
+          <div class="workspace-toolbar">
+            <button type="button" id="workspace-native-prepare">Review request</button>
+            <button type="button" id="workspace-native-stop" class="secondary">Stop project work</button>
+          </div>
+          <section id="workspace-native-approval" class="workspace-native-approval" hidden>
+            <h3>Approve this exact request?</h3>
+            <p>Selection and voice requests do not authorize execution. This approval expires after two minutes. Native command and external-action approvals still apply.</p>
+            <p id="workspace-native-request-summary"></p>
+            <details><summary>Full scope, source evidence and worker input</summary>
+              <pre id="workspace-native-scope"></pre>
+            </details>
+            <button type="button" id="workspace-native-approve">Approve exact request</button>
+          </section>
+          <details id="workspace-native-verification" hidden>
+            <summary>Verification evidence</summary>
+            <pre id="workspace-native-receipt"></pre>
+          </details>
+          <p class="muted compact-note">Native history remains on its existing backend; the display is RAM-only. Host credentials stay on the host. Clear also requests a stop of selected project work. Native approvals are reviewed in the backend’s owner UI.</p>
+        </section>
       </section>
       <details class="card agent-advanced-actions">
         <summary><strong>Advanced home actions</strong><small>Preview a bounded plan and approve exact steps</small></summary>
@@ -946,12 +976,13 @@
   </main>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=70"></script>
-  <script src="/static/owner.js?v=70"></script>
+  <script src="/static/notifications.js?v=71"></script>
+  <script src="/static/owner.js?v=71"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=70"></script>
-  <script src="/static/agent-connection.js?v=70"></script>
-  <script src="/static/workspace.js?v=70"></script>
-  <script src="/static/main.js?v=70"></script>
+  <script src="/static/camera.js?v=71"></script>
+  <script src="/static/agent-connection.js?v=71"></script>
+  <script src="/static/native-workspace.js?v=71"></script>
+  <script src="/static/workspace.js?v=71"></script>
+  <script src="/static/main.js?v=71"></script>
 </body>
 </html>
