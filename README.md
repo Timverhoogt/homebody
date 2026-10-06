@@ -1,28 +1,8 @@
----
-title: Homebody
-emoji: 🏡
-colorFrom: yellow
-colorTo: red
-sdk: static
-pinned: false
-short_description: Always-on home companion for Reachy Mini
-suggested_storage: medium
-tags:
-  - reachy_mini
-  - reachy_mini_python_app
-  - voice-assistant
-  - hermes-agent
-  - openclaw
-  - mcp
-  - openai-realtime
-  - camera
-  - home-assistant
-  - kids-mode
-  - privacy
-  - elevenlabs
----
-
 # Homebody for Reachy Mini
+
+![Homebody — a home for your AI. A voice. A presence.](docs/assets/homebody-banner.webp)
+
+*AI-generated promotional illustration of Reachy Mini—not a product photograph. [Image credits](docs/IMAGE_CREDITS.md).*
 
 **Homebody gives Reachy Mini a home.** It is an always-on companion for your office or living room. It connects to the agent you already trust, keeps the household safe and private, and welcomes the games, stories and skills the community builds. **Your agent even sets itself up:** paste one message from Homebody to Hermes Agent or OpenClaw, and it connects Reachy for you.
 

@@ -22,3 +22,7 @@ The project-authored `docs/assets/architecture.svg` and `docs/assets/lite-pi-ove
 ## Privacy and verification
 
 The selected official frames contain no readable credentials, network details, notifications, addresses, serial numbers or private screens. The hero source includes an office background and partial people; no clearly identifiable face is presented in the static first-frame export. Final publication review must still inspect the rendered desktop/mobile crops and captions.
+
+## Homebody promotional banner
+
+`docs/assets/homebody-banner.webp` is an AI-generated promotional illustration, generated using the credited `hero-reachy.webp` as a robot-shape reference. It is not a photograph, an actual hardware render, or evidence of a live feature. It uses the Homebody palette and tagline, was converted to metadata-free WebP, and does not imply Pollen Robotics endorsement.
