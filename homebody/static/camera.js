@@ -51,6 +51,96 @@
     appFullscreenAnchor: null,
   };
 
+  // Explicit clipboard export only: bounded RAM, never SDP, addresses, frames or tokens.
+  let connectionReport = null;
+  let reportExpiryTimer = null;
+  let reportStatsTimer = null;
+  const REPORT_STATES = new Set(["new", "checking", "connecting", "connected", "completed", "complete", "gathering", "failed", "closed", "disconnected", "in-progress", "waiting", "frozen", "succeeded"]);
+  const reportState = value => REPORT_STATES.has(value) ? value : "unknown";
+  const reportNumber = value => Number.isFinite(value) && value >= 0 ? Math.min(value, 1e12) : 0;
+  function resetConnectionReport() {
+    if (!byId("camera-copy-report")) return; // Older cached HTML must keep its camera/Stop working.
+    if (reportExpiryTimer !== null) clearTimeout(reportExpiryTimer);
+    const chrome = navigator.userAgent.match(/(?:Chrome|CriOS)\/(\d+)/);
+    const report = { revision: "v76", browser: chrome ? `Chrome ${chrome[1]}` : "Other browser",
+      platform: /Android/i.test(navigator.userAgent) ? "Android" : "Other", startedAt: performance.now(),
+      events: [], last: null, failure: null };
+    connectionReport = report;
+    byId("camera-report-text").value = "";
+    byId("camera-report-text").hidden = true;
+    byId("camera-report-status").textContent = "Report stays on this device until you copy it";
+    reportExpiryTimer = setTimeout(() => {
+      if (connectionReport !== report) return;
+      connectionReport = null;
+      byId("camera-report-text").value = "";
+      byId("camera-report-text").hidden = true;
+      byId("camera-report-status").textContent = "Report expired · start a new camera attempt";
+    }, 600000);
+  }
+  function reportPeer(peer) {
+    return { ice: reportState(peer?.iceConnectionState), connection: reportState(peer?.connectionState),
+      gathering: reportState(peer?.iceGatheringState), dtls: connectionReport?.last?.peer?.dtls || "unknown" };
+  }
+  function reportEvent(event, peer = state.session?.rtcPeerConnection) {
+    if (!connectionReport) return;
+    connectionReport.events.push({ ms: Math.round(performance.now() - connectionReport.startedAt), event,
+      ...(peer ? { ice: reportState(peer.iceConnectionState), connection: reportState(peer.connectionState) } : {}) });
+    connectionReport.events = connectionReport.events.slice(-8);
+  }
+  function reportFailure(reason) {
+    if (!connectionReport || connectionReport.failure) return;
+    const peer = state.session?.rtcPeerConnection;
+    connectionReport.failure = { reason, ms: Math.round(performance.now() - connectionReport.startedAt),
+      peer: reportPeer(peer), pairs: connectionReport.last?.pairs || [], video: connectionReport.last?.video || [] };
+    reportEvent(reason, peer);
+  }
+  function recordReportStats(stats, peer) {
+    if (!connectionReport) return;
+    const reports = [...stats.values()];
+    const transport = reports.find(r => r.type === "transport");
+    const selected = r => Boolean(r.nominated || (transport?.selectedCandidatePairId && r.id === transport.selectedCandidatePairId));
+    const kind = candidate => `${["host", "srflx", "prflx", "relay"].includes(candidate?.candidateType) ? candidate.candidateType : "unknown"}/${["udp", "tcp"].includes(candidate?.protocol) ? candidate.protocol : "unknown"}`;
+    connectionReport.last = { peer: { ...reportPeer(peer), dtls: reportState(transport?.dtlsState) },
+      pairs: reports.filter(r => r.type === "candidate-pair").sort((a, b) => Number(selected(b)) - Number(selected(a))).slice(0, 4).map(r => ({
+        state: reportState(r.state), selected: selected(r),
+        local: kind(stats.get(r.localCandidateId)), remote: kind(stats.get(r.remoteCandidateId)),
+        requestsSent: reportNumber(r.requestsSent), responsesReceived: reportNumber(r.responsesReceived),
+        requestsReceived: reportNumber(r.requestsReceived), responsesSent: reportNumber(r.responsesSent),
+        bytesReceived: reportNumber(r.bytesReceived), rttMs: Math.round(reportNumber(r.currentRoundTripTime) * 1000) })),
+      video: reports.filter(r => r.type === "inbound-rtp" && (r.kind === "video" || r.mediaType === "video")).slice(0, 2).map(r => {
+        const mime = stats.get(r.codecId)?.mimeType;
+        return { codec: ["video/VP8", "video/VP9", "video/H264", "video/H265", "video/AV1"].includes(mime) ? mime : "unknown",
+          decoded: reportNumber(r.framesDecoded), packets: reportNumber(r.packetsReceived), bytes: reportNumber(r.bytesReceived) };
+      }) };
+  }
+  async function copyConnectionReport() {
+    if (connectionReport && performance.now() - connectionReport.startedAt >= 600000) {
+      connectionReport = null;
+      byId("camera-report-text").value = "";
+      byId("camera-report-text").hidden = true;
+    }
+    if (!connectionReport) {
+      byId("camera-report-status").textContent = "Start the camera once, then copy its connection report.";
+      return;
+    }
+    const report = connectionReport;
+    const text = JSON.stringify({ homebodyCamera: report.revision, browser: report.browser, platform: report.platform,
+      transport: state.transport, failure: report.failure, last: report.last, events: report.events });
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(text);
+      if (connectionReport === report) byId("camera-report-status").textContent = "Copied · paste the report into Telegram";
+    } catch {
+      if (connectionReport !== report) return;
+      const area = byId("camera-report-text");
+      area.value = text;
+      area.hidden = false;
+      area.focus();
+      area.select();
+      byId("camera-report-status").textContent = "Clipboard blocked · press and hold the selected report to copy";
+    }
+  }
+
   function setUi(status, message, kind = "") {
     byId("camera-live-status").textContent = status;
     const messageElement = byId("camera-message");
@@ -137,6 +227,7 @@
     try {
       const stats = await peer.getStats();
       if (state.playbackGeneration !== generation || state.session?.rtcPeerConnection !== peer) return;
+      recordReportStats(stats, peer);
       stats.forEach(report => {
         if (report.type === "transport" && report.dtlsState) byId("camera-diag-ice").textContent = `ICE ${peer.iceConnectionState} · DTLS ${report.dtlsState}`;
         if (report.type === "candidate-pair" && (report.nominated || report.selected || [...stats.values()].some(t => t.type === "transport" && t.selectedCandidatePairId === report.id))) {
@@ -158,6 +249,8 @@
   }
 
   function startFrameHealth(transport) {
+    if (reportStatsTimer !== null) clearInterval(reportStatsTimer);
+    reportStatsTimer = null;
     const generation = state.playbackGeneration;
     state.transport = transport;
     if (transport === "HTTPS backup") byId("camera-diag-ice").textContent += " · fell back to HTTPS";
@@ -342,6 +435,8 @@
   }
 
   function cleanupConnection() {
+    if (reportStatsTimer !== null) clearInterval(reportStatsTimer);
+    reportStatsTimer = null;
     if (state.connectionTimer !== null) window.clearTimeout(state.connectionTimer);
     state.connectionTimer = null;
     state.fallbackAbort?.abort();
@@ -414,11 +509,12 @@
     state.producerId = producer.id;
     session.addEventListener("error", (event) => {
       if (state.session !== session) return;
+      reportFailure("direct session error");
       void startHttpsFallback(event?.message || "WebRTC connection failed");
     });
     session.addEventListener("closed", () => {
       if (state.session !== session) return;
-      if (state.requested) void startHttpsFallback("Direct camera connection closed");
+      if (state.requested) { reportFailure("direct session closed"); void startHttpsFallback("Direct camera connection closed"); }
     });
     session.addEventListener("streamsChanged", () => {
       if (!state.requested || state.session !== session || !session.streams?.length) return;
@@ -455,13 +551,17 @@
       const peer = session.rtcPeerConnection;
       const receive = () => {
         if (state.session !== session) return;
+        reportEvent("peer state", peer);
         byId("camera-diag-ice").textContent = `ICE ${peer.iceConnectionState} · ${peer.connectionState}`;
         void inspectConnection(state.playbackGeneration);
       };
       peer.addEventListener("iceconnectionstatechange", receive);
       peer.addEventListener("connectionstatechange", receive);
       peer.addEventListener("icegatheringstatechange", receive);
+      if (reportStatsTimer !== null) clearInterval(reportStatsTimer);
+      if (connectionReport && state.healthTimer === null) reportStatsTimer = setInterval(() => { void inspectConnection(state.playbackGeneration); }, 500);
       peer.addEventListener("icecandidateerror", (event) => {
+        if (state.session === session) reportEvent(`ICE candidate error ${Number.isInteger(event.errorCode) ? event.errorCode : "unknown"}`, peer);
         if (state.session === session) byId("camera-diag-network").textContent = `ICE candidate error ${event.errorCode || "unknown"}`;
       });
       for (const receiver of peer.getReceivers()) {
@@ -552,11 +652,13 @@
       return;
     }
     cleanupConnection();
+    resetConnectionReport();
+    reportEvent("start");
     state.requested = true;
     setUi("Connecting", "Connecting directly to Reachy's local camera…");
     updateButtons();
     state.connectionTimer = window.setTimeout(() => {
-      if (state.requested) void startHttpsFallback("Direct video did not arrive");
+      if (state.requested) { reportFailure("no decoded video within 15 seconds"); void startHttpsFallback("Direct video did not arrive"); }
     }, 15000);
     try {
       const signalingScheme = window.location.protocol === "https:" ? "wss" : "ws";
@@ -575,6 +677,7 @@
         },
         disconnected: () => {
           if (!state.requested || state.api !== api) return;
+          reportFailure("signaling disconnected");
           void startHttpsFallback("Camera signaling disconnected");
         },
       };
@@ -857,6 +960,7 @@
     void keyboardMove(vector[0], vector[1]);
   });
 
+  byId("camera-copy-report")?.addEventListener("click", () => { void copyConnectionReport(); });
   byId("camera-live-start").addEventListener("click", start);
   byId("camera-live-stop").addEventListener("click", () => stop());
   byId("camera-live-fullscreen").addEventListener("click", () => { void fullscreen(); });

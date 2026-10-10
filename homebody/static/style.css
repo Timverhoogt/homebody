@@ -470,6 +470,10 @@ button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--orange); }
 .camera-speed-label select { min-height: 44px; width: auto; margin: 0; padding: 0 24px 0 8px; color: #fff; background: #101218; border: 0; font-size: .8rem; }
 .camera-feed-health { font-size: .85rem; padding: 10px 12px; border-radius: 8px; background: var(--paper-2); }
 .camera-feed-health[data-stale="true"] { color: #b23b24; border: 1px solid currentColor; }
+.camera-report-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 12px 0 8px; }
+.camera-report-actions button { min-height: 44px; }
+.camera-report-actions .compact-note { margin: 0; flex: 1 1 160px; }
+#camera-report-text { width: 100%; box-sizing: border-box; font-size: 16px; overflow-wrap: anywhere; resize: vertical; }
 .camera-diagnostics { margin-top: 8px; }
 .camera-diagnostics dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .camera-diagnostics dt { font-size: .75rem; opacity: .7; }

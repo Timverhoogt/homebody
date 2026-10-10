@@ -76,6 +76,14 @@ After pairing and on an owner page load, the UI checks `/api/camera/connectivity
 
 The viewer first uses WebRTC. If the session closes or decoded video does not arrive within fifteen seconds, it automatically uses owner-authenticated, CSRF-protected `/api/camera/frame` over the same private HTTPS connection at a reduced frame rate. The UI labels this **Live · HTTPS**. Frames remain ephemeral, uncached and between the browser and robot; no vision model is invoked. Frame delivery rechecks camera opt-in, Awake, Kids locks and owner revocation after acquisition. Stop, hidden/background page, tab exit and privacy transitions abort the fetch loop and dispose of the canvas MediaStream. Never count a signaling/UDP probe as actual phone playback acceptance.
 
+### Phone-friendly connection reports
+
+Use **Copy connection report** below the Camera viewer after a failed direct connection or HTTPS fallback. No Chrome developer tools are needed. Refresh Homebody to load the latest UI, explicitly start the viewer, let the connection finish or fall back, then copy and paste the report into the support conversation. If clipboard access is unavailable, the button exposes a selected read-only text field instead.
+
+The report retains the last direct failure across fallback and Stop. It includes bounded ICE/DTLS state, up to four candidate-pair summaries with connectivity-check counters, actual inbound-video codec/decoded counters, and eight state events. It samples during negotiation before video arrives and uses the existing health sampling once a stream is attached. Never interpret offered codecs or successful signaling as decoded-video proof.
+
+Reports stay in browser RAM for ten minutes, are replaced by a new Start, and are exported only by the user's clipboard action. They contain no frames, audio, addresses, SDP, credentials, raw exception text, or automatic uploads. Report controls are optional when an older cached HTML shell loads a newer script: camera/privacy/Stop behavior must still work.
+
 ### Signaling readiness and port collisions
 
 Verify the actual loopback WebSocket welcome on `ws://127.0.0.1:8443`; the daemon's `media.available=true` can remain true even when WebRTC signaling failed to start. HTTPS/JPEG video working is not proof that direct video is available. Check the media startup journal for `Failed to start signalling server: Address already in use` and inspect the actual listener with `ss -ltnp`.

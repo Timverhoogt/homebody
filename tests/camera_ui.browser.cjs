@@ -7,7 +7,7 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const staticDir = path.join(__dirname, '../homebody/static');
 
-async function setup(t, { width = 900, height = 700, fallback = false, transportFallback = false } = {}) {
+async function setup(t, { width = 900, height = 700, fallback = false, transportFallback = false, legacyReportUi = false } = {}) {
   const browser = await chromium.launch({ headless: true });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height } });
@@ -18,12 +18,13 @@ async function setup(t, { width = 900, height = 700, fallback = false, transport
     ? route.fulfill({ contentType: 'text/html', body: html }) : route.abort());
   await page.goto('http://homebody.test/');
   await page.addStyleTag({ path: path.join(staticDir, 'style.css') });
-  await page.evaluate(({ fallback, transportFallback }) => {
+  await page.evaluate(({ fallback, transportFallback, legacyReportUi }) => {
     document.querySelector('main').hidden = false;
     document.querySelector('main').inert = false;
     document.querySelector('#owner-pair-panel').hidden = true;
     document.querySelector('#panel-robot').hidden = false;
     document.querySelector('#panel-robot').classList.add('active');
+    if (legacyReportUi) for (const id of ["camera-copy-report", "camera-report-status", "camera-report-text"]) document.querySelector(`#${id}`).remove();
     window.requests = [];
     window.fetch = async (url, options) => {
       window.requests.push({ url, body: options?.body ? JSON.parse(options.body) : null });
@@ -57,7 +58,7 @@ async function setup(t, { width = 900, height = 700, fallback = false, transport
     if (fallback) document.querySelector('#camera-viewer').requestFullscreen = async () => { throw new Error('Unsupported'); };
     window.refreshRobotPose = window.refreshBluetooth = window.refreshGpio = () => {};
     window.policy = { enabled: true, controlsEnabled: false, powerMode: 'awake', motorsEnabled: true };
-  }, { fallback, transportFallback });
+  }, { fallback, transportFallback, legacyReportUi });
   const main = fs.readFileSync(path.join(staticDir, 'main.js'), 'utf8');
   // Exercise the real tab navigation and its camera privacy stop, not a copied handler.
   await page.addScriptTag({ content: main.slice(main.indexOf('function visibleTabButtons()'), main.indexOf('const initialTab =')) });
@@ -413,4 +414,74 @@ test('delayed Center authorization cannot dispatch against stale decoded video',
   await page.waitForTimeout(150);
   assert.equal(await page.evaluate(() => window.requests.some(r => r.url.endsWith('/center'))), false);
   assert.ok(await page.evaluate(() => window.requests.some(r => r.url.endsWith('/end') && r.body?.session_id === 'stale-center')));
+});
+
+test('phone report preserves failed ICE checks across HTTPS fallback and Stop without leaking private fields', async t => {
+  const page = await setup(t, { width: 390, height: 844 });
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedReport = text; } } });
+    const peer = new EventTarget();
+    Object.assign(peer, { iceConnectionState: 'checking', connectionState: 'connecting', iceGatheringState: 'complete', getReceivers: () => [],
+      getStats: async () => new Map([
+        ['transport', { type: 'transport', dtlsState: 'new' }],
+        ['pair', { type: 'candidate-pair', state: 'in-progress', localCandidateId: 'local', remoteCandidateId: 'remote', requestsSent: 7, responsesReceived: 0 }],
+        ['local', { type: 'local-candidate', candidateType: 'host', protocol: 'udp', address: '192.168.68.41', usernameFragment: 'SECRET_USERNAME' }],
+        ['remote', { type: 'remote-candidate', candidateType: 'host', protocol: 'udp', address: '100.64.27.89', url: 'turn:secret.example', password: 'SECRET_PASSWORD' }],
+      ])
+    });
+    window.cameraSessions.at(-1).rtcPeerConnection = peer;
+    window.cameraSessions.at(-1).dispatchEvent(new Event('rtcPeerConnectionChanged'));
+  });
+  await page.waitForTimeout(600);
+  await page.evaluate(() => window.cameraSessions.at(-1).dispatchEvent(Object.assign(new Event('error'), { message: 'ws://192.168.68.41 SECRET_TOKEN' })));
+  await page.waitForFunction(() => document.querySelector('#camera-live-status').textContent === 'Live · HTTPS');
+  await page.locator('#camera-live-stop').click();
+  await page.locator('#camera-copy-report').click();
+  const text = await page.evaluate(() => window.copiedReport);
+  const report = JSON.parse(text);
+  assert.equal(report.failure.reason, 'direct session error');
+  assert.equal(report.failure.peer.ice, 'checking');
+  assert.equal(report.failure.peer.dtls, 'new');
+  assert.equal(report.failure.pairs[0].requestsSent, 7);
+  assert.equal(report.failure.pairs[0].responsesReceived, 0);
+  assert.equal(report.failure.pairs[0].local, 'host/udp');
+  for (const secret of ['192.168.68.41', '100.64.27.89', 'SECRET_', 'turn:', 'ws://', 'sdp', 'codecId']) assert.equal(text.includes(secret), false, secret);
+  assert.equal(await page.evaluate(() => window.requests.some(r => !r.url.endsWith('/frame'))), false);
+  assert.match(await page.locator('#camera-report-status').innerText(), /Copied/);
+  assert.ok(text.length < 4096);
+  if (process.env.TEST_CAMERA_REPORT_SCREENSHOT) await page.screenshot({ path: process.env.TEST_CAMERA_REPORT_SCREENSHOT });
+});
+
+test('copy permission denial exposes selectable phone report; new Start replaces and expiry clears the report', async t => {
+  const page = await setup(t, { width: 390, height: 844, transportFallback: true });
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Permission denied'); } } }));
+  await page.locator('#camera-copy-report').click();
+  assert.equal(await page.locator('#camera-report-text').isVisible(), true);
+  const first = JSON.parse(await page.locator('#camera-report-text').inputValue());
+  assert.equal(first.failure.reason, 'direct session closed');
+  await page.locator('#camera-live-stop').click();
+  await page.locator('#camera-live-start').click();
+  assert.equal(await page.locator('#camera-report-text').isVisible(), false);
+  await page.locator('#camera-live-stop').click();
+  await page.clock.install();
+  await page.locator('#camera-live-start').click();
+  await page.locator('#camera-live-stop').click();
+  const requests = await page.evaluate(() => window.requests.length);
+  await page.clock.fastForward(600001);
+  await page.locator('#camera-copy-report').click();
+  assert.match(await page.locator('#camera-report-status').innerText(), /Start the camera/);
+  assert.equal(await page.evaluate(() => window.requests.length), requests);
+});
+
+test('new camera script tolerates cached HTML without report controls and preserves Stop/privacy', async t => {
+  const page = await setup(t, { legacyReportUi: true });
+  await page.waitForFunction(() => document.querySelector('#camera-live-status').textContent === 'Live');
+  assert.equal(await page.locator('#camera-live-status').textContent(), 'Live');
+  await page.locator('#camera-live-stop').click();
+  assert.equal(await page.locator('#camera-live-status').textContent(), 'Off');
+  await page.locator('#camera-live-start').click();
+  await page.waitForFunction(() => document.querySelector('#camera-live-status').textContent === 'Live');
+  await page.evaluate(() => window.ReachyCamera.setPolicy({ ...window.policy, powerMode: 'meeting' }));
+  assert.equal(await page.locator('#camera-live-status').textContent(), 'Off');
+  assert.equal(await page.locator('#reachy-camera-video').evaluate(v => v.srcObject), null);
 });

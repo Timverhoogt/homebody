@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=75">
+  <link rel="stylesheet" href="/static/style.css?v=76">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -788,6 +788,12 @@
           <button type="button" id="camera-test-button" class="secondary">Capture one local test frame</button>
         </div>
         <p id="camera-feed-health" class="camera-feed-health" role="status">Camera off · movement requires fresh video</p>
+        <div class="camera-report-actions">
+          <button type="button" id="camera-copy-report" class="secondary">Copy connection report</button>
+          <span id="camera-report-status" role="status" class="muted compact-note">Phone-friendly · no developer tools needed</span>
+        </div>
+        <p class="muted compact-note">No images, audio, addresses or credentials · report expires after 10 minutes.</p>
+        <textarea id="camera-report-text" aria-label="Connection report to copy" rows="6" readonly hidden></textarea>
         <details class="camera-diagnostics"><summary>Connection details</summary>
           <dl><div><dt>Video transport</dt><dd id="camera-diag-transport">Off</dd></div>
           <div><dt>Received video</dt><dd id="camera-diag-video">Not receiving</dd></div>
@@ -1016,13 +1022,13 @@
   </main>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=75"></script>
-  <script src="/static/owner.js?v=75"></script>
+  <script src="/static/notifications.js?v=76"></script>
+  <script src="/static/owner.js?v=76"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=75"></script>
-  <script src="/static/agent-connection.js?v=75"></script>
-  <script src="/static/native-workspace.js?v=75"></script>
-  <script src="/static/workspace.js?v=75"></script>
-  <script src="/static/main.js?v=75"></script>
+  <script src="/static/camera.js?v=76"></script>
+  <script src="/static/agent-connection.js?v=76"></script>
+  <script src="/static/native-workspace.js?v=76"></script>
+  <script src="/static/workspace.js?v=76"></script>
+  <script src="/static/main.js?v=76"></script>
 </body>
 </html>
