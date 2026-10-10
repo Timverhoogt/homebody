@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=73">
+  <link rel="stylesheet" href="/static/style.css?v=74">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -732,6 +732,7 @@
           <div><p class="label">Private local viewer</p><h2>Reachy camera</h2></div>
           <span id="camera-live-status" class="badge">Off</span>
         </div>
+        <p id="camera-connectivity-message" class="muted" role="status">Pair an Owner device to check camera transport. No camera starts during pairing.</p>
         <p class="muted">Connect directly to the same local WebRTC camera feed used by Reachy Mini Control. Video remains between this browser and Reachy; it is never sent to Hermes or OpenAI.</p>
         <div id="camera-viewer" class="camera-viewer">
           <video id="reachy-camera-video" autoplay playsinline muted aria-label="Live Reachy camera feed"></video>
@@ -1005,13 +1006,13 @@
   </main>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=73"></script>
-  <script src="/static/owner.js?v=73"></script>
+  <script src="/static/notifications.js?v=74"></script>
+  <script src="/static/owner.js?v=74"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=73"></script>
-  <script src="/static/agent-connection.js?v=73"></script>
-  <script src="/static/native-workspace.js?v=73"></script>
-  <script src="/static/workspace.js?v=73"></script>
-  <script src="/static/main.js?v=73"></script>
+  <script src="/static/camera.js?v=74"></script>
+  <script src="/static/agent-connection.js?v=74"></script>
+  <script src="/static/native-workspace.js?v=74"></script>
+  <script src="/static/workspace.js?v=74"></script>
+  <script src="/static/main.js?v=74"></script>
 </body>
 </html>

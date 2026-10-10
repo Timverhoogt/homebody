@@ -68,6 +68,14 @@ curl -fsS http://REACHY_HOST:8042/api/status
 
 The app manager may report `running` several seconds before the settings server and media pipeline are ready.
 
+## Owner onboarding and phone camera connectivity
+
+Owner pairing authorizes a browser session, not its current IP address. Robot provisioning must configure trusted-network media transport once; owner pairing must not obtain root privileges or add per-device firewall rules. On a managed Jetson, inspect the active legacy iptables rules as well as the persisted firewall configuration. Restrict WebRTC UDP to the trusted interface/subnet and the verified ephemeral port range, while keeping direct daemon signaling restricted.
+
+After pairing and on an owner page load, the UI checks `/api/camera/connectivity`: a bounded loopback signaling welcome handshake without requesting any media session or frame. `media_verified=false` is intentional; camera playback is verified only after an explicit Start while Awake. Pairing never activates the camera, microphone or motors.
+
+The viewer first uses WebRTC. If the session closes or video does not arrive within six seconds, it automatically uses owner-authenticated, CSRF-protected `/api/camera/frame` over the same private HTTPS connection at a reduced frame rate. The UI labels this **Live · HTTPS**. Frames remain ephemeral, uncached and between the browser and robot; no vision model is invoked. Frame delivery rechecks camera opt-in, Awake, Kids locks and owner revocation after acquisition. Stop, hidden/background page, tab exit and privacy transitions abort the fetch loop and dispose of the canvas MediaStream. Never count a signaling/UDP probe as actual phone playback acceptance.
+
 ## Companion bridge deployment
 
 **Agent-led setups** (Settings → Connect your agent, see [docs/agent-setup.md](docs/agent-setup.md)) keep a copy of the bridge next to the agent:

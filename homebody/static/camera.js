@@ -12,6 +12,8 @@
     connectionListener: null,
     producerId: null,
     playbackGeneration: 0,
+    fallbackAbort: null,
+    connectionTimer: null,
     enabled: false,
     controlsEnabled: false,
     controlsHandedness: "right",
@@ -200,6 +202,10 @@
   }
 
   function cleanupConnection() {
+    if (state.connectionTimer !== null) window.clearTimeout(state.connectionTimer);
+    state.connectionTimer = null;
+    state.fallbackAbort?.abort();
+    state.fallbackAbort = null;
     detachStream();
     if (state.session) {
       const session = state.session;
@@ -265,17 +271,11 @@
     state.producerId = producer.id;
     session.addEventListener("error", (event) => {
       if (state.session !== session) return;
-      const message = event?.message || "WebRTC camera stream failed";
-      state.requested = false;
-      cleanupConnection();
-      setUi("Error", message, "error");
+      void startHttpsFallback(event?.message || "WebRTC connection failed");
     });
     session.addEventListener("closed", () => {
       if (state.session !== session) return;
-      const requested = state.requested;
-      state.requested = false;
-      cleanupConnection();
-      if (requested) setUi("Offline", "Camera connection closed. Press Start to reconnect.", "error");
+      if (state.requested) void startHttpsFallback("Direct camera connection closed");
     });
     session.addEventListener("streamsChanged", () => {
       if (!state.requested || state.session !== session || !session.streams?.length) return;
@@ -296,6 +296,8 @@
       updateButtons(); // Stop must remain available while play is pending.
       video.play().then(() => {
         if (!isCurrent()) return;
+        if (state.connectionTimer !== null) window.clearTimeout(state.connectionTimer);
+        state.connectionTimer = null;
         setUi("Live", "Local camera connected. No frames are sent to Hermes or OpenAI.", "ok");
         updateButtons();
       }).catch((error) => {
@@ -307,6 +309,69 @@
       });
     });
     session.connect();
+  }
+
+  async function startHttpsFallback(reason) {
+    if (!state.requested || state.fallbackAbort) return;
+    cleanupConnection();
+    if (!state.requested || !state.enabled || state.powerMode !== "awake") return;
+    const controller = new AbortController();
+    state.fallbackAbort = controller;
+    const current = () => state.requested && state.fallbackAbort === controller && !controller.signal.aborted;
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    let stream = null;
+    let misses = 0;
+    setUi("Connecting", `${reason}. Trying private HTTPS video…`);
+    try {
+      while (current()) {
+        const response = await window.fetch("/api/camera/frame", {
+          method: "POST", cache: "no-store", signal: controller.signal,
+        });
+        if (!current()) break;
+        if ([429, 503].includes(response.status) && misses++ < 12) {
+          await new Promise(resolve => window.setTimeout(resolve, 250));
+          continue;
+        }
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.detail || `Camera HTTP ${response.status}`);
+        }
+        misses = 0;
+        const bitmap = await createImageBitmap(await response.blob());
+        if (!current()) { bitmap.close(); break; }
+        if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+        }
+        context.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        if (!stream) {
+          stream = canvas.captureStream(0);
+          state.stream = stream;
+          const video = byId("reachy-camera-video");
+          video.srcObject = stream;
+          stream.getVideoTracks()[0].requestFrame();
+          await video.play();
+          if (!current()) break;
+          byId("camera-viewer").classList.add("live");
+          startVisionOverlay();
+          setUi("Live · HTTPS", "Private HTTPS camera connected (reduced frame rate). No frames are sent to Hermes or OpenAI.", "ok");
+          updateButtons();
+        } else {
+          stream.getVideoTracks()[0].requestFrame();
+        }
+        await new Promise(resolve => window.setTimeout(resolve, 250));
+      }
+    } catch (error) {
+      if (current()) {
+        state.requested = false;
+        cleanupConnection();
+        setUi("Error", `Camera connection failed: ${String(error.message || error)}`, "error");
+      }
+    } finally {
+      if (!current()) stream?.getTracks().forEach(track => track.stop());
+    }
   }
 
   function start() {
@@ -323,6 +388,9 @@
     state.requested = true;
     setUi("Connecting", "Connecting directly to Reachy's local camera…");
     updateButtons();
+    state.connectionTimer = window.setTimeout(() => {
+      if (state.requested) void startHttpsFallback("Direct video did not arrive");
+    }, 6000);
     try {
       const signalingScheme = window.location.protocol === "https:" ? "wss" : "ws";
       const api = new window.GstWebRTCAPI({
@@ -340,9 +408,7 @@
         },
         disconnected: () => {
           if (!state.requested || state.api !== api) return;
-          state.requested = false;
-          cleanupConnection();
-          setUi("Offline", "Camera signaling disconnected. Press Start to reconnect.", "error");
+          void startHttpsFallback("Camera signaling disconnected");
         },
       };
       state.producersListener = {

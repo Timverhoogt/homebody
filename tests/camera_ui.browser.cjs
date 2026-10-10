@@ -7,7 +7,7 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const staticDir = path.join(__dirname, '../homebody/static');
 
-async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
+async function setup(t, { width = 900, height = 700, fallback = false, transportFallback = false } = {}) {
   const browser = await chromium.launch({ headless: true });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height } });
@@ -18,7 +18,7 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
     ? route.fulfill({ contentType: 'text/html', body: html }) : route.abort());
   await page.goto('http://homebody.test/');
   await page.addStyleTag({ path: path.join(staticDir, 'style.css') });
-  await page.evaluate(({ fallback }) => {
+  await page.evaluate(({ fallback, transportFallback }) => {
     document.querySelector('main').hidden = false;
     document.querySelector('main').inert = false;
     document.querySelector('#owner-pair-panel').hidden = true;
@@ -27,6 +27,7 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
     window.requests = [];
     window.fetch = async (url, options) => {
       window.requests.push({ url, body: options?.body ? JSON.parse(options.body) : null });
+      if (url === "/api/camera/frame") return { ok: true, status: 200, blob: () => new Promise(resolve => canvas.toBlob(resolve)) };
       return { ok: true, json: async () => ({ session_id: 'mock-session' }) };
     };
     const canvas = document.createElement('canvas');
@@ -44,7 +45,7 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
         const session = new EventTarget();
         (window.cameraSessions ||= []).push(session);
         session.streams = [stream];
-        session.connect = () => session.dispatchEvent(new Event('streamsChanged'));
+        session.connect = () => session.dispatchEvent(new Event(transportFallback ? 'closed' : 'streamsChanged'));
         session.close = () => {};
         return session;
       }
@@ -52,7 +53,7 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
     if (fallback) document.querySelector('#camera-viewer').requestFullscreen = async () => { throw new Error('Unsupported'); };
     window.refreshRobotPose = window.refreshBluetooth = window.refreshGpio = () => {};
     window.policy = { enabled: true, controlsEnabled: false, powerMode: 'awake', motorsEnabled: true };
-  }, { fallback });
+  }, { fallback, transportFallback });
   const main = fs.readFileSync(path.join(staticDir, 'main.js'), 'utf8');
   // Exercise the real tab navigation and its camera privacy stop, not a copied handler.
   await page.addScriptTag({ content: main.slice(main.indexOf('function visibleTabButtons()'), main.indexOf('const initialTab =')) });
@@ -62,6 +63,25 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
   await page.waitForFunction(() => !document.querySelector('#camera-live-fullscreen').disabled);
   return page;
 }
+
+test('HTTPS fallback shows real decoded frames and stops requests on privacy/Stop', async t => {
+  const page = await setup(t, { width: 412, height: 915, transportFallback: true });
+  assert.equal(await page.locator('#camera-live-status').textContent(), 'Live · HTTPS');
+  const video = await page.locator('#reachy-camera-video').evaluate(v => ({ width: v.videoWidth, ready: v.readyState }));
+  assert.equal(video.width, 640);
+  assert.ok(video.ready >= 2);
+  await page.locator('#camera-live-stop').click();
+  const count = await page.evaluate(() => window.requests.filter(r => r.url === '/api/camera/frame').length);
+  await page.waitForTimeout(600);
+  assert.equal(await page.evaluate(() => window.requests.filter(r => r.url === '/api/camera/frame').length), count);
+  assert.equal(await page.locator('#reachy-camera-video').evaluate(v => v.srcObject), null);
+  await page.locator('#camera-live-start').click();
+  await page.waitForFunction(() => document.querySelector('#camera-live-status').textContent === 'Live · HTTPS');
+  await page.evaluate(() => window.ReachyCamera.setPolicy({ ...window.policy, powerMode: 'meeting' }));
+  const privacyCount = await page.evaluate(() => window.requests.filter(r => r.url === '/api/camera/frame').length);
+  await page.waitForTimeout(600);
+  assert.equal(await page.evaluate(() => window.requests.filter(r => r.url === '/api/camera/frame').length), privacyCount);
+});
 
 for (const outcome of ['reject', 'resolve']) {
   test(`late play ${outcome} cannot overwrite Stop or a new camera connection`, async t => {

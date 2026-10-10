@@ -7,10 +7,12 @@ The deployment firewall MUST prevent clients reaching the upstream directly.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import threading
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
@@ -31,6 +33,63 @@ def install_owner_media(app: FastAPI, runtime_getter) -> None:
             and not kids.get("active")
             and not kids.get("locked")
         )
+
+    frame_lock = threading.Lock()
+
+    def upstream_url() -> str:
+        upstream = os.environ.get("HOMEBODY_SIGNALING_UPSTREAM", "ws://127.0.0.1:8443")
+        parsed = urlsplit(upstream)
+        if parsed.scheme not in {"ws", "wss"} or parsed.hostname not in {"127.0.0.1", "::1", "localhost"}:
+            raise ValueError("Camera signaling must use the local daemon")
+        return upstream
+
+    @app.get("/api/camera/connectivity")
+    async def connectivity():
+        # Pairing verifies transport readiness, never starts a media session.
+        reachable = False
+        try:
+            async with connect(upstream_url(), max_size=65536, open_timeout=3) as remote:
+                welcome = json.loads(await asyncio.wait_for(remote.recv(), timeout=3))
+                reachable = welcome.get("type") == "welcome"
+        except (OSError, ConnectionClosed, TimeoutError, ValueError):
+            pass
+        return {
+            "signaling_ready": reachable,
+            "media_verified": False,
+            "https_fallback": True,
+            "camera_started": False,
+            "detail": (
+                "Camera transport ready. Press Start to verify live video; pairing does not activate the camera."
+                if reachable
+                else "Camera signaling unavailable. HTTPS viewing remains available while Awake and opted in."
+            ),
+        }
+
+    @app.post("/api/camera/frame")
+    def live_frame(request: Request):
+        # OwnerBoundary enforces origin, owner session and CSRF. This is live-view
+        # consent, not AI/snapshot consent, and never calls a vision model.
+        if not policy_allows():
+            raise HTTPException(403, "Live camera requires opt-in, Awake and unlocked adult controls")
+        if not frame_lock.acquire(blocking=False):
+            raise HTTPException(429, "Camera frame request already in progress")
+        try:
+            runtime = runtime_getter()
+            capture = getattr(getattr(getattr(runtime, "robot", None), "media", None), "get_frame_jpeg", None)
+            if not callable(capture):
+                raise HTTPException(503, "Local camera capture unavailable")
+            jpeg = capture()
+            if not app.state.owner_store.session(request.cookies.get(COOKIE)):
+                raise HTTPException(401, "Owner session ended")
+            if not policy_allows():
+                raise HTTPException(403, "Live camera permission ended")
+            if not jpeg:
+                raise HTTPException(503, "Camera frame not ready")
+            if not isinstance(jpeg, (bytes, bytearray, memoryview)) or len(jpeg) > 1_000_000:
+                raise HTTPException(503, "Camera frame exceeds the live-view safety limit")
+            return Response(bytes(jpeg), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+        finally:
+            frame_lock.release()
 
     @app.websocket("/api/camera/signaling")
     async def signaling(socket: WebSocket):
@@ -79,5 +138,5 @@ def install_owner_media(app: FastAPI, runtime_getter) -> None:
                 await asyncio.gather(*tasks, return_exceptions=True)
             try:
                 await socket.close(code=1000)
-            except RuntimeError:
+            except (RuntimeError, WebSocketDisconnect):
                 pass
