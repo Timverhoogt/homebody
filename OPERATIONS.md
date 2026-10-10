@@ -76,6 +76,14 @@ After pairing and on an owner page load, the UI checks `/api/camera/connectivity
 
 The viewer first uses WebRTC. If the session closes or decoded video does not arrive within fifteen seconds, it automatically uses owner-authenticated, CSRF-protected `/api/camera/frame` over the same private HTTPS connection at a reduced frame rate. The UI labels this **Live · HTTPS**. Frames remain ephemeral, uncached and between the browser and robot; no vision model is invoked. Frame delivery rechecks camera opt-in, Awake, Kids locks and owner revocation after acquisition. Stop, hidden/background page, tab exit and privacy transitions abort the fetch loop and dispose of the canvas MediaStream. Never count a signaling/UDP probe as actual phone playback acceptance.
 
+### Signaling readiness and port collisions
+
+Verify the actual loopback WebSocket welcome on `ws://127.0.0.1:8443`; the daemon's `media.available=true` can remain true even when WebRTC signaling failed to start. HTTPS/JPEG video working is not proof that direct video is available. Check the media startup journal for `Failed to start signalling server: Address already in use` and inspect the actual listener with `ss -ltnp`.
+
+Do not configure a Tailscale TLS-terminated TCP listener on the same native signaling port. It can occupy the Tailscale address while GStreamer needs a wildcard bind, causing startup/reacquisition to fail. Homebody already carries owner-protected signaling through its private HTTPS dashboard on port 443 at `/api/camera/signaling`; a separate unauthenticated signaling proxy on 8443 is unnecessary for Homebody. Back up Serve configuration, remove only the conflicting entry, and prove the dashboard's 443 configuration is unchanged. No broader firewall changes are needed for this collision.
+
+SDK 1.9.0 `ReachyMini(media_backend="no_media")` is **not side-effect-free**: it calls daemon media release, and context exit reacquires media. Do not construct such a client for a supposedly read-only or isolated motor probe. Prefer the existing runtime client or version-verified daemon APIs. After authorized media recovery, verify the loopback welcome, owner-proxied ICE/DTLS connection, real decoded frames/codec, and Stop cleanup; separately confirm the user's phone. A successful desktop Chromium test is not Android acceptance.
+
 ### Camera control responsiveness and acceptance
 
 - Direct video is Live only after a decoded frame. The bounded 15-second connection window lets the SDK's 12-second negotiation watchdog finish. Track arrival/signaling alone is not proof of video. Owner-visible RAM-only connection details expose ICE/DTLS, selected-pair round trip, referenced video codec/decoded frames and control response; they do not publish IP addresses or persist diagnostic bodies.
