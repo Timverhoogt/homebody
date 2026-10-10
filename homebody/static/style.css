@@ -314,6 +314,10 @@ button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--orange); }
   position: relative;
   isolation: isolate;
   aspect-ratio: 16 / 9;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  scroll-margin-block: 90px;
   margin-top: 18px;
   overflow: hidden;
   border: 1px solid var(--screen);
@@ -460,7 +464,29 @@ button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--orange); }
   pointer-events: none;
 }
 .camera-joystick[data-active="true"] .camera-joystick-knob { transition: none; }
-.camera-center-button { min-height: 40px; padding: 0 12px; border-color: rgba(244, 237, 225, .35); color: #fff; background: #0a0c12d9; backdrop-filter: blur(6px); }
+.camera-center-button { min-height: 44px; padding: 0 12px; border-color: rgba(244, 237, 225, .35); color: #fff; background: #0a0c12d9; backdrop-filter: blur(6px); }
+/* Thumb controls stay readable without covering the center of the view. */
+.camera-speed-label { display: flex; align-items: center; gap: 8px; font-size: .75rem; color: #fff; background: #101218e8; border-radius: 8px; padding: 0 8px; }
+.camera-speed-label select { min-height: 44px; width: auto; margin: 0; padding: 0 24px 0 8px; color: #fff; background: #101218; border: 0; font-size: .8rem; }
+.camera-feed-health { font-size: .85rem; padding: 10px 12px; border-radius: 8px; background: var(--paper-2); }
+.camera-feed-health[data-stale="true"] { color: #b23b24; border: 1px solid currentColor; }
+.camera-diagnostics { margin-top: 8px; }
+.camera-diagnostics dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.camera-diagnostics dt { font-size: .75rem; opacity: .7; }
+.camera-diagnostics dd { margin: 4px 0 0; font-size: .85rem; overflow-wrap: anywhere; }
+.camera-card button:focus-visible, .camera-speed-label select:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+.camera-actions button { min-height: 48px; }
+.camera-control-cluster { gap: 6px; }
+.camera-vision-overlay .vision-scanline { display: none; }
+.camera-vision-overlay .vision-header, .camera-vision-overlay .vision-footer { display: none; }
+.camera-viewer .camera-center-button { color: #fff; background: #101218e8; }
+@media (max-width: 650px) {
+  .camera-card .camera-viewer { min-height: 390px; }
+  .camera-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .camera-actions button { padding: 10px; }
+  .camera-actions #camera-live-start { grid-column: 1 / -1; }
+  .camera-diagnostics dl { grid-template-columns: 1fr; }
+}
 .camera-control-status {
   display: flex;
   align-items: center;

@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=74">
+  <link rel="stylesheet" href="/static/style.css?v=75">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -733,7 +733,7 @@
           <span id="camera-live-status" class="badge">Off</span>
         </div>
         <p id="camera-connectivity-message" class="muted" role="status">Pair an Owner device to check camera transport. No camera starts during pairing.</p>
-        <p class="muted">Connect directly to the same local WebRTC camera feed used by Reachy Mini Control. Video remains between this browser and Reachy; it is never sent to Hermes or OpenAI.</p>
+        <p class="muted">A private view from Reachy. Drag to look around; release to hold. Video stays between your device and Reachy; it is never sent to Hermes or OpenAI.</p>
         <div id="camera-viewer" class="camera-viewer">
           <video id="reachy-camera-video" autoplay playsinline muted aria-label="Live Reachy camera feed"></video>
           <div class="camera-vision-overlay" aria-hidden="true">
@@ -769,7 +769,8 @@
                 <span id="camera-joystick-knob" class="camera-joystick-knob" aria-hidden="true"></span>
               </div>
               <span id="camera-control-help" class="sr-only">Drag or use arrow keys to pan and tilt. Releasing holds the current measured view.</span>
-              <button type="button" id="camera-control-center" class="camera-center-button">Center head &amp; base</button>
+              <button type="button" id="camera-control-center" class="camera-center-button" title="Smoothly return the head and base to their neutral pose">Center view</button>
+              <label class="camera-speed-label">Speed <select id="camera-control-speed" aria-label="Camera movement speed"><option value="0.3">Careful</option><option value="0.6" selected>Normal</option><option value="1">Fast</option></select></label>
               <button type="button" id="camera-control-settings" class="camera-center-button" hidden>Movement settings</button>
               <span id="camera-control-status" class="camera-control-status" role="status">Release holds the current view</span>
             </div>
@@ -786,7 +787,16 @@
           <button type="button" id="camera-live-fullscreen" class="secondary" disabled>Fullscreen</button>
           <button type="button" id="camera-test-button" class="secondary">Capture one local test frame</button>
         </div>
-        <p class="muted compact-note">The live viewer is opt-in, works only while Reachy is Awake, and stops when you leave this tab, background the app, enter Meeting, or enter Sleep.</p>
+        <p id="camera-feed-health" class="camera-feed-health" role="status">Camera off · movement requires fresh video</p>
+        <details class="camera-diagnostics"><summary>Connection details</summary>
+          <dl><div><dt>Video transport</dt><dd id="camera-diag-transport">Off</dd></div>
+          <div><dt>Received video</dt><dd id="camera-diag-video">Not receiving</dd></div>
+          <div><dt>Network round trip</dt><dd id="camera-diag-network">Unavailable</dd></div>
+          <div><dt>Control response</dt><dd id="camera-diag-control">No commands sent</dd></div>
+          <div><dt>Direct connection</dt><dd id="camera-diag-ice">Not connected</dd></div></dl>
+          <p class="muted compact-note">Frame freshness is time since this browser received a decoded frame, not full camera-to-screen latency. Details stay on this device.</p>
+        </details>
+        <p class="muted compact-note">The live viewer is opt-in, works only while Reachy is Awake, and stops when you leave this tab, background the app, enter Meeting, or enter Sleep. Movement holds automatically when decoded video stops arriving. HTTPS is a reduced-rate backup; it starts in Careful speed.</p>
         <form id="local-vision-ask" class="local-vision-ask" hidden>
           <label for="local-vision-question">Ask the local vision model</label>
           <div class="local-vision-row">
@@ -1006,13 +1016,13 @@
   </main>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=74"></script>
-  <script src="/static/owner.js?v=74"></script>
+  <script src="/static/notifications.js?v=75"></script>
+  <script src="/static/owner.js?v=75"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=74"></script>
-  <script src="/static/agent-connection.js?v=74"></script>
-  <script src="/static/native-workspace.js?v=74"></script>
-  <script src="/static/workspace.js?v=74"></script>
-  <script src="/static/main.js?v=74"></script>
+  <script src="/static/camera.js?v=75"></script>
+  <script src="/static/agent-connection.js?v=75"></script>
+  <script src="/static/native-workspace.js?v=75"></script>
+  <script src="/static/workspace.js?v=75"></script>
+  <script src="/static/main.js?v=75"></script>
 </body>
 </html>

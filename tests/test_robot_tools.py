@@ -670,3 +670,69 @@ def test_cancel_generation_blocks_dequeued_action_before_execution(monkeypatch) 
     assert robot.cancellations == 1
     assert lifecycle == []
     actions.close()
+
+
+@pytest.mark.parametrize("initial_roll", [-12.0, 12.0])
+def test_stream_levels_rolled_pose_with_bounded_combined_targets(monkeypatch, initial_roll):
+    clock = [100.0]
+    monkeypatch.setattr("homebody.robot_tools.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("homebody.robot_tools.create_head_pose", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        "homebody.robot_tools._head_pose_components",
+        lambda pose: {"x": 2.0, "y": 3.0, "z": 4.0, "roll": initial_roll,
+                      "pitch": 5.0, "yaw": 27.0},
+    )
+    stream = CameraJoystickStream()
+    stream.update(0.5, 0.2)
+
+    class CombinedRobot(FakeRobot):
+        def __init__(self):
+            super().__init__()
+            self.combined = []
+
+        def set_target(self, *, head, body_yaw):
+            self.combined.append((clock[0], head, body_yaw))
+            if len(self.combined) == 25:
+                stream.stop()
+
+        def set_target_head_pose(self, head):
+            pytest.fail("SDK combined target must not split the head command")
+
+        def set_target_body_yaw(self, body_yaw):
+            pytest.fail("SDK combined target must not split the body command")
+
+    robot = CombinedRobot()
+    actions = ReachyRobotActions(robot, threading.Event())
+
+    def tick(period):
+        clock[0] += period
+        if stream.snapshot().active:
+            stream.update(0.5, 0.2)
+        return False
+
+    monkeypatch.setattr(actions._cancel_requested, "wait", tick)
+    result = actions.execute("camera_joystick", {"stream": stream, "body_yaw_degrees": 20.0})
+    moving = robot.combined[:-1]  # Final measured hold is not a leveling target.
+    assert result["cancelled"] is True
+    previous_time, previous_roll = 100.0, initial_roll
+    for timestamp, head, body in moving:
+        assert abs(head["roll"]) <= abs(previous_roll)
+        assert abs(head["roll"] - previous_roll) <= 15.0 * max(0.001, timestamp - previous_time) + 1e-8
+        assert head["yaw"] - math.degrees(body) == pytest.approx(7.0)
+        assert (head["x"], head["y"], head["z"]) == (2.0, 3.0, 4.0)
+        previous_time, previous_roll = timestamp, head["roll"]
+    assert moving[0][1]["roll"] == pytest.approx(initial_roll, abs=0.02)
+    assert moving[-1][1]["roll"] == pytest.approx(0.0)
+
+
+def test_stale_stream_watchdog_does_not_restart_after_rejected_input(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr("homebody.robot_tools.time.monotonic", lambda: clock[0])
+    stream = CameraJoystickStream()  # Production watchdog is already 750 ms.
+    stream.update(1.0, 1.0)
+    clock[0] += 0.751
+    assert stream.snapshot().active is False
+    with pytest.raises(RuntimeError, match="not active"):
+        stream.update(0.0, 0.0)
+    assert stream.snapshot().pan == 0.0
+    assert stream.snapshot().tilt == 0.0

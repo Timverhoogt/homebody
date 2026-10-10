@@ -34,6 +34,19 @@
     controlOriginX: null,
     controlOriginY: null,
     controlRadius: null,
+    centering: false,
+    releasing: false,
+    releaseToken: 0,
+    stopping: false,
+    movementSpeed: 0.6,
+    lastFrameAt: null,
+    frameCount: 0,
+    directDecoded: false,
+    frameCallback: null,
+    healthTimer: null,
+    transport: "Off",
+    statsInFlight: false,
+    statsLastAt: 0,
     appFullscreen: false,
     appFullscreenAnchor: null,
   };
@@ -80,9 +93,116 @@
     state.visionTimer = window.setInterval(updateVisionTimecode, 250);
   }
 
+  const FRAME_STALE_MS = 1500;
+  function videoFresh() {
+    return state.lastFrameAt !== null && performance.now() - state.lastFrameAt < FRAME_STALE_MS;
+  }
+
+  function noteFrame() {
+    state.lastFrameAt = performance.now();
+    state.frameCount += 1;
+    if (state.transport === "WebRTC" && !state.directDecoded) {
+      state.directDecoded = true;
+      if (state.connectionTimer !== null) window.clearTimeout(state.connectionTimer);
+      state.connectionTimer = null;
+      setUi("Live", "Private direct video connected. No frames are sent to Hermes or OpenAI.", "ok");
+      updateButtons();
+    }
+  }
+
+  function stopFrameHealth() {
+    if (state.healthTimer !== null) window.clearInterval(state.healthTimer);
+    const video = byId("reachy-camera-video");
+    if (state.frameCallback !== null) video.cancelVideoFrameCallback?.(state.frameCallback);
+    state.healthTimer = null;
+    state.frameCallback = null;
+    state.lastFrameAt = null;
+    state.frameCount = 0;
+    state.directDecoded = false;
+    state.statsInFlight = false;
+    state.statsLastAt = 0;
+    state.transport = "Off";
+    byId("camera-diag-transport").textContent = "Off";
+    byId("camera-diag-video").textContent = "Not receiving";
+    byId("camera-feed-health").textContent = "Camera off · movement requires fresh video";
+    byId("camera-feed-health").dataset.stale = "false";
+  }
+
+  async function inspectConnection(generation) {
+    const peer = state.session?.rtcPeerConnection;
+    if (!peer) return;
+    byId("camera-diag-ice").textContent = `ICE ${peer.iceConnectionState} · ${peer.connectionState}`;
+    if (state.statsInFlight || typeof peer.getStats !== "function") return;
+    state.statsInFlight = true;
+    try {
+      const stats = await peer.getStats();
+      if (state.playbackGeneration !== generation || state.session?.rtcPeerConnection !== peer) return;
+      stats.forEach(report => {
+        if (report.type === "transport" && report.dtlsState) byId("camera-diag-ice").textContent = `ICE ${peer.iceConnectionState} · DTLS ${report.dtlsState}`;
+        if (report.type === "candidate-pair" && (report.nominated || report.selected || [...stats.values()].some(t => t.type === "transport" && t.selectedCandidatePairId === report.id))) {
+          const local = stats.get(report.localCandidateId);
+          const remote = stats.get(report.remoteCandidateId);
+          byId("camera-diag-network").textContent = Number.isFinite(report.currentRoundTripTime)
+            ? `${Math.round(report.currentRoundTripTime * 1000)} ms · ${local?.candidateType || "unknown"} ↔ ${remote?.candidateType || "unknown"}`
+            : `${report.state || "checking"} · ICE replies ${report.responsesReceived ?? 0}/${report.requestsSent ?? 0}`;
+        }
+        if (report.type === "inbound-rtp" && (report.kind === "video" || report.mediaType === "video")) {
+          const codec = stats.get(report.codecId);
+          const jitter = report.jitterBufferEmittedCount > 0
+            ? Math.round(report.jitterBufferDelay / report.jitterBufferEmittedCount * 1000) : null;
+          byId("camera-diag-video").textContent = `${report.framesPerSecond ?? "—"} fps · ${codec?.mimeType || "video"}${jitter !== null ? ` · buffer ${jitter} ms` : ""} · ${report.framesDecoded ?? 0} decoded · ${report.packetsReceived ?? 0} packets · ${report.freezeCount ?? 0} freezes`;
+        }
+      });
+    } catch { /* Stats are advisory, not a new media session. */ }
+    finally { if (state.playbackGeneration === generation) state.statsInFlight = false; }
+  }
+
+  function startFrameHealth(transport) {
+    const generation = state.playbackGeneration;
+    state.transport = transport;
+    if (transport === "HTTPS backup") byId("camera-diag-ice").textContent += " · fell back to HTTPS";
+    byId("camera-diag-transport").textContent = transport;
+    const video = byId("reachy-camera-video");
+    if (transport === "WebRTC") {
+      const receive = () => {
+        if (generation !== state.playbackGeneration || !state.stream) return;
+        noteFrame();
+        state.frameCallback = video.requestVideoFrameCallback(receive);
+      };
+      if (typeof video.requestVideoFrameCallback === "function") state.frameCallback = video.requestVideoFrameCallback(receive);
+      // Older engines expose decoded-frame counters instead of callbacks.
+    }
+    let previousFrames = video.getVideoPlaybackQuality?.().totalVideoFrames ?? 0;
+    let sampleCount = state.frameCount;
+    let sampleAt = performance.now();
+    state.healthTimer = window.setInterval(() => {
+      if (generation !== state.playbackGeneration) return;
+      const now = performance.now();
+      if (transport === "WebRTC" && typeof video.requestVideoFrameCallback !== "function") {
+        const frames = video.getVideoPlaybackQuality?.().totalVideoFrames ?? previousFrames;
+        if (frames > previousFrames) noteFrame();
+        previousFrames = frames;
+      }
+      const fresh = videoFresh();
+      if (!fresh && (state.controlPointerId !== null || state.cameraControlSession || state.centering)) void endControlGesture("Video delayed · movement held");
+      const age = state.lastFrameAt === null ? "waiting" : `${Math.round(now - state.lastFrameAt)} ms since decoded frame`;
+      byId("camera-feed-health").textContent = `${transport}${fresh ? " · receiving" : " · video delayed · movement held"} · ${age}`;
+      byId("camera-feed-health").dataset.stale = String(!fresh);
+      if (now - sampleAt >= 1000) {
+        if (transport === "HTTPS backup") byId("camera-diag-video").textContent = `${((state.frameCount - sampleCount) * 1000 / (now - sampleAt)).toFixed(1)} fps · decoded HTTPS frames`;
+        sampleCount = state.frameCount;
+        sampleAt = now;
+        void inspectConnection(generation);
+      }
+      updateControls();
+    }, 250);
+  }
+
   function controlsAllowed() {
     return Boolean(
       state.stream
+      && videoFresh()
+      && !state.centering && !state.releasing && !state.stopping
       && state.enabled
       && state.controlsEnabled
       && state.powerMode === "awake"
@@ -100,6 +220,10 @@
     overlay.dataset.handedness = state.controlsHandedness;
     joystick.setAttribute("aria-disabled", String(!allowed));
     byId("camera-control-center").disabled = !allowed;
+    byId("camera-control-center").textContent = state.centering ? "Centering…" : "Center view";
+    byId("camera-control-center").setAttribute("aria-busy", String(state.centering));
+    byId("camera-control-speed").disabled = !allowed;
+    byId("camera-control-stop").textContent = state.stopping ? "Stopping…" : "Stop movement";
     // Stop remains available even if the movement opt-in was just revoked.
     byId("camera-control-stop").disabled = !state.stream;
     byId("camera-control-settings").hidden = state.controlsEnabled;
@@ -107,14 +231,20 @@
     else if (!state.enabled || !state.stream) setControlStatus("Start the local live camera to move the view");
     else if (state.powerMode !== "awake") setControlStatus("Wake Reachy before moving the camera");
     else if (!state.motorsEnabled) setControlStatus("Movement unavailable: motors are off. Wake Reachy first.");
+    else if (state.stopping) setControlStatus("Stopping movement…");
+    else if (state.centering) setControlStatus("Centering head and base · Stop remains available");
+    else if (state.releasing) setControlStatus("Holding view…");
+    else if (!videoFresh()) setControlStatus("Video delayed · movement held. Wait for fresh video.");
     else if (!allowed) setControlStatus("Reachy is busy. Wait or use Stop movement.");
     else if (state.controlPointerId === null) setControlStatus("Release holds the current view");
   }
 
   function updateButtons() {
-    const active = Boolean(state.session || state.stream);
+    const active = Boolean(state.requested || state.session || state.stream);
     const allowed = state.enabled && state.powerMode === "awake";
     byId("camera-live-start").disabled = active || !allowed;
+    byId("camera-live-start").textContent = active && !state.stream ? "Connecting…" : "Start live camera";
+    byId("camera-live-start").setAttribute("aria-busy", String(active && !state.stream));
     byId("camera-live-stop").disabled = !active;
     byId("camera-live-fullscreen").disabled = !state.stream;
     updateControls();
@@ -132,19 +262,22 @@
   }
 
   async function postControl(path, payload, { keepalive = false, headers = {} } = {}) {
+    const began = performance.now();
     const response = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...headers },
       body: payload === null ? undefined : JSON.stringify(payload),
       keepalive,
+      signal: AbortSignal.timeout(path.endsWith("/center") ? 8000 : path === "/api/robot/stop" ? 6000 : 2500),
     });
     let body = {};
     try { body = await response.json(); } catch { /* An empty error body is still an error. */ }
+    byId("camera-diag-control").textContent = `${Math.round(performance.now() - began)} ms · ${response.ok ? "acknowledged" : "rejected"}`;
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     return body;
   }
 
-  async function endRemoteControlSession(sessionId, sequence, reason) {
+  async function endRemoteControlSession(sessionId, sequence, reason, generation = state.controlGeneration) {
     if (!sessionId) return;
     try {
       await postControl(
@@ -152,8 +285,9 @@
         { session_id: sessionId, sequence },
         { keepalive: true },
       );
-      setControlStatus(reason || "View held");
+      if (generation === state.controlGeneration) setControlStatus(reason || "View held");
     } catch (error) {
+      if (generation !== state.controlGeneration) return;
       setControlStatus(`Control release: ${String(error)}`);
       window.HomebodyNotifications?.show(`Camera movement: ${error.message || error}`, { id: "camera-movement", kind: "error" });
     }
@@ -165,7 +299,8 @@
   }
 
   async function endControlGesture(reason = "View held on release") {
-    state.controlGeneration += 1;
+    const generation = ++state.controlGeneration;
+    state.centering = false;
     clearControlTimer();
     const joystick = byId("camera-joystick");
     const pointerId = state.controlPointerId;
@@ -179,7 +314,11 @@
     state.controlInFlight = false;
     if (sessionId) {
       state.cameraControlSequence += 1;
-      await endRemoteControlSession(sessionId, state.cameraControlSequence, reason);
+      const releaseToken = ++state.releaseToken;
+      state.releasing = true;
+      updateControls();
+      try { await endRemoteControlSession(sessionId, state.cameraControlSequence, reason, generation); }
+      finally { if (releaseToken === state.releaseToken) { state.releasing = false; updateControls(); } }
     } else {
       setControlStatus(reason);
     }
@@ -191,6 +330,7 @@
     void endControlGesture("Controls stopped with the camera feed");
     const video = byId("reachy-camera-video");
     stopVisionOverlay();
+    stopFrameHealth();
     byId("camera-viewer").classList.remove("live");
     video.pause();
     video.srcObject = null;
@@ -248,7 +388,10 @@
     state.powerMode = powerMode || "unknown";
     state.motorsEnabled = Boolean(motorsEnabled);
     state.robotBusy = Boolean(robotBusy);
-    if (wasAllowed && !controlsAllowed()) void endControlGesture("Controls stopped by robot policy");
+    if ((wasAllowed && !controlsAllowed()) || ((state.controlPointerId !== null || state.cameraControlSession || state.centering)
+      && (!state.enabled || !state.controlsEnabled || state.powerMode !== "awake" || !state.motorsEnabled))) {
+      void endControlGesture("Controls stopped by robot policy");
+    }
     if (!state.enabled || state.powerMode !== "awake") {
       if (state.requested || state.session || state.stream) stop(policyMessage());
       else setUi("Off", policyMessage());
@@ -296,9 +439,8 @@
       updateButtons(); // Stop must remain available while play is pending.
       video.play().then(() => {
         if (!isCurrent()) return;
-        if (state.connectionTimer !== null) window.clearTimeout(state.connectionTimer);
-        state.connectionTimer = null;
-        setUi("Live", "Local camera connected. No frames are sent to Hermes or OpenAI.", "ok");
+        startFrameHealth("WebRTC");
+        setUi("Connecting", "Video track received; waiting for a decoded frame…");
         updateButtons();
       }).catch((error) => {
         // Stop/privacy/replacement can intentionally abort a pending play.
@@ -307,6 +449,27 @@
         const reason = error?.name === "AbortError" ? "interrupted" : "blocked";
         setUi("Paused", `Camera connected, but playback was ${reason}: ${String(error)}`, "error");
       });
+    });
+    session.addEventListener("rtcPeerConnectionChanged", () => {
+      if (state.session !== session || !session.rtcPeerConnection) return;
+      const peer = session.rtcPeerConnection;
+      const receive = () => {
+        if (state.session !== session) return;
+        byId("camera-diag-ice").textContent = `ICE ${peer.iceConnectionState} · ${peer.connectionState}`;
+        void inspectConnection(state.playbackGeneration);
+      };
+      peer.addEventListener("iceconnectionstatechange", receive);
+      peer.addEventListener("connectionstatechange", receive);
+      peer.addEventListener("icegatheringstatechange", receive);
+      peer.addEventListener("icecandidateerror", (event) => {
+        if (state.session === session) byId("camera-diag-network").textContent = `ICE candidate error ${event.errorCode || "unknown"}`;
+      });
+      for (const receiver of peer.getReceivers()) {
+        if (receiver.track?.kind === "video" && "jitterBufferTarget" in receiver) {
+          try { receiver.jitterBufferTarget = 50; } catch { /* Optional browser hint. */ }
+        }
+      }
+      receive();
     });
     session.connect();
   }
@@ -326,7 +489,7 @@
     try {
       while (current()) {
         const response = await window.fetch("/api/camera/frame", {
-          method: "POST", cache: "no-store", signal: controller.signal,
+          method: "POST", cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]),
         });
         if (!current()) break;
         if ([429, 503].includes(response.status) && misses++ < 12) {
@@ -345,6 +508,7 @@
           canvas.height = bitmap.height;
         }
         context.drawImage(bitmap, 0, 0);
+        noteFrame();
         bitmap.close();
         if (!stream) {
           stream = canvas.captureStream(0);
@@ -356,12 +520,15 @@
           if (!current()) break;
           byId("camera-viewer").classList.add("live");
           startVisionOverlay();
+          state.movementSpeed = 0.3;
+          byId("camera-control-speed").value = "0.3";
+          startFrameHealth("HTTPS backup");
           setUi("Live · HTTPS", "Private HTTPS camera connected (reduced frame rate). No frames are sent to Hermes or OpenAI.", "ok");
           updateButtons();
         } else {
           stream.getVideoTracks()[0].requestFrame();
         }
-        await new Promise(resolve => window.setTimeout(resolve, 250));
+        await new Promise(resolve => window.setTimeout(resolve, 100));
       }
     } catch (error) {
       if (current()) {
@@ -390,7 +557,7 @@
     updateButtons();
     state.connectionTimer = window.setTimeout(() => {
       if (state.requested) void startHttpsFallback("Direct video did not arrive");
-    }, 6000);
+    }, 15000);
     try {
       const signalingScheme = window.location.protocol === "https:" ? "wss" : "ws";
       const api = new window.GstWebRTCAPI({
@@ -451,7 +618,9 @@
   }
 
   async function sendControlCommand() {
+    if (!videoFresh()) { void endControlGesture("Video delayed · movement held"); return; }
     if (!state.cameraControlSession || state.controlPointerId === null || state.controlInFlight) return;
+    const generation = state.controlGeneration;
     state.controlInFlight = true;
     state.cameraControlSequence += 1;
     const sessionId = state.cameraControlSession;
@@ -460,12 +629,14 @@
       await postControl("/api/camera-control/move", {
         session_id: sessionId,
         sequence,
-        pan: state.desiredPan,
-        tilt: state.desiredTilt,
+        pan: state.desiredPan * state.movementSpeed,
+        tilt: state.desiredTilt * state.movementSpeed,
       });
+      if (generation !== state.controlGeneration || state.cameraControlSession !== sessionId) return;
       window.HomebodyNotifications?.dismiss("camera-movement");
       setControlStatus("Moving · release to hold");
     } catch (error) {
+      if (generation !== state.controlGeneration || state.cameraControlSession !== sessionId) return;
       const message = String(error);
       if (!message.includes("Robot is busy")) {
         setControlStatus(message);
@@ -473,7 +644,7 @@
         await endControlGesture("Control stopped after rejection");
       }
     } finally {
-      state.controlInFlight = false;
+      if (generation === state.controlGeneration && state.cameraControlSession === sessionId) state.controlInFlight = false;
     }
   }
 
@@ -506,8 +677,10 @@
       state.cameraControlSession = sessionId;
       state.cameraControlSequence = 0;
       await sendControlCommand();
+      if (generation !== state.controlGeneration || state.controlPointerId === null) return;
       state.controlTimer = window.setInterval(() => { void sendControlCommand(); }, CAMERA_CONTROL_INTERVAL_MS);
     } catch (error) {
+      if (generation !== state.controlGeneration) return;
       setControlStatus(`Blocked: ${String(error)}`);
       window.HomebodyNotifications?.show(`Camera movement: ${error.message || error}`, { id: "camera-movement", kind: "error" });
       await endControlGesture("Movement blocked");
@@ -525,26 +698,31 @@
 
   async function centerCamera() {
     if (!controlsAllowed()) return;
-    await endControlGesture("Preparing explicit Center");
+    await endControlGesture("Preparing Center");
+    if (!controlsAllowed()) return;
+    const generation = ++state.controlGeneration;
+    state.centering = true;
+    updateControls();
     try {
-      const started = await fetch("/api/camera-control/session", {
-        method: "POST",
+      const started = await postControl("/api/camera-control/session", null, {
         headers: { "X-Reachy-Adult-UI": "unlocked" },
       });
-      const startedBody = await started.json();
-      if (!started.ok) throw new Error(startedBody.detail || `HTTP ${started.status}`);
-      state.cameraControlSession = String(startedBody.session_id || "");
+      const sessionId = String(started.session_id || "");
+      if (generation !== state.controlGeneration || !state.centering || !videoFresh()) {
+        void endRemoteControlSession(sessionId, 1, "Center cancelled", generation);
+        return;
+      }
+      state.cameraControlSession = sessionId;
       state.cameraControlSequence = 1;
-      setControlStatus("Centering head and base…");
-      await postControl("/api/camera-control/center", {
-        session_id: state.cameraControlSession,
-        sequence: state.cameraControlSequence,
-      });
+      await postControl("/api/camera-control/center", { session_id: sessionId, sequence: 1 });
+      if (generation !== state.controlGeneration || state.cameraControlSession !== sessionId) return;
       await endControlGesture("Camera centered");
     } catch (error) {
-      setControlStatus(`Center blocked: ${String(error)}`);
-      window.HomebodyNotifications?.show(`Camera movement: ${error.message || error}`, { id: "camera-movement", kind: "error" });
-      await endControlGesture("Center stopped");
+      if (generation !== state.controlGeneration) return;
+      window.HomebodyNotifications?.show(`Center: ${error.message || error}`, { id: "camera-movement", kind: "error" });
+      await endControlGesture(`Center stopped: ${error.message || error}`);
+    } finally {
+      if (generation === state.controlGeneration) { state.centering = false; updateControls(); }
     }
   }
 
@@ -567,8 +745,10 @@
       state.cameraControlSession = String(started.session_id || "");
       state.cameraControlSequence = 0;
       await sendControlCommand();
-      window.setTimeout(() => { void endControlGesture("Keyboard movement complete"); }, 400);
+      if (generation !== state.controlGeneration) return;
+      window.setTimeout(() => { if (generation === state.controlGeneration) void endControlGesture("Keyboard movement complete"); }, 200);
     } catch (error) {
+      if (generation !== state.controlGeneration) return;
       setControlStatus(`Keyboard movement blocked: ${String(error)}`);
       window.HomebodyNotifications?.show(`Camera movement: ${error.message || error}`, { id: "camera-movement", kind: "error" });
       await endControlGesture("Keyboard movement blocked");
@@ -576,13 +756,20 @@
   }
 
   async function emergencyStop() {
-    await endControlGesture("Emergency Stop requested");
+    if (state.stopping) return;
+    // Do not let a lost /end response delay the independent emergency Stop.
+    void endControlGesture("Stop requested");
+    state.stopping = true;
+    updateControls();
     try {
       await postControl("/api/robot/stop", null);
       setControlStatus("Movement stopped");
     } catch (error) {
       setControlStatus(`Stop error: ${String(error)}`);
       window.HomebodyNotifications?.show(`Camera movement: ${error.message || error}`, { id: "camera-movement", kind: "error" });
+    } finally {
+      state.stopping = false;
+      updateControls();
     }
   }
 
@@ -680,6 +867,11 @@
       void endControlGesture("Controls stopped for fullscreen exit");
       setAppFullscreen(false);
     }
+  });
+  byId("camera-control-speed").addEventListener("change", (event) => {
+    const speed = Number(event.target.value);
+    state.movementSpeed = [0.3, 0.6, 1].includes(speed) ? speed : 0.3;
+    void endControlGesture("Speed changed · drag again to move");
   });
   byId("camera-control-center").addEventListener("click", () => { void centerCamera(); });
   byId("camera-control-stop").addEventListener("click", () => { void emergencyStop(); });

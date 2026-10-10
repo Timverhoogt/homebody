@@ -23,6 +23,7 @@ _LOGGER = logging.getLogger("homebody.runtime")
 
 # A joystick gesture that sends nothing for this long is abandoned (closed tab, lost network).
 _CAMERA_CONTROL_IDLE_TIMEOUT_SECONDS = 30.0
+_CAMERA_CENTER_TIMEOUT_SECONDS = 5.0
 # A green-button press that the wake loop cannot take within this window is dropped.
 _BUTTON_WAKE_WINDOW_SECONDS = 2.0
 
@@ -36,6 +37,7 @@ class ManualControlMixin:
         self._camera_control_last_sequence = 0
         self._camera_control_last_activity = 0.0
         self._camera_control_stream: CameraJoystickStream | None = None
+        self._camera_center_cancel: threading.Event | None = None
 
     def queue_manual_robot_action(
         self,
@@ -135,6 +137,9 @@ class ManualControlMixin:
         _LOGGER.info("Expiring an abandoned camera-control session")
         stream = self._camera_control_stream
         self._camera_control_stream = None
+        if self._camera_center_cancel is not None:
+            self._camera_center_cancel.set()
+            self._camera_center_cancel = None
         self._camera_control_session_id = ""
         self._camera_control_last_sequence = 0
         self._camera_control_last_activity = 0.0
@@ -215,37 +220,73 @@ class ManualControlMixin:
                 return {"ok": True, "sequence": sequence, "accepted": True, "streamed": True}
 
     def center_camera_control(self, session_id: str, sequence: int) -> dict[str, object]:
-        """Explicitly return the camera head and body yaw to neutral."""
-        with self._motor_transition_lock:
-            with self._kids_lock:
+        """Center with request-scoped cancellation; never wait with worker gate locks held."""
+        cancelled = threading.Event()
+        completed = threading.Event()
+        outcome: dict[str, object] = {}
+
+        def on_complete(result: dict[str, object]) -> None:
+            outcome.update(result)
+            completed.set()
+
+        with self._motor_transition_lock, self._kids_lock, self._camera_control_lock:
+            self._assert_camera_control_policy()
+            if self._camera_center_cancel is not None:
+                raise RuntimeError("Camera Center is already in progress")
+            self._validate_camera_control_session(session_id, sequence)
+            assert self._actions is not None
+            actions = self._actions
+            self._camera_center_cancel = cancelled
+            stream = self._camera_control_stream
+            self._camera_control_stream = None
+            if stream is not None:
+                stream.stop()
+
+        try:
+            if not actions.wait_idle(timeout=1.0):
+                raise RuntimeError("Camera movement did not stop before Center")
+            with self._motor_transition_lock, self._kids_lock, self._camera_control_lock:
                 self._assert_camera_control_policy()
-                with self._camera_control_lock:
-                    self._validate_camera_control_session(session_id, sequence)
-                    assert self._actions is not None
-                    stream = self._camera_control_stream
-                    self._camera_control_stream = None
-                    pose = self.robot_pose()
-                    if stream is not None:
-                        stream.stop(hold_body_yaw_degrees=pose["body_yaw"])
-                    self._actions.cancel(stop_media=False)
-                    if not self._actions.wait_idle(timeout=1.0):
-                        raise RuntimeError("Camera movement did not stop before Center")
-                    result = self._actions.enqueue(
-                        "nudge_reachy",
-                        {"axis": "center_all", "delta": 0.0, "body_yaw_degrees": pose["body_yaw"]},
-                        hold_pose=True,
-                        reject_if_busy=True,
-                    )
+                if (
+                    cancelled.is_set()
+                    or self._camera_center_cancel is not cancelled
+                    or self._camera_control_session_id != session_id
+                    or self._camera_control_last_sequence != sequence
+                ):
+                    raise RuntimeError("Camera Center was cancelled or superseded")
+                pose = self.robot_pose()
+                result = actions.enqueue(
+                    "nudge_reachy",
+                    {"axis": "center_all", "delta": 0.0, "body_yaw_degrees": pose["body_yaw"]},
+                    hold_pose=True,
+                    reject_if_busy=True,
+                    cancel_event=cancelled,
+                    on_complete=on_complete,
+                )
                 if not result.get("accepted"):
-                    raise RuntimeError(str(result.get("error") or "Camera center movement could not be queued"))
-                if not self._actions.wait_idle(timeout=5.0):
-                    raise RuntimeError("Camera center movement did not complete in time")
-                return {"ok": True, "sequence": sequence, **result}
+                    raise RuntimeError(str(result.get("error") or "Camera Center could not be queued"))
+            if not completed.wait(timeout=_CAMERA_CENTER_TIMEOUT_SECONDS):
+                raise RuntimeError("Camera center movement did not complete in time")
+            with self._camera_control_lock:
+                if cancelled.is_set() or self._camera_control_session_id != session_id:
+                    raise RuntimeError("Camera Center was cancelled")
+                if not outcome.get("ok"):
+                    raise RuntimeError(str(outcome.get("error") or "Camera Center failed"))
+                return {"ok": True, "sequence": sequence, **result, "result": outcome}
+        finally:
+            # This token cannot cancel a newer worker generation or another owner's action.
+            cancelled.set()
+            with self._camera_control_lock:
+                if self._camera_center_cancel is cancelled:
+                    self._camera_center_cancel = None
 
     def end_camera_control(self, session_id: str, sequence: int) -> dict[str, object]:
         """Invalidate one pointer gesture and freeze the current measured viewpoint."""
         with self._camera_control_lock:
             self._validate_camera_control_session(session_id, sequence)
+            if self._camera_center_cancel is not None:
+                self._camera_center_cancel.set()
+                self._camera_center_cancel = None
             self._camera_control_session_id = ""
             stream = self._camera_control_stream
             self._camera_control_stream = None
@@ -256,7 +297,6 @@ class ManualControlMixin:
                 stream.stop(hold_body_yaw_degrees=self.robot_pose()["body_yaw"])
             except RuntimeError:
                 stream.stop()
-        self._actions.cancel(stop_media=False)
         held = self._actions.wait_idle(timeout=1.0)
         if not held:
             raise RuntimeError("Camera movement did not stop in time")
@@ -267,6 +307,9 @@ class ManualControlMixin:
         with self._camera_control_lock:
             stream = self._camera_control_stream
             self._camera_control_stream = None
+            if self._camera_center_cancel is not None:
+                self._camera_center_cancel.set()
+                self._camera_center_cancel = None
             self._camera_control_session_id = ""
             self._camera_control_last_sequence = 0
             self._camera_control_last_activity = 0.0
@@ -274,19 +317,8 @@ class ManualControlMixin:
             stream.stop()
 
     def revoke_camera_control(self) -> None:
-        """Invalidate an active gesture and cooperatively freeze its movement."""
-        with self._camera_control_lock:
-            was_active = bool(self._camera_control_session_id)
-            stream = self._camera_control_stream
-            self._camera_control_stream = None
-            self._camera_control_session_id = ""
-            self._camera_control_last_sequence = 0
-            self._camera_control_last_activity = 0.0
-        if stream is not None:
-            stream.stop()
-        if was_active and self._actions is not None:
-            self._actions.cancel(stop_media=False)
-            self._actions.wait_idle(timeout=1.0)
+        """Cooperatively revoke only camera-owned work, without blocking gate locks."""
+        self.invalidate_camera_control()
 
     def queue_precision_robot_action(self, axis: str, delta: float) -> dict[str, object]:
         """Queue one bounded Cartesian nudge after confirmed motor wake."""

@@ -134,9 +134,26 @@ def manual_precision_action(
     }
 
 
+def _validated_head_pose(pose: object) -> object:
+    """Snapshot and reject missing/malformed/non-finite measured SDK matrices."""
+    try:
+        # Preserve ndarray for the real SDK; never pass a Python-list substitute.
+        matrix = pose.copy() if getattr(pose, "shape", None) == (4, 4) else pose
+        if len(matrix) != 4 or any(len(row) != 4 for row in matrix):
+            raise ValueError("expected a 4x4 matrix")
+        values = [[float(value) for value in row] for row in matrix]
+        if any(isinstance(value, bool) for row in matrix for value in row):
+            raise ValueError("boolean matrix values")
+        if not all(math.isfinite(value) for row in values for value in row):
+            raise ValueError("non-finite matrix values")
+        return matrix if getattr(matrix, "shape", None) == (4, 4) else values
+    except (TypeError, ValueError, IndexError, OverflowError) as exc:
+        raise RuntimeError(f"Invalid measured head pose: {exc}") from exc
+
+
 def _head_pose_components(pose: object) -> dict[str, float]:
     """Extract millimetres and XYZ Euler degrees from an SDK 4x4 pose."""
-    matrix = cast(object, pose)
+    matrix = _validated_head_pose(pose)
     r20 = float(matrix[2][0])  # type: ignore[index]
     pitch = math.asin(max(-1.0, min(1.0, -r20)))
     if abs(math.cos(pitch)) > 1e-7:
@@ -250,6 +267,7 @@ class QueuedRobotAction:
     generation: int
     on_complete: Callable[[dict[str, object]], None] | None = None
     hold_pose: bool = False
+    cancel_event: threading.Event | None = None
 
 
 def create_head_pose(**kwargs: float) -> object:
@@ -334,6 +352,7 @@ class ReachyRobotActions:
         self._state_lock = threading.Lock()
         self._generation = 0
         self._pending_actions = 0
+        self._active_cancel_event: threading.Event | None = None
 
     @property
     def busy(self) -> bool:
@@ -370,6 +389,7 @@ class ReachyRobotActions:
         on_complete: Callable[[dict[str, object]], None] | None = None,
         hold_pose: bool = False,
         reject_if_busy: bool = False,
+        cancel_event: threading.Event | None = None,
     ) -> dict[str, object]:
         if name not in _QUEUED_ROBOT_ACTION_NAMES:
             return {"ok": False, "error": "Robot action is not allow-listed"}
@@ -380,7 +400,9 @@ class ReachyRobotActions:
                 return {"ok": False, "error": "Robot is busy", "code": "robot_busy"}
             generation = self._generation
             try:
-                self._queue.put_nowait(QueuedRobotAction(name, dict(arguments), generation, on_complete, hold_pose))
+                self._queue.put_nowait(
+                    QueuedRobotAction(name, dict(arguments), generation, on_complete, hold_pose, cancel_event)
+                )
             except queue.Full:
                 return {"ok": False, "error": "Robot action queue is full", "code": "robot_busy"}
             self._pending_actions += 1
@@ -390,6 +412,28 @@ class ReachyRobotActions:
         with self._state_lock:
             return generation == self._generation and not self._closed.is_set()
 
+    def _measured_head_pose(self) -> object:
+        return _validated_head_pose(self.robot.get_current_head_pose())
+
+    def _action_cancelled(self) -> bool:
+        return (
+            self._cancel_requested.is_set()
+            or self.stop_event.is_set()
+            or self._closed.is_set()
+            or (self._active_cancel_event is not None and self._active_cancel_event.is_set())
+        )
+
+    def _set_head_body_target(self, head: object | None, body_yaw: float | None) -> None:
+        """SDK 1.9 sends both targets in one command; retain older SDK compatibility."""
+        combined = getattr(self.robot, "set_target", None)
+        if callable(combined):
+            combined(head=head, body_yaw=body_yaw)
+        else:
+            if head is not None:
+                self.robot.set_target_head_pose(head)
+            if body_yaw is not None:
+                self.robot.set_target_body_yaw(body_yaw)
+
     def _run_camera_joystick_stream(
         self,
         stream: CameraJoystickStream,
@@ -397,7 +441,7 @@ class ReachyRobotActions:
         initial_body_yaw_degrees: float,
     ) -> dict[str, object]:
         """Apply one browser gesture as a smoothed 20 Hz head/base target stream."""
-        components = _head_pose_components(self.robot.get_current_head_pose())
+        components = _head_pose_components(self._measured_head_pose())
         target_body = _clamp(float(initial_body_yaw_degrees), _BODY_YAW_LIMIT)
         relative_yaw = _clamp(
             components["yaw"] - target_body,
@@ -405,19 +449,21 @@ class ReachyRobotActions:
         )
         target_head_yaw = target_body + relative_yaw
         target_pitch = _clamp(components["pitch"], _HEAD_LIMITS["pitch"])
+        target_roll = components["roll"]
         smoothed_pan = 0.0
         smoothed_tilt = 0.0
         last_update = time.monotonic()
 
         while True:
             snapshot = stream.snapshot()
-            cancelled = self._cancel_requested.is_set() or self.stop_event.is_set() or self._closed.is_set()
+            cancelled = self._action_cancelled()
             if cancelled or not snapshot.active:
                 hold_body = (
                     snapshot.hold_body_yaw_degrees if snapshot.hold_body_yaw_degrees is not None else target_body
                 )
-                self.robot.set_target_head_pose(self.robot.get_current_head_pose())
-                self.robot.set_target_body_yaw(math.radians(_clamp(hold_body, _BODY_YAW_LIMIT)))
+                self._set_head_body_target(
+                    self._measured_head_pose(), math.radians(_clamp(hold_body, _BODY_YAW_LIMIT))
+                )
                 return _cancelled_action_result("camera_joystick")
 
             now = time.monotonic()
@@ -438,18 +484,21 @@ class ReachyRobotActions:
                 target_pitch - smoothed_tilt * _CAMERA_STREAM_TILT_SPEED * elapsed,
                 _HEAD_LIMITS["pitch"],
             )
+            # Bounded horizon leveling, independent of pan/tilt input.
+            target_roll += _clamp(-target_roll, (-15.0 * elapsed, 15.0 * elapsed))
             target_head = create_head_pose(
                 x=components["x"],
                 y=components["y"],
                 z=components["z"],
-                roll=components["roll"],
+                roll=target_roll,
                 pitch=target_pitch,
                 yaw=target_head_yaw,
                 mm=True,
                 degrees=True,
             )
-            self.robot.set_target_head_pose(target_head)
-            self.robot.set_target_body_yaw(math.radians(target_body))
+            if self._action_cancelled() or not stream.snapshot().active:
+                continue
+            self._set_head_body_target(target_head, math.radians(target_body))
             self._cancel_requested.wait(_CAMERA_STREAM_PERIOD)
 
     def execute(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
@@ -463,7 +512,7 @@ class ReachyRobotActions:
             direction = 0.0 if raw_direction is None else float(raw_direction)
             if not math.isfinite(direction) or not -60.0 <= direction <= 60.0:
                 return {"ok": False, "error": "Presence direction must be finite and bounded"}
-            components = _head_pose_components(self.robot.get_current_head_pose())
+            components = _head_pose_components(self._measured_head_pose())
             components["pitch"] = -3.0
             if raw_direction is not None:
                 components["yaw"] = _clamp(direction, (-18.0, 18.0))
@@ -522,7 +571,7 @@ class ReachyRobotActions:
             body_yaw = float(arguments.get("body_yaw_degrees") or 0.0)
             if not all(math.isfinite(value) and -1.0 <= value <= 1.0 for value in (pan, tilt)):
                 return {"ok": False, "error": "Camera joystick input must be finite and bounded"}
-            components = _head_pose_components(self.robot.get_current_head_pose())
+            components = _head_pose_components(self._measured_head_pose())
             relative_yaw = _clamp(
                 components["yaw"] - body_yaw,
                 (-_HEAD_BODY_YAW_DELTA_LIMIT, _HEAD_BODY_YAW_DELTA_LIMIT),
@@ -592,7 +641,7 @@ class ReachyRobotActions:
                 result_pose["body_yaw"] = round(target_body_degrees, 2)
 
             if axis in {"body_yaw", "center_base"}:
-                components = _head_pose_components(self.robot.get_current_head_pose())
+                components = _head_pose_components(self._measured_head_pose())
                 assert target_body_degrees is not None
                 relative_head_yaw = _clamp(
                     components["yaw"] - body_yaw,
@@ -614,7 +663,7 @@ class ReachyRobotActions:
                 )
                 result_pose.update({key: round(value, 2) for key, value in components.items()})
             elif axis not in {"body_yaw", "center_base"}:
-                components = _head_pose_components(self.robot.get_current_head_pose())
+                components = _head_pose_components(self._measured_head_pose())
                 if axis in {"center_head", "center_all"}:
                     components = {key: 0.0 for key in _HEAD_LIMITS}
                 elif axis in _HEAD_LIMITS:
@@ -671,20 +720,24 @@ class ReachyRobotActions:
         duration: float,
     ) -> bool:
         """Run cancellable app-owned interpolation instead of an opaque daemon task."""
-        start_head = self.robot.get_current_head_pose() if target_head is not None else None
+        start_head = self._measured_head_pose() if target_head is not None else None
         started = time.monotonic()
         period = 1.0 / 50.0
         while True:
-            if self._cancel_requested.is_set() or self.stop_event.is_set() or self._closed.is_set():
+            if self._action_cancelled():
                 return False
             elapsed = time.monotonic() - started
             ratio = min(1.0, elapsed / duration)
             eased = ratio * ratio * (3.0 - 2.0 * ratio)
-            if target_head is not None and start_head is not None:
-                head = interpolate_head_pose(start_head, target_head, eased)
-                self.robot.set_target_head_pose(head)
-            if target_body is not None:
-                self.robot.set_target_body_yaw(start_body + (target_body - start_body) * eased)
+            head = (
+                interpolate_head_pose(start_head, target_head, eased)
+                if target_head is not None and start_head is not None else None
+            )
+            body = start_body + (target_body - start_body) * eased if target_body is not None else None
+            # Pose reads/interpolation may block; recheck before publishing their result.
+            if self._action_cancelled():
+                return False
+            self._set_head_body_target(head, body)
             if ratio >= 1.0:
                 return True
             if self._cancel_requested.wait(min(period, max(0.0, duration - elapsed))):
@@ -714,7 +767,7 @@ class ReachyRobotActions:
         started = time.monotonic()
         period = 1.0 / 50.0
         while time.monotonic() - started < duration:
-            if self._cancel_requested.is_set() or self.stop_event.is_set() or self._closed.is_set():
+            if self._action_cancelled():
                 return False
             elapsed = time.monotonic() - started
             head, antennas, body_yaw = cast(
@@ -749,6 +802,7 @@ class ReachyRobotActions:
                     self._on_result(action.name, result)
                 continue
             self._cancel_requested.clear()
+            self._active_cancel_event = action.cancel_event
             self._busy.set()
             result: dict[str, object] = {
                 "ok": False,
@@ -758,11 +812,11 @@ class ReachyRobotActions:
             try:
                 if self._before_action is not None:
                     self._before_action()
-                if not self._generation_matches(action.generation):
+                if not self._generation_matches(action.generation) or self._action_cancelled():
                     result = _cancelled_action_result(action.name)
                 else:
                     result = self.execute(action.name, action.arguments)
-                    if not self._generation_matches(action.generation):
+                    if not self._generation_matches(action.generation) or self._action_cancelled():
                         result = _cancelled_action_result(action.name)
                 if not result.get("ok"):
                     _LOGGER.warning("Reachy action rejected: %s", result.get("error"))
@@ -775,6 +829,7 @@ class ReachyRobotActions:
                     if self._after_action is not None and not action.hold_pose and not cancelled:
                         self._after_action()
                 finally:
+                    self._active_cancel_event = None
                     self._busy.clear()
                     self._queue.task_done()
                     self._mark_finished()
@@ -796,7 +851,7 @@ class ReachyRobotActions:
                 else:
                     # Freeze the current head target while the cooperative worker
                     # exits, without touching the shared voice playback pipeline.
-                    self.robot.set_target_head_pose(self.robot.get_current_head_pose())
+                    self.robot.set_target_head_pose(self._measured_head_pose())
             except Exception:
                 _LOGGER.debug("No active Reachy move to cancel", exc_info=True)
         while True:
