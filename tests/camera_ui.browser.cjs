@@ -42,6 +42,7 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
       }
       createConsumerSession() {
         const session = new EventTarget();
+        (window.cameraSessions ||= []).push(session);
         session.streams = [stream];
         session.connect = () => session.dispatchEvent(new Event('streamsChanged'));
         session.close = () => {};
@@ -61,6 +62,56 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
   await page.waitForFunction(() => !document.querySelector('#camera-live-fullscreen').disabled);
   return page;
 }
+
+for (const outcome of ['reject', 'resolve']) {
+  test(`late play ${outcome} cannot overwrite Stop or a new camera connection`, async t => {
+    const page = await setup(t);
+    await page.evaluate(() => {
+      window.ReachyCamera.stop();
+      document.querySelector('#reachy-camera-video').play = () => new Promise((resolve, reject) => { window.pendingPlay = { resolve, reject }; });
+    });
+    await page.locator('#camera-live-start').click();
+    await page.evaluate(() => {
+      window.oldSession = window.cameraSessions.at(-1);
+      window.ReachyCamera.stop('Stopped for privacy.');
+    });
+    await page.evaluate(outcome => {
+      if (outcome === 'reject') window.pendingPlay.reject(new DOMException('Interrupted by pause', 'AbortError'));
+      else window.pendingPlay.resolve();
+    }, outcome);
+    assert.equal(await page.locator('#camera-live-status').textContent(), 'Off');
+    assert.equal(await page.locator('#camera-message').textContent(), 'Stopped for privacy.');
+    await page.evaluate(() => { document.querySelector('#reachy-camera-video').play = () => Promise.resolve(); });
+    await page.locator('#camera-live-start').click();
+    await page.waitForFunction(() => document.querySelector('#camera-live-status').textContent === 'Live');
+    await page.evaluate(() => {
+      window.oldSession.dispatchEvent(new Event('closed'));
+      window.oldSession.dispatchEvent(new Event('error'));
+      window.oldSession.dispatchEvent(new Event('streamsChanged'));
+    });
+    assert.equal(await page.locator('#camera-live-status').textContent(), 'Live');
+    assert.equal(await page.locator('#camera-live-fullscreen').isEnabled(), true);
+  });
+}
+
+test('duplicate stream events do not restart pending playback; genuine autoplay denial remains visible', async t => {
+  const page = await setup(t);
+  await page.evaluate(() => {
+    window.ReachyCamera.stop();
+    window.playCalls = 0;
+    document.querySelector('#reachy-camera-video').play = () => {
+      window.playCalls++;
+      return new Promise((resolve, reject) => { window.pendingPlay = { resolve, reject }; });
+    };
+  });
+  await page.locator('#camera-live-start').click();
+  await page.evaluate(() => window.cameraSessions.at(-1).dispatchEvent(new Event('streamsChanged')));
+  assert.equal(await page.evaluate(() => window.playCalls), 1);
+  assert.equal(await page.locator('#camera-live-stop').isEnabled(), true);
+  await page.evaluate(() => window.pendingPlay.reject(new DOMException('Autoplay denied', 'NotAllowedError')));
+  assert.equal(await page.locator('#camera-live-status').textContent(), 'Paused');
+  assert.match(await page.locator('#camera-message').textContent(), /NotAllowedError/);
+});
 
 for (const fallback of [false, true]) {
   for (const viewport of [{ width: 900, height: 700 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {

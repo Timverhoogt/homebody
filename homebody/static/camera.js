@@ -11,6 +11,7 @@
     producersListener: null,
     connectionListener: null,
     producerId: null,
+    playbackGeneration: 0,
     enabled: false,
     controlsEnabled: false,
     controlsHandedness: "right",
@@ -184,6 +185,7 @@
   }
 
   function detachStream() {
+    state.playbackGeneration += 1;
     void endControlGesture("Controls stopped with the camera feed");
     const video = byId("reachy-camera-video");
     stopVisionOverlay();
@@ -200,8 +202,9 @@
   function cleanupConnection() {
     detachStream();
     if (state.session) {
-      try { state.session.close(); } catch { /* The signaling session may already be closed. */ }
-      state.session = null;
+      const session = state.session;
+      state.session = null; // Invalidate callbacks before close can dispatch events.
+      try { session.close(); } catch { /* The signaling session may already be closed. */ }
     }
     if (state.api) {
       try {
@@ -255,37 +258,53 @@
   }
 
   function attachSession(api, producer) {
-    if (!state.requested || state.session || !isReachyCameraProducer(producer)) return;
+    if (!state.requested || state.api !== api || state.session || !isReachyCameraProducer(producer)) return;
     const session = api.createConsumerSession(producer.id);
     if (!session) return;
     state.session = session;
     state.producerId = producer.id;
     session.addEventListener("error", (event) => {
+      if (state.session !== session) return;
       const message = event?.message || "WebRTC camera stream failed";
       state.requested = false;
       cleanupConnection();
       setUi("Error", message, "error");
     });
     session.addEventListener("closed", () => {
+      if (state.session !== session) return;
       const requested = state.requested;
-      state.session = null;
-      detachStream();
-      updateButtons();
+      state.requested = false;
+      cleanupConnection();
       if (requested) setUi("Offline", "Camera connection closed. Press Start to reconnect.", "error");
     });
     session.addEventListener("streamsChanged", () => {
-      if (!state.requested || !session.streams?.length) return;
+      if (!state.requested || state.session !== session || !session.streams?.length) return;
       const stream = session.streams[0];
+      // GStreamer may announce the same stream more than once. Reassignment
+      // interrupts the existing play request in Chromium.
+      if (state.stream === stream) return;
+      if (state.stream) detachStream();
+      const generation = ++state.playbackGeneration;
+      const isCurrent = () => state.requested && state.session === session
+        && state.stream === stream && state.playbackGeneration === generation;
       stream.getAudioTracks().forEach((track) => { track.enabled = false; });
       state.stream = stream;
       const video = byId("reachy-camera-video");
       byId("camera-viewer").classList.add("live");
       startVisionOverlay();
       video.srcObject = stream;
+      updateButtons(); // Stop must remain available while play is pending.
       video.play().then(() => {
+        if (!isCurrent()) return;
         setUi("Live", "Local camera connected. No frames are sent to Hermes or OpenAI.", "ok");
         updateButtons();
-      }).catch((error) => setUi("Paused", `Camera connected, but playback was blocked: ${String(error)}`, "error"));
+      }).catch((error) => {
+        // Stop/privacy/replacement can intentionally abort a pending play.
+        // Never let its late result overwrite the current connection or policy.
+        if (!isCurrent()) return;
+        const reason = error?.name === "AbortError" ? "interrupted" : "blocked";
+        setUi("Paused", `Camera connected, but playback was ${reason}: ${String(error)}`, "error");
+      });
     });
     session.connect();
   }
@@ -314,9 +333,13 @@
       });
       state.api = api;
       state.connectionListener = {
-        connected: () => setUi("Connecting", "Camera signaling connected; waiting for video…"),
+        connected: () => {
+          if (state.api === api && state.requested && !state.stream) {
+            setUi("Connecting", "Camera signaling connected; waiting for video…");
+          }
+        },
         disconnected: () => {
-          if (!state.requested) return;
+          if (!state.requested || state.api !== api) return;
           state.requested = false;
           cleanupConnection();
           setUi("Offline", "Camera signaling disconnected. Press Start to reconnect.", "error");
@@ -325,7 +348,7 @@
       state.producersListener = {
         producerAdded: (producer) => { if (isReachyCameraProducer(producer)) attachSession(api, producer); },
         producerRemoved: (producer) => {
-          if (!state.requested || producer?.id !== state.producerId) return;
+          if (!state.requested || state.api !== api || producer?.id !== state.producerId) return;
           state.requested = false;
           cleanupConnection();
           setUi("Offline", "Reachy's camera producer stopped.", "error");
