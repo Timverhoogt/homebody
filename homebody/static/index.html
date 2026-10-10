@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=72">
+  <link rel="stylesheet" href="/static/style.css?v=73">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -57,6 +57,31 @@
       </nav>
     </header>
 
+    <section id="global-robot-status" class="global-robot-status" aria-label="Reachy status" hidden>
+      <div class="compact-status-line">
+        <span class="compact-mode">Reachy · <strong id="compact-power-mode">Unknown</strong></span>
+        <span>Mic · <strong id="compact-mic">Unknown</strong></span>
+        <span>Camera · <strong id="compact-camera">Unknown</strong></span>
+        <span>Motors · <strong id="compact-motors">Unknown</strong></span>
+      </div>
+      <div id="global-adult-controls" class="global-adult-controls">
+        <details id="global-power-controls">
+          <summary>Power controls</summary>
+          <div class="actions" role="group" aria-label="Reachy power">
+            <button type="button" data-power="standby" data-power-message="global-power-message">Standby</button>
+            <button type="button" data-power="awake" data-power-message="global-power-message">Awake</button>
+            <button type="button" data-power="meeting" data-minutes="60" data-power-message="global-power-message">Meeting · 60 min</button>
+            <button type="button" data-power="sleep" data-power-message="global-power-message">Sleep</button>
+          </div>
+        </details>
+        <button type="button" id="global-robot-stop" class="secondary" disabled>Stop movement</button>
+      </div>
+      <p id="global-power-message" class="message" role="status"></p>
+      <p id="global-stop-message" class="message" role="status"></p>
+    </section>
+
+    <div id="panel-dashboard" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboard" data-panel="dashboard">
+      <header class="page-heading"><h1>Home</h1><p>Reachy’s current state and recent conversation.</p></header>
     <section class="display hero status-card" aria-label="Current state">
       <div class="hero-face" aria-hidden="true">
         <span class="hero-ring"></span>
@@ -73,7 +98,7 @@
       </div>
       <div class="hero-copy">
         <p class="label hero-label"><span id="status-dot" class="status-dot" aria-label="Runtime status"></span>Current state <span id="power-mode-badge" class="hero-mode">—</span></p>
-        <h1 id="runtime-state">Connecting…</h1>
+        <h2 id="runtime-state">Connecting…</h2>
         <p id="runtime-detail" class="hero-detail">Reading app status</p>
         <div class="actions power-actions" role="group" aria-label="Power state">
           <button type="button" data-power="standby">Standby</button>
@@ -91,7 +116,6 @@
       </ul>
     </section>
 
-    <div id="panel-dashboard" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboard" data-panel="dashboard">
       <section class="card conversation-card">
         <div><p class="label">Last heard</p><p id="last-transcript" class="quote">—</p></div>
         <div><p class="label">Last response</p><p id="last-response" class="quote">—</p></div>
@@ -116,6 +140,7 @@
     </div>
 
     <div id="panel-agent" class="tab-panel" role="tabpanel" aria-labelledby="tab-agent" data-panel="agent" hidden>
+      <header class="page-heading"><h1>Agent</h1><p>Your companion and shared workspace.</p></header>
       <section class="card agent-card display">
         <div class="agent-hero">
           <div>
@@ -354,6 +379,7 @@
     </div>
 
     <div id="panel-kids" class="tab-panel kids-panel" role="tabpanel" aria-labelledby="tab-kids" data-panel="kids" hidden>
+      <header class="page-heading"><h1>Kids</h1><p>Supervised activities and child-safe controls.</p></header>
       <section class="card kids-hero display">
         <div class="kids-hero-copy">
           <p class="label">Supervised play</p>
@@ -430,6 +456,7 @@
     </div>
 
     <div id="panel-announce" class="tab-panel" role="tabpanel" aria-labelledby="tab-announce" data-panel="announce" hidden>
+      <header class="page-heading"><h1>Announce</h1><p>Send a message for Reachy to speak.</p></header>
       <section class="card announcement-card">
         <div class="section-heading">
           <div><p class="label">Text to speech</p><h2>Reachy announcements</h2></div>
@@ -495,6 +522,7 @@
     </div>
 
     <div id="panel-robot" class="tab-panel" role="tabpanel" aria-labelledby="tab-robot" data-panel="robot" hidden>
+      <header class="page-heading"><h1>Robot</h1><p>Camera, movement and hardware controls.</p></header>
       <section class="card robot-control-card" aria-busy="false" data-action-busy="false">
         <div class="section-heading">
           <div><p class="label">Remote motor control</p><h2>Move Reachy</h2></div>
@@ -788,6 +816,7 @@
     </div>
 
     <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" hidden>
+      <header class="page-heading"><h1>Settings</h1><p>Configure voice, behaviour and connections.</p></header>
       <section id="agent-connection-details" class="card" tabindex="-1" aria-labelledby="agent-connection-title">
         <h2 id="agent-connection-title">Agent connection</h2>
         <p id="agent-connection-detail">Waiting for a fresh connection check.</p>
@@ -976,13 +1005,13 @@
   </main>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=72"></script>
-  <script src="/static/owner.js?v=72"></script>
+  <script src="/static/notifications.js?v=73"></script>
+  <script src="/static/owner.js?v=73"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=72"></script>
-  <script src="/static/agent-connection.js?v=72"></script>
-  <script src="/static/native-workspace.js?v=72"></script>
-  <script src="/static/workspace.js?v=72"></script>
-  <script src="/static/main.js?v=72"></script>
+  <script src="/static/camera.js?v=73"></script>
+  <script src="/static/agent-connection.js?v=73"></script>
+  <script src="/static/native-workspace.js?v=73"></script>
+  <script src="/static/workspace.js?v=73"></script>
+  <script src="/static/main.js?v=73"></script>
 </body>
 </html>

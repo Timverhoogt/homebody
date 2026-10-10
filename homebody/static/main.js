@@ -567,6 +567,13 @@ function activateTab(name, focus = false, recordHistory = false) {
   document.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== target.dataset.tab;
   });
+  const globalStatus = document.getElementById("global-robot-status");
+  if (globalStatus) {
+    globalStatus.hidden = target.dataset.tab === "dashboard";
+    document.querySelector(`[data-panel="${target.dataset.tab}"] .page-heading`)?.insertAdjacentElement("afterend", globalStatus);
+  }
+  document.title = `${target.textContent.trim()} · Homebody`;
+  target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   window.localStorage.setItem("homebody-tab", target.dataset.tab);
   if (recordHistory && window.location.hash !== `#${target.dataset.tab}`) {
     window.history.pushState(null, "", `#${target.dataset.tab}`);
@@ -577,6 +584,7 @@ function activateTab(name, focus = false, recordHistory = false) {
     refreshGpio();
   }
   if (focus) target.focus();
+  if (recordHistory) window.scrollTo({ top: 0, behavior: "instant" });
 }
 
 const tabButtons = [...document.querySelectorAll("[data-tab]")];
@@ -773,6 +781,8 @@ function renderTelemetry(entries) {
   Object.entries(entries).forEach(([key, [level, text]]) => {
     const name = key === "camera" ? "camera" : key;
     $(`tele-${name}`).textContent = text;
+    const compact = document.getElementById(`compact-${name}`);
+    if (compact) compact.textContent = text;
     $(`tele-${name}-led`).className = level;
   });
 }
@@ -926,6 +936,13 @@ function updateStatus(payload) {
     || kidsActive || robotBusy || manualActionPending || powerTransitionPending;
   $("camera-wake-control").disabled = kidsActive || kidsLocked || powerTransitionPending || manualActionPending;
   $("power-mode-badge").textContent = powerMode;
+  $("compact-power-mode").textContent = powerMode;
+  $("global-adult-controls").hidden = kidsActive || kidsLocked;
+  if (kidsActive || kidsLocked) {
+    $("global-power-controls").open = false;
+    $("global-power-message").textContent = "";
+    $("global-stop-message").textContent = "";
+  }
   $("robot-mode-badge").textContent = robotBusy ? "moving" : powerMode;
   const robotActionLabels = {
     move_reachy_head: "Look direction",
@@ -962,6 +979,7 @@ function updateStatus(payload) {
   });
   $("emotion-select").disabled = controlsBlocked;
   $("robot-stop-button").disabled = false;
+  $("global-robot-stop").disabled = kidsActive || kidsLocked;
   const readinessText = powerTransitionPending
     ? "Changing motor power — manual presets are paused"
     : robotBusy
@@ -1249,6 +1267,7 @@ async function refreshStatus() {
     renderTelemetry({ mic: ["off", "Unknown"], camera: ["off", "Unknown"], motors: ["off", "Unknown"], agent: ["off", "Unreachable"] });
     $("status-dot").className = "status-dot error";
     $("robot-mode-badge").textContent = "offline";
+    $("compact-power-mode").textContent = "Unknown · offline";
     $("motor-state").textContent = "Motor state unavailable";
     $("motor-state-dot").className = "motor-state-dot error";
     $("robot-readiness").textContent = "Remote controls disabled until live status returns";
@@ -2322,9 +2341,7 @@ $("emotion-button").addEventListener("click", () => {
   sendManualRobotAction("emotion", $("emotion-select").value);
 });
 
-$("robot-stop-button").addEventListener("click", async () => {
-  const button = $("robot-stop-button");
-  const message = $("robot-message");
+async function stopRobotMovement(button, message) {
   button.disabled = true;
   message.textContent = "Stopping active and queued movement…";
   message.className = "message";
@@ -2346,6 +2363,13 @@ $("robot-stop-button").addEventListener("click", async () => {
   } finally {
     button.disabled = false;
     await refreshStatus();
+  }
+}
+
+$("robot-stop-button").addEventListener("click", () => stopRobotMovement($("robot-stop-button"), $("robot-message")));
+$("global-robot-stop").addEventListener("click", () => {
+  if (!$("global-robot-stop").disabled && !$("global-adult-controls").hidden) {
+    void stopRobotMovement($("global-robot-stop"), $("global-stop-message"));
   }
 });
 
@@ -2640,7 +2664,9 @@ async function setPowerMode(mode, durationMinutes = 60, message = $("power-messa
 
 document.querySelectorAll("[data-power]").forEach((button) => {
   button.addEventListener("click", () => {
-    const message = button.closest("#panel-robot") ? $("robot-message") : $("power-message");
+    const message = button.dataset.powerMessage
+      ? $(button.dataset.powerMessage)
+      : button.closest("#panel-robot") ? $("robot-message") : $("power-message");
     setPowerMode(button.dataset.power, Number(button.dataset.minutes || 60), message);
   });
 });
