@@ -126,9 +126,7 @@ def manual_precision_action(
     delta = float(delta)
     step_limit = _BODY_YAW_STEP_LIMIT if axis == "body_yaw" else 10.0
     if not math.isfinite(delta) or delta == 0 or abs(delta) > step_limit:
-        raise ValueError(
-            f"Precision {axis} movement must be finite and between {-step_limit:g} and {step_limit:g}"
-        )
+        raise ValueError(f"Precision {axis} movement must be finite and between {-step_limit:g} and {step_limit:g}")
     return "nudge_reachy", {
         "axis": axis,
         "delta": delta,
@@ -382,9 +380,7 @@ class ReachyRobotActions:
                 return {"ok": False, "error": "Robot is busy", "code": "robot_busy"}
             generation = self._generation
             try:
-                self._queue.put_nowait(
-                    QueuedRobotAction(name, dict(arguments), generation, on_complete, hold_pose)
-                )
+                self._queue.put_nowait(QueuedRobotAction(name, dict(arguments), generation, on_complete, hold_pose))
             except queue.Full:
                 return {"ok": False, "error": "Robot action queue is full", "code": "robot_busy"}
             self._pending_actions += 1
@@ -418,9 +414,7 @@ class ReachyRobotActions:
             cancelled = self._cancel_requested.is_set() or self.stop_event.is_set() or self._closed.is_set()
             if cancelled or not snapshot.active:
                 hold_body = (
-                    snapshot.hold_body_yaw_degrees
-                    if snapshot.hold_body_yaw_degrees is not None
-                    else target_body
+                    snapshot.hold_body_yaw_degrees if snapshot.hold_body_yaw_degrees is not None else target_body
                 )
                 self.robot.set_target_head_pose(self.robot.get_current_head_pose())
                 self.robot.set_target_body_yaw(math.radians(_clamp(hold_body, _BODY_YAW_LIMIT)))
@@ -433,13 +427,15 @@ class ReachyRobotActions:
             smoothed_pan += (snapshot.pan - smoothed_pan) * alpha
             smoothed_tilt += (snapshot.tilt - smoothed_tilt) * alpha
 
-            body_delta = smoothed_pan * _CAMERA_STREAM_PAN_SPEED * elapsed
+            # Browser pan is right-positive; SDK yaw is left-positive.
+            body_delta = -smoothed_pan * _CAMERA_STREAM_PAN_SPEED * elapsed
             next_body = _clamp(target_body + body_delta, _BODY_YAW_LIMIT)
             applied_body_delta = next_body - target_body
             target_body = next_body
             target_head_yaw = _clamp(target_head_yaw + applied_body_delta, (-180.0, 180.0))
             target_pitch = _clamp(
-                target_pitch + smoothed_tilt * _CAMERA_STREAM_TILT_SPEED * elapsed,
+                # Browser tilt is up-positive; SDK pitch is down-positive.
+                target_pitch - smoothed_tilt * _CAMERA_STREAM_TILT_SPEED * elapsed,
                 _HEAD_LIMITS["pitch"],
             )
             target_head = create_head_pose(
@@ -531,7 +527,8 @@ class ReachyRobotActions:
                 components["yaw"] - body_yaw,
                 (-_HEAD_BODY_YAW_DELTA_LIMIT, _HEAD_BODY_YAW_DELTA_LIMIT),
             )
-            desired_relative_yaw = relative_yaw + pan * _CAMERA_PAN_STEP
+            # Match the streaming path: right/up input decreases SDK yaw/pitch.
+            desired_relative_yaw = relative_yaw - pan * _CAMERA_PAN_STEP
             body_delta = 0.0
             if desired_relative_yaw > _CAMERA_HEAD_YAW_SOFT_LIMIT:
                 body_delta = min(_CAMERA_BODY_STEP, desired_relative_yaw - _CAMERA_HEAD_YAW_SOFT_LIMIT)
@@ -545,7 +542,7 @@ class ReachyRobotActions:
             )
             components["yaw"] = target_body_degrees + target_relative_yaw
             components["pitch"] = _clamp(
-                components["pitch"] + tilt * _CAMERA_TILT_STEP,
+                components["pitch"] - tilt * _CAMERA_TILT_STEP,
                 _HEAD_LIMITS["pitch"],
             )
             target_head = create_head_pose(
@@ -634,11 +631,7 @@ class ReachyRobotActions:
                 )
                 result_pose.update({key: round(value, 2) for key, value in components.items()})
 
-            motion_magnitude = (
-                abs(target_body_degrees - body_yaw)
-                if target_body_degrees is not None
-                else abs(delta)
-            )
+            motion_magnitude = abs(target_body_degrees - body_yaw) if target_body_degrees is not None else abs(delta)
             duration = max(0.4, min(4.5, 0.4 + motion_magnitude / 30.0))
             if not self._run_precision_interpolation(
                 target_head=target_head,

@@ -284,12 +284,12 @@ def test_camera_joystick_stream_rotates_head_and_base_together_at_interactive_ra
 
     assert worker.is_alive() is False
     assert result == {"ok": True, "cancelled": True, "action": "camera_joystick"}
-    moving_body_samples = [math.degrees(value) for value in robot.body_samples if value > 0]
+    moving_body_samples = [math.degrees(value) for value in robot.body_samples if value < 0]
     moving_head_samples = [cast(dict[str, float], value) for value in robot.head_samples if isinstance(value, dict)]
     assert len(moving_body_samples) >= 3
-    assert moving_body_samples[-1] >= 4.0
+    assert moving_body_samples[-1] <= -4.0
     assert moving_head_samples[-1]["yaw"] == pytest.approx(moving_body_samples[-1], abs=0.2)
-    assert moving_head_samples[-1]["pitch"] >= 3.0
+    assert moving_head_samples[-1]["pitch"] <= -3.0
 
 
 def test_camera_joystick_stream_stops_when_browser_updates_expire(monkeypatch) -> None:
@@ -411,9 +411,10 @@ def test_camera_joystick_adds_bounded_base_assistance_near_head_limit(monkeypatc
     robot = FakeRobot()
     actions = ReachyRobotActions(robot, threading.Event(), library_factory=FakeLibrary)
 
+    # At positive yaw (looking left), leftward input approaches the limit.
     result = actions.execute(
         "camera_joystick",
-        {"pan": 1.0, "tilt": 0.0, "body_yaw_degrees": 0.0},
+        {"pan": -1.0, "tilt": 0.0, "body_yaw_degrees": 0.0},
     )
 
     target = cast(dict[str, float], result["target"])
@@ -489,6 +490,7 @@ def test_stop_cancels_precision_body_interpolation_without_late_targets(monkeypa
     results: list[dict[str, object]] = []
     actions = ReachyRobotActions(robot, threading.Event(), library_factory=FakeLibrary)
     actions.start()
+
     def on_complete(result: dict[str, object]) -> None:
         results.append(result)
         completed.set()
