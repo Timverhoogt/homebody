@@ -266,7 +266,9 @@ class NativeWorkspace:
                 if isinstance(m, dict) and m.get("role") in {"user", "assistant"}
             ]
             draft = {
-                "approval_id": secrets.token_urlsafe(24),
+                # Keep the same 192 bits of entropy without URL-safe prefixes that
+                # can look like provider credentials and be altered by DLP redaction.
+                "approval_id": secrets.token_hex(24),
                 "epoch": binding["epoch"],
                 "expires": self.clock() + 120,
                 "request": text,
