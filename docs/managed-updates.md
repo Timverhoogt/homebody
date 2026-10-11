@@ -60,11 +60,19 @@ One-time administrator provisioning must:
    `site_packages`, `metadata_link`; `status_url=http://127.0.0.1:8042/api/updates/health`;
    and an independent random 64-character hexadecimal `health_token`. Mode 0600;
    token stays private and is never a general app-control credential.
-7. Install only the independent worker service, run it as the existing robot user,
+7. Put `state` (the shared journal/locks/heartbeat) inside the **existing app sandbox**
+   writable data path: for this Jetson, `/opt/reachy-mini-lite/state/home/.local/share/homebody/updates`.
+   Keep slots/current/worker under `/opt/reachy-mini-lite/homebody-managed`; the
+   daemon app must not need write access to these. Allow the independent worker
+   to write its managed base and this one shared state directory, **without changing the daemon**
+   service, sandbox or startup. A worker-only writable journal can pass worker
+   lifecycle tests yet break the real dashboard's status/admission with EROFS.
+   Install only the independent worker service, run it as the existing robot user,
    with its private configuration and writable managed slots/state. Start Homebody
    through the same daemon route/HA bootstrap, verify preserved owner/config/HA,
    exact installed bytes, three authenticated safe-health checks and physical
-   torque-off fold. Check `/api/updates` as Owner for `supported=true`.
+   torque-off fold. Check `/api/updates` as Owner for `supported=true`, `error=""`,
+   readable saved progress and a working CSRF-protected Check from the real browser.
 8. Before declaring acceptance, exercise a genuine inactive-slot pip install,
    daemon-owned restart and deliberately failing candidate rollback with private,
    explicitly labeled local test fixtures. Restore the exact approved initial
@@ -94,6 +102,14 @@ worker, unknown physical pose, incompatible dependencies/interpreter, and anothe
 active app are rejected. Do not run pip/app-store installs or uninstalls of Homebody
 while this managed layout is enabled; those may replace the import anchors. Use
 managed updates or deliberately restore the private pre-setup package backup.
+
+## Deployment acceptance
+
+See [the measured Jetson acceptance record](managed-updates-target-acceptance.md)
+for daemon-owned install, deliberately failed-candidate rollback, real worker
+interruption/restart, preserved settings/HA/dependency checks, and the live private
+HTTPS dashboard. Local fixtures are not public releases; a compatible newer
+canonical stable release is still required before the normal Install offer appears.
 
 ## Dedicated user-service setup (alternative, not a daemon migration)
 
