@@ -46,7 +46,11 @@ jobs:
             "sherpa-onnx>=1.13.4,<2" \
             "websockets>=15,<17" \
             "uvicorn>=0.30" \
-            build pytest ruff
+            build pytest ruff "pip>=24" "setuptools>=69" wheel
+          # uv venv is unseeded; real worker tests call python -m pip and
+          # the release regression uses build --no-isolation with this backend.
+          .venv/bin/python -m pip --version
+          .venv/bin/python -c 'import build, setuptools, wheel'
       - name: Lint
         run: .venv/bin/ruff check .
       - name: Check JavaScript syntax
