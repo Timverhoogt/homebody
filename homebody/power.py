@@ -28,6 +28,7 @@ class PowerMixin:
         self._head_safely_folded = False
         self._power_mode = "standby"
         self._meeting_until = 0.0
+        self._pending_privacy_transitions = 0
 
     def set_power_mode(
         self,
@@ -42,46 +43,64 @@ class PowerMixin:
         mode = mode.strip().lower()
         if mode not in _POWER_MODES:
             raise ValueError(f"Unsupported power mode: {mode}")
-        if mode != "awake":
-            self.stop_presentation_window(f"power_{mode}")
-        self.revoke_camera_control()
-        if mode in {"standby", "meeting", "sleep"}:
-            self.cancel_agent_work(f"power_{mode}")
-        if cancel_announcements and mode in {"standby", "meeting", "sleep"}:
-            self._cancel_announcements(clear_queue=mode in {"meeting", "sleep"})
-            if mode in {"meeting", "sleep"}:
-                with self._status_lock:
-                    self._status.announcement_current_preview = ""
-                    self._status.announcement_last_text = ""
-        with self._motor_transition_lock:
-            if mode in {"standby", "meeting", "sleep"}:
-                self._request_conversation_stop()
-            else:
-                self._conversation_stop_requested.clear()
-            if mode in {"meeting", "sleep"}:
-                self._privacy_requested.set()
+        privacy_transition = mode in {"meeting", "sleep"}
+        if privacy_transition:
+            # Publish revocation before waiting on an in-progress scan/wake. A second
+            # privacy caller keeps this intent set even if another transition completes.
             with self._power_lock:
-                self._power_mode = mode
-                self._meeting_until = (
-                    time.monotonic() + max(60.0, min(duration_seconds, 8 * 3600.0)) if mode == "meeting" else 0.0
-                )
-            try:
+                self._pending_privacy_transitions += 1
+                self._privacy_requested.set()
+            self._request_conversation_stop()
+        try:
+            if mode != "awake":
+                self.stop_presentation_window(f"power_{mode}")
+            self.revoke_camera_control()
+            if mode in {"standby", "meeting", "sleep"}:
+                self.cancel_agent_work(f"power_{mode}")
+            if cancel_announcements and mode in {"standby", "meeting", "sleep"}:
+                self._cancel_announcements(clear_queue=privacy_transition)
+                if privacy_transition:
+                    with self._status_lock:
+                        self._status.announcement_current_preview = ""
+                        self._status.announcement_last_text = ""
+            with self._motor_transition_lock:
+                if mode == "awake":
+                    with self._power_lock:
+                        if self._pending_privacy_transitions:
+                            raise RuntimeError("Awake was cancelled by a pending privacy transition")
+                if mode in {"standby", "meeting", "sleep"}:
+                    self._voice_workspace.clear()
+                    self._request_conversation_stop()
+                else:
+                    self._conversation_stop_requested.clear()
+                with self._power_lock:
+                    self._power_mode = mode
+                    self._meeting_until = (
+                        time.monotonic() + max(60.0, min(duration_seconds, 8 * 3600.0))
+                        if mode == "meeting" else 0.0
+                    )
                 self._apply_power_mode()
-            finally:
-                if mode not in {"meeting", "sleep"}:
+                # Public child status intentionally hides errors; it is not a control
+                # receipt. Read the internal transition result before returning success.
+                with self._status_lock:
+                    transition_error = self._status.last_error
+                if transition_error:
+                    raise RuntimeError(transition_error)
+                return self.status()
+        finally:
+            with self._power_lock:
+                if privacy_transition:
+                    self._pending_privacy_transitions -= 1
+                if not self._pending_privacy_transitions and self._power_mode not in {"meeting", "sleep"}:
                     self._privacy_requested.clear()
-            status = self.status()
-            transition_error = str(status.get("last_error") or "")
-            if transition_error:
-                raise RuntimeError(transition_error)
-            return status
 
     def _effective_power_mode(self) -> str:
         with self._power_lock:
             if self._power_mode == "meeting" and time.monotonic() >= self._meeting_until:
                 self._power_mode = "standby"
                 self._meeting_until = 0.0
-                self._privacy_requested.clear()
+                if not self._pending_privacy_transitions:
+                    self._privacy_requested.clear()
             return self._power_mode
 
     def _read_head_safely_folded(self) -> bool:
@@ -266,8 +285,18 @@ class PowerMixin:
 
     def _set_motor_mode(self, enabled: bool, *, wake: bool = False) -> None:
         """Change motor torque through the daemon's supported local API or fail explicitly."""
+        with self._motor_transition_lock:
+            self._set_motor_mode_unlocked(enabled, wake=wake)
+
+    def _set_motor_mode_unlocked(self, enabled: bool, *, wake: bool = False) -> None:
         if enabled and self.stop_event.is_set():
             raise RuntimeError("Runtime is stopping; motor enable is blocked")
+        # A second caller can queue Awake using status from before the first wake.
+        # Re-read hardware under the lock, rather than trusting that stale app status.
+        if enabled and wake and self._motors_enabled is True and not self._head_safely_folded:
+            if self._wake_pose_is_ready():
+                _LOGGER.debug("Reachy is already physically Awake; skipping duplicate wake motion")
+                return
         mode = "enabled" if enabled else "disabled"
         try:
             response = httpx.post(f"http://127.0.0.1:8000/api/motors/set_mode/{mode}", timeout=5.0)
@@ -298,7 +327,10 @@ class PowerMixin:
         try:
             response = httpx.get("http://127.0.0.1:8000/api/state/full", timeout=2.0)
             response.raise_for_status()
-            pose = response.json().get("head_pose") or {}
+            state = response.json()
+            if state.get("control_mode") != "enabled":
+                return False
+            pose = state.get("head_pose") or {}
             z = float(pose["z"])
             pitch = float(pose["pitch"])
             return math.isfinite(z) and math.isfinite(pitch) and z > -0.02 and pitch < 0.20

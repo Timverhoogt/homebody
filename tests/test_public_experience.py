@@ -41,11 +41,11 @@ def test_space_uses_no_programmatic_external_navigation() -> None:
 
     assert "window.open" not in html
     assert "<iframe" not in html
-    assert "http-equiv=\"refresh\"" not in html.lower()
+    assert 'http-equiv="refresh"' not in html.lower()
 
 
 def test_hugging_face_card_metadata_is_valid_for_static_space() -> None:
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    readme = (ROOT / "hf-space-metadata.yaml").read_text(encoding="utf-8")
     match = re.search(r"^short_description:\s*(.+)$", readme, re.MULTILINE)
 
     assert match

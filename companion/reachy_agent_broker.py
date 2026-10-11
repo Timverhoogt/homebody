@@ -16,7 +16,8 @@ import stat
 import time
 import uuid
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,7 @@ try:
         private_action,
         validate_action_arguments,
     )
+    from companion.reachy_projects import ProjectCatalog
 except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.path.
     from reachy_agent_actions import (  # type: ignore[no-redef]
         _ACTION_IDS,
@@ -49,6 +51,7 @@ except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.pa
         private_action,
         validate_action_arguments,
     )
+    from reachy_projects import ProjectCatalog  # type: ignore[no-redef]
 
 _CAPABILITY_IDS = (
     "get_agent_capabilities",
@@ -59,6 +62,8 @@ _CAPABILITY_IDS = (
     "recall_personal_context",
     "search_conversation_history",
     "read_scoped_note",
+    "list_projects",
+    "read_project_roadmap",
 ) + _ACTION_IDS
 _PRIVATE_CAPABILITIES = frozenset(
     {
@@ -66,6 +71,8 @@ _PRIVATE_CAPABILITIES = frozenset(
         "recall_personal_context",
         "search_conversation_history",
         "read_scoped_note",
+        "list_projects",
+        "read_project_roadmap",
         *[capability for capability in _ACTION_IDS if private_action(capability)],
     }
 )
@@ -164,6 +171,20 @@ class CapabilitySpec:
 
 
 _SPECS: dict[str, CapabilitySpec] = {
+    "list_projects": CapabilitySpec(
+        "list_projects", "List registered project identities; never invent a repository or project status.",
+        "T1_PRIVATE_READ",
+        {"type": "object", "properties": {}, "additionalProperties": False},
+    ),
+    "read_project_roadmap": CapabilitySpec(
+        "read_project_roadmap",
+        "Read the registered project roadmap with source lines and freshness. "
+        "Do not infer omitted lines or implementation progress. This cannot start project work.",
+        "T1_PRIVATE_READ",
+        {"type": "object", "properties": {
+            "project_id": {"type": "string", "minLength": 1, "maxLength": 32}},
+         "required": ["project_id"], "additionalProperties": False},
+    ),
     "get_agent_capabilities": CapabilitySpec(
         "get_agent_capabilities",
         "List the live Reachy Agent Broker capability manifest.",
@@ -370,6 +391,7 @@ class BrokerConfig:
     hass_token: str = ""
     search_url: str = "http://127.0.0.1:8888/search"
     timeout_seconds: float = 15.0
+    projects: ProjectCatalog = field(default_factory=ProjectCatalog)
 
     @classmethod
     def from_env(cls) -> BrokerConfig:
@@ -381,6 +403,7 @@ class BrokerConfig:
         }
         return cls(
             home_entities=entities,
+            projects=ProjectCatalog.from_json(os.getenv("REACHY_AGENT_PROJECTS_JSON", "")),
             note_roots=_configured_roots("REACHY_AGENT_NOTE_ROOTS"),
             personal_roots=_configured_roots("REACHY_AGENT_PERSONAL_ROOTS"),
             history_roots=_configured_roots("REACHY_AGENT_HISTORY_ROOTS"),
@@ -396,6 +419,11 @@ class _DeviceLease:
     generation: int
     authorization_state: tuple[object, ...]
     tasks: dict[str, asyncio.Task[Any]] = field(default_factory=dict)
+    project_turn_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    project_dialogue: deque[dict[str, str]] = field(default_factory=lambda: deque(maxlen=6))
+    selected_project_id: str = ""
+    project_updated_at: float = 0.0
+    project_expiry: asyncio.TimerHandle | None = None
 
 
 def _validate_arguments(capability_id: str, arguments: Mapping[str, object]) -> None:
@@ -407,14 +435,17 @@ def _validate_arguments(capability_id: str, arguments: Mapping[str, object]) -> 
         return
     allowed: dict[str, set[str]] = {
         "get_agent_capabilities": set(), "get_reachy_status": set(), "get_home_status": {"entity_ids"},
+        "list_projects": set(),
         "search_current_information": {"query"}, "read_public_web_page": {"url"},
         "recall_personal_context": {"query"}, "search_conversation_history": {"query"},
         "read_scoped_note": {"root", "path"},
+        "read_project_roadmap": {"project_id"},
     }
     required = {
         "search_current_information": {"query"}, "read_public_web_page": {"url"},
         "recall_personal_context": {"query"}, "search_conversation_history": {"query"},
         "read_scoped_note": {"root", "path"},
+        "read_project_roadmap": {"project_id"},
     }.get(capability_id, set())
     if set(arguments) - allowed[capability_id] or not required <= set(arguments):
         raise BrokerValidationError("arguments do not match capability schema")
@@ -428,6 +459,7 @@ def _validate_arguments(capability_id: str, arguments: Mapping[str, object]) -> 
         ("search_conversation_history", "query"): 200,
         ("read_scoped_note", "root"): 32,
         ("read_scoped_note", "path"): 512,
+        ("read_project_roadmap", "project_id"): 32,
     }
     for name in required:
         if len(str(arguments[name])) > limits[(capability_id, name)]:
@@ -470,7 +502,45 @@ class ReachyAgentBroker:
         )
 
     def manifest(self) -> list[dict[str, object]]:
-        return [_SPECS[name].manifest() for name in _CAPABILITY_IDS]
+        return [
+            _SPECS[name].manifest() for name in _CAPABILITY_IDS
+            if self.config.projects.projects or name not in {"list_projects", "read_project_roadmap"}
+        ]
+
+    @staticmethod
+    def clear_project_conversation(lease: _DeviceLease) -> None:
+        lease.project_dialogue.clear()
+        lease.selected_project_id = ""
+        if lease.project_expiry is not None:
+            lease.project_expiry.cancel()
+            lease.project_expiry = None
+
+    def refresh_project_conversation(self, lease: _DeviceLease) -> None:
+        lease.project_updated_at = time.monotonic()
+        if lease.project_expiry is not None:
+            lease.project_expiry.cancel()
+        lease.project_expiry = asyncio.get_running_loop().call_later(
+            600, self.clear_project_conversation, lease
+        )
+
+    @asynccontextmanager
+    async def project_conversation(
+        self, device_id: str, context: BrokerContext
+    ) -> AsyncIterator[_DeviceLease]:
+        """Serialize bounded project dialogue inside an already-authorized live lease."""
+        self.authorize_context(context)
+        async with self._leases_lock:
+            lease = self._leases.get(device_id)
+            if lease is None or lease.generation != context.session_generation:
+                raise BrokerValidationError("stale_session")
+        async with lease.project_turn_lock:
+            async with self._leases_lock:
+                if (self._leases.get(device_id) is not lease
+                        or lease.authorization_state != self._authorization_state(context)):
+                    raise BrokerValidationError("stale_session")
+            if time.monotonic() - lease.project_updated_at > 600:
+                self.clear_project_conversation(lease)
+            yield lease
 
     async def recent_activity(
         self, device_id: str = "test-device", generation: int | None = None, limit: int = 20
@@ -596,6 +666,7 @@ class ReachyAgentBroker:
                 raise BrokerValidationError("stale_session")
             if lease is None or parsed.session_generation > lease.generation or state != lease.authorization_state:
                 if lease is not None:
+                    self.clear_project_conversation(lease)
                     stale_tasks = list(lease.tasks.values())
                 clear_activity = lease is None or parsed.session_generation != lease.generation
                 self._leases[device_id] = _DeviceLease(parsed.session_generation, state)
@@ -748,6 +819,12 @@ class ReachyAgentBroker:
                 raise BrokerValidationError("stale_session")
             async with self._activity_lock:
                 self._activity.append(item)
+            if request.capability_id == "read_project_roadmap":
+                project_id = str(request.arguments["project_id"])
+                if lease.selected_project_id != project_id:
+                    lease.project_dialogue.clear()
+                lease.selected_project_id = project_id
+                self.refresh_project_conversation(lease)
             lease.tasks.pop(request.request_id, None)
 
     @staticmethod
@@ -806,6 +883,23 @@ class ReachyAgentBroker:
                 self._search_roots, self.config.history_roots, request.arguments
             )
             return data, evidence, observed, False
+        if capability in {"list_projects", "read_project_roadmap"}:
+            if not self.config.projects.projects:
+                raise BrokerUnavailableError("project roadmaps are not configured")
+            observed = time.time()
+            if capability == "list_projects":
+                return ({"projects": self.config.projects.public_catalog()},
+                        [{"source": "project_catalog", "observed_at": observed}], observed, False)
+            try:
+                data = await asyncio.to_thread(
+                    self.config.projects.snapshot, str(request.arguments["project_id"]), _read_scoped_file
+                )
+            except (ValueError, UnicodeError) as exc:
+                raise BrokerValidationError("registered project roadmap is unavailable or invalid") from exc
+            observed = time.time()
+            return (data, [{"source": "project_roadmap", "project_id": data["project_id"],
+                           "path": data["roadmap"], "source_sha256": data["source_sha256"],
+                           "source_ranges": data["source_ranges"], "observed_at": observed}], observed, False)
         if capability == "read_scoped_note":
             data, evidence, observed = await asyncio.to_thread(self._read_note, request.arguments)
             return data, evidence, observed, False
@@ -1005,7 +1099,7 @@ def _read_scoped_file(root: Path, relative: Path) -> bytes:
     if relative.is_absolute() or not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
         raise BrokerValidationError("invalid scoped path")
     directory_flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW
-    file_flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
+    file_flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
     descriptors: list[int] = []
     try:
         descriptors.append(os.open(root, directory_flags))

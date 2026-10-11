@@ -97,6 +97,10 @@ class AppConfig:
     home_assistant_camera_enabled: bool = False
     home_assistant_assist_enabled: bool = False
     home_assistant_port: int = 6053
+    # Host-owned continuity settings when replacing an existing telemetry-only bridge.
+    home_assistant_device_name: str = ""
+    home_assistant_node_name: str = ""
+    home_assistant_mac_address: str = ""
     gamepad_enabled: bool = False
     gpio_buttons_enabled: bool = False
     gpio_chip: str = "/dev/gpiochip0"
@@ -215,6 +219,18 @@ class AppConfig:
             raise ValueError("Unsupported camera control handedness")
         if not 1024 <= int(self.home_assistant_port) <= 65535:
             raise ValueError("home_assistant_port must be between 1024 and 65535")
+        identity = (self.home_assistant_device_name, self.home_assistant_node_name, self.home_assistant_mac_address)
+        if any(identity):
+            if not all(isinstance(value, str) and value for value in identity):
+                raise ValueError("Home Assistant identity requires a name, node name and MAC together")
+            if not 1 <= len(self.home_assistant_device_name) <= 64 or any(
+                ord(char) < 32 or ord(char) == 127 for char in self.home_assistant_device_name
+            ):
+                raise ValueError("Home Assistant identity has an invalid device name")
+            if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", self.home_assistant_node_name):
+                raise ValueError("Home Assistant identity has an invalid node name")
+            if not re.fullmatch(r"[0-9a-f]{12}", self.home_assistant_mac_address):
+                raise ValueError("Home Assistant identity MAC must be exactly 12 lowercase hexadecimal characters")
         if not re.fullmatch(r"/dev/gpiochip[0-9]{1,2}", str(self.gpio_chip)):
             raise ValueError("gpio_chip must be a /dev/gpiochipN device")
         pins = [pin for pin in (self.gpio_green_pin, self.gpio_red_pin) if pin is not None]

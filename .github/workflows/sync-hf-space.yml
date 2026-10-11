@@ -49,6 +49,8 @@ jobs:
           mkdir "$RUNNER_TEMP/space"
           git archive --format=tar "$SYNC_SHA" -- . ':(exclude).github' ':(exclude).gitattributes' \
             | tar -x -C "$RUNNER_TEMP/space"
+      - name: Add Hugging Face card metadata to exported README
+        run: python3 tools/prepare_space_readme.py "$RUNNER_TEMP/space"
       - uses: astral-sh/setup-uv@v6
       - name: Upload to Space
         # --delete removes Space files that no longer exist in the repository

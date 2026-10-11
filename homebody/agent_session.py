@@ -32,6 +32,7 @@ class AgentSessionMixin:
         # semantics while ordering fresh app processes after their predecessors.
         self._agent_session_generation = time.time_ns()
         self._agent_current_task = ""
+        self._agent_native_preserved_generation = None
         self._agent_active_request_id = ""
         self._agent_pending_approval = False
         self._agent_activity: list[dict[str, object]] = []
@@ -52,10 +53,12 @@ class AgentSessionMixin:
         with self._kids_lock:
             if self._kids_active or self._kids_locked:
                 raise RuntimeError("Agent profile is unavailable while Kids Mode is active or locked")
+            self._voice_workspace.clear()
             with self._agent_lock:
                 active_request_id = self._agent_active_request_id
                 self._agent_session_generation += 1
                 self._capability_profile = profile
+                self._agent_native_preserved_generation = None
                 self._agent_current_task = ""
                 self._agent_active_request_id = ""
                 self._agent_pending_approval = False
@@ -91,9 +94,14 @@ class AgentSessionMixin:
         # Only the internal, explicit session_changed reason may preserve the
         # voice loop. Unknown callers fail closed as a normal Stop request.
         safe_reason = reason if reason in allowed_reasons else "stopped"
+        if safe_reason != "session_changed":
+            self._voice_workspace.clear()
         with self._agent_lock:
             active_request_id = self._agent_active_request_id
             self._agent_session_generation += 1
+            self._agent_native_preserved_generation = (
+                self._agent_session_generation if safe_reason == "session_changed" else None
+            )
             self._agent_current_task = ""
             self._agent_active_request_id = ""
             self._agent_pending_approval = False
@@ -130,11 +138,16 @@ class AgentSessionMixin:
         if not config.api_key:
             return
         context = self.agent_broker_context(explicit_private_intent=False)
+        with self._agent_lock:
+            preserve_native = self._agent_native_preserved_generation == context.session_generation
 
         def publish() -> None:
             client = self._new_bridge_client(config)
             try:
-                client.establish_agent_session(context)
+                if preserve_native:
+                    client.establish_agent_session(context, preserve_native=True)
+                else:
+                    client.establish_agent_session(context)
             except Exception:
                 _LOGGER.warning("Could not publish Agent session generation", exc_info=True)
             finally:
@@ -145,7 +158,12 @@ class AgentSessionMixin:
     def _establish_remote_agent_session(self, context: AgentBrokerContext) -> None:
         client = self._new_bridge_client(self.config_loader())
         try:
-            client.establish_agent_session(context)
+            with self._agent_lock:
+                preserve = self._agent_native_preserved_generation == context.session_generation
+            if preserve:
+                client.establish_agent_session(context, preserve_native=True)
+            else:
+                client.establish_agent_session(context)
         finally:
             client.close()
 

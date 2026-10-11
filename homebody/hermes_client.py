@@ -223,10 +223,11 @@ class HermesBridgeClient:
         # Silence or unintelligible audio is a normal no-speech turn, not a bridge failure.
         return transcript
 
-    def models(self) -> list[dict[str, object]]:
+    def models(self, *, timeout: float = 10.0) -> list[dict[str, object]]:
         response = self._client.get(
             f"{self.config.bridge_url}/v1/models",
             headers={"Authorization": f"Bearer {self.config.api_key}"},
+            timeout=timeout,
         )
         self._raise_for_error(response, "model discovery")
         payload = response.json()
@@ -247,12 +248,12 @@ class HermesBridgeClient:
             raise HermesBridgeError("Hermes returned an invalid Agent Mode capability manifest")
         return capabilities
 
-    def establish_agent_session(self, context: AgentBrokerContext) -> None:
+    def establish_agent_session(self, context: AgentBrokerContext, *, preserve_native: bool = False) -> None:
         """Publish this device's authoritative live generation to the broker."""
         response = self._client.post(
             f"{self.config.bridge_url}/v1/agent/session",
             headers=self._headers(),
-            json={"context": asdict(context)},
+            json={"context": asdict(context), **({"preserve_native": True} if preserve_native else {})},
         )
         self._raise_for_error(response, "Agent Mode session update")
         payload = response.json()
@@ -262,6 +263,16 @@ class HermesBridgeClient:
             or payload.get("session_generation") != context.session_generation
         ):
             raise HermesBridgeError("Hermes returned an invalid Agent Mode session acknowledgement")
+
+    def native_workspace_action(self, action: str, context: AgentBrokerContext | None = None, **fields):
+        if action not in {"read", "show", "bind", "prepare", "approve", "stop", "cancel"}:
+            raise ValueError("unsupported native Workspace action")
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/agent/native/{action}", headers=self._headers(),
+            json={**({"context": asdict(context)} if context is not None else {}), **fields},
+        )
+        self._raise_for_error(response, "Native Workspace")
+        return response.json()
 
     def execute_agent_capability(
         self,
@@ -367,9 +378,7 @@ class HermesBridgeClient:
         except (KeyError, TypeError, ValueError) as exc:
             raise HermesBridgeError("Hermes returned an invalid approved Agent Mode result") from exc
 
-    def pending_agent_approval(
-        self, context: AgentBrokerContext
-    ) -> dict[str, object] | None:
+    def pending_agent_approval(self, context: AgentBrokerContext) -> dict[str, object] | None:
         response = self._client.post(
             f"{self.config.bridge_url}/v1/agent/pending-approval",
             headers=self._headers(),
@@ -496,9 +505,7 @@ class HermesBridgeClient:
         payload = response.json()
         return bool(payload.get("cancelled")) if isinstance(payload, dict) else False
 
-    def agent_activity(
-        self, context: AgentBrokerContext, *, request_id: str | None = None
-    ) -> list[dict[str, object]]:
+    def agent_activity(self, context: AgentBrokerContext, *, request_id: str | None = None) -> list[dict[str, object]]:
         identifier = request_id or f"agent-{uuid.uuid4().hex}"
         response = self._client.post(
             f"{self.config.bridge_url}/v1/agent/activity",
@@ -568,9 +575,7 @@ class HermesBridgeClient:
             raise HermesBridgeError("Kids Mode returned an empty response")
         approval = str(payload.get("speech_approval") or "").strip() if isinstance(payload, dict) else ""
         fallback_approval = (
-            str(payload.get("fallback_speech_approval") or "").strip()
-            if isinstance(payload, dict)
-            else ""
+            str(payload.get("fallback_speech_approval") or "").strip() if isinstance(payload, dict) else ""
         )
         if not approval or not fallback_approval:
             raise HermesBridgeError("Kids Mode returned incomplete moderated speech approvals")

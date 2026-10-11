@@ -11,6 +11,7 @@
     document.querySelector('main').hidden = !session.owner;
     document.querySelector('main').inert = !session.owner;
     byId('owner-device-name').textContent = session.owner ? `Owner · ${session.name}` : '';
+    if (!session.owner) window.HomebodyWorkspace?.reset("Pair an owner device to see conversations.");
     if (!session.owner) window.ReachyCamera?.stop('Owner session ended. Pair this device to continue.');
     const keyField = byId('current_api_key');
     if (keyField) keyField.closest('label')?.setAttribute('hidden', '');
@@ -22,6 +23,24 @@
       if (visionKeyLabel) visionKeyLabel.setAttribute('hidden', session.owner ? '' : 'hidden');
     }
   }
+  async function checkCameraTransport() {
+    const target = byId('camera-connectivity-message');
+    try {
+      const response = await rawFetch('/api/camera/connectivity', { cache: 'no-store', credentials: 'same-origin' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+      if (!session.owner) return;
+      const browserReady = typeof window.RTCPeerConnection === 'function';
+      const text = browserReady ? body.detail : 'This browser lacks WebRTC. Try Chrome for live camera viewing.';
+      if (target) target.textContent = text;
+      return text;
+    } catch (error) {
+      const text = `Camera readiness check failed: ${error.message || error}. Pairing did not start the camera.`;
+      if (target && session.owner) target.textContent = text;
+      return text;
+    }
+  }
+
   async function check() {
     try {
       const response = await rawFetch('/api/owner/session', { cache: 'no-store', credentials: 'same-origin' });
@@ -34,6 +53,7 @@
       byId('owner-message').textContent = String(error.message || error);
     }
     render();
+    if (session.owner) await checkCameraTransport();
     return session;
   }
   // One transport wrapper covers every existing control and camera fetch, including keepalive.

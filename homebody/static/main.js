@@ -113,6 +113,10 @@ function renderAgentRun() {
   $("agent-run-resume-button").disabled = agentRunRequestPending || status !== "paused" || run?.resumable !== true;
   $("agent-run-cancel-button").disabled = agentRunRequestPending || !run || ["completed", "partial", "failed", "cancelled"].includes(status);
   $("agent-run-approve-button").hidden = status !== "waiting_approval" || activeStep?.status !== "waiting_approval";
+  if (status === "waiting_approval") {
+    window.HomebodyWorkspace?.show();
+    document.querySelector(".agent-advanced-actions").open = true;
+  }
   $("agent-run-approve-button").textContent = activeStep
     ? `Approve step ${String(activeStep.step_id).replace("step-", "")} exactly`
     : "Approve waiting step exactly";
@@ -471,15 +475,36 @@ window.setInterval(() => {
   if ($("mcp_oauth_enabled").checked && !document.hidden) refreshMcpStatus();
 }, 5000);
 
+$("local-vision-copy").addEventListener("click", async () => {
+  const button = $("local-vision-copy");
+  const text = $("local-vision-answer").textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    button.textContent = "Copied";
+  } catch (_error) {
+    window.HomebodyNotifications.show("Could not copy. Select the answer text to copy it manually.", { kind: "error" });
+  }
+});
+
 $("local-vision-ask").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = $("local-vision-ask-button");
+  if (button.disabled) return;
   const answer = $("local-vision-answer");
+  const result = $("local-vision-result");
   const question = $("local-vision-question").value.trim() || "What do you see?";
   button.disabled = true;
-  answer.textContent = "Looking…";
+  button.textContent = "Looking…";
+  result.hidden = false;
+  result.dataset.state = "loading";
+  result.setAttribute("aria-busy", "true");
+  $("local-vision-result-title").textContent = "Looking at the scene";
+  $("local-vision-result-question").textContent = question;
+  $("local-vision-copy").hidden = true;
+  $("local-vision-copy").textContent = "Copy answer";
+  $("local-vision-meta").hidden = true;
+  answer.textContent = "Asking the model on your hardware. The first answer can take longer while it loads.";
   answer.classList.remove("error");
-  window.HomebodyNotifications.show("Local vision: answering your question…", { id: "vision-question", kind: "pending" });
   try {
     // The key is optional: an owner session authorises the request without it.
     const key = $("local-vision-key").value.trim();
@@ -491,14 +516,24 @@ $("local-vision-ask").addEventListener("submit", async (event) => {
       body: JSON.stringify({ question }),
     }, 90000);
     const body = await response.json();
-    if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
-    window.HomebodyNotifications.show("Local vision: answer ready below the camera.", { id: "vision-question", kind: "ok" });
-    answer.textContent = `${body.answer} (${body.model}, ${(body.latency_ms / 1000).toFixed(1)} s, on your hardware)`;
+    if (!response.ok || body.ok === false) throw new Error(body.detail || `HTTP ${response.status}`);
+    if (typeof body.answer !== "string" || !body.answer.trim()) throw new Error("The model returned an empty answer. Try asking again.");
+    answer.textContent = body.answer;
+    result.dataset.state = "ready";
+    $("local-vision-result-title").textContent = "Local vision answer";
+    $("local-vision-model").textContent = typeof body.model === "string" ? body.model : "Model not reported";
+    $("local-vision-timing").textContent = Number.isFinite(body.latency_ms) && body.latency_ms >= 0 ? `${(body.latency_ms / 1000).toFixed(1)} s` : "";
+    $("local-vision-meta").hidden = false;
+    $("local-vision-copy").hidden = false;
   } catch (error) {
+    result.dataset.state = "error";
+    $("local-vision-result-title").textContent = "Could not answer";
     answer.textContent = String(error.message || error);
     answer.classList.add("error");
     window.HomebodyNotifications.show(`Local vision: ${answer.textContent}`, { id: "vision-question", kind: "error" });
   } finally {
+    result.setAttribute("aria-busy", "false");
+    button.textContent = "Ask";
     button.disabled = false;
   }
 });
@@ -532,6 +567,13 @@ function activateTab(name, focus = false, recordHistory = false) {
   document.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== target.dataset.tab;
   });
+  const globalStatus = document.getElementById("global-robot-status");
+  if (globalStatus) {
+    globalStatus.hidden = target.dataset.tab === "dashboard";
+    document.querySelector(`[data-panel="${target.dataset.tab}"] .page-heading`)?.insertAdjacentElement("afterend", globalStatus);
+  }
+  document.title = `${target.textContent.trim()} · Homebody`;
+  target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   window.localStorage.setItem("homebody-tab", target.dataset.tab);
   if (recordHistory && window.location.hash !== `#${target.dataset.tab}`) {
     window.history.pushState(null, "", `#${target.dataset.tab}`);
@@ -542,6 +584,7 @@ function activateTab(name, focus = false, recordHistory = false) {
     refreshGpio();
   }
   if (focus) target.focus();
+  if (recordHistory) window.scrollTo({ top: 0, behavior: "instant" });
 }
 
 const tabButtons = [...document.querySelectorAll("[data-tab]")];
@@ -619,7 +662,7 @@ $("install-button").addEventListener("click", async () => {
     $("install-status").textContent = "Installing";
     $("install-help").hidden = true;
     $("install-message").textContent = "Installation accepted. Homebody is being added to your home screen.";
-    $("install-message").className = "message ok";
+    notifyFeedback($("install-message"), "ok");
   } else {
     updateInstallUi();
     $("install-message").textContent = "Installation dismissed. You can try again from Chrome's menu.";
@@ -633,7 +676,7 @@ async function registerPwa() {
     await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
   } catch (error) {
     $("install-message").textContent = `App installation support could not start: ${String(error)}`;
-    $("install-message").className = "message error";
+    notifyFeedback($("install-message"), "error");
   }
 }
 registerPwa();
@@ -641,8 +684,7 @@ registerPwa();
 function setMessage(text, kind = "") {
   const el = $("form-message");
   el.textContent = text;
-  if (kind) notifyFeedback(el, kind);
-  else el.className = "message";
+  notifyFeedback(el, kind || "pending");
 }
 
 function fillConfig(config) {
@@ -739,6 +781,8 @@ function renderTelemetry(entries) {
   Object.entries(entries).forEach(([key, [level, text]]) => {
     const name = key === "camera" ? "camera" : key;
     $(`tele-${name}`).textContent = text;
+    const compact = document.getElementById(`compact-${name}`);
+    if (compact) compact.textContent = text;
     $(`tele-${name}-led`).className = level;
   });
 }
@@ -775,6 +819,7 @@ function updateStatus(payload) {
   const kidsActive = Boolean(kidsMode.active);
   const kidsCameraActive = Boolean(kidsMode.camera_active);
   const kidsLocked = Boolean(kidsMode.locked);
+  window.HomebodyWorkspace?.update(runtime);
   window.HomebodyNotifications.setSuppressed("kids", kidsLocked);
   const agent = runtime.agent || {};
   const agentProfile = agent.profile || "conversation";
@@ -891,6 +936,13 @@ function updateStatus(payload) {
     || kidsActive || robotBusy || manualActionPending || powerTransitionPending;
   $("camera-wake-control").disabled = kidsActive || kidsLocked || powerTransitionPending || manualActionPending;
   $("power-mode-badge").textContent = powerMode;
+  $("compact-power-mode").textContent = powerMode;
+  $("global-adult-controls").hidden = kidsActive || kidsLocked;
+  if (kidsActive || kidsLocked) {
+    $("global-power-controls").open = false;
+    $("global-power-message").textContent = "";
+    $("global-stop-message").textContent = "";
+  }
   $("robot-mode-badge").textContent = robotBusy ? "moving" : powerMode;
   const robotActionLabels = {
     move_reachy_head: "Look direction",
@@ -927,6 +979,7 @@ function updateStatus(payload) {
   });
   $("emotion-select").disabled = controlsBlocked;
   $("robot-stop-button").disabled = false;
+  $("global-robot-stop").disabled = kidsActive || kidsLocked;
   const readinessText = powerTransitionPending
     ? "Changing motor power — manual presets are paused"
     : robotBusy
@@ -1197,10 +1250,14 @@ async function refreshStatus() {
   try {
     const response = await fetchWithTimeout("/api/status", { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    updateStatus(await response.json());
+    const body = await response.json();
+    updateStatus(body);
+    window.HomebodyAgentConnection?.update(body.agent_connection);
     statusRefreshHealthy = true;
   } catch (error) {
     statusRefreshHealthy = false;
+    window.HomebodyWorkspace?.reset("Reachy is unreachable; conversation hidden.");
+    window.HomebodyAgentConnection?.offline();
     if (window.ReachyCamera?.isActive()) {
       window.ReachyCamera.stop("Camera stopped because Hermes status is unavailable.");
     }
@@ -1210,6 +1267,7 @@ async function refreshStatus() {
     renderTelemetry({ mic: ["off", "Unknown"], camera: ["off", "Unknown"], motors: ["off", "Unknown"], agent: ["off", "Unreachable"] });
     $("status-dot").className = "status-dot error";
     $("robot-mode-badge").textContent = "offline";
+    $("compact-power-mode").textContent = "Unknown · offline";
     $("motor-state").textContent = "Motor state unavailable";
     $("motor-state-dot").className = "motor-state-dot error";
     $("robot-readiness").textContent = "Remote controls disabled until live status returns";
@@ -1335,6 +1393,7 @@ async function refreshAgentActivity() {
     sheet.hidden = !pendingAgentApproval;
     $("agent-approve-button").disabled = !pendingAgentApproval || agentRequestPending;
     if (pendingAgentApproval) {
+      window.HomebodyWorkspace?.show();
       $("agent-current-task").textContent = "Waiting for exact phone approval";
       $("agent-approval-capability").textContent = String(pendingAgentApproval.capability_id || "").replaceAll("_", " ");
       $("agent-approval-arguments").textContent = JSON.stringify(pendingAgentApproval.arguments || {}, null, 2);
@@ -2282,9 +2341,7 @@ $("emotion-button").addEventListener("click", () => {
   sendManualRobotAction("emotion", $("emotion-select").value);
 });
 
-$("robot-stop-button").addEventListener("click", async () => {
-  const button = $("robot-stop-button");
-  const message = $("robot-message");
+async function stopRobotMovement(button, message) {
   button.disabled = true;
   message.textContent = "Stopping active and queued movement…";
   message.className = "message";
@@ -2306,6 +2363,13 @@ $("robot-stop-button").addEventListener("click", async () => {
   } finally {
     button.disabled = false;
     await refreshStatus();
+  }
+}
+
+$("robot-stop-button").addEventListener("click", () => stopRobotMovement($("robot-stop-button"), $("robot-message")));
+$("global-robot-stop").addEventListener("click", () => {
+  if (!$("global-robot-stop").disabled && !$("global-adult-controls").hidden) {
+    void stopRobotMovement($("global-robot-stop"), $("global-stop-message"));
   }
 });
 
@@ -2510,7 +2574,7 @@ $("camera-wake-control").addEventListener("click", async () => {
 
 // One operation ID updates progress in place instead of overwriting unrelated notices.
 function showPowerToast(text, kind = "pending") {
-  window.HomebodyNotifications.show(text, { id: "power-transition", kind });
+  return window.HomebodyNotifications?.show(text, { id: "power-transition", kind, title: "Reachy power" });
 }
 
 // Keep details at the control; surface action outcomes consistently across tabs.
@@ -2521,14 +2585,16 @@ function notifyFeedback(message, kind) {
     "announcement-message": "Announcement", "robot-message": "Robot",
     "presence-message": "Presence", "initiative-message": "Initiative",
     "presentation-message": "Presentation", "bluetooth-message": "Controller",
-    "gpio-message": "Buttons", "camera-message": "Camera",
+    "gpio-message": "Buttons", "camera-message": "Camera", "install-message": "Home-screen app",
     "agent-setup-status": "Agent setup", "local-vision-message": "Local vision", "mcp-message": "Agent access",
   };
   // Fast motor commands remain quiet on success. Never toast polling/telemetry.
   if (!labels[message.id] || (message.id === "robot-message" && kind !== "error")) return;
-  window.HomebodyNotifications.show(`${labels[message.id]}: ${message.textContent}`, {
-    id: `feedback-${message.id}`, kind,
+  const notice = window.HomebodyNotifications?.show(message.textContent, {
+    id: `feedback-${message.id}`, kind, title: labels[message.id],
   });
+  // Keep text as a fallback if notifications are unavailable, suppressed, or full.
+  if (notice) message.className += " message-surfaced";
 }
 
 async function setPowerMode(mode, durationMinutes = 60, message = $("power-message")) {
@@ -2564,6 +2630,7 @@ async function setPowerMode(mode, durationMinutes = 60, message = $("power-messa
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     const runtime = body.runtime || {};
+    if (runtime.power_mode !== mode) throw new Error("Requested power mode was not confirmed by the robot runtime");
     if (mode === "awake" && (runtime.power_mode !== "awake" || runtime.motors_enabled !== true)) {
       throw new Error("Awake was not confirmed by the robot runtime");
     }
@@ -2574,13 +2641,15 @@ async function setPowerMode(mode, durationMinutes = 60, message = $("power-messa
       ? "Reachy folded safely · motor torque disabled"
       : mode === "awake"
         ? "Reachy awake · motor torque enabled"
-        : `Power mode: ${body.runtime.power_mode}`;
+        : mode === "sleep"
+          ? "Sleep mode enabled. Reachy is resting."
+          : "Meeting mode enabled. Reachy will stay quiet.";
     message.className = "message ok";
-    showPowerToast(message.textContent, "ok");
+    if (showPowerToast(message.textContent, "ok")) message.className += " message-surfaced";
   } catch (error) {
     message.textContent = String(error);
     message.className = "message error";
-    showPowerToast(message.textContent, "error");
+    if (showPowerToast(message.textContent, "error")) message.className += " message-surfaced";
   } finally {
     activeButtons.forEach((button) => {
       button.textContent = button.dataset.idleLabel;
@@ -2595,7 +2664,9 @@ async function setPowerMode(mode, durationMinutes = 60, message = $("power-messa
 
 document.querySelectorAll("[data-power]").forEach((button) => {
   button.addEventListener("click", () => {
-    const message = button.closest("#panel-robot") ? $("robot-message") : $("power-message");
+    const message = button.dataset.powerMessage
+      ? $(button.dataset.powerMessage)
+      : button.closest("#panel-robot") ? $("robot-message") : $("power-message");
     setPowerMode(button.dataset.power, Number(button.dataset.minutes || 60), message);
   });
 });
@@ -2613,7 +2684,9 @@ async function responseDetail(response) {
 function setPowerMessage(text, kind) {
   $("power-message").textContent = text;
   $("power-message").className = `message ${kind}`;
-  window.HomebodyNotifications.show(text, { id: "app-lifecycle", kind });
+  if (window.HomebodyNotifications?.show(text, { id: "app-lifecycle", kind, title: "Reachy" })) {
+    $("power-message").className += " message-surfaced";
+  }
 }
 
 $("app-off-button").addEventListener("click", async () => {

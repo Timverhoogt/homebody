@@ -1,0 +1,21 @@
+title: Homebody
+emoji: 🏡
+colorFrom: yellow
+colorTo: red
+sdk: static
+pinned: false
+short_description: Always-on home companion for Reachy Mini
+suggested_storage: medium
+tags:
+  - reachy_mini
+  - reachy_mini_python_app
+  - voice-assistant
+  - hermes-agent
+  - openclaw
+  - mcp
+  - openai-realtime
+  - camera
+  - home-assistant
+  - kids-mode
+  - privacy
+  - elevenlabs

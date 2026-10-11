@@ -19,6 +19,8 @@ class CapabilityId(StrEnum):
     RECALL_PERSONAL_CONTEXT = "recall_personal_context"
     SEARCH_CONVERSATION_HISTORY = "search_conversation_history"
     READ_SCOPED_NOTE = "read_scoped_note"
+    LIST_PROJECTS = "list_projects"
+    READ_PROJECT_ROADMAP = "read_project_roadmap"
     CONTROL_HOME_ENTITY = "control_home_entity"
     SET_TIMER = "set_timer"
     CANCEL_TIMER = "cancel_timer"
@@ -86,6 +88,8 @@ _PRIVATE_READ_CAPABILITIES = {
     CapabilityId.RECALL_PERSONAL_CONTEXT,
     CapabilityId.SEARCH_CONVERSATION_HISTORY,
     CapabilityId.READ_SCOPED_NOTE,
+    CapabilityId.LIST_PROJECTS,
+    CapabilityId.READ_PROJECT_ROADMAP,
     CapabilityId.LIST_CALENDAR_EVENTS,
     CapabilityId.DRAFT_CALENDAR_EVENT,
     CapabilityId.DRAFT_MESSAGE,

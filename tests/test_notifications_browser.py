@@ -95,6 +95,14 @@ def test_app_notification_wiring_and_phone_layout(browser_page):
     page.locator(".notification-dismiss").focus()
     page.keyboard.press("Enter")
     assert page.locator("#tab-dashboard").evaluate("el => el === document.activeElement")
+    page.evaluate(
+        "HomebodyNotifications.show('Saved', {kind:'ok'}); "
+        "HomebodyNotifications.show('Action failed', {kind:'error'}); "
+        "HomebodyNotifications.show('Updating presence…', {kind:'pending'})"
+    )
+    page.clock.resume()
+    page.evaluate("() => new Promise(requestAnimationFrame)")
+    page.screenshot(path=".pytest_cache/notification-browser/phone.png", animations="disabled")
     assert not errors
 
 
@@ -185,8 +193,7 @@ def test_desktop_long_text_reduced_motion_and_fullscreen(browser_page):
     assert page.locator("#notifications").evaluate("el => el.parentElement === document.fullscreenElement")
     page.evaluate("document.exitFullscreen()")
     page.wait_for_function(
-        "!document.fullscreenElement && "
-        "document.getElementById('notifications').parentElement === document.body"
+        "!document.fullscreenElement && document.getElementById('notifications').parentElement === document.body"
     )
     assert page.locator("#notifications").evaluate("el => el.parentElement === document.body")
     assert not errors

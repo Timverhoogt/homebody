@@ -19,6 +19,7 @@ from reachy_mini import ReachyMini, ReachyMiniApp
 from starlette.concurrency import run_in_threadpool
 
 from .agent_audit import AgentAuditLog
+from .agent_connection import AgentConnectionMonitor
 from .agent_setup import (
     AgentSetup,
     SetupError,
@@ -39,6 +40,7 @@ from .local_vision import LocalVisionClient, LocalVisionError
 from .mcp_oauth import OAuthError, OAuthServer
 from .mcp_public import PublicAgentListener, build_public_app
 from .mcp_server import PROTOCOL_VERSIONS, McpServer, new_token, token_digest, token_matches
+from .native_workspace_api import install_native_workspace_routes
 from .owner_auth import OwnerStore, default_owner_path, install_owner_auth, owner_authenticated
 from .owner_media import install_owner_media
 from .platform_info import host
@@ -404,6 +406,7 @@ class Homebody(ReachyMiniApp):
         self._gpio_config_lock = threading.Lock()
         self._mcp = McpServer(lambda: self._runtime)
         self._agent_setup = AgentSetup()
+        self._agent_connection = AgentConnectionMonitor()
         self._oauth = OAuthServer(default_config_path().with_name("mcp-oauth.json"))
         self._agent_listener = PublicAgentListener(self._build_public_app)
         self._register_settings_routes()
@@ -548,6 +551,11 @@ class Homebody(ReachyMiniApp):
                 "config": config_payload,
                 "config_error": config_error,
                 "runtime": runtime_payload,
+                "agent_connection": (
+                    {"state": "unknown", "label": "Agent", "detail": "Adult settings are locked.", "fresh_for_ms": 0}
+                    if child_locked or config_error
+                    else self._agent_connection.snapshot(config)
+                ),
                 "host": host().as_dict(),
             }
 
@@ -743,6 +751,39 @@ class Homebody(ReachyMiniApp):
                     client.close()
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        def workspace_runtime() -> HermesVoiceRuntime:
+            if not owner_authenticated.get():
+                raise HTTPException(status_code=401, detail="A paired owner device is required")
+            if self._runtime is None:
+                raise HTTPException(status_code=409, detail="Voice runtime has not started")
+            return self._runtime
+
+        install_native_workspace_routes(
+            self.settings_app, workspace_runtime, load_config, lambda config: HermesBridgeClient(config),
+        )
+
+        def workspace_payload(action: str) -> JSONResponse:
+            try:
+                runtime = workspace_runtime()
+                payload = runtime.workspace(action)
+                if action == "clear":
+                    runtime.clear_native_workspace()
+            except RuntimeError as exc:
+                raise HTTPException(status_code=423, detail=str(exc)) from exc
+            return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.get("/api/agent/workspace")
+        def agent_workspace() -> JSONResponse:
+            return workspace_payload("read")
+
+        @self.settings_app.post("/api/agent/workspace/start")
+        def agent_workspace_start() -> JSONResponse:
+            return workspace_payload("start")
+
+        @self.settings_app.post("/api/agent/workspace/clear")
+        def agent_workspace_clear() -> JSONResponse:
+            return workspace_payload("clear")
 
         @self.settings_app.get("/api/agent/activity")
         def agent_activity(
@@ -1012,6 +1053,14 @@ class Homebody(ReachyMiniApp):
             except (ValueError, RuntimeError) as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
             return {"ok": True, "item_id": request.item_id, "delivery": queued}
+
+        @self.settings_app.post("/api/agent-connection/retry")
+        def retry_agent_connection() -> dict[str, object]:
+            runtime = self._runtime.status() if self._runtime is not None else {}
+            if runtime.get("kids_mode", {}).get("locked") is True:
+                raise HTTPException(status_code=423, detail="Adult settings are locked")
+            self._agent_connection.invalidate()
+            return self._agent_connection.snapshot(load_config())
 
         @self.settings_app.post("/api/test-connection")
         def test_connection(update: SettingsUpdate | None = None) -> dict[str, object]:
