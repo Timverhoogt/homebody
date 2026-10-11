@@ -16,6 +16,7 @@ import ipaddress
 import logging
 import math
 import os
+import re
 import shutil
 import socket
 import threading
@@ -153,19 +154,23 @@ class DeviceIdentity:
 
 
 def default_device_identity(*, machine_id_path: Path = Path("/etc/machine-id")) -> DeviceIdentity:
-    """Derive the same stable identity as the existing Reachy HA app."""
+    """Derive a stable identity, with deployment-specific overrides when configured."""
     try:
         raw = machine_id_path.read_text(encoding="utf-8").strip().lower()
     except OSError:
         raw = ""
     hexadecimal = "".join(char for char in raw if char in "0123456789abcdef")
-    mac = (hexadecimal[:12] or "000000000000").ljust(12, "0")
-    suffix = mac[-6:].upper()
-    return DeviceIdentity(
-        name=f"Reachy Mini {suffix}",
-        node_name=f"reachy-mini-{suffix.lower()}",
-        mac_address=mac,
+    derived_mac = (hexadecimal[:12] or "000000000000").ljust(12, "0")
+    configured_mac = "".join(
+        char for char in os.getenv("REACHY_MINI_HA_MAC", "").strip().lower() if char in "0123456789abcdef"
     )
+    mac = configured_mac if len(configured_mac) == 12 else derived_mac
+    suffix = mac[-6:].upper()
+    name = os.getenv("REACHY_MINI_HA_NAME", "").strip() or f"Reachy Mini {suffix}"
+    node_name = os.getenv("REACHY_MINI_HA_NODE_NAME", "").strip().lower() or f"reachy-mini-{suffix.lower()}"
+    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", node_name):
+        raise ValueError("REACHY_MINI_HA_NODE_NAME must be a valid lowercase DNS label")
+    return DeviceIdentity(name=name, node_name=node_name, mac_address=mac)
 
 
 @dataclass(frozen=True, slots=True)

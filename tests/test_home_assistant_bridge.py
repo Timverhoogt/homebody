@@ -92,6 +92,29 @@ def test_default_identity_matches_existing_reachy_esphome_device(tmp_path: Path)
     assert identity.mac_address == "1643b6e79627"
 
 
+def test_identity_allows_safe_deployment_overrides(tmp_path: Path, monkeypatch) -> None:
+    machine_id = tmp_path / "machine-id"
+    machine_id.write_text("376b0216371140d69394b58869eaec61\n", encoding="utf-8")
+    monkeypatch.setenv("REACHY_MINI_HA_NAME", "Reachy Mini Jetson")
+    monkeypatch.setenv("REACHY_MINI_HA_NODE_NAME", "reachy-mini-jetson")
+    monkeypatch.setenv("REACHY_MINI_HA_MAC", "02:37:6b:02:16:37")
+
+    identity = default_device_identity(machine_id_path=machine_id)
+
+    assert identity.name == "Reachy Mini Jetson"
+    assert identity.node_name == "reachy-mini-jetson"
+    assert identity.mac_address == "02376b021637"
+
+
+def test_identity_rejects_unsafe_node_override(tmp_path: Path, monkeypatch) -> None:
+    machine_id = tmp_path / "machine-id"
+    machine_id.write_text("376b0216371140d69394b58869eaec61\n", encoding="utf-8")
+    monkeypatch.setenv("REACHY_MINI_HA_NODE_NAME", "Reachy Mini Jetson!")
+
+    with pytest.raises(ValueError, match="valid lowercase DNS label"):
+        default_device_identity(machine_id_path=machine_id)
+
+
 def test_entity_contract_preserves_existing_keys_but_narrows_motion_limits() -> None:
     specs = {spec.object_id: spec for spec in entity_specs()}
 
