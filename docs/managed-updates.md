@@ -2,13 +2,19 @@
 
 ## Supported boundary
 
-Only Linux, Python 3.11, Reachy Mini SDK 1.9.x, and the fixed **user** unit
-`homebody-app.service` with immutable app slots are supported. A daemon-managed app,
-a source checkout, shared editable environment, or different supervisor is not
-silently converted. Settings, models, daemon, and companion bridge remain outside
-slots and are never overwritten or upgraded. This is app-only replacement, not a
-robot firmware or dependency updater. Physical/systemd acceptance on a target
-robot is still required before deployment; local tests use no robot.
+Linux, Python **3.11 or 3.12**, and Reachy Mini SDK 1.9.x are supported in two explicit topologies:
+
+- `reachy-daemon-slots-v1`: preserves the existing daemon-owned app process, dependency
+  venv, startup owner and Home Assistant bootstrap. Only Homebody's package and
+  distribution-metadata import anchors resolve through one atomic app-slot pointer.
+- `systemd-user-slots-v1`: the original dedicated user `homebody-app.service` topology,
+  for installations which already chose that layout. Do not migrate a working
+  daemon-managed robot into it merely to use updates.
+
+Settings, owner sessions, models, daemon, calibration and the companion bridge remain
+outside slots and are never overwritten or upgraded. This is app-only replacement,
+not a firmware, dependency or operating-system updater. Python compatibility is
+explicit in each release manifest; a 3.11-only release is refused on a 3.12 target.
 
 Updates require owner pairing, CSRF and explicit INSTALL, verified folded Standby,
 no voice/Kids/camera/action/announcement activity, and a live independent worker.
@@ -20,7 +26,76 @@ previous release, or record `rollback_failed` (requiring operator intervention).
 Success means three authenticated checks of exact version/release-ID/commit plus
 local safe runtime health; it does not depend on agent backend reachability.
 
-## One-time administrator setup (not performed automatically)
+## Daemon-managed setup (recommended for the existing Jetson)
+
+Keep the existing daemon and HA bootstrap enabled and byte-for-byte unchanged.
+Do **not** install `homebody-app.service`, change daemon startup, add a PYTHONPATH,
+create a `.pth` hook, reinstall the SDK, or replace the Home Assistant identity.
+The independently installed worker uses the daemon's supported app routes only.
+
+One-time administrator provisioning must:
+
+1. Verify live folded Standby, no child/voice/camera/action ownership, and a finite
+   pose with disabled torque. Also require the **installed SDK's exact sleep-pose
+   distance** before stop: its stop route otherwise enables motors and returns to
+   zero. A broad folded-status heuristic alone is insufficient. Do not construct
+   an SDK client just for this check; that can release/reacquire daemon media.
+2. Back up the current package, dist-info, persistent config/owner store, existing
+   daemon and HA units/bootstrap, and record hashes. Keep the private backup.
+3. Prepare an immutable initial slot containing the verified Homebody package and
+   its one real dist-info directory. Create `.homebody-dist-info` inside that slot
+   as a relative symlink to its actual dist-info directory, then an atomic `current`
+   symlink pointing to the slot.
+4. Stop only Homebody through the existing daemon. Replace only the existing
+   `site-packages/homebody` and original Homebody dist-info paths with links to
+   `current/homebody` and `current/.homebody-dist-info`. The original dist-info
+   anchor filename stays fixed; its METADATA version/entrypoints come from the
+   currently selected slot. SDK/dependency files are not moved or written.
+5. Install a separate stable worker environment from the verified wheel with
+   `--no-deps`, explicitly provisioning only its `httpx` and `packaging` dependencies.
+   Do not point that worker at `current` or the app's shared environment.
+6. Write private `updater.json` next to the **existing runtime's** `config.json`
+   (use its actual HOME/config overrides, not the SSH user's assumed home). Set:
+   `topology=reachy-daemon-slots-v1`; absolute `state`, `slots`, `current`, `python`,
+   `site_packages`, `metadata_link`; `status_url=http://127.0.0.1:8042/api/updates/health`;
+   and an independent random 64-character hexadecimal `health_token`. Mode 0600;
+   token stays private and is never a general app-control credential.
+7. Install only the independent worker service, run it as the existing robot user,
+   with its private configuration and writable managed slots/state. Start Homebody
+   through the same daemon route/HA bootstrap, verify preserved owner/config/HA,
+   exact installed bytes, three authenticated safe-health checks and physical
+   torque-off fold. Check `/api/updates` as Owner for `supported=true`.
+8. Before declaring acceptance, exercise a genuine inactive-slot pip install,
+   daemon-owned restart and deliberately failing candidate rollback with private,
+   explicitly labeled local test fixtures. Restore the exact approved initial
+   artifact afterward; fixtures must not become public releases or leave fake
+   release IDs in the production app/history. Verify unchanged settings, dependency
+   hashes, HA identity, daemon PID/boot ownership and final safe state.
+
+The worker does not require sudo, does not stop the daemon or HA service, and cannot
+select an arbitrary app, command, repository or URL from an HTTP request. For boot
+recovery, retain the existing HA bootstrap and enable the worker independently.
+Availability requires both a fresh (<15 seconds) heartbeat and a live worker PID;
+recheck these inside the final serialized reservation after network/preflight work.
+If it is unavailable then, reject without enqueueing or stopping the app.
+After an admitted job, worker death is recovered by systemd (`Restart=on-failure`,
+5-second delay, at most three starts within five minutes) and the durable journal.
+Queued work can proceed; interrupted replacement restores the prior artifact;
+interrupted work without a prior pointer restarts/verifies the unchanged app.
+SDK `done` is stopped/restartable even though its app object remains; `stopping`
+is awaited for at most 35 seconds without sending another Stop. Unknown states,
+a different app, unexpected HTTP errors and unverified physical safety fail closed.
+If the service cannot return (rate limit/configuration/storage failure), the app
+can remain stopped; do not claim autonomous recovery. Inspect the journal and
+service, fix the underlying cause, then restart only the updater service. Never
+clear a pending journal or manually start a competing supervisor to hide the fault.
+A source install, broken import anchors, duplicate app distributions, missing
+worker, unknown physical pose, incompatible dependencies/interpreter, and another
+active app are rejected. Do not run pip/app-store installs or uninstalls of Homebody
+while this managed layout is enabled; those may replace the import anchors. Use
+managed updates or deliberately restore the private pre-setup package backup.
+
+## Dedicated user-service setup (alternative, not a daemon migration)
 
 First back up your settings and record the current wheel/version. Stop the existing
 app through its original supervisor and disable its automatic startup so only the

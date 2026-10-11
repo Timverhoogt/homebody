@@ -302,6 +302,7 @@ def test_shutdown_during_wake_must_not_command_search(make_runtime):
     print({'probe': 'shutdown during wake', 'targets_after_stop': len(robot.targets),
            'folds': robot.folds, 'motors': runtime._motors_enabled})
     assert robot.targets == [], 'Search movement was issued after shutdown won'
+    assert robot.folds == 1 and runtime._head_safely_folded and runtime._motors_enabled is False
 
 
 def test_queued_sleep_must_interrupt_search_and_prevent_selection(make_runtime, monkeypatch):

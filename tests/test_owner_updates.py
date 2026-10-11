@@ -92,6 +92,7 @@ def test_later_is_persistent_across_manual_checks(app, monkeypatch):
 def test_stopped_runtime_never_enables_motors(monkeypatch):
     from homebody.runtime import HermesVoiceRuntime
     runtime = object.__new__(HermesVoiceRuntime)
+    runtime._motor_transition_lock = threading.RLock()
     runtime.stop_event = threading.Event()
     runtime.stop_event.set()
     with pytest.raises(RuntimeError, match="stopping"):

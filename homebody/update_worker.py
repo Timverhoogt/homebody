@@ -35,9 +35,13 @@ def dependency_env() -> dict:
 
 def config(path: Path) -> dict:
     value = json.loads(path.read_text())
-    if set(value) != {"topology", "state", "slots", "current", "python", "status_url", "health_token"}:
+    daemon = value.get("topology") == "reachy-daemon-slots-v1"
+    keys = {"topology", "state", "slots", "current", "python", "status_url", "health_token"}
+    if daemon:
+        keys |= {"site_packages", "metadata_link"}
+    if set(value) != keys:
         raise ValueError("Invalid updater configuration")
-    if value["topology"] != "systemd-user-slots-v1" or value["status_url"] != "http://127.0.0.1:8042/api/updates/health":
+    if value["topology"] not in {"systemd-user-slots-v1", "reachy-daemon-slots-v1"} or value["status_url"] != "http://127.0.0.1:8042/api/updates/health":
         raise ValueError("Unsupported install topology")
     for key in ("state", "slots", "current", "python"):
         p = Path(value[key])
@@ -56,7 +60,27 @@ def config(path: Path) -> dict:
         raise ValueError("Dependency venv must be independent of app slots")
     if any(re.search(r"[\s;{}]", value[key]) for key in ("state", "slots", "current", "python")):
         raise ValueError("Managed paths cannot contain whitespace or systemd delimiters")
+    if daemon:
+        site = Path(value["site_packages"])
+        metadata = Path(value["metadata_link"])
+        valid_sites = {venv / "lib" / f"python{minor}" / "site-packages" for minor in ("3.11", "3.12")}
+        if (site not in valid_sites or not site.is_dir() or metadata.parent != site
+                or not re.fullmatch(r"reachy_mini_homebody-\d+\.\d+\.\d+\.dist-info", metadata.name)
+                or not (site / "homebody").is_symlink()
+                or (site / "homebody").readlink() != current / "homebody"
+                or not metadata.is_symlink() or metadata.readlink() != current / ".homebody-dist-info"
+                or list(site.glob("reachy_mini_homebody-*.dist-info")) != [metadata]
+                or not (current / ".homebody-dist-info").is_symlink()
+                or (current / ".homebody-dist-info").resolve().parent != current.resolve()):
+            raise ValueError("Daemon app import/metadata links do not match the managed topology")
     return value
+
+
+def driver_for(value: dict):
+    if value.get("topology") == "reachy-daemon-slots-v1":
+        from .update_daemon import DaemonSlots
+        return DaemonSlots(value)
+    return SystemdSlots(value)
 
 
 class SystemdSlots:
@@ -73,9 +97,9 @@ class SystemdSlots:
 
     def preflight(self) -> None:
         if not compatible_host():
-            raise ValueError("Supported host is Linux / Python 3.11 / Reachy SDK 1.9.x")
+            raise ValueError("Supported host is Linux / Python 3.11 or 3.12 / Reachy SDK 1.9.x")
         result = subprocess.run([self.python, "-c", "import importlib.metadata as m,sys; "
-                                 "assert sys.version_info[:2] == (3,11); "
+                                 "assert sys.version_info[:2] in ((3,11),(3,12)); "
                                  "print(m.version('reachy-mini'))"], check=True,
                                 capture_output=True, text=True, timeout=15, env=dependency_env(), cwd="/")
         if not re.fullmatch(r"1\.9\.\d+", result.stdout.strip()):
@@ -161,6 +185,13 @@ class SystemdSlots:
                         "--target", str(slot), str(wheel)], check=True, capture_output=True, timeout=120,
                        env=dependency_env(), cwd="/")
 
+    def check_manifest(self, manifest: dict) -> None:
+        result = subprocess.run([self.python, "-c", "import sys; print('%d.%d'%sys.version_info[:2])"],
+                                check=True, capture_output=True, text=True, timeout=15,
+                                env=dependency_env(), cwd="/")
+        if result.stdout.strip() not in manifest["python"].split(","):
+            raise ValueError("Release Python compatibility does not include the target interpreter")
+
     def healthy(self, identity: dict, deadline: float = 90) -> bool:
         end = time.monotonic() + deadline
         successes = 0
@@ -200,6 +231,7 @@ def run_job(store: Store, driver: SystemdSlots, download=None) -> None:
                 raise ValueError("Interrupted update; restoring prior artifact")
             raise ValueError("Interrupted before app replacement; recovering unchanged app")
         manifest = validate_manifest(job["manifest"])
+        driver.check_manifest(manifest)
         driver.slots.mkdir(parents=True, exist_ok=True)
         wheel = store.root / manifest["artifact"]
         prior = str(driver.current.resolve())
@@ -276,7 +308,7 @@ def serve(path: Path, once: bool = False) -> None:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise ValueError("Another updater process owns this deployment") from exc
-        driver = SystemdSlots(value)
+        driver = driver_for(value)
         from .updates import atomic_json
         stopped = threading.Event()
 

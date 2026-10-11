@@ -38,7 +38,8 @@ def validate_manifest(data: dict) -> dict:
     if (data["schema"] != 1 or type(data["schema"]) is not int or data["repository"] != REPOSITORY
             or data["tag"] != "v" + data["version"] or type(data["release_id"]) is not int
             or data["release_id"] <= 0 or not re.fullmatch(r"[0-9a-f]{40}", str(data["commit"]))
-            or data["python"] != "3.11" or data["platform"] != "linux" or data["sdk"] != "1.9"
+            or data["python"] not in {"3.11", "3.12", "3.11,3.12"}
+            or data["platform"] != "linux" or data["sdk"] != "1.9"
             or data["artifact"] != f"reachy_mini_homebody-{data['version']}-py3-none-any.whl"
             or not re.fullmatch(r"[0-9a-f]{64}", str(data["sha256"]))
             or type(data["size"]) is not int or not 0 < data["size"] <= MAX_WHEEL
@@ -211,7 +212,8 @@ def verify_wheel(path: Path, manifest: dict) -> None:
         if len(metadata) != 1:
             raise ValueError("Invalid wheel metadata")
         meta = BytesParser().parsebytes(archive.read(metadata[0]))
-        if meta["Name"] != "reachy-mini-homebody" or meta["Version"] != manifest["version"]:
+        if (re.sub(r"[-_.]+", "-", str(meta["Name"]).lower()) != "reachy-mini-homebody"
+                or meta["Version"] != manifest["version"]):
             raise ValueError("Wheel package identity mismatch")
         identity = json.loads(archive.read("homebody/release.json"))
         if any(identity.get(k) != manifest[k] for k in ("version", "release_id", "commit")):
@@ -231,8 +233,13 @@ def installed_identity() -> dict:
 
 def configured_path() -> Path | None:
     value = os.environ.get("HOMEBODY_UPDATER_CONFIG")
-    return Path(value) if value else None
+    if value:
+        return Path(value)
+    # Existing daemon HOME/config ownership is retained; no startup environment mutation.
+    from .config import default_config_path
+    candidate = default_config_path().with_name("updater.json")
+    return candidate if candidate.is_file() else None
 
 
 def compatible_host() -> bool:
-    return sys.platform == "linux" and sys.version_info[:2] == (3, 11)
+    return sys.platform == "linux" and sys.version_info[:2] in {(3, 11), (3, 12)}

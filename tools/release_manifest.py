@@ -29,7 +29,7 @@ def main() -> None:
     project = tomllib.loads((args.root / "pyproject.toml").read_text())["project"]
     v = project["version"]
     version(v)
-    if project["name"] != "reachy-mini-homebody" or args.release_id <= 0:
+    if project["name"].replace("_", "-").lower() != "reachy-mini-homebody" or args.release_id <= 0:
         raise ValueError("Invalid release package/ID")
     if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
         raise ValueError("An exact commit SHA is required")
@@ -47,7 +47,7 @@ def main() -> None:
     if args.wheel is None:
         raise ValueError("--wheel is required after preparing/building")
     data = {"schema": 1, "repository": REPOSITORY, **identity, "tag": "v" + v,
-            "python": "3.11", "platform": "linux", "sdk": "1.9", "artifact": args.wheel.name,
+            "python": "3.11,3.12", "platform": "linux", "sdk": "1.9", "artifact": args.wheel.name,
             "size": args.wheel.stat().st_size, "sha256": hashlib.sha256(args.wheel.read_bytes()).hexdigest(),
             "notes": section[1].strip()}
     validate_manifest(data)

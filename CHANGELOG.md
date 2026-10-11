@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Daemon-compatible managed updates
+- Preserve the existing Python 3.12 Reachy daemon and Home Assistant bootstrap; atomically replace only Homebody's package and distribution metadata through immutable slots.
+- Require the installed SDK's exact sleep-pose distance before app stop, in addition to verified folded Standby, disabled torque, owner/CSRF and idle-session admission.
+- Keep the updater outside the replaceable app, refuse unverified import/metadata drift and incompatible release Python/dependencies, and retain authenticated exact-identity health plus rollback.
+- Preserve serialized safety folding after shutdown while rejecting fresh wakes and ordinary motor enable. Retain all previously accepted Kids, camera, HA and workspace repairs.
+- This feature does not publish a stable release or change firmware, SDK, models, pairing, privacy settings or host agent bridge.
+
 ### Added
 
 - Owner-only Homebody update notice and explicit install flow with accumulated release notes, persistent Later, progress, and a completion changelog retained until acknowledged (PWA shell v66).

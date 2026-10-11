@@ -17,7 +17,7 @@ def module():
 def manifest(version="0.5.0"):
     return {"schema": 1, "repository": "Timverhoogt/homebody", "version": version,
             "tag": "v" + version, "release_id": 42, "commit": "a" * 40,
-            "python": "3.11", "platform": "linux", "sdk": "1.9",
+            "python": "3.11,3.12", "platform": "linux", "sdk": "1.9",
             "artifact": f"reachy_mini_homebody-{version}-py3-none-any.whl",
             "sha256": "b" * 64, "size": 100, "notes": "Changes\n<script>not HTML</script>"}
 

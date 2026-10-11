@@ -1,0 +1,38 @@
+# Example for the existing /opt/reachy-mini-lite Jetson deployment.
+# Verify robot user/paths before installing. This is ONLY the updater, not an app supervisor.
+[Unit]
+Description=Homebody owner-approved app-only updater (Reachy daemon lifecycle)
+After=network-online.target reachy-mini-jetson-daemon.service
+Wants=network-online.target
+Requires=reachy-mini-jetson-daemon.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=timverhoogt
+Group=timverhoogt
+Environment=HOME=/opt/reachy-mini-lite/state/home
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONNOUSERSITE=1
+Environment=TMPDIR=/opt/reachy-mini-lite/homebody-managed/tmp
+WorkingDirectory=/opt/reachy-mini-lite/homebody-managed
+ExecStart=/opt/reachy-mini-lite/homebody-managed/updater/bin/python -m homebody.update_worker --config /opt/reachy-mini-lite/state/home/.local/share/homebody/updater.json
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+MemoryHigh=512M
+MemoryMax=768M
+CPUWeight=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/reachy-mini-lite/homebody-managed
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

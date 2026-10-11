@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import threading
 import time
@@ -10,7 +11,7 @@ from pathlib import Path
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-from .update_worker import SystemdSlots, config
+from .update_worker import config, driver_for
 from .updates import (
     Store,
     atomic_json,
@@ -54,14 +55,20 @@ class UpdateService:
                 raise ValueError("One-time external updater setup is required (unsupported install topology)")
             value = config(path)
             if not compatible_host():
-                raise ValueError("Supported topology requires Linux and Python 3.11")
+                raise ValueError("Supported topology requires Linux and Python 3.11 or 3.12")
             if Path(__file__).resolve() != (Path(value["current"]).resolve() / "homebody/update_api.py"):
                 raise ValueError("Running app is not the configured managed slot")
             heartbeat = json.loads((Path(value["state"]) / "worker.json").read_text())
-            if not 0 <= time.time() - heartbeat["heartbeat"] < 15:
+            if (type(heartbeat.get("heartbeat")) not in (int, float)
+                    or not 0 <= time.time() - heartbeat["heartbeat"] < 15
+                    or type(heartbeat.get("pid")) is not int or heartbeat["pid"] <= 0):
                 raise ValueError("External updater is unavailable; check its service")
+            try:
+                os.kill(heartbeat["pid"], 0)
+            except (OSError, OverflowError) as exc:
+                raise ValueError("External updater is unavailable; check its service") from exc
             return True, ""
-        except (ValueError, OSError, KeyError) as exc:
+        except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
             return False, str(exc)
 
     def status(self) -> dict:
@@ -104,9 +111,18 @@ class UpdateService:
             if fresh["available"] != preview:
                 raise ValueError("Release changed; check and preview again")
             value = config(configured_path())
-            SystemdSlots(value).preflight()
-            return runtime.reserve_update(lambda: self.store().enqueue(
-                preview, installed_identity()["version"], fresh["notes"]))
+            driver = driver_for(value)
+            driver.preflight()
+            driver.check_manifest(preview)
+            def enqueue():
+                # Discovery/preflight can exceed the heartbeat TTL. Revalidate
+                # inside the runtime's final serialized admission, BEFORE any
+                # durable job or shutdown, not merely before slow network work.
+                supported, reason = self.supported()
+                if not supported:
+                    raise ValueError(reason)
+                return self.store().enqueue(preview, installed_identity()["version"], fresh["notes"])
+            return runtime.reserve_update(enqueue)
 
 
 def register(app, runtime, root: Path) -> None:
