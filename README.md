@@ -1,10 +1,3 @@
----
-title: Homebody
-tags:
-  - reachy_mini
-  - reachy_mini_python_app
----
-
 # Homebody for Reachy Mini
 
 ![Homebody — a home for your AI. A voice. A presence.](docs/assets/homebody-banner.webp)
