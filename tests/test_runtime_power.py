@@ -301,7 +301,7 @@ def test_wake_timeout_after_confirmed_unfolded_pose_reports_success(monkeypatch)
 
         @staticmethod
         def json() -> dict[str, object]:
-            return {"head_pose": {"z": 0.0, "pitch": 0.0}}
+            return {"control_mode": "enabled", "head_pose": {"z": 0.0, "pitch": 0.0}}
 
     monkeypatch.setattr("homebody.power.httpx.post", lambda *args, **kwargs: Response())
     monkeypatch.setattr("homebody.power.httpx.get", lambda *args, **kwargs: Response())

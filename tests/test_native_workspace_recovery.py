@@ -7,6 +7,36 @@ from test_native_workspace import NativeFixture, configured
 from companion.native_workspace import NativeWorkspace, TargetConfig, WorkspaceError
 
 
+@pytest.mark.parametrize("collision", ["sk-" + "A" * 29, "pk_" + "B" * 29, "github_pat_" + "C" * 22])
+def test_native_approval_id_survives_secret_redaction(tmp_path, monkeypatch, collision):
+    """Random URL-safe IDs can resemble provider keys; approval IDs must round-trip intact."""
+    from companion.reachy_agent_broker import redact_payload
+
+    assert redact_payload(collision) != collision
+    monkeypatch.setattr("companion.native_workspace.secrets.token_urlsafe", lambda _bytes: collision)
+
+    async def scenario():
+        projects, targets = configured(tmp_path)
+        native = NativeFixture()
+        manager = NativeWorkspace(projects, targets, {"hermes": native}, tmp_path / "state.json")
+        try:
+            await manager.bind("robot", "photo-hermes")
+            draft = await manager.prepare("robot", "Implement the discussed contract")
+            assert draft["approval_id"] == manager.drafts["robot"]["approval_id"]
+            assert redact_payload(draft["approval_id"]) == draft["approval_id"]
+            snapshot = await manager.snapshot("robot")
+            assert isinstance(snapshot, dict)
+            assert snapshot["pending"]["approval_id"] == draft["approval_id"]
+            await manager.approve("robot", draft["approval_id"])
+            assert len([call for call in native.calls if call[0] == "submit"]) == 1
+            with pytest.raises(WorkspaceError, match="approval"):
+                await manager.approve("robot", draft["approval_id"])
+        finally:
+            await manager.close()
+
+    asyncio.run(scenario())
+
+
 def test_target_roundtrip_and_dedicated_session_on_main_agent(tmp_path):
     projects, targets = configured(tmp_path)
     raw = targets["photo-hermes"].config_dict()

@@ -10,6 +10,7 @@ import logging
 import math
 import threading
 import time
+from collections.abc import Callable
 
 from .config import AppConfig
 from .gesture_detection import GestureDetector, GestureReactionGate
@@ -34,6 +35,7 @@ class VisionMixin:
 
     def _init_vision_state(self) -> None:
         self._camera_lock = threading.Lock()
+        self._camera_recovery_specs = None
         self._face_tracking_active = False
         self._face_tracking_desired = False
         self._face_tracking_weight = 0.65
@@ -94,6 +96,8 @@ class VisionMixin:
             raise RuntimeError("Reachy camera capture is unavailable")
 
         def assert_allowed() -> None:
+            if self.stop_event.is_set():
+                raise RuntimeError("Camera capture was cancelled")
             if kids_generation is None:
                 self._assert_camera_allowed()
                 return
@@ -107,10 +111,15 @@ class VisionMixin:
                     or not self._kids_profile.camera_consent
                 ):
                     raise RuntimeError("I Spy camera capture was cancelled")
+            if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
+                raise RuntimeError("I Spy camera capture was cancelled by privacy")
 
         with self._camera_lock:
-            for _ in range(60):
+            for attempt in range(60):
                 assert_allowed()
+                if attempt == 10:
+                    self._reconnect_local_camera_reader(assert_allowed)
+                    assert_allowed()
                 frame = capture()
                 if frame:
                     assert_allowed()
@@ -123,6 +132,45 @@ class VisionMixin:
                     return jpeg
                 time.sleep(0.05)
         raise RuntimeError("Reachy camera did not return a frame")
+
+    def _reconnect_local_camera_reader(self, assert_allowed: Callable[[], None]) -> bool:
+        """Rebuild only the app's stale IPC reader, never daemon media, audio, or motors.
+
+        Called under _camera_lock, once per bounded capture. SDK 1.9 close/open reuse
+        leaves a quit GLib loop, so use its verified local-camera initializer instead.
+        """
+        media = self.robot.media
+        backend = getattr(media, "backend", None)
+        if getattr(backend, "value", backend) != "local":
+            return False
+        initialize = getattr(media, "_init_camera", None)
+        camera = getattr(media, "camera", None)
+        if not callable(initialize):
+            return False
+        if camera is not None:
+            if not callable(getattr(camera, "close", None)):
+                return False
+            self._camera_recovery_specs = getattr(camera, "camera_specs", None)
+        elif self._camera_recovery_specs is None:
+            return False
+        assert_allowed()
+        try:
+            if camera is not None:
+                camera.close()
+                media.camera = None
+            assert_allowed()
+            initialize(log_level="INFO", camera_specs=self._camera_recovery_specs)
+            assert_allowed()
+        except Exception:
+            replacement = getattr(media, "camera", None)
+            if replacement is not None and replacement is not camera:
+                try:
+                    replacement.close()
+                finally:
+                    media.camera = None
+            raise
+        _LOGGER.info("Reconnected Homebody's local camera reader after empty frames")
+        return True
 
     def _gesture_detection_allowed(self, config: AppConfig) -> bool:
         if not config.gesture_detection_enabled or not config.home_assistant_controls_enabled:

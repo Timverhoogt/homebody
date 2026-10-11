@@ -21,6 +21,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Native project approvals use equally strong random hexadecimal identifiers, avoiding intermittent API-key-pattern collisions that could redact an approval ID before it reached the owner UI. Exact-match, expiry, source-drift and single-use checks remain unchanged.
+- Kids I Spy reconnects a failed local SDK camera reader with a bounded, consent-aware retry before waking. Awake is serialized and checked against measured hardware readiness, so an already-awake robot does not perform a second wake animation. Stop, privacy transitions and session replacement invalidate startup and search; failures after movement fold safely, while stale cleanup cannot tear down a newer Kids session.
+- Camera joystick directions match the Reachy SDK axes. Center no longer waits while holding the admission locks, uses request-scoped cancellation and reports actual completion. Streaming sends combined head/body targets, levels roll at a bounded rate, and rejects nonfinite measured poses.
+- Owner camera readiness checks no longer request media during pairing. Explicit viewing can fall back from WebRTC to authenticated private HTTPS frames, with decoded-frame freshness gates, serialized capture, and teardown on Stop, tab exit, backgrounding, Kids or privacy changes. Phone-friendly connection reports retain bounded sanitized diagnostics in browser memory only.
+- Camera fullscreen and mobile controls remain readable and accessible when streaming or movement permission changes; every tab has its own heading and compact truthful robot status instead of an oversized shared hero.
 - GPIO buttons: a long press is now recognised from its edge timestamps, so holding green or red still means Standby or Sleep when the press and release arrive together after the monitor was busy with an earlier action.
 - GPIO buttons: saving new button settings while an action is still running no longer revives the old monitor or double-dispatches presses. Each monitor has its own stop signal, stale queued presses are dropped, and the new monitor waits for the old one to release the lines.
 - Realtime camera calls answered by the local vision model run on a worker thread, so a slow or unreachable vision server no longer freezes audio, barge-in and Stop for up to a minute.
@@ -33,6 +38,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Native Home Assistant bridge migration can retain the existing device name, node name and MAC through validated host-owned settings. Adult HA controls are blocked during Kids sessions; camera frames require ready Awake state and are rechecked after capture and encoding. HA live viewing remains request-driven MJPEG, not native WebRTC.
+- OPERATIONS documents private HTTPS camera fallback, phone connection reports, signaling-port collisions, SDK media side effects, and separate desktop/phone acceptance limits.
 - Every collapsible section in the dashboard now opens with the same round + / − key on the right, replacing the browser's default triangle on the Settings sections, Session details and the initiative disclosures. The app page card on Hugging Face uses the orange gradient of the new icon.
 - The Home Assistant voice and announcement temporary files now use the `homebody-ha-` and `homebody-announcement-` prefixes, matching the rest of the app.
 - Redesigned the dashboard as a cream enclosure with dark displays set into it. The Home tab opens on a device-style display: a large Reachy face whose eyes and antennas follow the runtime state, the state written as a sentence ("Standing by."), the power control, and a microphone, camera, motors and agent telemetry rail. Live-state surfaces on the other tabs (motor state, Agent Mode, Kids session, announcement queue) use the same dark display; controls and settings sit on the enclosure. Tabs move to a numbered top bar on desktop and a fixed bottom bar on phones. Instrument Serif and DM Mono are bundled as subset WOFF2 files, so the page still makes no outside requests, and the app icon was redrawn to match; PWA shell v56. A night palette follows the system dark setting. The Hugging Face landing page (`index.html`, `style.css`) uses the same enclosure-and-display language and the same bundled fonts, so it no longer loads Google Fonts.
@@ -151,11 +158,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Build
 
+- Distribution metadata matches the existing registered `reachy_mini_homebody` app ID. GitHub README stays free of Hugging Face card front matter; Space export adds the canonical metadata separately.
 - The CI example is now an active GitHub Actions workflow with a complete dependency set. The old list was missing `aioesphomeapi`, `onnxruntime`, `sherpa-onnx` and others, so 18 test modules failed to import. The workflow runs ruff, JavaScript syntax checks, the full suite on Python 3.11 and 3.12, and the package build.
 
 ### Verified
 
-- Ruff, Python compilation, JavaScript syntax, and all 437 automated tests pass.
+- Regression coverage includes camera lifecycle and measured-pose cancellation, owner-protected transport, Home Assistant identity/privacy, and Kids startup recovery. Exact local, target-SDK, browser and physical acceptance results are recorded with the corresponding repair pull requests; passing synthetic tests is not a claim of phone WebRTC or updater deployment acceptance.
 
 ## [0.2.0] - 2026-07-18
 

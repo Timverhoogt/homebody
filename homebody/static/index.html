@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=72">
+  <link rel="stylesheet" href="/static/style.css?v=76">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -57,6 +57,31 @@
       </nav>
     </header>
 
+    <section id="global-robot-status" class="global-robot-status" aria-label="Reachy status" hidden>
+      <div class="compact-status-line">
+        <span class="compact-mode">Reachy · <strong id="compact-power-mode">Unknown</strong></span>
+        <span>Mic · <strong id="compact-mic">Unknown</strong></span>
+        <span>Camera · <strong id="compact-camera">Unknown</strong></span>
+        <span>Motors · <strong id="compact-motors">Unknown</strong></span>
+      </div>
+      <div id="global-adult-controls" class="global-adult-controls">
+        <details id="global-power-controls">
+          <summary>Power controls</summary>
+          <div class="actions" role="group" aria-label="Reachy power">
+            <button type="button" data-power="standby" data-power-message="global-power-message">Standby</button>
+            <button type="button" data-power="awake" data-power-message="global-power-message">Awake</button>
+            <button type="button" data-power="meeting" data-minutes="60" data-power-message="global-power-message">Meeting · 60 min</button>
+            <button type="button" data-power="sleep" data-power-message="global-power-message">Sleep</button>
+          </div>
+        </details>
+        <button type="button" id="global-robot-stop" class="secondary" disabled>Stop movement</button>
+      </div>
+      <p id="global-power-message" class="message" role="status"></p>
+      <p id="global-stop-message" class="message" role="status"></p>
+    </section>
+
+    <div id="panel-dashboard" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboard" data-panel="dashboard">
+      <header class="page-heading"><h1>Home</h1><p>Reachy’s current state and recent conversation.</p></header>
     <section class="display hero status-card" aria-label="Current state">
       <div class="hero-face" aria-hidden="true">
         <span class="hero-ring"></span>
@@ -73,7 +98,7 @@
       </div>
       <div class="hero-copy">
         <p class="label hero-label"><span id="status-dot" class="status-dot" aria-label="Runtime status"></span>Current state <span id="power-mode-badge" class="hero-mode">—</span></p>
-        <h1 id="runtime-state">Connecting…</h1>
+        <h2 id="runtime-state">Connecting…</h2>
         <p id="runtime-detail" class="hero-detail">Reading app status</p>
         <div class="actions power-actions" role="group" aria-label="Power state">
           <button type="button" data-power="standby">Standby</button>
@@ -91,7 +116,6 @@
       </ul>
     </section>
 
-    <div id="panel-dashboard" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboard" data-panel="dashboard">
       <section class="card conversation-card">
         <div><p class="label">Last heard</p><p id="last-transcript" class="quote">—</p></div>
         <div><p class="label">Last response</p><p id="last-response" class="quote">—</p></div>
@@ -116,6 +140,7 @@
     </div>
 
     <div id="panel-agent" class="tab-panel" role="tabpanel" aria-labelledby="tab-agent" data-panel="agent" hidden>
+      <header class="page-heading"><h1>Agent</h1><p>Your companion and shared workspace.</p></header>
       <section class="card agent-card display">
         <div class="agent-hero">
           <div>
@@ -354,6 +379,7 @@
     </div>
 
     <div id="panel-kids" class="tab-panel kids-panel" role="tabpanel" aria-labelledby="tab-kids" data-panel="kids" hidden>
+      <header class="page-heading"><h1>Kids</h1><p>Supervised activities and child-safe controls.</p></header>
       <section class="card kids-hero display">
         <div class="kids-hero-copy">
           <p class="label">Supervised play</p>
@@ -430,6 +456,7 @@
     </div>
 
     <div id="panel-announce" class="tab-panel" role="tabpanel" aria-labelledby="tab-announce" data-panel="announce" hidden>
+      <header class="page-heading"><h1>Announce</h1><p>Send a message for Reachy to speak.</p></header>
       <section class="card announcement-card">
         <div class="section-heading">
           <div><p class="label">Text to speech</p><h2>Reachy announcements</h2></div>
@@ -495,6 +522,7 @@
     </div>
 
     <div id="panel-robot" class="tab-panel" role="tabpanel" aria-labelledby="tab-robot" data-panel="robot" hidden>
+      <header class="page-heading"><h1>Robot</h1><p>Camera, movement and hardware controls.</p></header>
       <section class="card robot-control-card" aria-busy="false" data-action-busy="false">
         <div class="section-heading">
           <div><p class="label">Remote motor control</p><h2>Move Reachy</h2></div>
@@ -704,7 +732,8 @@
           <div><p class="label">Private local viewer</p><h2>Reachy camera</h2></div>
           <span id="camera-live-status" class="badge">Off</span>
         </div>
-        <p class="muted">Connect directly to the same local WebRTC camera feed used by Reachy Mini Control. Video remains between this browser and Reachy; it is never sent to Hermes or OpenAI.</p>
+        <p id="camera-connectivity-message" class="muted" role="status">Pair an Owner device to check camera transport. No camera starts during pairing.</p>
+        <p class="muted">A private view from Reachy. Drag to look around; release to hold. Video stays between your device and Reachy; it is never sent to Hermes or OpenAI.</p>
         <div id="camera-viewer" class="camera-viewer">
           <video id="reachy-camera-video" autoplay playsinline muted aria-label="Live Reachy camera feed"></video>
           <div class="camera-vision-overlay" aria-hidden="true">
@@ -740,7 +769,8 @@
                 <span id="camera-joystick-knob" class="camera-joystick-knob" aria-hidden="true"></span>
               </div>
               <span id="camera-control-help" class="sr-only">Drag or use arrow keys to pan and tilt. Releasing holds the current measured view.</span>
-              <button type="button" id="camera-control-center" class="camera-center-button">Center head &amp; base</button>
+              <button type="button" id="camera-control-center" class="camera-center-button" title="Smoothly return the head and base to their neutral pose">Center view</button>
+              <label class="camera-speed-label">Speed <select id="camera-control-speed" aria-label="Camera movement speed"><option value="0.3">Careful</option><option value="0.6" selected>Normal</option><option value="1">Fast</option></select></label>
               <button type="button" id="camera-control-settings" class="camera-center-button" hidden>Movement settings</button>
               <span id="camera-control-status" class="camera-control-status" role="status">Release holds the current view</span>
             </div>
@@ -757,7 +787,22 @@
           <button type="button" id="camera-live-fullscreen" class="secondary" disabled>Fullscreen</button>
           <button type="button" id="camera-test-button" class="secondary">Capture one local test frame</button>
         </div>
-        <p class="muted compact-note">The live viewer is opt-in, works only while Reachy is Awake, and stops when you leave this tab, background the app, enter Meeting, or enter Sleep.</p>
+        <p id="camera-feed-health" class="camera-feed-health" role="status">Camera off · movement requires fresh video</p>
+        <div class="camera-report-actions">
+          <button type="button" id="camera-copy-report" class="secondary">Copy connection report</button>
+          <span id="camera-report-status" role="status" class="muted compact-note">Phone-friendly · no developer tools needed</span>
+        </div>
+        <p class="muted compact-note">No images, audio, addresses or credentials · report expires after 10 minutes.</p>
+        <textarea id="camera-report-text" aria-label="Connection report to copy" rows="6" readonly hidden></textarea>
+        <details class="camera-diagnostics"><summary>Connection details</summary>
+          <dl><div><dt>Video transport</dt><dd id="camera-diag-transport">Off</dd></div>
+          <div><dt>Received video</dt><dd id="camera-diag-video">Not receiving</dd></div>
+          <div><dt>Network round trip</dt><dd id="camera-diag-network">Unavailable</dd></div>
+          <div><dt>Control response</dt><dd id="camera-diag-control">No commands sent</dd></div>
+          <div><dt>Direct connection</dt><dd id="camera-diag-ice">Not connected</dd></div></dl>
+          <p class="muted compact-note">Frame freshness is time since this browser received a decoded frame, not full camera-to-screen latency. Details stay on this device.</p>
+        </details>
+        <p class="muted compact-note">The live viewer is opt-in, works only while Reachy is Awake, and stops when you leave this tab, background the app, enter Meeting, or enter Sleep. Movement holds automatically when decoded video stops arriving. HTTPS is a reduced-rate backup; it starts in Careful speed.</p>
         <form id="local-vision-ask" class="local-vision-ask" hidden>
           <label for="local-vision-question">Ask the local vision model</label>
           <div class="local-vision-row">
@@ -788,6 +833,7 @@
     </div>
 
     <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" hidden>
+      <header class="page-heading"><h1>Settings</h1><p>Configure voice, behaviour and connections.</p></header>
       <section id="agent-connection-details" class="card" tabindex="-1" aria-labelledby="agent-connection-title">
         <h2 id="agent-connection-title">Agent connection</h2>
         <p id="agent-connection-detail">Waiting for a fresh connection check.</p>
@@ -976,13 +1022,13 @@
   </main>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=72"></script>
-  <script src="/static/owner.js?v=72"></script>
+  <script src="/static/notifications.js?v=76"></script>
+  <script src="/static/owner.js?v=76"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=72"></script>
-  <script src="/static/agent-connection.js?v=72"></script>
-  <script src="/static/native-workspace.js?v=72"></script>
-  <script src="/static/workspace.js?v=72"></script>
-  <script src="/static/main.js?v=72"></script>
+  <script src="/static/camera.js?v=76"></script>
+  <script src="/static/agent-connection.js?v=76"></script>
+  <script src="/static/native-workspace.js?v=76"></script>
+  <script src="/static/workspace.js?v=76"></script>
+  <script src="/static/main.js?v=76"></script>
 </body>
 </html>

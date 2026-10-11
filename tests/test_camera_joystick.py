@@ -32,8 +32,12 @@ class FakeActions:
         *,
         hold_pose: bool,
         reject_if_busy: bool,
+        cancel_event: threading.Event | None = None,
+        on_complete=None,
     ) -> dict[str, object]:
         self.commands.append((name, arguments, hold_pose, reject_if_busy))
+        if on_complete is not None:
+            on_complete({"ok": True, "action": name})
         return {"accepted": True, "queued": name}
 
     def cancel(self, *, stop_media: bool = True) -> bool:
@@ -314,7 +318,7 @@ def test_runtime_camera_stream_coalesces_updates_then_release_holds_and_invalida
     ended = runtime.end_camera_control(session_id, 2)
     assert ended == {"ok": True, "held": True}
     assert stream.snapshot().active is False
-    assert actions.cancel_calls == [False]
+    assert actions.cancel_calls == []
     with pytest.raises(RuntimeError, match="session is not active"):
         runtime.queue_camera_control(session_id, 3, 0.5, 0.0)
 
@@ -325,7 +329,7 @@ def test_runtime_policy_revocation_cancels_and_invalidates_active_camera_control
 
     runtime.revoke_camera_control()
 
-    assert actions.cancel_calls == [False]
+    assert actions.cancel_calls == []
     with pytest.raises(RuntimeError, match="session is not active"):
         runtime.queue_camera_control(str(started["session_id"]), 1, 0.5, 0.0)
 

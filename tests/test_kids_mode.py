@@ -223,7 +223,12 @@ def test_ispy_both_picker_roles_use_the_base_motor(monkeypatch: pytest.MonkeyPat
         runtime._kids_profile = profile
         runtime._kids_generation = 4
         runtime._kids_session_id = "kids-" + "f" * 32
-    monkeypatch.setattr(runtime, "set_power_mode", lambda *_args, **_kwargs: None)
+    def confirm_awake(*_args, **_kwargs):
+        runtime._power_mode = "awake"
+        runtime._motors_enabled = True
+        runtime._head_safely_folded = False
+
+    monkeypatch.setattr(runtime, "set_power_mode", confirm_awake)
 
     runtime._prepare_ispy_round(4, profile, client=Selector())  # type: ignore[arg-type]
     search_base_degrees = [round(float(np.degrees(target["body_yaw"]))) for target in robot.targets[:9]]
@@ -232,7 +237,7 @@ def test_ispy_both_picker_roles_use_the_base_motor(monkeypatch: pytest.MonkeyPat
         abs(right - left) <= 60
         for left, right in zip(search_base_degrees, search_base_degrees[1:], strict=False)
     )
-    assert robot.media.calls == 5
+    assert robot.media.calls == 6  # readiness frame precedes the five search viewpoints
     assert runtime.status()["kids_mode"]["camera_active"] is False  # type: ignore[index]
 
     runtime._perform_ispy_player_guess_motion(4)
@@ -240,7 +245,7 @@ def test_ispy_both_picker_roles_use_the_base_motor(monkeypatch: pytest.MonkeyPat
     assert round(float(np.degrees(player_guess_target["body_yaw"]))) == -12
     assert not np.array_equal(player_guess_target["head"], np.eye(4))
     assert player_guess_target["duration"] == 1.5
-    assert robot.media.calls == 5  # player-picker motion never re-enables or reads the camera
+    assert robot.media.calls == 6  # player-picker motion never re-enables or reads the camera
 
     with pytest.raises(RuntimeError, match="cancelled"):
         runtime._perform_ispy_player_guess_motion(3)
@@ -616,8 +621,8 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     worker = (STATIC / "service-worker.js").read_text(encoding="utf-8")
     assert "homebody-shell-v" in worker
     for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=72" in html
-        assert f'"/static/{asset}?v=72"' in worker
+        assert f"/static/{asset}?v=76" in html
+        assert f'"/static/{asset}?v=76"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

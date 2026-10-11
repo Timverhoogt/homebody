@@ -170,6 +170,17 @@ def default_device_identity(*, machine_id_path: Path = Path("/etc/machine-id")) 
     )
 
 
+def _configured_device_identity(config: AppConfig) -> DeviceIdentity:
+    """Keep an existing HA device instead of creating a duplicate during bridge migration."""
+    if config.home_assistant_mac_address:
+        return DeviceIdentity(
+            name=config.home_assistant_device_name,
+            node_name=config.home_assistant_node_name,
+            mac_address=config.home_assistant_mac_address,
+        )
+    return default_device_identity()
+
+
 @dataclass(frozen=True, slots=True)
 class EntitySpec:
     kind: str
@@ -1125,7 +1136,7 @@ class HermesHomeAssistantProvider(HomeAssistantStateProvider):
             except importlib.metadata.PackageNotFoundError:
                 return None
         if object_id == "robot_name":
-            return default_device_identity().name
+            return _configured_device_identity(config).name
         if object_id == "wireless_version":
             return bool(getattr(self.runtime.robot, "wireless_version", True))
         if object_id == "simulation_mode":
@@ -1154,13 +1165,19 @@ class HermesHomeAssistantProvider(HomeAssistantStateProvider):
     def write(self, object_id: str, value: object) -> bool:
         try:
             config = self._config()
+            if self._kids_engaged() and not (object_id == "camera_disabled" and bool(value)):
+                return False
             if object_id == "mute":
                 if bool(value):
                     self.runtime.set_power_mode("meeting", duration_seconds=3600.0)
                     return True
                 return False
             if object_id == "awake":
-                if not config.home_assistant_controls_enabled:
+                if not (
+                    config.home_assistant_enabled
+                    and config.home_assistant_controls_enabled
+                    and bool(getattr(self.runtime, "control_ready", False))
+                ):
                     return False
                 target = "awake" if bool(value) else "standby"
                 result = self.runtime.set_power_mode(target, duration_seconds=0.0)
@@ -1239,11 +1256,29 @@ class HermesHomeAssistantProvider(HomeAssistantStateProvider):
             _LOGGER.warning("Rejected Home Assistant command %s: %s", object_id, exc)
             return False
 
+    def _kids_engaged(self) -> bool:
+        kids = self._runtime_status().get("kids_mode")
+        return bool(getattr(self.runtime, "kids_controls_locked", False)) or (
+            isinstance(kids, dict) and bool(kids.get("active") or kids.get("locked"))
+        )
+
+    def _ha_camera_allowed(self) -> bool:
+        config = self._config()
+        return (
+            config.home_assistant_enabled
+            and config.home_assistant_camera_enabled
+            and bool(getattr(self.runtime, "control_ready", False))
+            and self._runtime_status().get("power_mode") == "awake"
+            and not self._kids_engaged()
+        )
+
     def camera_image(self) -> bytes | None:
         try:
-            if not self._config().home_assistant_camera_enabled:
+            if not self._ha_camera_allowed():
                 return None
             image = self.runtime.camera_snapshot()
+            if not self._ha_camera_allowed():
+                return None
             if not isinstance(image, (bytes, bytearray, memoryview)):
                 raise RuntimeError("Reachy camera returned an unsupported payload")
             jpeg = bytes(image)
@@ -1251,7 +1286,8 @@ class HermesHomeAssistantProvider(HomeAssistantStateProvider):
                 raise RuntimeError("Home Assistant camera JPEG exceeds the 1 MB limit")
             if len(jpeg) < 4 or not jpeg.startswith(b"\xff\xd8") or not jpeg.endswith(b"\xff\xd9"):
                 raise RuntimeError("Reachy camera returned an invalid JPEG")
-            return _normalize_camera_jpeg_for_home_assistant(jpeg)
+            normalized = _normalize_camera_jpeg_for_home_assistant(jpeg)
+            return normalized if self._ha_camera_allowed() else None
         except Exception as exc:
             self._last_error = str(exc)
             return None
@@ -1297,7 +1333,7 @@ class HomeAssistantBridge:
     ) -> None:
         self.provider = provider
         self.config = config
-        self.identity = identity or default_device_identity()
+        self.identity = identity or _configured_device_identity(config)
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running: RunningESPHomeServer | None = None

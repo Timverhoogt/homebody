@@ -46,6 +46,7 @@ class KidsModeMixin:
         self._kids_warning_timer: threading.Timer | None = None
         self._kids_generation = 0
         self._kids_ispy_player_motion_index = 0
+        self._kids_ispy_motion_started = False
         self._kids_last_end_reason = ""
         self._kids_last_fold_succeeded: bool | None = None
 
@@ -64,7 +65,7 @@ class KidsModeMixin:
         if not self._audio_ready:
             raise RuntimeError("Kids Mode audio is not ready")
         self.revoke_camera_control()
-        with self._kids_lock:
+        with self._motor_transition_lock, self._kids_lock:
             # Keep the Kids guard while invalidating Agent work and forcing the
             # conversation profile, matching set_capability_profile's lock order.
             self.cancel_agent_work("kids_mode")
@@ -80,6 +81,7 @@ class KidsModeMixin:
             self._kids_generation += 1
             generation = self._kids_generation
             self._kids_ispy_player_motion_index = 0
+            self._kids_ispy_motion_started = False
             self._kids_active = True
             self._kids_camera_active = False
             self._kids_locked = True
@@ -121,7 +123,11 @@ class KidsModeMixin:
             except Exception as exc:
                 _LOGGER.warning("I Spy start failed (%s): %s", type(exc).__name__, exc)
                 if self._kids_callback_is_current(generation):
-                    self.stop_kids_mode(reason="ispy_start_failed", fold=True)
+                    with self._kids_lock:
+                        motion_started = self._kids_ispy_motion_started
+                    self.stop_kids_mode(
+                        reason="ispy_start_failed", fold=motion_started, expected_generation=generation,
+                    )
                 raise
         if greet:
             try:
@@ -135,7 +141,10 @@ class KidsModeMixin:
                     voice="cgSgspJ2msm6clMCkdW9",
                 )
             except Exception:
-                self.stop_kids_mode(reason="start_failed", fold=False)
+                self.stop_kids_mode(
+                    reason="start_failed", fold=self._kids_ispy_motion_started,
+                    expected_generation=generation,
+                )
                 raise
         _LOGGER.info(
             "Kids Mode started (age=%s activity=%s duration=%sm motion=%s)",
@@ -170,7 +179,6 @@ class KidsModeMixin:
         if not profile.camera_consent:
             raise RuntimeError("Camera opt-in is required for I Spy")
         session_id = self._kids_session_id
-        self.set_power_mode("awake", cancel_announcements=False)
         # Five retained viewpoints cover a 240° desk arc while every commanded segment remains <= 60°.
         # Two intermediate waypoints cross safely from the left extreme to the right side without capturing.
         scan_route = (
@@ -193,11 +201,25 @@ class KidsModeMixin:
                 raise RuntimeError("I Spy search was cancelled")
             self._kids_camera_active = True
         try:
+            # Discard a consent-bound readiness frame before enabling torque or searching.
+            self._capture_camera_jpeg(kids_generation=generation)
             with self._motor_transition_lock:
+                with self._kids_lock:
+                    if (
+                        not self._kids_callback_is_current(generation)
+                        or self.stop_event.is_set()
+                        or self._privacy_requested.is_set()
+                        or self._effective_power_mode() in {"meeting", "sleep"}
+                    ):
+                        raise RuntimeError("I Spy search was cancelled before wake")
+                    self._kids_ispy_motion_started = True
+                self.set_power_mode("awake", cancel_announcements=False)
+                self._assert_ispy_current(generation)
+                if self._motors_enabled is not True or self._head_safely_folded:
+                    raise RuntimeError("I Spy requires a successful Awake transition")
                 previous_body_yaw = 0.0
                 for body_yaw, capture in scan_route:
-                    if not self._kids_callback_is_current(generation):
-                        raise RuntimeError("I Spy search was cancelled")
+                    self._assert_ispy_current(generation)
                     angular_distance = abs(body_yaw - previous_body_yaw)
                     goto_target(
                         head=self._ispy_head_target(body_yaw, -5.0),
@@ -210,10 +232,10 @@ class KidsModeMixin:
                     if capture:
                         frames.append(self._capture_camera_jpeg(kids_generation=generation))
                 with self._kids_lock:
-                    self._kids_camera_active = False
+                    if self._kids_generation == generation:
+                        self._kids_camera_active = False
                 for body_yaw in return_route:
-                    if not self._kids_callback_is_current(generation):
-                        raise RuntimeError("I Spy search was cancelled")
+                    self._assert_ispy_current(generation)
                     angular_distance = abs(body_yaw - previous_body_yaw)
                     goto_target(
                         head=self._ispy_head_target(body_yaw, -5.0 if body_yaw else 0.0),
@@ -224,29 +246,33 @@ class KidsModeMixin:
                     )
                     previous_body_yaw = body_yaw
             with self._kids_lock:
-                self._kids_camera_active = False
-            if not self._kids_callback_is_current(generation):
-                raise RuntimeError("I Spy search was cancelled")
+                if self._kids_generation == generation:
+                    self._kids_camera_active = False
+            self._assert_ispy_current(generation)
             if client is None:
                 client = self._new_bridge_client(self.config_loader())
+            self._assert_ispy_current(generation)
             target = client.select_ispy_target(
                 frames,
                 session_id=session_id,
                 age_band=profile.age_band,
                 language=profile.language,
             )
-            if not self._kids_callback_is_current(generation):
+            try:
+                self._assert_ispy_current(generation)
+            except RuntimeError:
                 try:
                     client.cancel_ispy_session(session_id)
                 except Exception:
                     _LOGGER.warning("Could not delete a cancelled I Spy bridge session")
-                raise RuntimeError("I Spy search was cancelled")
+                raise RuntimeError("I Spy search was cancelled") from None
             with self._kids_lock:
                 self._kids_ispy_player_motion_index = 0
             return target
         finally:
             with self._kids_lock:
-                self._kids_camera_active = False
+                if self._kids_generation == generation:
+                    self._kids_camera_active = False
             frames.clear()
             if owns_client and client is not None:
                 client.close()
@@ -318,8 +344,18 @@ class KidsModeMixin:
             )
             return self._play_kids_stream(client, clue, barge_in=barge_in)
         except Exception:
-            self.stop_kids_mode(reason="ispy_round_failed", fold=True)
+            self.stop_kids_mode(reason="ispy_round_failed", fold=True, expected_generation=generation)
             raise
+
+    def _assert_ispy_current(self, generation: int) -> None:
+        """Revalidate after every blocking boundary, including before provider handoff."""
+        if (
+            not self._kids_callback_is_current(generation)
+            or self.stop_event.is_set()
+            or self._privacy_requested.is_set()
+            or self._effective_power_mode() in {"meeting", "sleep"}
+        ):
+            raise RuntimeError("I Spy search was cancelled")
 
     def _kids_callback_is_current(self, generation: int) -> bool:
         with self._kids_lock:
@@ -349,7 +385,7 @@ class KidsModeMixin:
             if not self._kids_active or generation != self._kids_generation:
                 return
         try:
-            self.stop_kids_mode(reason="time_limit", fold=True)
+            self.stop_kids_mode(reason="time_limit", fold=True, expected_generation=generation)
         except Exception:
             _LOGGER.exception("Kids Mode expiry could not complete the safe fold")
 
@@ -379,9 +415,13 @@ class KidsModeMixin:
         finally:
             client.close()
 
-    def stop_kids_mode(self, *, reason: str = "parent", fold: bool = True) -> dict[str, object]:
+    def stop_kids_mode(
+        self, *, reason: str = "parent", fold: bool = True, expected_generation: int | None = None,
+    ) -> dict[str, object]:
         """End Kids Mode immediately, cancel its voice/motion, and optionally fold safely."""
         with self._kids_lock:
+            if expected_generation is not None and self._kids_generation != expected_generation:
+                return dict(self.status()["kids_mode"])
             was_active = self._kids_active
             ended_session_id = self._kids_session_id if was_active else ""
             ispy_session_id = (
@@ -396,6 +436,7 @@ class KidsModeMixin:
             if warning is not None and warning is not threading.current_thread():
                 warning.cancel()
             self._kids_generation += 1
+            stopped_generation = self._kids_generation
             self._kids_active = False
             self._kids_camera_active = False
             self._kids_locked = False
@@ -404,17 +445,30 @@ class KidsModeMixin:
             self._kids_session_id = ""
             self._kids_last_end_reason = reason[:40]
             self._kids_last_fold_succeeded = None
+            # This cancellation does not acquire the motor lock; invalidate/cancel
+            # before waiting for the scan to release it. New admission waits on both.
+            cancel_move = getattr(self.robot, "cancel_move", None)
+            if was_active and callable(cancel_move):
+                try:
+                    cancel_move()
+                except Exception:
+                    _LOGGER.warning("Could not cancel the active Kids Mode movement", exc_info=True)
+        with self._motor_transition_lock:
+            with self._kids_lock:
+                if self._kids_generation != stopped_generation:
+                    return dict(self.status()["kids_mode"])
+            return self._finish_kids_stop(reason, fold, was_active, ended_session_id, ispy_session_id)
+
+    def _finish_kids_stop(
+        self, reason: str, fold: bool, was_active: bool, ended_session_id: str, ispy_session_id: str,
+    ) -> dict[str, object]:
+        """Complete current teardown under the motor lock, never across a replacement."""
         if ended_session_id:
             self._notify_bridge_kids_session_async(ended_session_id, active=False)
         self._request_conversation_stop()
         self._cancel_announcements(clear_queue=True)
         self._clear_streamed_audio()
-        cancel_move = getattr(self.robot, "cancel_move", None)
-        if was_active and callable(cancel_move):
-            try:
-                cancel_move()
-            except Exception:
-                _LOGGER.warning("Could not cancel the active Kids Mode movement", exc_info=True)
+
         if ispy_session_id:
             cancel_thread = threading.Thread(
                 target=self._cancel_ispy_bridge_session,

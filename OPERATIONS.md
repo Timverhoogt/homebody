@@ -68,6 +68,39 @@ curl -fsS http://REACHY_HOST:8042/api/status
 
 The app manager may report `running` several seconds before the settings server and media pipeline are ready.
 
+## Owner onboarding and phone camera connectivity
+
+Owner pairing authorizes a browser session, not its current IP address. Robot provisioning must configure trusted-network media transport once; owner pairing must not obtain root privileges or add per-device firewall rules. On a managed Jetson, inspect the active legacy iptables rules as well as the persisted firewall configuration. Restrict WebRTC UDP to the trusted interface/subnet and the verified ephemeral port range, while keeping direct daemon signaling restricted.
+
+After pairing and on an owner page load, the UI checks `/api/camera/connectivity`: a bounded loopback signaling welcome handshake without requesting any media session or frame. `media_verified=false` is intentional; camera playback is verified only after an explicit Start while Awake. Pairing never activates the camera, microphone or motors.
+
+The viewer first uses WebRTC. If the session closes or decoded video does not arrive within fifteen seconds, it automatically uses owner-authenticated, CSRF-protected `/api/camera/frame` over the same private HTTPS connection at a reduced frame rate. The UI labels this **Live · HTTPS**. Frames remain ephemeral, uncached and between the browser and robot; no vision model is invoked. Frame delivery rechecks camera opt-in, Awake, Kids locks and owner revocation after acquisition. Stop, hidden/background page, tab exit and privacy transitions abort the fetch loop and dispose of the canvas MediaStream. Never count a signaling/UDP probe as actual phone playback acceptance.
+
+### Phone-friendly connection reports
+
+Use **Copy connection report** below the Camera viewer after a failed direct connection or HTTPS fallback. No Chrome developer tools are needed. Refresh Homebody to load the latest UI, explicitly start the viewer, let the connection finish or fall back, then copy and paste the report into the support conversation. If clipboard access is unavailable, the button exposes a selected read-only text field instead.
+
+The report retains the last direct failure across fallback and Stop. It includes bounded ICE/DTLS state, up to four candidate-pair summaries with connectivity-check counters, actual inbound-video codec/decoded counters, and eight state events. It samples during negotiation before video arrives and uses the existing health sampling once a stream is attached. Never interpret offered codecs or successful signaling as decoded-video proof.
+
+Reports stay in browser RAM for ten minutes, are replaced by a new Start, and are exported only by the user's clipboard action. They contain no frames, audio, addresses, SDP, credentials, raw exception text, or automatic uploads. Report controls are optional when an older cached HTML shell loads a newer script: camera/privacy/Stop behavior must still work.
+
+### Signaling readiness and port collisions
+
+Verify the actual loopback WebSocket welcome on `ws://127.0.0.1:8443`; the daemon's `media.available=true` can remain true even when WebRTC signaling failed to start. HTTPS/JPEG video working is not proof that direct video is available. Check the media startup journal for `Failed to start signalling server: Address already in use` and inspect the actual listener with `ss -ltnp`.
+
+Do not configure a Tailscale TLS-terminated TCP listener on the same native signaling port. It can occupy the Tailscale address while GStreamer needs a wildcard bind, causing startup/reacquisition to fail. Homebody already carries owner-protected signaling through its private HTTPS dashboard on port 443 at `/api/camera/signaling`; a separate unauthenticated signaling proxy on 8443 is unnecessary for Homebody. Back up Serve configuration, remove only the conflicting entry, and prove the dashboard's 443 configuration is unchanged. No broader firewall changes are needed for this collision.
+
+SDK 1.9.0 `ReachyMini(media_backend="no_media")` is **not side-effect-free**: it calls daemon media release, and context exit reacquires media. Do not construct such a client for a supposedly read-only or isolated motor probe. Prefer the existing runtime client or version-verified daemon APIs. After authorized media recovery, verify the loopback welcome, owner-proxied ICE/DTLS connection, real decoded frames/codec, and Stop cleanup; separately confirm the user's phone. A successful desktop Chromium test is not Android acceptance.
+
+### Camera control responsiveness and acceptance
+
+- Direct video is Live only after a decoded frame. The bounded 15-second connection window lets the SDK's 12-second negotiation watchdog finish. Track arrival/signaling alone is not proof of video. Owner-visible RAM-only connection details expose ICE/DTLS, selected-pair round trip, referenced video codec/decoded frames and control response; they do not publish IP addresses or persist diagnostic bodies.
+- HTTPS backup is serialized and uses a 100 ms inter-frame pause (maximum 10 requests/s before capture/network/decode overhead), with a 3-second request deadline and Careful movement speed by default. Its actual frame rate is shown; it is not equivalent to low-latency WebRTC.
+- Movement requires a decoded frame received within 1.5 seconds. A stale feed ends the gesture; fresh video never automatically resumes movement. Robot-local input already expires after 750 ms without a new command. These are received-frame/input watchdogs, not measurement of end-to-end camera latency.
+- Center releases all admission locks before waiting for the worker, revalidates ownership before enqueue, and uses request-scoped cancellation plus the actual completion result. Stop/End/privacy invalidate the token, so delayed or timed-out Center cannot execute later or cancel a newer owner. Stop is sent independently of gesture release acknowledgements.
+- Camera streaming approaches nominal zero roll at no more than 15 degrees/s and sends head/body targets together on SDK 1.9.0. Translation is preserved to avoid an unrequested positional transition. Release holds measured pose, including any mechanical tracking error; this is not a claim of calibrated physical horizon lock.
+- Before deployment, complete fake-hardware concurrency tests and independent motor review. Restart only with verified clear space/owner supervision if Awake. Deploy folded in Standby; do not start live camera or issue motion for verification. Owner-supervised acceptance must check directions, roll convergence, Center, Stop during Center/pan, privacy and phone WebRTC. Preserve the exact wheel hash and rollback archive.
+
 ## Companion bridge deployment
 
 **Agent-led setups** (Settings → Connect your agent, see [docs/agent-setup.md](docs/agent-setup.md)) keep a copy of the bridge next to the agent:

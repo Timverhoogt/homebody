@@ -7,7 +7,7 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const staticDir = path.join(__dirname, '../homebody/static');
 
-async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
+async function setup(t, { width = 900, height = 700, fallback = false, transportFallback = false, legacyReportUi = false } = {}) {
   const browser = await chromium.launch({ headless: true });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height } });
@@ -18,21 +18,27 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
     ? route.fulfill({ contentType: 'text/html', body: html }) : route.abort());
   await page.goto('http://homebody.test/');
   await page.addStyleTag({ path: path.join(staticDir, 'style.css') });
-  await page.evaluate(({ fallback }) => {
+  await page.evaluate(({ fallback, transportFallback, legacyReportUi }) => {
     document.querySelector('main').hidden = false;
     document.querySelector('main').inert = false;
     document.querySelector('#owner-pair-panel').hidden = true;
     document.querySelector('#panel-robot').hidden = false;
     document.querySelector('#panel-robot').classList.add('active');
+    if (legacyReportUi) for (const id of ["camera-copy-report", "camera-report-status", "camera-report-text"]) document.querySelector(`#${id}`).remove();
     window.requests = [];
     window.fetch = async (url, options) => {
       window.requests.push({ url, body: options?.body ? JSON.parse(options.body) : null });
+      if (url === "/api/camera/frame") return { ok: true, status: 200, blob: () => new Promise(resolve => canvas.toBlob(resolve)) };
       return { ok: true, json: async () => ({ session_id: 'mock-session' }) };
     };
     const canvas = document.createElement('canvas');
     canvas.width = 640; canvas.height = 480;
-    canvas.getContext('2d').fillRect(0, 0, 640, 480);
-    const stream = canvas.captureStream();
+    const draw = () => {
+      canvas.getContext('2d').fillStyle = window.pauseVideoFrames ? '#000' : `hsl(${Date.now() % 360}, 40%, 25%)`;
+      if (!window.pauseVideoFrames) canvas.getContext('2d').fillRect(0, 0, 640, 480);
+    };
+    draw();
+    window.syntheticFrameTimer = setInterval(draw, 100);
     window.GstWebRTCAPI = class {
       registerConnectionListener() {}
       unregisterConnectionListener() {}
@@ -43,8 +49,8 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
       createConsumerSession() {
         const session = new EventTarget();
         (window.cameraSessions ||= []).push(session);
-        session.streams = [stream];
-        session.connect = () => session.dispatchEvent(new Event('streamsChanged'));
+        session.streams = [canvas.captureStream()];
+        session.connect = () => session.dispatchEvent(new Event(transportFallback ? 'closed' : 'streamsChanged'));
         session.close = () => {};
         return session;
       }
@@ -52,7 +58,7 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
     if (fallback) document.querySelector('#camera-viewer').requestFullscreen = async () => { throw new Error('Unsupported'); };
     window.refreshRobotPose = window.refreshBluetooth = window.refreshGpio = () => {};
     window.policy = { enabled: true, controlsEnabled: false, powerMode: 'awake', motorsEnabled: true };
-  }, { fallback });
+  }, { fallback, transportFallback, legacyReportUi });
   const main = fs.readFileSync(path.join(staticDir, 'main.js'), 'utf8');
   // Exercise the real tab navigation and its camera privacy stop, not a copied handler.
   await page.addScriptTag({ content: main.slice(main.indexOf('function visibleTabButtons()'), main.indexOf('const initialTab =')) });
@@ -60,8 +66,28 @@ async function setup(t, { width = 900, height = 700, fallback = false } = {}) {
   await page.evaluate(() => window.ReachyCamera.setPolicy(window.policy));
   await page.locator('#camera-live-start').click();
   await page.waitForFunction(() => !document.querySelector('#camera-live-fullscreen').disabled);
+  await page.waitForTimeout(150);
   return page;
 }
+
+test('HTTPS fallback shows real decoded frames and stops requests on privacy/Stop', async t => {
+  const page = await setup(t, { width: 412, height: 915, transportFallback: true });
+  assert.equal(await page.locator('#camera-live-status').textContent(), 'Live · HTTPS');
+  const video = await page.locator('#reachy-camera-video').evaluate(v => ({ width: v.videoWidth, ready: v.readyState }));
+  assert.equal(video.width, 640);
+  assert.ok(video.ready >= 2);
+  await page.locator('#camera-live-stop').click();
+  const count = await page.evaluate(() => window.requests.filter(r => r.url === '/api/camera/frame').length);
+  await page.waitForTimeout(600);
+  assert.equal(await page.evaluate(() => window.requests.filter(r => r.url === '/api/camera/frame').length), count);
+  assert.equal(await page.locator('#reachy-camera-video').evaluate(v => v.srcObject), null);
+  await page.locator('#camera-live-start').click();
+  await page.waitForFunction(() => document.querySelector('#camera-live-status').textContent === 'Live · HTTPS');
+  await page.evaluate(() => window.ReachyCamera.setPolicy({ ...window.policy, powerMode: 'meeting' }));
+  const privacyCount = await page.evaluate(() => window.requests.filter(r => r.url === '/api/camera/frame').length);
+  await page.waitForTimeout(600);
+  assert.equal(await page.evaluate(() => window.requests.filter(r => r.url === '/api/camera/frame').length), privacyCount);
+});
 
 for (const outcome of ['reject', 'resolve']) {
   test(`late play ${outcome} cannot overwrite Stop or a new camera connection`, async t => {
@@ -81,7 +107,7 @@ for (const outcome of ['reject', 'resolve']) {
     }, outcome);
     assert.equal(await page.locator('#camera-live-status').textContent(), 'Off');
     assert.equal(await page.locator('#camera-message').textContent(), 'Stopped for privacy.');
-    await page.evaluate(() => { document.querySelector('#reachy-camera-video').play = () => Promise.resolve(); });
+    await page.evaluate(() => { document.querySelector('#reachy-camera-video').play = function () { return HTMLMediaElement.prototype.play.call(this); }; });
     await page.locator('#camera-live-start').click();
     await page.waitForFunction(() => document.querySelector('#camera-live-status').textContent === 'Live');
     await page.evaluate(() => {
@@ -160,8 +186,11 @@ for (const fallback of [false, true]) {
       await page.locator('#camera-live-fullscreen').click();
       await page.waitForFunction(fallback => fallback ? document.body.classList.contains('camera-app-fullscreen-active') : Boolean(document.fullscreenElement), fallback);
       assert.equal(await page.locator('#camera-control-overlay').getAttribute('data-handedness'), 'left');
+      await page.waitForFunction(() => !document.querySelector('#camera-control-center').disabled);
       assert.equal(await page.locator('#camera-control-center').isEnabled(), true);
-      const box = await page.locator('#camera-joystick').boundingBox();
+      await page.locator('#camera-viewer').evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await page.waitForTimeout(100);
+  const box = await page.locator('#camera-joystick').boundingBox();
       await page.mouse.move(box.x + box.width * .8, box.y + box.height / 2);
       await page.mouse.down();
       await page.waitForFunction(() => window.requests.some(r => r.url.endsWith('/move')));
@@ -216,4 +245,243 @@ test('runtime gating, policy revocation, Stop and keyboard escape remain fail-cl
   await page.waitForFunction(() => document.body.classList.contains('camera-app-fullscreen-active'));
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !document.body.classList.contains('camera-app-fullscreen-active'));
+});
+
+test('decoded video freeze holds movement and requires a new gesture on recovery', async t => {
+  const page = await setup(t, { width: 390, height: 844 });
+  await page.evaluate(() => { window.policy.controlsEnabled = true; window.ReachyCamera.setPolicy(window.policy); });
+  await page.waitForFunction(() => !document.querySelector('#camera-control-center').disabled);
+  await page.locator('#camera-viewer').evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await page.waitForTimeout(100);
+  const box = await page.locator('#camera-joystick').boundingBox();
+  await page.mouse.move(box.x + box.width * .75, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForFunction(() => window.requests.some(r => r.url.endsWith('/move')));
+  await page.evaluate(() => { window.pauseVideoFrames = true; });
+  await page.waitForFunction(() => document.querySelector('#camera-feed-health').dataset.stale === 'true');
+  assert.equal(await page.locator('#camera-joystick').getAttribute('data-active'), 'false');
+  assert.equal(await page.locator('#camera-control-center').isDisabled(), true);
+  assert.ok(await page.evaluate(() => window.requests.some(r => r.url.endsWith('/end'))));
+  const count = await page.evaluate(() => window.requests.filter(r => r.url.endsWith('/move')).length);
+  await page.evaluate(() => { window.pauseVideoFrames = false; });
+  await page.waitForFunction(() => document.querySelector('#camera-feed-health').dataset.stale === 'false');
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.requests.filter(r => r.url.endsWith('/move')).length), count);
+  await page.mouse.up();
+});
+
+test('Stop is sent immediately even when gesture release never responds', async t => {
+  const page = await setup(t);
+  await page.evaluate(() => {
+    window.policy.controlsEnabled = true; window.ReachyCamera.setPolicy(window.policy);
+    const fetch = window.fetch;
+    window.fetch = (url, options) => url.endsWith('/end') ? new Promise(() => {}) : fetch(url, options);
+  });
+  await page.locator('#camera-joystick').press('ArrowRight');
+  await page.waitForFunction(() => window.requests.some(r => r.url.endsWith('/move')));
+  await page.locator('#camera-control-stop').click();
+  await page.waitForFunction(() => window.requests.some(r => r.url === '/api/robot/stop'), null, { timeout: 1000 });
+});
+
+test('late movement rejection cannot cancel the next pointer gesture', async t => {
+  const page = await setup(t);
+  await page.evaluate(() => {
+    window.policy.controlsEnabled = true; window.ReachyCamera.setPolicy(window.policy);
+    const fetch = window.fetch;
+    let intercepted = false;
+    window.fetch = (url, options) => {
+      if (url.endsWith('/move') && !intercepted) {
+        intercepted = true;
+        return new Promise((resolve, reject) => { window.rejectOldMove = reject; });
+      }
+      return fetch(url, options);
+    };
+  });
+  await page.locator('#camera-viewer').evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await page.waitForTimeout(100);
+  const box = await page.locator('#camera-joystick').boundingBox();
+  await page.mouse.move(box.x + box.width * .75, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForFunction(() => Boolean(window.rejectOldMove));
+  await page.mouse.up();
+  await page.waitForFunction(() => !document.querySelector('#camera-control-center').disabled);
+  await page.mouse.down();
+  await page.waitForFunction(() => window.requests.some(r => r.url.endsWith('/move')));
+  const ends = await page.evaluate(() => window.requests.filter(r => r.url.endsWith('/end')).length);
+  await page.evaluate(() => window.rejectOldMove(new Error('old request rejected')));
+  await page.waitForTimeout(120);
+  assert.equal(await page.locator('#camera-joystick').getAttribute('data-active'), 'true');
+  assert.equal(await page.evaluate(() => window.requests.filter(r => r.url.endsWith('/end')).length), ends);
+  await page.mouse.up();
+});
+
+test('Center cannot start after Stop while authorization is delayed', async t => {
+  const page = await setup(t);
+  await page.evaluate(() => {
+    window.policy.controlsEnabled = true; window.ReachyCamera.setPolicy(window.policy);
+    const fetch = window.fetch;
+    window.fetch = (url, options) => url.endsWith('/session')
+      ? new Promise(resolve => { window.authorizeCenter = () => resolve({ ok: true, json: async () => ({ session_id: 'late-center' }) }); })
+      : fetch(url, options);
+  });
+  await page.locator('#camera-control-center').click();
+  await page.waitForFunction(() => Boolean(window.authorizeCenter));
+  assert.equal(await page.locator('#camera-control-center').isDisabled(), true);
+  await page.locator('#camera-control-stop').click();
+  await page.evaluate(() => window.authorizeCenter());
+  await page.waitForTimeout(150);
+  assert.equal(await page.evaluate(() => window.requests.some(r => r.url.endsWith('/center'))), false);
+  assert.ok(await page.evaluate(() => window.requests.some(r => r.body?.session_id === 'late-center' && r.url.endsWith('/end'))));
+});
+
+test('HTTPS backup defaults to Careful speed and phone controls have unobstructed thumb targets', async t => {
+  const page = await setup(t, { width: 390, height: 844, transportFallback: true });
+  await page.evaluate(() => { window.policy.controlsEnabled = true; window.ReachyCamera.setPolicy(window.policy); });
+  assert.equal(await page.locator('#camera-control-speed').inputValue(), '0.3');
+  await page.locator('#camera-viewer').evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await page.waitForTimeout(100);
+  for (const id of ['camera-control-stop', 'camera-control-center', 'camera-control-speed', 'camera-joystick']) {
+    assert.equal(await page.locator(`#${id}`).evaluate(el => {
+      const r = el.getBoundingClientRect();
+      return r.height >= 44 && el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+    }), true, id);
+  }
+  await page.locator('#camera-joystick').press('ArrowRight');
+  await page.waitForFunction(() => window.requests.some(r => r.url.endsWith('/move')));
+  assert.ok(await page.evaluate(() => Math.abs(window.requests.find(r => r.url.endsWith('/move')).body.pan - .165) < .0001));
+  if (process.env.TEST_CAMERA_SCREENSHOT_DIR) await page.screenshot({ path: path.join(process.env.TEST_CAMERA_SCREENSHOT_DIR, 'phone-inline.png'), fullPage: true });
+});
+
+test('track arrival alone is not Live; no decoded video falls back after bounded negotiation', async t => {
+  const page = await setup(t);
+  await page.evaluate(() => {
+    window.ReachyCamera.stop();
+    document.querySelector('#reachy-camera-video').play = () => Promise.resolve();
+    document.querySelector('#reachy-camera-video').requestVideoFrameCallback = () => 9999;
+  });
+  await page.clock.install();
+  await page.locator('#camera-live-start').click();
+  await page.waitForFunction(() => document.querySelector('#camera-message').textContent.includes('waiting for a decoded frame'));
+  assert.equal(await page.locator('#camera-live-status').textContent(), 'Connecting');
+  assert.equal(await page.locator('#camera-control-center').isDisabled(), true);
+  await page.clock.runFor(14900);
+  assert.equal(await page.evaluate(() => window.requests.filter(r => r.url === '/api/camera/frame').length), 0);
+  await page.clock.runFor(200);
+  await page.waitForFunction(() => window.requests.some(r => r.url === '/api/camera/frame'));
+  await page.locator('#camera-live-stop').click();
+});
+
+test('connection details use real peer stats references and stay private to the browser', async t => {
+  const page = await setup(t);
+  await page.evaluate(() => {
+    const peer = new EventTarget();
+    Object.assign(peer, { iceConnectionState: 'connected', connectionState: 'connected', getReceivers: () => [],
+      getStats: async () => new Map([
+        ['transport', { id: 'transport', type: 'transport', dtlsState: 'connected', selectedCandidatePairId: 'pair' }],
+        ['pair', { id: 'pair', type: 'candidate-pair', state: 'succeeded', localCandidateId: 'local', remoteCandidateId: 'remote', currentRoundTripTime: .042 }],
+        ['local', { type: 'local-candidate', candidateType: 'host', address: 'private-local-address' }],
+        ['remote', { type: 'remote-candidate', candidateType: 'host', address: 'private-remote-address' }],
+        ['codec', { type: 'codec', mimeType: 'video/VP8' }],
+        ['video', { type: 'inbound-rtp', kind: 'video', codecId: 'codec', framesPerSecond: 30, framesDecoded: 120, packetsReceived: 220, jitterBufferDelay: 1, jitterBufferEmittedCount: 100, freezeCount: 0 }],
+      ])
+    });
+    window.cameraSessions.at(-1).rtcPeerConnection = peer;
+    window.cameraSessions.at(-1).dispatchEvent(new Event('rtcPeerConnectionChanged'));
+  });
+  await page.waitForFunction(() => document.querySelector('#camera-diag-video').textContent.includes('video/VP8'));
+  assert.match(await page.locator('#camera-diag-network').textContent(), /42 ms/);
+  assert.match(await page.locator('#camera-diag-video').textContent(), /120 decoded/);
+  assert.match(await page.locator('#camera-diag-ice').textContent(), /DTLS connected/);
+  assert.equal(await page.evaluate(() => document.body.textContent.includes('private-local-address')), false);
+  assert.equal(await page.evaluate(() => window.requests.length), 0);
+});
+
+
+test('delayed Center authorization cannot dispatch against stale decoded video', async t => {
+  const page = await setup(t);
+  await page.evaluate(() => {
+    window.policy.controlsEnabled = true; window.ReachyCamera.setPolicy(window.policy);
+    const fetch = window.fetch;
+    window.fetch = (url, options) => url.endsWith('/session')
+      ? new Promise(resolve => { window.authorizeCenter = () => resolve({ ok: true, json: async () => ({ session_id: 'stale-center' }) }); })
+      : fetch(url, options);
+  });
+  await page.locator('#camera-control-center').click();
+  await page.waitForFunction(() => Boolean(window.authorizeCenter));
+  await page.evaluate(() => { window.pauseVideoFrames = true; });
+  await page.waitForFunction(() => document.querySelector('#camera-feed-health').dataset.stale === 'true');
+  await page.evaluate(() => window.authorizeCenter());
+  await page.waitForTimeout(150);
+  assert.equal(await page.evaluate(() => window.requests.some(r => r.url.endsWith('/center'))), false);
+  assert.ok(await page.evaluate(() => window.requests.some(r => r.url.endsWith('/end') && r.body?.session_id === 'stale-center')));
+});
+
+test('phone report preserves failed ICE checks across HTTPS fallback and Stop without leaking private fields', async t => {
+  const page = await setup(t, { width: 390, height: 844 });
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedReport = text; } } });
+    const peer = new EventTarget();
+    Object.assign(peer, { iceConnectionState: 'checking', connectionState: 'connecting', iceGatheringState: 'complete', getReceivers: () => [],
+      getStats: async () => new Map([
+        ['transport', { type: 'transport', dtlsState: 'new' }],
+        ['pair', { type: 'candidate-pair', state: 'in-progress', localCandidateId: 'local', remoteCandidateId: 'remote', requestsSent: 7, responsesReceived: 0 }],
+        ['local', { type: 'local-candidate', candidateType: 'host', protocol: 'udp', address: '192.168.68.41', usernameFragment: 'SECRET_USERNAME' }],
+        ['remote', { type: 'remote-candidate', candidateType: 'host', protocol: 'udp', address: '100.64.27.89', url: 'turn:secret.example', password: 'SECRET_PASSWORD' }],
+      ])
+    });
+    window.cameraSessions.at(-1).rtcPeerConnection = peer;
+    window.cameraSessions.at(-1).dispatchEvent(new Event('rtcPeerConnectionChanged'));
+  });
+  await page.waitForTimeout(600);
+  await page.evaluate(() => window.cameraSessions.at(-1).dispatchEvent(Object.assign(new Event('error'), { message: 'ws://192.168.68.41 SECRET_TOKEN' })));
+  await page.waitForFunction(() => document.querySelector('#camera-live-status').textContent === 'Live · HTTPS');
+  await page.locator('#camera-live-stop').click();
+  await page.locator('#camera-copy-report').click();
+  const text = await page.evaluate(() => window.copiedReport);
+  const report = JSON.parse(text);
+  assert.equal(report.failure.reason, 'direct session error');
+  assert.equal(report.failure.peer.ice, 'checking');
+  assert.equal(report.failure.peer.dtls, 'new');
+  assert.equal(report.failure.pairs[0].requestsSent, 7);
+  assert.equal(report.failure.pairs[0].responsesReceived, 0);
+  assert.equal(report.failure.pairs[0].local, 'host/udp');
+  for (const secret of ['192.168.68.41', '100.64.27.89', 'SECRET_', 'turn:', 'ws://', 'sdp', 'codecId']) assert.equal(text.includes(secret), false, secret);
+  assert.equal(await page.evaluate(() => window.requests.some(r => !r.url.endsWith('/frame'))), false);
+  assert.match(await page.locator('#camera-report-status').innerText(), /Copied/);
+  assert.ok(text.length < 4096);
+  if (process.env.TEST_CAMERA_REPORT_SCREENSHOT) await page.screenshot({ path: process.env.TEST_CAMERA_REPORT_SCREENSHOT });
+});
+
+test('copy permission denial exposes selectable phone report; new Start replaces and expiry clears the report', async t => {
+  const page = await setup(t, { width: 390, height: 844, transportFallback: true });
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Permission denied'); } } }));
+  await page.locator('#camera-copy-report').click();
+  assert.equal(await page.locator('#camera-report-text').isVisible(), true);
+  const first = JSON.parse(await page.locator('#camera-report-text').inputValue());
+  assert.equal(first.failure.reason, 'direct session closed');
+  await page.locator('#camera-live-stop').click();
+  await page.locator('#camera-live-start').click();
+  assert.equal(await page.locator('#camera-report-text').isVisible(), false);
+  await page.locator('#camera-live-stop').click();
+  await page.clock.install();
+  await page.locator('#camera-live-start').click();
+  await page.locator('#camera-live-stop').click();
+  const requests = await page.evaluate(() => window.requests.length);
+  await page.clock.fastForward(600001);
+  await page.locator('#camera-copy-report').click();
+  assert.match(await page.locator('#camera-report-status').innerText(), /Start the camera/);
+  assert.equal(await page.evaluate(() => window.requests.length), requests);
+});
+
+test('new camera script tolerates cached HTML without report controls and preserves Stop/privacy', async t => {
+  const page = await setup(t, { legacyReportUi: true });
+  await page.waitForFunction(() => document.querySelector('#camera-live-status').textContent === 'Live');
+  assert.equal(await page.locator('#camera-live-status').textContent(), 'Live');
+  await page.locator('#camera-live-stop').click();
+  assert.equal(await page.locator('#camera-live-status').textContent(), 'Off');
+  await page.locator('#camera-live-start').click();
+  await page.waitForFunction(() => document.querySelector('#camera-live-status').textContent === 'Live');
+  await page.evaluate(() => window.ReachyCamera.setPolicy({ ...window.policy, powerMode: 'meeting' }));
+  assert.equal(await page.locator('#camera-live-status').textContent(), 'Off');
+  assert.equal(await page.locator('#reachy-camera-video').evaluate(v => v.srcObject), null);
 });
