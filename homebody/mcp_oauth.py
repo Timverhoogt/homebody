@@ -631,6 +631,7 @@ def consent_page(pending: PendingAuthorization | None, *, error: str = "", visio
         redirect_host = urlparse(pending.redirect_uri).netloc
         abilities = [
             "check whether Reachy is awake, resting or private",
+            "check speaker volume and silently adjust or mute speaker output (never the microphone)",
             "say short messages aloud (for example reminders)",
             "show an emotion while Reachy is already awake",
         ]

@@ -247,6 +247,32 @@ class HermesVoiceRuntime(
         self._safety_gate = SafetyGate(_RuntimeSafetyProbe(self))
         self._init_agent_session_state()
         self._voice_workspace = VoiceWorkspace()
+        from .speaker_volume import SpeakerVolume
+        self._speaker = SpeakerVolume()
+
+    def speaker_volume(self) -> dict[str, object]:
+        with self._motor_transition_lock, self._kids_lock:
+            self._require_speaker_access()
+            return self._speaker.read()
+
+    def _require_speaker_access(self, *, agent: bool = False) -> None:
+        if self.stop_event.is_set():
+            raise RuntimeError("Reachy is stopping; speaker controls are unavailable")
+        if not self.control_ready:
+            raise RuntimeError("Reachy is still starting up")
+        if self._kids_active or self._kids_locked:
+            raise RuntimeError("Speaker controls are unavailable during a supervised child session")
+        if agent and (self.privacy_active() or self._effective_power_mode() in {"meeting", "sleep"}):
+            raise RuntimeError("Reachy is private or in Meeting/Sleep; agent speaker changes are unavailable")
+
+    def set_speaker_volume(
+        self, *, volume: int | None = None, muted: bool | None = None, agent: bool = False,
+    ) -> dict[str, object]:
+        # Serialize with Kids/power/update admission. This only touches the playback
+        # mixer: it never starts media, a voice turn, a test sound or a motor transition.
+        with self._motor_transition_lock, self._kids_lock:
+            self._require_speaker_access(agent=agent)
+            return self._speaker.set(volume=volume, muted=muted)
 
     def _request_conversation_stop(self) -> None:
         """Stop the current voice turn; only a newly accepted wake may start another."""

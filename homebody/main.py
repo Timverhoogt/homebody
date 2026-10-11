@@ -47,6 +47,7 @@ from .platform_info import host
 from .presence import PresenceObservation
 from .robot_tools import robot_control_options
 from .runtime import HermesVoiceRuntime
+from .speaker_api import register as register_speaker
 from .update_api import register as register_updates
 from .updates import installed_identity
 
@@ -412,6 +413,7 @@ class Homebody(ReachyMiniApp):
         self._register_settings_routes()
         if self.settings_app is not None:
             register_updates(self.settings_app, lambda: self._runtime, default_config_path().parent / "updates")
+            register_speaker(self.settings_app, lambda: self._runtime)
         if self.settings_app is not None:
             install_owner_auth(self.settings_app, OwnerStore(default_owner_path()))
             install_owner_media(self.settings_app, lambda: self._runtime)

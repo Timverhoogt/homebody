@@ -820,6 +820,7 @@ function updateStatus(payload) {
   const kidsCameraActive = Boolean(kidsMode.camera_active);
   const kidsLocked = Boolean(kidsMode.locked);
   window.HomebodyWorkspace?.update(runtime);
+  window.HomebodyVolume?.update(runtime);
   window.HomebodyNotifications.setSuppressed("kids", kidsLocked);
   const agent = runtime.agent || {};
   const agentProfile = agent.profile || "conversation";
@@ -1258,6 +1259,7 @@ async function refreshStatus() {
     statusRefreshHealthy = false;
     window.HomebodyWorkspace?.reset("Reachy is unreachable; conversation hidden.");
     window.HomebodyAgentConnection?.offline();
+    window.HomebodyVolume?.offline();
     if (window.ReachyCamera?.isActive()) {
       window.ReachyCamera.stop("Camera stopped because Hermes status is unavailable.");
     }

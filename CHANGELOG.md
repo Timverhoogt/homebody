@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Silent speaker volume
+- Settings → Speaker volume adds an explicit Apply slider, measured output level, and mute/unmute. Drafts are not hardware confirmation; failed writes require fresh readback. PWA shell v78.
+- MCP adds `get_volume`, `set_volume` and `set_mute` with strict arguments, existing authentication and serialized privacy/Kids/startup/shutdown guards. OAuth consent discloses speaker control.
+- Named Linux ALSA playback-only control avoids SDK test tones and capture-reset side effects. No microphone change, wake, movement or default/HDMI fallback; one bounded transaction and readback confirm every change.
+- Home Assistant uses the same silent service, retains standalone read-only telemetry, and reports true 0%/muted instead of incorrectly defaulting zero to 100%. Existing telemetry-only deployments remain read-only.
+
 ### Daemon-compatible managed updates
 - Preserve the existing Python 3.12 Reachy daemon and Home Assistant bootstrap; atomically replace only Homebody's package and distribution metadata through immutable slots.
 - Require the installed SDK's exact sleep-pose distance before app stop, in addition to verified folded Standby, disabled torque, owner/CSRF and idle-session admission.

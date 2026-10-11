@@ -94,7 +94,7 @@ def test_initialize_negotiates_the_protocol_and_lists_safe_tools() -> None:
 
     listed = server.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}, enabled_config())
     names = [tool["name"] for tool in listed["result"]["tools"]]
-    assert names == ["get_status", "announce", "express_emotion"]
+    assert names == ["get_status", "announce", "express_emotion", "get_volume", "set_volume", "set_mute"]
     with_vision = server.handle(
         {"jsonrpc": "2.0", "id": 4, "method": "tools/list"}, enabled_config(mcp_vision_enabled=True)
     )["result"]["tools"]

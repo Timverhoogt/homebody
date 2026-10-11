@@ -179,6 +179,48 @@ class McpServer:
                 "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
             },
         ]
+        tools.extend([
+            {
+                "name": "get_volume", "title": "Check speaker volume",
+                "description": (
+                    "Read Reachy's actual speaker volume (0–100) and speaker mute state. "
+                    "No microphone, camera or movement."
+                ),
+                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+                "annotations": {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+            },
+            {
+                "name": "set_volume", "title": "Set speaker volume",
+                "description": (
+                    "Set Reachy's speaker volume to an integer from 0 to 100; 0 mutes output. "
+                    "Silent, verified, no wake or microphone change. "
+                    "Refused in privacy, Meeting, Sleep or child sessions."
+                ),
+                "inputSchema": {
+                    "type": "object", "properties": {"volume": {"type": "integer", "minimum": 0, "maximum": 100}},
+                    "required": ["volume"], "additionalProperties": False,
+                },
+                "annotations": {
+                    "readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False,
+                },
+            },
+            {
+                "name": "set_mute", "title": "Mute or restore speaker",
+                "description": (
+                    "Mute only the speaker or restore its last measured nonzero volume. "
+                    "Does not disable the microphone or wake Reachy. "
+                    "If the previous level is unknown, use set_volume. "
+                    "Refused in private/child sessions."
+                ),
+                "inputSchema": {
+                    "type": "object", "properties": {"muted": {"type": "boolean"}},
+                    "required": ["muted"], "additionalProperties": False,
+                },
+                "annotations": {
+                    "readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False,
+                },
+            },
+        ])
         if config.mcp_vision_enabled:
             tools.append(
                 {
@@ -211,6 +253,8 @@ class McpServer:
                 result = self._get_status(runtime, config)
             elif name == "announce":
                 result = self._announce(runtime, arguments)
+            elif name in {"get_volume", "set_volume", "set_mute"}:
+                result = self._volume(runtime, name, arguments)
             elif name == "express_emotion":
                 result = self._express_emotion(runtime, arguments)
             else:
@@ -328,6 +372,21 @@ class McpServer:
         reason = self._private_reason(self._state(runtime))
         if reason:
             raise _ToolRefused(reason)
+
+    def _volume(self, runtime: Any, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        expected = set() if name == "get_volume" else {"volume"} if name == "set_volume" else {"muted"}
+        if set(arguments) != expected:
+            raise _ToolRefused("Supply only the declared speaker argument.")
+        if name == "get_volume":
+            state = runtime.speaker_volume()
+        else:
+            from .speaker_api import SpeakerChange
+            change = SpeakerChange(**arguments)
+            self._refuse_if_unavailable(runtime)
+            # Recheck private/Kids state inside the runtime's serialized boundary.
+            state = runtime.set_speaker_volume(volume=change.volume, muted=change.muted, agent=True)
+        text = "Speaker muted (0%)." if state["muted"] else f"Speaker volume {state['volume']}%."
+        return _text_result(text, structured=state)
 
     def _announce(self, runtime: Any, arguments: dict[str, Any]) -> dict[str, Any]:
         text = " ".join(str(arguments.get("text") or "").split())
