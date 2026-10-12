@@ -550,6 +550,10 @@ class EverydayTools:
     ) -> dict[str, object]:
         """One bounded tool-calling text turn on the fast Everyday model."""
         if not key:
+            if provider.name == "openai-codex":
+                raise BrokerUnavailableError(
+                    "ChatGPT subscription authentication unavailable; no paid text API fallback"
+                )
             raise BrokerUnavailableError("The Everyday text provider key is not configured on the Hermes host")
         system = EVERYDAY_INSTRUCTIONS + (f" Reply in the language with code '{language[:12]}'." if language else "")
         messages: list[dict[str, Any]] = [
