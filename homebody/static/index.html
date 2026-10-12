@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=81">
+  <link rel="stylesheet" href="/static/style.css?v=82">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -960,7 +960,7 @@
             <label>Turn-taking eagerness
               <select id="realtime_semantic_eagerness" name="realtime_semantic_eagerness"><option value="auto">Auto</option><option value="low">Low · waits longer</option><option value="medium">Medium</option><option value="high">High · answers sooner</option></select>
             </label>
-            <label>Realtime voice
+            <label>Adult Realtime voice
               <select id="realtime_voice" name="realtime_voice"><option value="marin">Marin</option><option value="cedar">Cedar</option></select>
             </label>
             <label>Reasoning effort
@@ -971,20 +971,21 @@
           </div>
           <div id="live-settings" class="grid-two" hidden>
             <label>Live model<select id="live_model" name="live_model"><option value="gpt-live-1">gpt-live-1 · preview</option></select></label>
-            <label>Live voice
+            <label>Adult GPT-Live voice
               <select id="live_voice" name="live_voice"><option value="marin">Marin</option><option value="cedar">Cedar</option></select>
             </label>
             <label>Session limit (seconds)<input id="live_session_timeout_seconds" name="live_session_timeout_seconds" type="number" min="30" max="900" step="30" value="300" /></label>
           </div>
+          <p id="kids-speech-scope" class="muted provider-note">Kids always use speech recognition below, even when adult voice uses GPT-Live or Realtime. Kids replies use a dedicated moderated ElevenLabs voice configured on the host. Marin/Cedar affect only new adult speech sessions.</p>
           <div id="pipeline-settings" class="grid-two">
-            <label>Speech recognition
+            <label>Kids / Pipeline speech recognition
               <select id="stt_provider" name="stt_provider"><option value="configured">Hermes configured STT</option><option value="local">Local Whisper</option></select>
             </label>
             <label>STT model<select id="stt_model" name="stt_model"><option value="base">base</option></select></label>
             <label>Speech voice provider<select id="tts_provider" name="tts_provider"><option value="configured">Hermes configured TTS</option></select></label>
             <label>TTS model<select id="tts_model" name="tts_model"><option value="eleven_flash_v2_5">eleven_flash_v2_5</option></select></label>
           </div>
-          <label>TTS voice<select id="tts_voice" name="tts_voice"><option value="pNInz6obpgDQGcFmaJgB">Adam</option></select></label>
+          <label>Pipeline / greeting / fallback voice<select id="tts_voice" name="tts_voice"><option value="pNInz6obpgDQGcFmaJgB">Adam</option></select></label>
           <p id="voice-provider" class="muted provider-note">Speech providers are selected independently from the agent model.</p>
 
           <details>
@@ -1106,16 +1107,16 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=81"></script>
-  <script src="/static/owner.js?v=81"></script>
+  <script src="/static/notifications.js?v=82"></script>
+  <script src="/static/owner.js?v=82"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=81"></script>
-  <script src="/static/agent-connection.js?v=81"></script>
-  <script src="/static/native-workspace.js?v=81"></script>
-  <script src="/static/workspace.js?v=81"></script>
-  <script src="/static/main.js?v=81"></script>
-  <script src="/static/updates.js?v=81"></script>
-  <script src="/static/volume.js?v=81"></script>
-  <script src="/static/assistant-modes.js?v=81"></script>
+  <script src="/static/camera.js?v=82"></script>
+  <script src="/static/agent-connection.js?v=82"></script>
+  <script src="/static/native-workspace.js?v=82"></script>
+  <script src="/static/workspace.js?v=82"></script>
+  <script src="/static/main.js?v=82"></script>
+  <script src="/static/updates.js?v=82"></script>
+  <script src="/static/volume.js?v=82"></script>
+  <script src="/static/assistant-modes.js?v=82"></script>
 </body>
 </html>

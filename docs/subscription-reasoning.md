@@ -94,6 +94,20 @@ Start with execution disabled. Before enabling it, explicitly configure fixed `v
 
 Restart only the affected host services after their configuration is complete. Select Workspace and the registered project/session from the phone. Registration alone does not select a project, approve work or prove the full physical/phone flow. Without native binding, the roadmap reader remains explicitly restricted—not “your Hermes session.” Existing OpenClaw conversation compatibility does not imply equivalent subscription or native execution support.
 
+## Local speech runtime compatibility
+
+Kids always use STT before the moderated text route, even when the adult engine is GPT-Live or Realtime. A successful subscription text request does not verify transcription. If bootstrapping moves the bridge to a managed Python without faster-whisper, do not assume an older environment's installed package is visible there, and do not silently move child audio to a cloud provider.
+
+When a separate trusted Python already has faster-whisper and the `base` model cached, the host can use the supported command backend:
+
+```dotenv
+HERMES_LOCAL_STT_COMMAND='/absolute/path/to/whisper/python /absolute/path/to/companion/local_stt_command.py --input {input_path} --output-dir {output_dir}'
+```
+
+Set this only in the bridge's protected service environment, then restart that idle host bridge—not the primary gateway or robot. The helper uses cached CPU/int8 base inference with two threads, language auto-detection, VAD and a conservative silence-hallucination gate. It does not download models or fall back to cloud STT. Verify actual generated English and Dutch audio through `/v1/audio/transcriptions` using the same configured selection as the robot; then check a moderated Kids reply and approved speech generation without playing audio physically.
+
+Voice scopes are separate: Marin/Cedar apply to new adult Live/Realtime sessions, dedicated Kids replies use the host's fixed-policy ElevenLabs voice, and Pipeline/greeting/approved-fallback voice selection is another setting. Changing an adult voice must not alter child moderation or speech approvals.
+
 ## 4. Verify without activating the robot
 
 1. Back up bridge modules and private configuration. Preserve the current speech selection and main gateway.

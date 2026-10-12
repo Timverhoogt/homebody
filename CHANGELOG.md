@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-10-12
+
+### Kids speech and voice-setting clarity
+- Provide a cached-model CPU-only local STT command for a bridge whose managed subscription runtime lacks faster-whisper but whose existing separate Python environment already supports it. Host-only command configuration restores local transcription without a cloud fallback or changes to primary Hermes dependencies. Language auto-detection supports English and Dutch.
+- Keep Kids speech-recognition settings visible even when adult speech uses Live/Realtime. Label adult voices separately and explain dedicated moderated Kids reply voice versus Pipeline greetings/fallback. No child moderation, exact speech approval or runtime routing changes.
+- PWA shell/query v82. Reference host verified real generated English/Dutch speech through configured STT, moderated subscription Kids reply and approved ElevenLabs PCM generation without microphone, physical playback, camera or movement tests.
+
 ## [0.5.3] - 2026-10-12
 
 ### Mode selector spacing
