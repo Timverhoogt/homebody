@@ -1,11 +1,33 @@
-# ChatGPT-subscription Everyday reasoning
+# Subscription text models, reasoning off, native Workspace
 
-Use `REACHY_EVERYDAY_PROVIDER=openai-codex` with an explicit `REACHY_EVERYDAY_MODEL` supported by the owner's subscription. This uses the installed Hermes provider router and Codex Responses adapter; it is not the API-key-backed OpenAI provider and has no paid text-API fallback. Authentication/quota/provider failures are explicit.
+Homebody separates OpenAI speech API sessions from subscription-funded text/vision inference. The host bridge uses the installed Hermes provider router and Codex Responses adapter, not an API-key-backed chat provider. It never exports OAuth tokens to the robot or dashboard.
 
-Launch the host bridge through `companion/subscription_bridge_entry.py` with `HOMEBODY_HERMES_SOURCE` pointing to the trusted installed Hermes checkout. That entry bootstraps the managed runtime before importing the server. Do not import the current Hermes SDK into a running bridge on an older interpreter: the SDK can request a runtime re-exec. An unbootstrapped subscription adapter fails closed.
+## Host model configuration
 
-Credentials remain in the owner's Hermes credential store. No OAuth tokens, API credentials, repository contexts or personal memories are copied to Reachy or the dashboard. The direct inference adapter receives only the narrow Everyday prompt, its current request and five approved home-tool schemas. Tool execution still goes through the existing validation, allowlists, verification, at-most-once budget and Kids/generation gates. It does not instantiate a full Hermes agent or grant filesystem/shell tools.
+- `REACHY_EVERYDAY_PROVIDER=openai-codex`, `REACHY_EVERYDAY_MODEL=gpt-6-sol`: narrow Everyday text/tool requests.
+- `REACHY_LLM_PROVIDER=openai-codex`, `REACHY_AGENT_MODEL=gpt-6-sol`: the remaining restricted planning/discussion calls.
+- `REACHY_KIDS_MODEL=gpt-6-luna`: Kids chat.
+- `REACHY_ISPY_MODEL=gpt-6-luna`: I Spy vision, synonym judging and player guesses.
+- Native Homebody Workspace: `gpt-6-sol` through a real, project-bound Hermes session.
 
-The host configuration, not Reachy's voice-engine dropdown, chooses this backend. The dashboard displays `ChatGPT subscription` and its actual model through existing capability disclosure. OpenAI Realtime/GPT-Live speech remains separately API-billed. Kids routing and native Workspace target registration are not changed by this Everyday switch.
+The subscription adapter sends `reasoning.enabled=false` / `effort=none` and checks the generated Responses wire payload contains `reasoning.effort=none` before submitting. A model without genuine off support fails closed; do not relabel low/minimal as off. The account's `gpt-6.1-sol` currently has no `none` effort, while `gpt-6-sol` and `gpt-6-luna` do. Test actual server acceptance as well as local capability metadata.
 
-For a host-only deployment, back up the installed bridge modules and host environment/drop-ins, deploy the two provider modules and subscription entry, change only the Everyday provider/model and entry point, reload/restart the host service, and independently read back effective configuration and authenticated capabilities. Test a harmless explanation and real read-only clock/weather tools without speech or motion. Retain rollback files and verify the robot's selected speech engine and physical state are unchanged. This does not require replacing the Android APK or restarting the robot app.
+`SubscriptionHttp` routes the existing bounded bridge text/vision calls to this adapter. It does not replace the underlying transport for moderation, speech, Home Assistant or native-session HTTP. Existing Kids input/output moderation, strict I Spy response/target validation, privacy, session-generation checks and deterministic game rules remain mandatory. Structured JSON is explicitly requested in the model instructions and strictly validated by the host; do not claim the Codex chat shim's ignored response_format guarantees a schema.
+
+## Runtime and credential boundaries
+
+Launch the bridge through `subscription_bridge_entry.py` with trusted `HOMEBODY_HERMES_SOURCE`. Bootstrap the installed managed Hermes runtime before importing the server. Preserve bridge CLI arguments through a runtime re-exec without interpreting `--profile reachy` as a Hermes CLI profile. An unbootstrapped subscription adapter refuses inference. Keep credentials on the trusted host, use only the supported saved-auth provider router and reject custom/non-subscription inference URLs. There is no paid text API fallback.
+
+Everyday and Kids use direct, narrow prompts; they do not instantiate AIAgent or inherit Workspace memory, repository authority or shell/file tools. Native Workspace intentionally uses the real Hermes session, tools and normal approvals.
+
+## Native Workspace listener
+
+`subscription_workspace_entry.py` hosts the official Hermes session/run API on a dedicated authenticated loopback listener, sharing the owner's native session database. It runs only one exact host-registered Homebody session and project root. `native_subscription_policy.py` locks provider/model/reasoning before the official agent factory is called. Its `confirmed_runtime_lock` contract disables the native fallback chain without changing the primary gateway or its ongoing sessions. Unsupported reasoning-off models are refused.
+
+Register `REACHY_NATIVE_TARGETS_JSON` against the existing Homebody project catalog and exact newly created session. Enable native discussion explicitly. Execution still requires the existing exact phone approval and configured verifier/artifact receipts; registration is not consent to arbitrary work. Keep native session identity, run identity and actual effective runtime distinct from the older restricted planning backend. Do not claim end-to-end Workspace readiness until a real native turn, stored history and bridge binding have been exercised.
+
+## Verification and deployment
+
+Back up bridge modules and host configuration with private permissions. Update the host component independently of robot releases/APKs. Verify safely idle motor-off Standby without triggering speech or movement. Read back actual provider/models and reasoning flags. Exercise harmless real text requests, Kids safe/blocked inputs, structured I Spy matching, synthetic-image vision (not the robot camera), and native session/run/history identity. Retain local negative tests for missing auth, wrong endpoint/model/session, inability to encode none, denied tools and stale callbacks.
+
+OpenAI Realtime/GPT-Live speech and `omni-moderation-latest` safety screening remain API services; they are not subscription text chat. Do not remove moderation to claim an API-free setup. The primary Telegram/Desktop conversation model is not changed by these Homebody-specific policies.
