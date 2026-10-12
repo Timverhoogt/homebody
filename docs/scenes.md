@@ -1,7 +1,7 @@
 # Scenes: the Kids activity stage and the Everyday companion
 
 Homebody draws live state as small illustrated scenes. There is one component,
-`homebody/static/scene.js` (styles in `scene.css`). It has two mounts:
+`homebody/static/scene.js` (styles in `scene.css`). It has two Kids/companion mounts below, plus four adult mounts described under "Adult surfaces":
 
 - **Kids activity stage** — the large picture in the Kids Mode display (`#kids-stage`). Each of the six activities has its own scene.
 - **Everyday companion** — a compact Reachy disc in the Agent tab's Everyday card (`#everyday-companion`). It shows whether Reachy is waiting, listening, thinking or speaking.
@@ -106,7 +106,46 @@ Each activity then gets its own world:
 - **Calm corner** — a moonlit pond with slow water lines, reeds, a lily and a few dim fireflies. Deliberately low contrast and slow. There is no breathing instruction.
 - **I Spy** — an explorer's desk with abstract shapes and a magnifying lens. The lens iris stays closed unless status reports the bounded camera search. During a search, a soft beam sweeps the five-point desk arc and the chip reads "Camera on". The lens never shows imagery, and the scene never hints at a target.
 
+## Adult surfaces
+
+The same engine draws four restrained adult scenes. Each declares its own phase vocabulary (`phases`), the phases that loop (`live`), a `neutral` fallback for unknown phases, and a `reset` view used on owner loss. Variants: `figure` (no caption), `strip`, `rail` and `glyph` (no caption). All hosts are `aria-hidden`, because the existing status text stays the authoritative live region.
+
+| Surface | Mount | Adapter | Reads only |
+|---|---|---|---|
+| Home hero | `#hero-presence` (`figure`, main.js) | `presenceView({state, powerMode, offline, kidsActive})` | `runtime.state`, `runtime.power_mode`, Kids active/locked, owner |
+| Workspace | `#workspace-native-scene` (`strip`, native-workspace.js) | `workbenchView({offline, showing, configured, bound, pending, status, verified, uncertain})` | booleans and the native `run.status` enum; `verified` is the existing exact receipt check |
+| Camera | `#camera-lens` (`glyph`, camera.js) | `lensView({phase, offline})` | camera.js's own state: `live` needs a stream, a "Live" status and a decoded frame newer than 1.5 s |
+| Updates | `#update-rail` (`rail`, updates.js) | `updaterView({offline, unreachable, job, acknowledged, checking, available, supported, checked})` | durable `job.state` and `acknowledged`; `checking` only while a real /check request is in flight |
+
+Phase rules:
+
+- **Presence.** Awake waiting, standby, listening, thinking, speaking, paused (meeting/Kids), asleep, trouble, offline and idle (unknown/starting).
+- **Workbench.** idle, discussing, approval, working (submitting/running/verifying), stopping, uncertain (disconnected/submission_unknown/lost connection), finished (completed but unverified), ready (verified), stopped, trouble and offline. Unknown statuses read "Status unconfirmed".
+- **Lens.** off, ready, connecting, live, held (frames stale), paused (playback blocked), privacy, trouble and offline. The camera viewer also gets a `data-lens` edge tone *outside* the video, which is disabled in native and fallback fullscreen.
+- **Updater.** queued → downloading → installing → restarting (stopping/starting) → verifying, then succeeded, rolling_back, rolled_back or failed. Other phases: available, checking, idle (up to date / not checked / unsupported), unreachable and offline. There is no percentage and no timer.
+
+Guards: every update re-reads `HomebodyOwner.isOwner()`. The bench inherits the native module's epoch/controller fence, so a reset fences an admitted response. The rail ignores reads that started before the last applied one. The lens follows the camera module's play/stream generation guards. `HomebodyNativeWorkspace.sync()` repaints the bench on each status poll without fetching.
+
+## Motion primitives (`motion.js`)
+
+```js
+const handle = HomebodyMotion.pending(button);   // data-hb-motion="pending" while a real request is in flight
+HomebodyMotion.settle(handle, "confirmed" | "failed" | "cleared"); // false if superseded/reset; marks clear after 1.4 s
+HomebodyMotion.clear(button);
+HomebodyMotion.enter(element);    // one-shot rise; skipped under reduced motion or a hidden page
+HomebodyMotion.disclosure(details); // bound automatically for details[data-hb-disclosure]
+HomebodyMotion.reset();           // owner loss: drop every mark and timer
+```
+
+"confirmed" means the server accepted that exact request. It is used for Select session, Review request, Approve, Show conversation (only if the display really turned on) and Check for updates. Stop requests are never marked confirmed. There are no MutationObservers, intervals, storage or network calls.
+
 ## Local showcase
+
+`docs/scenes/ui-motion-showcase.html` renders every adult phase and the button states under a "SIMULATED STATES" banner. Like the Kids showcase, it is a local `file://` review fixture and is not packaged. `tests/test_ui_motion_browser.py` captures review screenshots into `.artifacts/ui-motion/`, which is untracked.
+
+Honest limits: the presence pulses and arcs are decoration, not audio levels. The workbench cannot know progress inside a run. The lens reflects frame freshness in this browser, not camera-to-screen latency. A rail that shows "Reading saved progress" during a restart is expected.
+
+### Kids showcase
 
 `docs/scenes/showcase.html` renders every scene and phase from simulated views, under a
 "SIMULATED STATES" banner. It is a review fixture, not production telemetry, and is not shipped in

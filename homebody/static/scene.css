@@ -233,7 +233,184 @@
 .hb-scene[data-phase="thinking"] .hb-art-companion .hb-orb-y { animation: hbs-orb-y-s 3s ease-in-out -1.5s infinite alternate; }
 .hb-art-companion .hb-fx-thinking { display: none; }
 
+/* ---------- Adult variants: figure (hero), strip (workspace), rail (updates), glyph (camera) ---------- */
+.hb-scene:is([data-variant="figure"], [data-variant="glyph"]) .hb-scene-caption { display: none; }
+.hb-scene[data-variant="figure"] .hb-scene-canvas { width: 100%; aspect-ratio: 1; border-radius: 50%; background: transparent; box-shadow: none; }
+.hb-scene[data-variant="glyph"] { display: inline-block; line-height: 0; }
+.hb-scene[data-variant="glyph"] .hb-scene-canvas { width: 36px; aspect-ratio: 1; border-radius: 50%; background: transparent; box-shadow: none; }
+.hb-scene:is([data-variant="strip"], [data-variant="rail"]) { color: inherit; }
+.hb-scene[data-variant="strip"] { display: flex; align-items: center; gap: 16px; }
+.hb-scene[data-variant="strip"] .hb-scene-canvas { flex: 0 0 auto; width: clamp(112px, 32vw, 176px); aspect-ratio: 2; border-radius: 14px; }
+.hb-scene[data-variant="strip"] .hb-scene-caption { flex: 1; min-width: 0; margin: 0; grid-template-columns: 1fr; gap: 4px; }
+.hb-scene[data-variant="strip"] .hb-scene-chip { grid-row: auto; justify-self: start; }
+.hb-scene[data-variant="rail"] .hb-scene-canvas { aspect-ratio: 300 / 44; border-radius: 12px; }
+.hb-scene:is([data-variant="strip"], [data-variant="rail"]) .hb-scene-canvas { box-shadow: inset 0 0 0 1px rgba(244, 237, 225, .12); }
+.hb-scene:is([data-variant="strip"], [data-variant="rail"]) .hb-scene-chip { border-color: var(--line-strong, rgba(23, 20, 15, .3)); }
+.hb-scene:is([data-variant="strip"], [data-variant="rail"]) .hb-scene-title { font-size: 1.25rem; overflow-wrap: anywhere; }
+.hb-scene:is([data-variant="strip"], [data-variant="rail"]) .hb-scene-detail { color: var(--muted, #5f584d); }
+.hb-scene[data-variant="strip"] .hb-scene-detail { grid-column: 1; }
+/* Chip tones carry state for adult scenes: amber asks, orange works, mint confirms, coral warns. */
+.hb-scene:is([data-phase="approval"], [data-phase="uncertain"], [data-phase="rolled_back"], [data-phase="rolling_back"]) .hb-scene-chip { color: #2a1c00; border-color: transparent; background: var(--warn-bright, #f2c25a); }
+.hb-scene:is([data-phase="working"], [data-phase="queued"], [data-phase="downloading"], [data-phase="installing"], [data-phase="restarting"], [data-phase="verifying"]) .hb-scene-chip { color: var(--orange-text, #d4470f); border-color: var(--orange, #ff6b2c); }
+.hb-scene:is([data-phase="ready"], [data-phase="succeeded"]) .hb-scene-chip { color: #072b20; border-color: transparent; background: #70e0b5; }
+.hb-scene:is([data-scene="workbench"], [data-scene="updater"]):is([data-phase="trouble"], [data-phase="failed"]) .hb-scene-chip { color: #fff6f0; border-color: transparent; background: var(--danger, #c23b2a); }
+/* Adult quiet phases already read through their glyphs; keep only the offline/idle dimming. */
+.hb-scene:is([data-scene="workbench"], [data-scene="updater"])[data-phase="idle"] .hb-art { filter: saturate(.55) brightness(.8); }
+.hb-scene[data-phase="asleep"] .hb-art { filter: saturate(.5) brightness(.7); }
+.hb-scene[data-phase="unreachable"] .hb-art { filter: grayscale(.8) brightness(.6); }
+
+/* ---------- Presence: the Home hero's Reachy ---------- */
+.hb-art-presence { overflow: visible; --hb-fx: #ffd9b8; }
+.hb-pr-ring { fill: none; stroke: rgba(244, 237, 225, .24); stroke-width: 1; stroke-dasharray: 3 5; }
+.hb-pr-ring-live { fill: none; stroke: var(--orange, #ff6b2c); stroke-width: 1.4; opacity: 0; transition: opacity .6s ease; }
+.hb-pr-orbit { fill: none; stroke: rgba(244, 237, 225, .1); stroke-width: 1; stroke-dasharray: 2 6; }
+.hb-scene:is([data-phase="listening"], [data-phase="thinking"], [data-phase="speaking"]) .hb-pr-ring-live { opacity: .5; animation: hbp-breathe 3.2s ease-in-out infinite alternate; }
+.hb-scene[data-phase="waiting"] .hb-pr-ring { stroke: rgba(47, 191, 132, .45); }
+.hb-pr-moon, .hb-pr-quiet, .hb-pr-alert { opacity: 0; transition: opacity .6s ease; }
+.hb-pr-moon path:first-child { fill: #f4e3a4; }
+.hb-pr-z { fill: none; stroke: #f4e3a4; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.hb-pr-quiet rect { fill: #211c18; stroke: rgba(244, 237, 225, .55); stroke-width: 1.5; }
+.hb-pr-quiet path { stroke: #f4ede1; stroke-width: 3; stroke-linecap: round; }
+.hb-pr-alert circle { fill: #ff7b6b; }
+.hb-pr-alert path { stroke: #15120f; stroke-width: 3; stroke-linecap: round; }
+.hb-scene[data-phase="asleep"] .hb-pr-moon, .hb-scene[data-phase="paused"] .hb-pr-quiet, .hb-scene[data-phase="trouble"] .hb-pr-alert { opacity: 1; }
+.hb-scene:is([data-phase="standby"], [data-phase="idle"]) :is(.hb-bot-eye, .hb-bot-eye-glow) { transform: scaleY(.5); }
+.hb-scene:is([data-phase="standby"], [data-phase="idle"]) .hb-bot-visor-glow { opacity: .2; }
+.hb-scene[data-phase="standby"] .hb-bot-antenna-l { transform: rotate(-8deg); }
+.hb-scene[data-phase="standby"] .hb-bot-antenna-r { transform: rotate(8deg); }
+.hb-scene[data-phase="asleep"] :is(.hb-bot-eye, .hb-bot-eye-glow) { transform: scaleY(.14); }
+.hb-scene[data-phase="asleep"] .hb-bot-antenna-l { transform: rotate(-30deg); }
+.hb-scene[data-phase="asleep"] .hb-bot-antenna-r { transform: rotate(30deg); }
+.hb-scene[data-phase="asleep"] .hb-bot-head { transform: translateY(4px) rotate(2deg); }
+.hb-scene[data-phase="offline"] .hb-pr-ring { stroke-dasharray: 1 9; }
+
+/* ---------- Workbench: you · Reachy · worker ---------- */
+.hb-wb-bg { fill: #15120f; }
+.hb-wb-grid path { stroke: rgba(244, 237, 225, .05); stroke-width: 1; }
+.hb-wb-link { fill: none; stroke: rgba(244, 237, 225, .2); stroke-width: 2; stroke-linecap: round; transition: stroke .6s ease, opacity .6s ease; }
+.hb-wb-link-b { stroke-dasharray: 3 6; }
+.hb-wb-flow { fill: none; stroke: var(--orange, #ff6b2c); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 6 14; opacity: 0; transition: opacity .6s ease; }
+.hb-wb-node > circle:first-child, .hb-wb-worker > rect:first-child { fill: #211c18; stroke: rgba(244, 237, 225, .35); stroke-width: 1.6; transition: stroke .6s ease; }
+.hb-wb-you .hb-wb-core { fill: #8c7bff; }
+.hb-wb-reachy rect { fill: #f4ede1; }
+.hb-wb-eye { fill: #ff6b2c; } .hb-wb-eye-r { fill: #8c7bff; }
+.hb-wb-orbit { transform-box: fill-box; transform-origin: center; }
+.hb-wb-orbit circle { fill: none; stroke: #ff9a66; stroke-width: 1.4; stroke-dasharray: 4 9; opacity: 0; transition: opacity .6s ease; }
+.hb-wb-check, .hb-wb-bang, .hb-wb-ask { fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity .5s ease; }
+.hb-wb-check { stroke: #70e0b5; } .hb-wb-bang { stroke: #ff8d7f; } .hb-wb-ask { stroke: #f2c25a; }
+.hb-wb-stop { fill: rgba(244, 237, 225, .7); opacity: 0; transition: opacity .5s ease; }
+.hb-wb-gate { opacity: 0; transition: opacity .5s ease; }
+.hb-wb-gate path { fill: #211c18; stroke: #f2c25a; stroke-width: 1.8; }
+.hb-wb-gate circle { fill: #f2c25a; }
+.hb-wb-gate > * { transform-box: fill-box; transform-origin: center; }
+.hb-scene:not([data-phase="idle"]):not([data-phase="offline"]) .hb-art-workbench .hb-wb-link-a { stroke: #8c7bff; stroke-opacity: .8; }
+.hb-scene[data-phase="approval"] .hb-wb-gate { opacity: 1; }
+/* Bounded attention: three soft swells, then a steady amber gate. Never a flash or an endless loop. */
+.hb-scene[data-phase="approval"] .hb-wb-gate path { animation: hbw-attend 1.8s ease-in-out 3; }
+.hb-scene[data-phase="approval"] .hb-wb-worker { opacity: .55; }
+.hb-scene:is([data-phase="working"], [data-phase="stopping"]) .hb-wb-link-b { stroke: rgba(255, 107, 44, .35); stroke-dasharray: none; }
+.hb-scene[data-phase="working"] .hb-wb-flow { opacity: .9; animation: hbw-flow 2.8s linear infinite; }
+.hb-scene[data-phase="working"] .hb-wb-orbit circle { opacity: .8; }
+.hb-scene[data-phase="working"] .hb-wb-orbit { animation: hbs-turn 14s linear infinite; }
+.hb-scene[data-phase="stopping"] .hb-wb-stop, .hb-scene[data-phase="stopped"] .hb-wb-stop { opacity: 1; }
+.hb-scene[data-phase="stopping"] .hb-wb-worker { opacity: .7; }
+.hb-scene[data-phase="uncertain"] .hb-wb-link-b { stroke: #f2c25a; stroke-opacity: .6; stroke-dasharray: 2 7; }
+.hb-scene[data-phase="uncertain"] .hb-wb-ask { opacity: 1; }
+.hb-scene[data-phase="uncertain"] .hb-wb-worker > rect:first-child { stroke: #f2c25a; }
+.hb-scene[data-phase="finished"] .hb-wb-link-b { stroke: rgba(244, 237, 225, .45); stroke-dasharray: none; }
+.hb-scene[data-phase="ready"] .hb-wb-link-b { stroke: #70e0b5; stroke-opacity: .75; stroke-dasharray: none; }
+.hb-scene[data-phase="ready"] .hb-wb-worker > rect:first-child { stroke: #70e0b5; }
+.hb-scene[data-phase="ready"] .hb-wb-check { opacity: 1; }
+.hb-scene[data-phase="trouble"] .hb-wb-worker > rect:first-child { stroke: #ff8d7f; }
+.hb-scene[data-phase="trouble"] .hb-wb-bang { opacity: 1; }
+
+/* ---------- Lens: camera state beside the badge, never over the video ---------- */
+.hb-ln-body { fill: #211c18; stroke: rgba(244, 237, 225, .3); stroke-width: 1.5; }
+.hb-ln-seek { fill: none; stroke: #f2c25a; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 9 22; opacity: 0; transform-box: fill-box; transform-origin: center; transition: opacity .5s ease; }
+.hb-ln-iris path { fill: #4d4540; stroke: #211c18; stroke-width: 1; stroke-linejoin: round; transform-origin: 0 0; transition: transform .9s var(--hb-ease), opacity .9s ease; }
+.hb-ln-iris path:nth-child(odd) { fill: #5a5049; }
+.hb-ln-rim { fill: none; stroke: rgba(244, 237, 225, .45); stroke-width: 1.5; transition: stroke .5s ease; }
+.hb-ln-shine { fill: none; stroke: #fff; stroke-opacity: .5; stroke-width: 1.6; stroke-linecap: round; opacity: 0; transition: opacity .6s ease; }
+.hb-ln-slash { stroke: #ff8d7f; stroke-width: 3; stroke-linecap: round; opacity: 0; }
+.hb-ln-dot { fill: #6b645b; stroke: #15120f; stroke-width: 1.5; transition: fill .5s ease; }
+.hb-scene:is([data-phase="connecting"], [data-phase="paused"]) .hb-ln-iris path { transform: rotate(24deg) scale(.6); }
+.hb-scene[data-phase="connecting"] .hb-ln-seek { opacity: 1; animation: hbs-turn 3.2s linear infinite; }
+.hb-scene:is([data-phase="connecting"], [data-phase="held"], [data-phase="paused"]) .hb-ln-dot { fill: #f2c25a; }
+.hb-scene:is([data-phase="live"], [data-phase="held"]) .hb-ln-iris path { transform: rotate(50deg) scale(.05); opacity: 0; }
+.hb-scene:is([data-phase="live"], [data-phase="held"]) .hb-ln-shine { opacity: 1; }
+.hb-scene[data-phase="live"] .hb-ln-dot { fill: #2fbf84; animation: hbs-breathe 3s ease-in-out infinite alternate; }
+.hb-scene[data-phase="live"] .hb-ln-rim { stroke: rgba(47, 191, 132, .8); }
+.hb-scene[data-phase="held"] .hb-ln-rim { stroke: #f2c25a; }
+.hb-scene[data-phase="ready"] .hb-ln-rim { stroke: rgba(244, 237, 225, .7); }
+.hb-scene[data-phase="privacy"] .hb-ln-slash { opacity: 1; }
+.hb-scene[data-phase="trouble"] .hb-ln-rim { stroke: #ff8d7f; }
+.hb-scene[data-phase="trouble"] .hb-ln-dot { fill: #ff7b6b; }
+
+/* ---------- Updater rail: five durable steps, then the confirmed outcome ---------- */
+.hb-up-track, .hb-up-fill { fill: none; stroke-width: 2; stroke-linecap: round; }
+.hb-up-track { stroke: rgba(244, 237, 225, .16); }
+.hb-up-fill { stroke: var(--orange, #ff6b2c); stroke-dasharray: 256; stroke-dashoffset: 256; transition: stroke-dashoffset .9s var(--hb-ease), stroke .5s ease; }
+.hb-up-ring { fill: #211c18; stroke: rgba(244, 237, 225, .3); stroke-width: 1.5; transform-box: fill-box; transform-origin: center; transition: stroke .5s ease; }
+.hb-up-core { fill: rgba(244, 237, 225, .2); transition: fill .5s ease; }
+.hb-up-check, .hb-up-back, .hb-up-bang { fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity .5s ease; }
+.hb-up-check { stroke: #70e0b5; } .hb-up-back { stroke: #f2c25a; } .hb-up-bang { stroke: #ff8d7f; }
+.hb-scene[data-phase="downloading"] .hb-up-fill { stroke-dashoffset: 204.8; }
+.hb-scene[data-phase="installing"] .hb-up-fill { stroke-dashoffset: 153.6; }
+.hb-scene[data-phase="restarting"] .hb-up-fill { stroke-dashoffset: 102.4; }
+.hb-scene[data-phase="verifying"] .hb-up-fill { stroke-dashoffset: 51.2; }
+.hb-scene[data-phase="succeeded"] .hb-up-fill { stroke-dashoffset: 0; stroke: #70e0b5; }
+/* Reached steps fill in; the current step gently breathes. */
+.hb-scene:is([data-phase="queued"], [data-phase="downloading"], [data-phase="installing"], [data-phase="restarting"], [data-phase="verifying"]) .hb-up-queued,
+.hb-scene:is([data-phase="downloading"], [data-phase="installing"], [data-phase="restarting"], [data-phase="verifying"]) .hb-up-downloading,
+.hb-scene:is([data-phase="installing"], [data-phase="restarting"], [data-phase="verifying"]) .hb-up-installing,
+.hb-scene:is([data-phase="restarting"], [data-phase="verifying"]) .hb-up-restarting,
+.hb-scene[data-phase="verifying"] .hb-up-verifying { --hb-up-on: var(--orange, #ff6b2c); }
+.hb-up-step .hb-up-ring { stroke: var(--hb-up-on, rgba(244, 237, 225, .3)); }
+.hb-up-step .hb-up-core { fill: var(--hb-up-on, rgba(244, 237, 225, .2)); }
+.hb-scene[data-phase="queued"] .hb-up-queued .hb-up-ring,
+.hb-scene[data-phase="downloading"] .hb-up-downloading .hb-up-ring,
+.hb-scene[data-phase="installing"] .hb-up-installing .hb-up-ring,
+.hb-scene[data-phase="restarting"] .hb-up-restarting .hb-up-ring,
+.hb-scene[data-phase="verifying"] .hb-up-verifying .hb-up-ring { animation: hbu-current 2.4s ease-in-out infinite alternate; }
+.hb-scene[data-phase="succeeded"] .hb-up-step { --hb-up-on: #70e0b5; }
+.hb-scene[data-phase="succeeded"] .hb-up-end .hb-up-ring { stroke: #70e0b5; }
+.hb-scene[data-phase="succeeded"] .hb-up-check { opacity: 1; }
+.hb-scene:is([data-phase="rolling_back"], [data-phase="rolled_back"]) .hb-up-back { opacity: 1; }
+.hb-scene:is([data-phase="rolling_back"], [data-phase="rolled_back"]) .hb-up-end .hb-up-ring { stroke: #f2c25a; }
+.hb-scene[data-phase="rolling_back"] .hb-up-end .hb-up-ring { animation: hbu-current 2.4s ease-in-out infinite alternate; }
+.hb-scene[data-phase="failed"] .hb-up-bang { opacity: 1; }
+.hb-scene[data-phase="failed"] .hb-up-end .hb-up-ring { stroke: #ff8d7f; }
+.hb-scene[data-phase="available"] .hb-up-end .hb-up-ring { stroke: var(--orange, #ff6b2c); stroke-dasharray: 3 3; }
+.hb-scene[data-phase="checking"] .hb-up-track { animation: hbs-breathe 2.4s ease-in-out infinite alternate; }
+.hb-scene[data-phase="unreachable"] .hb-up-track { stroke-dasharray: 2 6; }
+
+/* ---------- Motion primitives (motion.js) ----------
+   One-shot entrances and button feedback. Nothing here loops except the pending ring, which only
+   exists while a real request is in flight. */
+.hb-enter { animation: hbm-enter .22s var(--hb-ease, ease-out) both; }
+details[data-hb-disclosure][open] > :not(summary).hb-enter { animation-duration: .2s; }
+button[data-hb-motion] { position: relative; }
+button[data-hb-motion]::after { content: ""; display: inline-block; width: .8em; height: .8em; margin-left: .5em; vertical-align: -.08em; border-radius: 50%; box-sizing: border-box; }
+button[data-hb-motion="pending"]::after { border: 2px solid currentColor; border-right-color: transparent; animation: hbs-turn .9s linear infinite; }
+button[data-hb-motion="confirmed"]::after { width: .5em; height: .85em; margin-left: .6em; border: solid currentColor; border-width: 0 2px 2px 0; border-radius: 0; transform: rotate(45deg) translate(-.1em, -.15em); animation: hbm-pop .32s var(--hb-ease, ease-out) both; }
+button[data-hb-motion="failed"] { animation: hbm-nudge .3s ease-out 1; }
+button[data-hb-motion="failed"]::after { content: "!"; width: auto; height: auto; font-weight: 700; }
+
+/* Camera frame: a quiet edge tone outside the video, never over it; nothing in fullscreen. */
+.camera-viewer[data-lens]:not(:fullscreen):not(.camera-app-fullscreen) { transition: box-shadow .4s ease; }
+.camera-viewer[data-lens="connecting"]:not(:fullscreen):not(.camera-app-fullscreen) { box-shadow: 0 0 0 2px rgba(242, 194, 90, .45); }
+.camera-viewer[data-lens="live"]:not(:fullscreen):not(.camera-app-fullscreen) { box-shadow: 0 0 0 2px rgba(47, 191, 132, .5); }
+.camera-viewer:is([data-lens="held"], [data-lens="paused"]):not(:fullscreen):not(.camera-app-fullscreen) { box-shadow: 0 0 0 2px rgba(242, 194, 90, .7); }
+.camera-viewer[data-lens="trouble"]:not(:fullscreen):not(.camera-app-fullscreen) { box-shadow: 0 0 0 2px rgba(255, 123, 107, .6); }
+
 /* ---------- Keyframes ---------- */
+@keyframes hbp-breathe { from { opacity: .25; } to { opacity: .6; } }
+@keyframes hbw-attend { 0%, 100% { transform: scale(1); stroke-width: 1.8; } 50% { transform: scale(1.22); stroke-width: 2.6; } }
+@keyframes hbw-flow { to { stroke-dashoffset: -40; } }
+@keyframes hbu-current { from { transform: scale(1); } to { transform: scale(1.22); } }
+@keyframes hbm-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes hbm-pop { from { opacity: 0; transform: rotate(45deg) translate(-.1em, -.15em) scale(.4); } to { opacity: 1; transform: rotate(45deg) translate(-.1em, -.15em); } }
+@keyframes hbm-nudge { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
 @keyframes hbs-enter { from { opacity: 0; transform: scale(1.03); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
 @keyframes hbs-leave { to { opacity: 0; transform: scale(.985); } }
 @keyframes hbs-cue { 30% { opacity: 1; } 100% { opacity: 0; } }
@@ -275,4 +452,8 @@
 @keyframes hbs-sweep { from { transform: rotate(-38deg); } to { transform: rotate(38deg); } }
 @keyframes hbs-glance { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
 
-@media (prefers-reduced-motion: reduce) { .hb-scene *, .hb-scene *::before { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  .hb-scene *, .hb-scene *::before { animation: none !important; transition: none !important; }
+  .hb-enter, button[data-hb-motion], button[data-hb-motion]::after { animation: none !important; }
+  .camera-viewer[data-lens] { transition: none !important; }
+}

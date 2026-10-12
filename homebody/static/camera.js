@@ -141,7 +141,28 @@
     }
   }
 
+  // Lens beside the status badge (scene.js). Display-only: it reads this module's state and never
+  // starts, stops or requests anything. "live" needs a decoded frame that is still fresh.
+  const lens = window.HomebodyScene?.mount(byId("camera-lens"), { variant: "glyph", label: "Camera" }) || null;
+  let lensStatus = "Off";
+  function lensPhase() {
+    const connecting = state.requested || state.session || state.stream;
+    if (state.stream && lensStatus.startsWith("Live") && videoFresh()) return "live";
+    if (state.stream && state.frameCount > 0) return "held";
+    if (connecting) return lensStatus === "Paused" ? "paused" : "connecting";
+    if (["Error", "Offline", "Unsupported"].includes(lensStatus)) return "trouble";
+    if (lensStatus === "Blocked" || !state.enabled || ["meeting", "sleep"].includes(state.powerMode)) return "privacy";
+    return lensStatus === "Ready" ? "ready" : "off";
+  }
+  function renderLens() {
+    const offline = window.HomebodyOwner ? window.HomebodyOwner.isOwner() !== true : false;
+    const phase = offline ? "offline" : lensPhase();
+    byId("camera-viewer").dataset.lens = phase;
+    lens?.update(window.HomebodyScene.lensView({ phase, offline }));
+  }
+
   function setUi(status, message, kind = "") {
+    lensStatus = String(status);
     byId("camera-live-status").textContent = status;
     const messageElement = byId("camera-message");
     messageElement.textContent = message;
@@ -152,6 +173,7 @@
       }
     }
     else if (kind === "ok") window.HomebodyNotifications?.dismiss("camera-stream");
+    renderLens();
   }
 
   function setControlStatus(message) {
@@ -330,6 +352,7 @@
     else if (!videoFresh()) setControlStatus("Video delayed · movement held. Wait for fresh video.");
     else if (!allowed) setControlStatus("Reachy is busy. Wait or use Stop movement.");
     else if (state.controlPointerId === null) setControlStatus("Release holds the current view");
+    renderLens();
   }
 
   function updateButtons() {

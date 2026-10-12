@@ -351,9 +351,14 @@ def test_everyday_companion_reuses_the_component(ui):
         page.emulate_media(color_scheme=scheme)
         page.locator("#everyday-card").scroll_into_view_if_needed()
         _shot(page, f"everyday-companion-{scheme}", clip=page.locator("#everyday-card").bounding_box())
-    # Same component, one implementation: both mounts come from HomebodyScene.
-    assert page.evaluate("HomebodyScene.liveCount()") == 2
-    assert page.evaluate("document.querySelectorAll('.hb-scene').length") == 2
+    # Same component, one implementation: every mount, Kids and adult, comes from HomebodyScene.
+    mounts = page.evaluate("""() => [...document.querySelectorAll('.hb-scene')]
+        .map(s => `${s.parentElement.id}:${s.dataset.variant}:${s.dataset.scene}`).sort()""")
+    assert mounts == sorted([
+        "kids-stage:stage:buddy", "everyday-companion:compact:companion", "hero-presence:figure:presence",
+        "camera-lens:glyph:lens", "workspace-native-scene:strip:workbench", "update-rail:rail:updater",
+    ])
+    assert page.evaluate("HomebodyScene.liveCount()") == len(mounts)
     assert not errors
 
 

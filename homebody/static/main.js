@@ -187,10 +187,11 @@ try {
   window.localStorage.removeItem("homebody-kids-profile");
 }
 
-// The Kids stage and the Everyday companion are two mounts of one scene component (scene.js).
+// The Kids stage, the Everyday companion and the Home hero are mounts of one scene component (scene.js).
 // These bindings only translate allowlisted status into categorical views; they never fetch.
 const kidsStage = window.HomebodyScene?.mount($("kids-stage"), { label: "Kids activity stage" }) || null;
 const companionStage = window.HomebodyScene?.mount($("everyday-companion"), { variant: "compact", label: "Reachy" }) || null;
+const presenceStage = window.HomebodyScene?.mount($("hero-presence"), { variant: "figure", label: "Reachy" }) || null;
 let kidsStageStatus = { kids: {}, state: "", powerMode: "", offline: false };
 let statusSequence = 0; // advanced as each status request starts
 let kidsEndPending = false;
@@ -865,6 +866,9 @@ function updateStatus(payload, sequence = statusSequence) {
   companionStage?.update(window.HomebodyScene.companionView({
     state, powerMode: runtime.power_mode || "", kidsActive: kidsActive || kidsLocked, offline: sceneOffline,
   }));
+  presenceStage?.update(window.HomebodyScene.presenceView({
+    state, powerMode: runtime.power_mode || "", kidsActive: kidsActive || kidsLocked, offline: sceneOffline,
+  }));
   window.HomebodyWorkspace?.update(runtime);
   window.HomebodyVolume?.update(runtime);
   window.HomebodyNotifications.setSuppressed("kids", kidsLocked);
@@ -1340,6 +1344,7 @@ async function refreshStatus() {
     kidsStageStatus = { ...kidsStageStatus, offline: true };
     renderKidsStage();
     companionStage?.update(window.HomebodyScene.companionView({ offline: true }));
+    presenceStage?.update(window.HomebodyScene.presenceView({ offline: true }));
     $("presence-enabled").disabled = true;
     $("presence-acknowledgement-enabled").disabled = true;
     $("presence-badge").textContent = "Offline";

@@ -3,7 +3,27 @@
   const byId = (id) => document.getElementById(id);
   let epoch = 0, enabled = false, pending = false, uncertain = false, payload = null, controller = null;
   const active = new Set(["submitting", "running", "stopping", "disconnected", "verifying", "submission_unknown"]);
+  const feedbackButtons = { bind: "workspace-native-bind", prepare: "workspace-native-prepare", approve: "workspace-native-approve" };
+  // Display-only bench (scene.js). It reads categorical fields of the current payload, never text or ids.
+  const bench = window.HomebodyScene?.mount(byId("workspace-native-scene"), { variant: "strip", label: "Project session" }) || null;
+  function verifiedReady(run, binding) {
+    return run?.status === "completed" && run.ready_to_test === true && run.receipt?.verified === true
+      && run.receipt.native_run_id === run.run_id && run.receipt.native_session_id === binding?.session_id;
+  }
+  function renderBench() {
+    bench?.update(window.HomebodyScene.workbenchView({
+      offline: window.HomebodyOwner?.isOwner() !== true,
+      showing: enabled,
+      configured: Boolean(payload?.targets?.length),
+      bound: Boolean(payload?.binding),
+      pending: Boolean(payload?.pending),
+      status: payload?.run?.status || "",
+      verified: verifiedReady(payload?.run, payload?.binding),
+      uncertain,
+    }));
+  }
   function reset() {
+    Object.values(feedbackButtons).forEach((id) => window.HomebodyMotion?.clear(byId(id)));
     epoch += 1;
     controller?.abort();
     controller = null;
@@ -31,6 +51,7 @@
     byId("workspace-native-stop").disabled = !enabled || (!busy && !pending && !uncertain);
     byId("workspace-native-target").disabled = !enabled || pending || busy;
     byId("workspace-native-request").disabled = !enabled || pending || busy || !payload?.binding;
+    renderBench();
   }
   function render(next) {
     payload = next;
@@ -51,8 +72,7 @@
     const run = next.run || {};
     byId("workspace-native-verification").hidden = !run.receipt;
     byId("workspace-native-receipt").textContent = run.receipt ? JSON.stringify(run.receipt, null, 2) : "";
-    byId("workspace-native-state").textContent = run.status === "completed" && run.ready_to_test === true && run.receipt?.verified === true
-      && run.receipt.native_run_id === run.run_id && run.receipt.native_session_id === binding?.session_id
+    byId("workspace-native-state").textContent = verifiedReady(run, binding)
       ? `Ready to test · ${run.run_id} · fixed checks passed; artifact hashes recorded.`
       : run.status ? `${run.status} · ${run.run_id || "native admission unconfirmed"} · Not verified ready to test.`
         : next.targets?.length ? "Select an existing session. Sending work requires exact approval."
@@ -69,7 +89,10 @@
       row.append(label, body);
       timeline.append(row);
     }
-    byId("workspace-native-approval").hidden = !next.pending;
+    const approval = byId("workspace-native-approval");
+    const revealed = approval.hidden && Boolean(next.pending);
+    approval.hidden = !next.pending;
+    if (revealed) window.HomebodyMotion?.enter(approval);
     byId("workspace-native-request-summary").textContent = next.pending
       ? `Request: ${next.pending.text || "See the full approved scope below."}` : "";
     byId("workspace-native-scope").textContent = next.pending ? JSON.stringify(next.pending, null, 2) : "";
@@ -83,6 +106,9 @@
     controller = abort;
     pending = true;
     const mine = epoch;
+    // Button feedback follows the server's answer to this exact request; stale answers just clear it.
+    const feedback = feedbackButtons[action] ? window.HomebodyMotion?.pending(byId(feedbackButtons[action])) : null;
+    let outcome = "cleared";
     controls();
     const timer = setTimeout(() => abort.abort(), 25000);
     try {
@@ -96,8 +122,10 @@
       if (["read", "show", "bind"].includes(action)) render(next);
       else if (action === "prepare") render({...payload, pending: next});
       else render({...payload, run: next, pending: null});
+      outcome = "confirmed";
     } catch (error) {
       if (mine !== epoch || controller !== abort) return;
+      outcome = "failed";
       byId("workspace-native-timeline").replaceChildren();
       byId("workspace-native-approval").hidden = true;
       byId("workspace-native-scope").textContent = "";
@@ -113,6 +141,7 @@
       });
     } finally {
       clearTimeout(timer);
+      window.HomebodyMotion?.settle(feedback, mine === epoch ? outcome : "cleared");
       if (controller === abort) { controller = null; pending = false; controls(); }
     }
   }
@@ -122,8 +151,10 @@
   byId("workspace-native-stop").addEventListener("click", () => request("cancel"));
   window.HomebodyNativeWorkspace = {
     reset,
+    /** Repaint the bench from current state (owner/display changes); never fetches. */
+    sync: renderBench,
     update(displayEnabled) {
-      if (!displayEnabled) { if (enabled) reset(); return; }
+      if (!displayEnabled) { if (enabled) reset(); else renderBench(); return; }
       const first = !enabled;
       enabled = true;
       controls();
