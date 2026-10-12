@@ -34,6 +34,21 @@ Typing skips microphone recording and speech recognition for that turn. **Reachy
 Guesses and input capabilities stay out of browser storage and status. The draft is cleared when the activity ends/changes. Expiry, End, privacy, replacement and replayed/stale submissions fail closed. Input uses a separate ephemeral one-use capability, not an exposed private game-session ID.
 
 
+## Activity stage
+
+The Kids display shows an illustrated scene for the chosen activity:
+
+- **Buddy:** golden-hour orbit
+- **Story maker:** paper theatre
+- **Quiz quest:** compass island
+- **Riddle box:** lantern-lit box
+- **Calm corner:** moonlit pond
+- **I Spy:** explorer's desk with a lens
+
+Before a session starts, the stage is a still preview. During a session it shows waiting, listening, thinking or speaking from the existing categorical runtime state. In I Spy, a "Camera on" search appears only while status reports the bounded camera search.
+
+The stage never shows what was said, guessed or chosen, and never shows scores or answers. It does not move while hidden, off screen, ended, offline or under reduced-motion settings. End, typed guesses and all controls stay outside it. See [Scenes](scenes.md).
+
 ## Safety boundaries
 
 Kids Mode is deliberately separate from the normal Hermes agent session. It opens a fresh, bounded child pipeline through the private `/v1/kids/chat` route, with pre/post moderation and no Hermes memory or tool session.

@@ -15,6 +15,7 @@
     byId('owner-device-name').textContent = session.owner ? `Owner · ${session.name}` : '';
     if (!session.owner) window.HomebodyWorkspace?.reset("Pair an owner device to see conversations.");
     if (!session.owner) window.ReachyCamera?.stop('Owner session ended. Pair this device to continue.');
+    if (!session.owner) window.HomebodyScene?.resetAll();
     const keyField = byId('current_api_key');
     if (keyField) keyField.closest('label')?.setAttribute('hidden', '');
     // The Ask box uses the owner session; hide the key field when paired.

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-10-12
+
+### Activity scenes
+- **Kids stage.** The Kids display now has an illustrated stage with a distinct scene for each of the six activities. It replaces the static CSS mascot.
+- **Bound to existing status.** Phases come from the existing categorical runtime state, plus I Spy `camera_active` for the camera search. No new status fields were added. Unknown states show a neutral "Waiting".
+- **No content shown.** The stage never shows transcripts, replies, nicknames, guesses, targets, scores or answers.
+- **One shared component.** `scene.js`/`scene.css` is reused for a compact Reachy companion in the Everyday card. It has a mount/update/reset/destroy lifecycle and pure status adapters.
+- **Motion rules.** CSS-only loops run in live phases only. They pause off screen, in hidden tabs or pages, and under reduced motion. Identical polls are ignored. End, offline and owner loss show motionless neutral stills, and a status poll that started before End cannot revive the scene.
+- **Showcase.** `docs/scenes/showcase.html` is a simulated, local-only review page. The PWA shell lists the two new assets at the existing query version; bump it at release.
+
 ## [0.5.5] - 2026-10-12
 
 ### Integrated I Spy typed guesses

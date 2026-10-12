@@ -13,7 +13,8 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=83">
+  <link rel="stylesheet" href="/static/style.css?v=84">
+  <link rel="stylesheet" href="/static/scene.css?v=84">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -175,6 +176,7 @@
           <div><p class="label">Everyday</p><h2 id="everyday-heading">Quick help at home</h2></div>
           <span id="everyday-badge" class="badge">Checking…</span>
         </div>
+        <div id="everyday-companion" class="everyday-companion"></div>
         <dl class="everyday-facts">
           <div><dt>Selected voice engine</dt><dd id="everyday-voice">—</dd></div>
           <div><dt>Weather</dt><dd id="everyday-weather">—</dd></div>
@@ -426,7 +428,7 @@
           <div class="kids-progress" role="progressbar" aria-label="Kids Mode time remaining" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="kids-progress-bar"></span></div>
           <p id="kids-session-detail" class="muted compact-note">Camera, personal Hermes memory, smart-home control, messaging, purchases, and power controls are unavailable to the child session.</p>
         </div>
-        <div class="kids-mascot" aria-hidden="true"><span class="kids-eye"></span><span class="kids-eye"></span><i></i></div>
+        <div id="kids-stage" class="kids-stage"></div>
       </section>
 
       <section class="card kids-activity-card">
@@ -1116,17 +1118,18 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=83"></script>
-  <script src="/static/owner.js?v=83"></script>
+  <script src="/static/notifications.js?v=84"></script>
+  <script src="/static/scene.js?v=84"></script>
+  <script src="/static/owner.js?v=84"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=83"></script>
-  <script src="/static/agent-connection.js?v=83"></script>
-  <script src="/static/native-workspace.js?v=83"></script>
-  <script src="/static/workspace.js?v=83"></script>
-  <script src="/static/ispy-input.js?v=83"></script>
-  <script src="/static/main.js?v=83"></script>
-  <script src="/static/updates.js?v=83"></script>
-  <script src="/static/volume.js?v=83"></script>
-  <script src="/static/assistant-modes.js?v=83"></script>
+  <script src="/static/camera.js?v=84"></script>
+  <script src="/static/agent-connection.js?v=84"></script>
+  <script src="/static/native-workspace.js?v=84"></script>
+  <script src="/static/workspace.js?v=84"></script>
+  <script src="/static/ispy-input.js?v=84"></script>
+  <script src="/static/main.js?v=84"></script>
+  <script src="/static/updates.js?v=84"></script>
+  <script src="/static/volume.js?v=84"></script>
+  <script src="/static/assistant-modes.js?v=84"></script>
 </body>
 </html>

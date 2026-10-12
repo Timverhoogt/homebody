@@ -6,7 +6,7 @@
 
 | Component | Snapshot | What that does—and does not—mean |
 |---|---|---|
-| Published robot/dashboard package | [v0.5.5](https://github.com/Timverhoogt/homebody/releases/tag/v0.5.5) | Adds padded mode-selector cards and separated helper text; retains Everyday/Workspace routing, GPT-Live preview, measured speaker controls and managed updates. Includes current companion source, not automatic host configuration. |
+| Published robot/dashboard package | [v0.5.6](https://github.com/Timverhoogt/homebody/releases/tag/v0.5.6) | Adds padded mode-selector cards and separated helper text; retains Everyday/Workspace routing, GPT-Live preview, measured speaker controls and managed updates. Includes current companion source, not automatic host configuration. |
 | Source on GitHub `main` and Hugging Face | Includes [Everyday subscription support (#77)](https://github.com/Timverhoogt/homebody/pull/77) and [Kids/I Spy/native Workspace support (#78)](https://github.com/Timverhoogt/homebody/pull/78) | These host changes landed **after** v0.5.2. Mirroring main does not retroactively replace that immutable release wheel. |
 | Reference trusted-host bridge | Separately updated with subscription routing and a dedicated native Hermes Workspace listener | Requires saved supported authentication, explicit model configuration, a registered project/session and host service configuration. Not a universal fresh-install default. |
 | Android companion / APK | Independent of the robot package | A Reachy update changes robot software and served dashboard assets. It does not install or version-check an APK on the phone. |
