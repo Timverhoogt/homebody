@@ -5,19 +5,37 @@ The companion bridge gives Reachy one authenticated endpoint for:
 - Hermes API Server chat, OpenClaw Gateway chat, or both (see [Use OpenClaw](#use-openclaw-instead-of-or-besides-hermes));
 - model and voice discovery;
 - configured or explicitly selected STT/TTS providers;
-- a private OpenAI Realtime WebSocket;
-- `ask_hermes` delegation from Realtime back into the user's Hermes agent.
+- private OpenAI Realtime and GPT-Live preview WebSockets;
+- purpose-aware delegation: narrow Everyday tools or explicitly selected Workspace, separate from speech transport;
 - the fixed owner-scoped Agent broker: read tools, reversible home actions, timers/reminders, media, drafts, exact approvals, cancellation, and a sanitized timeline.
 - local Realtime power-mode calls for Standby, Awake, timed Meeting, and Sleep.
 - pass-through of on-demand Reachy camera frames to Realtime image input.
 
 Provider credentials stay on the Hermes host. Reachy stores only the bridge URL and the private `API_SERVER_KEY` bearer token.
 
+## Purpose modes and speech engines
+
+- **Everyday** uses narrow host text/tool calls for general answers, configured weather/time and allowlisted home controls. It does not instantiate a full agent, inherit private memory or fall back to Hermes when unavailable.
+- **Workspace** requires explicit project selection. Native support binds an exact host-registered Hermes session, with its real identity/history; restricted broker answers remain labelled separately. Register projects in `REACHY_AGENT_PROJECTS_JSON` and native targets in `REACHY_NATIVE_TARGETS_JSON`. Native discussion is opt-in and uses the worker's configured tools: ‘discuss only’ is an instruction, **not enforcement**. Configure owner-scoped read-only tools when a read-only guarantee is needed. The planned execution flow additionally requires explicit enablement, exact phone approval and fixed verifier/artifact receipts; these do not universally gate every discussion tool call. CWD is context, **not a sandbox**. See [native Workspace](../docs/native-workspace.md).
+- **Kids** has no adult memory or tools. Provider changes do not alter moderation, I Spy camera consent, session-generation isolation or Stop/expiry/fold lifecycle. It remains supervised, not a babysitter.
+
+Speech engines are **Pipeline** (STT/text/TTS), **Realtime** and **GPT-Live preview**, selected separately under Advanced. GPT-Live exposes no direct camera, movement or memory tools; delegated text follows the selected purpose boundary; physical echo cancellation and barge-in remain unverified. See [Everyday / Workspace](../docs/everyday-workspace.md).
+
+### Optional subscription text/vision
+
+The host uses saved Hermes Codex authentication through the supported provider router. Launch with `subscription_bridge_entry.py` and configure the dedicated native listener through `subscription_workspace_entry.py` as described in the [setup guide](../docs/subscription-reasoning.md). Do not export OAuth credentials to Reachy or the browser. There is **no paid text API fallback**.
+
+Validated reference choices are `gpt-6-sol` for Everyday, planning and native Workspace, and `gpt-6-luna` for Kids/I Spy, with genuine reasoning `none`. These are not universal defaults. `gpt-6.1-sol` currently does not accept `none`; low/minimal must not be described as off. Validate real server acceptance, not just model names in configuration.
+
+Subscription inference does not replace Realtime/GPT-Live speech APIs, configured STT/TTS billing, or OpenAI Kids moderation. Strict structured-output validation and existing camera/lifecycle gates still apply.
+
 ## Prerequisites
 
-The quickest route is [agent-led setup](../docs/agent-setup.md): Homebody gives you a message for your agent, and the agent does everything in this file.
+For a **basic restricted conversation connection**, use [agent-led setup](../docs/agent-setup.md). The robot serves a bundle matching its installed release, not necessarily current GitHub main. It does not provision subscription text/vision or native Workspace sessions. Robot release **0.5.2** excludes the PR #77/#78 host changes; the reference bridge was updated separately. See [release status](../docs/release-status.md).
 
-By hand: give Reachy a dedicated Hermes profile whose API server has **no broad host tools**. The bridge checks `/v1/toolsets` before every turn and refuses while any of these are enabled:
+For subscription text/vision and native sessions, follow the explicit [subscription and native setup guide](../docs/subscription-reasoning.md) instead of assuming the direct bridge command below enables them.
+
+For the **legacy conversation API path** below, give Reachy a dedicated Hermes profile whose API server has **no broad host tools**. The bridge checks `/v1/toolsets` on that path and refuses while any of these are enabled (native Workspace has its separate explicit registration/approval boundary):
 
 - `terminal`, `process`, `execute_code`;
 - `read_file`, `write_file`, `search_files`, `patch`;
@@ -52,7 +70,7 @@ The OpenAI account must have API billing and access to `gpt-realtime-2.1`. A Cha
 
 Everyday (the default adult voice purpose) reuses the Home Assistant allowlists below with a fast text model and never calls Hermes. Its own variables (`REACHY_EVERYDAY_PROVIDER`, `REACHY_EVERYDAY_MODEL`, `REACHY_EVERYDAY_ALIASES`, `REACHY_EVERYDAY_WEATHER_ENTITY`, optional `REACHY_EVERYDAY_WEATHER_PROVIDER=open-meteo` with `REACHY_EVERYDAY_WEATHER_LATLON`, `REACHY_EVERYDAY_TIMEZONE`, `OPENROUTER_API_KEY`) and the GPT-Live preview relay `/v1/live` are described in [docs/everyday-workspace.md](../docs/everyday-workspace.md).
 
-Agent Mode is fail-closed: every read/action allowlist and reminder callback defaults empty. Configure only the resources Reachy may use in the bridge service environment:
+The restricted Agent broker is fail-closed: every read/action allowlist and reminder callback defaults empty. Configure only the resources Reachy may use in the bridge service environment. The model below is an API-backed example, not the subscription reference model:
 
 ```bash
 HASS_URL=http://homeassistant.internal:8123
@@ -101,14 +119,14 @@ Bridge URL: http://<hermes-host-LAN-IP>:8643
 API key:    the reachy profile's API_SERVER_KEY
 ```
 
-## Warm Hermes agents (optional)
+## Warm Hermes agents (optional, legacy conversation path)
 
 Hermes' API server builds a new agent for every request. Each spoken turn therefore pays again for provider resolution, tool discovery, memory start-up and a freshly assembled system prompt. The bridge can instead keep one warm Hermes agent per conversation, the way Hermes' own messaging gateway does, for the two routes someone is waiting on:
 
 - `pipeline`: the Hermes pipeline mode's `/v1/chat/completions` turns;
 - `realtime`: Realtime `ask_hermes` delegations.
 
-It is off by default. To turn it on, add this to the bridge's environment and restart it:
+This does not turn narrow Everyday or Kids into a full agent and does not bind a native Workspace session. It is off by default. To turn it on for the legacy routes, add this to the bridge's environment and restart it:
 
 ```bash
 REACHY_HERMES_WARM_AGENTS=1
@@ -148,6 +166,8 @@ Warm agents use internal Hermes Agent interfaces that can change between release
 ## Use OpenClaw instead of, or besides, Hermes
 
 The bridge can send Reachy's conversations to an [OpenClaw](https://docs.openclaw.ai) agent through the Gateway's OpenAI-compatible endpoint. Use it on its own, or next to Hermes Agent and switch between them in Reachy's Settings.
+
+**Compatibility boundary:** this is the existing HTTP conversation adapter, not OpenClaw-native project Workspace. Its availability does not imply native Hermes identity/history, project execution or subscription feature parity. The subscription reference uses the saved Hermes Codex router and a dedicated native Hermes listener.
 
 ### Safety model
 
@@ -251,13 +271,13 @@ Verified against a live OpenClaw 2026.9.8 Gateway (it needs Node 24.16 or newer)
 | Pipeline conversation (wake word, STT, agent, TTS) | ✅ The agent answers; choose **ElevenLabs** for speech. |
 | Realtime conversation | ✅ The Realtime model delegates through an `ask_openclaw` tool. Needs `OPENAI_API_KEY`. |
 | Conversation memory | ✅ Each Reachy conversation maps to one OpenClaw session (`agent:reachy:openai-user:reachy:<conversation>`) through the OpenAI `user` field. |
-| Kids Mode, Agent Mode broker, I Spy | ✅ These never used Hermes; they work the same. |
+| Kids Mode, Agent Mode broker, I Spy | Independent bridge routes, not OpenClaw-native tools; require their own provider configuration. Subscription inference additionally needs the Hermes saved-auth runtime. |
 | "Configured" or local Whisper speech | ❌ They run Hermes Agent's own speech tools. The bridge answers HTTP 409 and the Settings list hides them. |
 | Tool-inventory check before each request | ❌ Hermes-only. Rely on the dedicated, restricted `reachy` agent. |
 
 ## European model providers (Cortecs, LLMrouter.eu)
 
-The bridge calls a text model itself for Agent Mode (planning and the bounded tool loop), Kids Mode chat and I Spy (picking the object, judging guesses, guessing on the child's turn). By default those calls go to OpenAI in the US. To keep them with European providers, point them at an EU router:
+For the API-key-backed provider path, the bridge calls a text model itself for Agent Mode (planning and the bounded tool loop), Kids Mode chat and I Spy (picking the object, judging guesses, guessing on the child's turn). Its default is OpenAI in the US. The optional subscription path above has separate explicit host configuration and no paid text fallback. To keep them with European providers, point them at an EU router:
 
 | `REACHY_LLM_PROVIDER` | Endpoint | API key variable | Notes |
 | --- | --- | --- | --- |
@@ -326,13 +346,16 @@ Authorization: Bearer <API_SERVER_KEY>
 | `POST /v1/audio/transcriptions` | Configured/local/ElevenLabs STT |
 | `POST /v1/audio/speech` | Configured/Edge/ElevenLabs TTS |
 | `GET /v1/realtime` | Authenticated WebSocket proxy to OpenAI Realtime |
-|| `GET /v1/agent/capabilities` | Live typed bounded capability manifest |
+| `GET /v1/live` | GPT-Live preview WebSocket relay; no camera/movement/memory tools |
+| `GET /v1/everyday/capabilities` | Narrow Everyday readiness and permitted capabilities |
+| `POST /v1/everyday/turn` | Narrow Everyday text/tool turn, not a Hermes fallback |
+| `GET /v1/agent/capabilities` | Live typed bounded capability manifest |
 | `POST /v1/agent/session` | Establish or invalidate the runtime-authoritative device generation |
 | `POST /v1/agent/activity` | Recent sanitized device/generation-scoped broker activity |
-|| `POST /v1/agent/execute` | Execute or stage one generation-bound typed capability |
-|| `POST /v1/agent/pending-approval` | Read the current device/session-scoped exact draft |
-|| `POST /v1/agent/approve-pending` | One-shot execution of the unchanged pending draft |
-|| `POST /v1/agent/ask` | Bounded model loop using only broker tools |
+| `POST /v1/agent/execute` | Execute or stage one generation-bound typed capability |
+| `POST /v1/agent/pending-approval` | Read the current device/session-scoped exact draft |
+| `POST /v1/agent/approve-pending` | One-shot execution of the unchanged pending draft |
+| `POST /v1/agent/ask` | Bounded model loop using only broker tools |
 | `POST /v1/agent/cancel/{request_id}` | Cancel an in-flight broker/Agent request |
 | `GET /v1/warm-agents` | Sanitized warm-agent state and per-route usage |
 | `DELETE /v1/warm-agents` | Close every warm agent now |
@@ -340,6 +363,8 @@ Authorization: Bearer <API_SERVER_KEY>
 The Realtime client sends an initial `session.start` envelope containing model, voice, reasoning effort, Hermes agent route, stable memory scope, system prompt, and the camera/robot-tool feature flags. The bridge then creates the OpenAI GA Realtime session and exposes `ask_hermes`, the always-available local `set_reachy_power_mode` tool, and only the enabled camera/motion tools. Sleep and Meeting are applied on Reachy itself; no privileged credential is sent to the robot.
 
 ### Realtime trust boundary
+
+Everyday sessions expose narrow Everyday tools, not `ask_hermes`; Workspace routes to the explicitly selected backend. The description below applies to **legacy Conversation/Agent profiles**, not a fallback from Everyday.
 
 OpenAI may answer ordinary conversation directly. The session instructions require `ask_hermes` for:
 
@@ -359,7 +384,7 @@ Kids I Spy can pick its object with a local vision model too. Set these on the b
 
 | Variable | Meaning |
 | --- | --- |
-| `REACHY_ISPY_VISION_URL` | OpenAI-compatible base URL, e.g. `http://127.0.0.1:11434/v1`. When unset, I Spy uses OpenAI (`REACHY_ISPY_MODEL`). |
+| `REACHY_ISPY_VISION_URL` | OpenAI-compatible local vision base URL, e.g. `http://127.0.0.1:11434/v1`. When unset, I Spy uses the configured text/vision provider and `REACHY_ISPY_MODEL`. |
 | `REACHY_ISPY_VISION_MODEL` | Vision model on that server, default `qwen2.5vl:3b`. It must support JSON-schema output. |
 | `REACHY_ISPY_VISION_API_KEY` | Optional bearer key for that server. The OpenAI key is never sent to it. |
 
@@ -371,7 +396,7 @@ When Reachy enables robot tools, the bridge advertises `move_reachy_head`, `expr
 
 While any Kids session is live, the bridge itself refuses adult capabilities with HTTP 423: `/v1/chat/completions`, `/v1/realtime`, and the `/v1/agent/*` routes, except `/v1/agent/session` and the cancel/pause routes Reachy needs to wind adult work down. Generic `/v1/audio/speech` stays available for fixed system notices such as the five-minute warning, but its text is moderated first. Reachy reports session start and end through `/v1/kids/session`; any Kids chat or I Spy request also marks its session live. If the end notification is lost, the latch expires 65 minutes after the session started. A start notification that arrives after its end is ignored.
 
-`/v1/kids/chat` is a separate, bounded OpenAI chat route. It does not forward Hermes session headers or normal agent history, and it applies moderation before and after generation. The bridge accepts only age-band/activity/language enums, constructs the child policy itself, and owns bounded ephemeral history keyed by the random child session ID; caller-supplied system prompts and history are rejected. Camera, robot, agent/delegation, Home Assistant, file, messaging, purchase, and power capabilities are absent during child conversation.
+`/v1/kids/chat` is a separate, bounded child chat route using the configured text provider (API-backed or optional subscription). It does not forward Hermes session headers or normal agent history, and it applies moderation before and after generation. The bridge accepts only age-band/activity/language enums, constructs the child policy itself, and owns bounded ephemeral history keyed by the random child session ID; caller-supplied system prompts and history are rejected. Camera, robot, agent/delegation, Home Assistant, file, messaging, purchase, and power capabilities are absent during child conversation.
 
 I Spy uses a separate consented boundary: `/v1/kids/ispy/select` accepts exactly five bounded JPEGs, requests a strict structured target, revalidates stability, visibility count, confidence, frame index, normalized bounding box, colour, forbidden vocabulary and hints, then moderates the target text before storing only target metadata. The camera is revoked before guessing. `/v1/kids/chat` keeps an explicit Reachy-picker/player-picker state machine: it judges the child's guesses with a boolean-only schema, then lets the child supply bounded clues while a strict schema produces up to six non-repeating safe household-object guesses. A confirmed guess or reveal returns a constrained next-round action to the robot; `/v1/kids/ispy/clue` approves only the bridge-owned colour clue for speech after the next base-and-head camera search. Stop/expiry deletes the complete alternating-round state.
 

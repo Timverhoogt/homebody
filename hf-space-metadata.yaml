@@ -4,7 +4,7 @@ colorFrom: yellow
 colorTo: red
 sdk: static
 pinned: false
-short_description: Always-on home companion for Reachy Mini
+short_description: Everyday help, project Workspace and supervised play
 suggested_storage: medium
 tags:
   - reachy_mini
@@ -14,6 +14,10 @@ tags:
   - openclaw
   - mcp
   - openai-realtime
+  - gpt-live
+  - everyday
+  - workspace
+  - subscription-inference
   - camera
   - home-assistant
   - kids-mode

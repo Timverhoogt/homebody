@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Host subscription routing (after robot v0.5.2)
+- Optional ChatGPT/Codex subscription text routing through the installed Hermes runtime for narrow Everyday, isolated Kids chat, I Spy vision/guess judging and restricted planning. Saved supported authentication stays on the trusted host; no paid text API fallback or implicit full-agent authority.
+- Genuine reasoning off (`enabled=false`, `effort=none`) is required and checked against the emitted wire payload. Account-tested reference choices are `gpt-6-sol` (Everyday/planning/Workspace) and `gpt-6-luna` (Kids/I Spy), not universal defaults. Unsupported off settings fail closed.
+- A dedicated authenticated loopback native Hermes listener pins one owner-registered project session, subscription provider/model and confirmed runtime lock without changing the primary gateway. Native discussion uses the worker's configured tools; instructions and a working directory are not a sandbox. Planned execution retains exact phone approval, fixed checks and matching receipts.
+- Runtime bootstrap preserves bridge arguments across a managed Python re-exec. Subscription HTTP routing leaves speech, moderation, HA and native-session HTTP on their existing transports; Kids moderation, strict validation, privacy and lifecycle guards remain in place.
+- These companion changes landed in PRs #77 and #78 after v0.5.2 and were deployed separately to the reference host bridge. They do not replace that immutable robot wheel, install an APK or automatically configure every paired installation. Speech API charges and moderation remain separate.
+
+### Documentation
+- Refresh GitHub README and the mirrored Hugging Face landing page around Everyday, Workspace and Kids, separately from Pipeline/Realtime/GPT-Live speech transports.
+- Add a dated source/release/deployment/acceptance snapshot and an explicit subscription/native-session host setup recipe. Correct the obsolete never-run-on-Jetson statement without claiming blanket GPU or physical acceptance.
+- Document private phone camera fallback and recent lifecycle repairs, measured speaker volume/mute, managed update boundaries and robot/dashboard versus Android APK updates.
+
 ## [0.5.2] - 2026-10-12
 
 ### Clear update messages
