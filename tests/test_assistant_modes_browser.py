@@ -74,6 +74,40 @@ def ui():
         browser.close()
 
 
+@pytest.mark.parametrize("width", [320, 390, 430, 1440])
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+@pytest.mark.parametrize("font_scale", [1, 1.25])
+def test_mode_cards_have_room_for_labels_and_separate_help(ui, width, scheme, font_scale):
+    page, state, posts, errors = ui
+    page.set_viewport_size({"width": width, "height": 1000})
+    page.emulate_media(color_scheme=scheme)
+    page.click("#tab-agent")
+    page.evaluate("scale => document.documentElement.style.fontSize = `${16 * scale}px`", font_scale)
+    geometry = page.evaluate("""() => {
+      const buttons = [...document.querySelectorAll('.assistant-mode-switch button')];
+      const group = document.querySelector('.assistant-mode-switch').getBoundingClientRect();
+      const help = document.querySelector('#assistant-mode-help').getBoundingClientRect();
+      return {gap: help.top - group.bottom, cards: buttons.map(button => {
+        const box = button.getBoundingClientRect();
+        const first = button.querySelector('strong').getBoundingClientRect();
+        const last = button.querySelector('small').getBoundingClientRect();
+        return {height: box.height, top: first.top - box.top, bottom: box.bottom - last.bottom,
+          fits: [...button.children].every(child => child.scrollWidth <= child.clientWidth + 1)};
+      })};
+    }""")
+    assert geometry["gap"] >= 16
+    assert all(card["height"] >= 96 and card["top"] >= 12 and card["bottom"] >= 12
+               and card["fits"] for card in geometry["cards"]), geometry
+    overflow = page.evaluate("""() => [...document.querySelectorAll('body *')].filter(e => {
+      const r=e.getBoundingClientRect(); return r.width && (r.right > innerWidth + 1 || r.left < -1);
+    }).slice(0,12).map(e => ({tag:e.tagName,id:e.id,cls:e.className,width:e.getBoundingClientRect().width}))""")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), overflow
+    assert not posts and not errors
+    if font_scale == 1 and width in [390, 1440]:
+        SHOTS.mkdir(parents=True, exist_ok=True)
+        page.locator('.agent-card').screenshot(path=str(SHOTS / f"mode-spacing-{width}-{scheme}.png"))
+
+
 @pytest.mark.parametrize("width", [390, 1440])
 def test_modes_stop_controls_and_everyday_disclosure(ui, width):
     page, state, posts, errors = ui

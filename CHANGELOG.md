@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-10-12
+
+### Mode selector spacing
+- Everyday and Workspace use padded, auto-height cards with a minimum 100 px height, readable wrapped descriptions and an 18 px gap before helper text. Very narrow phones stack the cards; selected/disabled state and routing are unchanged.
+- Mobile Stop controls avoid min-content overflow from the running-work badge. PWA shell/query revision v81 refreshes cached styles.
+- Includes the separately configurable subscription host support below; installing the robot package does not configure or restart a host bridge, change saved models or install an Android APK.
+
 ### Host subscription routing (after robot v0.5.2)
 - Optional ChatGPT/Codex subscription text routing through the installed Hermes runtime for narrow Everyday, isolated Kids chat, I Spy vision/guess judging and restricted planning. Saved supported authentication stays on the trusted host; no paid text API fallback or implicit full-agent authority.
 - Genuine reasoning off (`enabled=false`, `effort=none`) is required and checked against the emitted wire payload. Account-tested reference choices are `gpt-6-sol` (Everyday/planning/Workspace) and `gpt-6-luna` (Kids/I Spy), not universal defaults. Unsupported off settings fail closed.
