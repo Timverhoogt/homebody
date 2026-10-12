@@ -616,6 +616,29 @@ def test_update_rail_ignores_late_reads_and_owner_loss_wins(ui):
     assert not errors
 
 
+def test_stale_success_cannot_replace_failure_after_failed_check(ui):
+    page, catalog, control, errors = _updates_page(ui)
+    control["hold"] = True
+    _refresh(page)
+    page.wait_for_timeout(100)
+    assert control["held"]
+    control["hold"] = False
+    catalog["job"] = {"id": "e" * 32, "state": "rollback_failed", "acknowledged": False}
+    _refresh(page)
+    page.wait_for_function(f"{RAIL} === 'failed'")
+    stale = {**catalog, "job": {"id": "e" * 32, "state": "succeeded", "acknowledged": False}}
+    control["held"].pop().fulfill(json=stale)
+    page.wait_for_timeout(150)
+    assert page.evaluate(RAIL) == "failed"
+    page.route("**/api/updates/check", lambda r: r.fulfill(status=502, json={"detail": "Not confirmed"}))
+    page.locator("#update-check").scroll_into_view_if_needed()
+    page.click("#update-check")
+    page.wait_for_function("document.getElementById('update-status').textContent.includes('not confirmed')")
+    assert page.evaluate(RAIL) == "failed"
+    assert "Installed and verified" not in _scene(page, "update-rail")["text"]
+    assert not errors
+
+
 # ---------- Shared motion primitives ----------
 
 

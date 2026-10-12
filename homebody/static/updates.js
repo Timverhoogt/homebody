@@ -59,6 +59,9 @@
     if (!$('update-dialog').open) { $('update-dialog').showModal(); window.HomebodyMotion?.enter($('update-dialog')); }
   }
   function render(body, sequence = readSequence) {
+    // Fence before mutating retained state, not only before drawing the rail.
+    // Otherwise a rejected stale success can be replayed by a later failed Check.
+    if (sequence < railSequence) return;
     catalog = {...body, available:newer(body.available?.version, body.current.version) ? body.available : null};
     const job = body.job;
     const busy = pending || active.has(job?.state);
