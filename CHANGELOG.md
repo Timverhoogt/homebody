@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-10-12
+
 ### Activity scenes
 - **Kids stage.** The Kids display now has an illustrated stage with a distinct scene for each of the six activities. It replaces the static CSS mascot.
 - **Bound to existing status.** Phases come from the existing categorical runtime state, plus I Spy `camera_active` for the camera search. No new status fields were added. Unknown states show a neutral "Waiting".
