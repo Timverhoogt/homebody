@@ -260,6 +260,7 @@ class KidsModeMixin:
             if client is None:
                 client = self._new_bridge_client(self.config_loader())
             self._assert_ispy_current(generation)
+            self._set_status("thinking", "Choosing a safe I Spy object")
             target = client.select_ispy_target(
                 frames,
                 session_id=session_id,

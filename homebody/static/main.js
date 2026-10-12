@@ -186,6 +186,28 @@ try {
 } catch (error) {
   window.localStorage.removeItem("homebody-kids-profile");
 }
+
+// The Kids stage and the Everyday companion are two mounts of one scene component (scene.js).
+// These bindings only translate allowlisted status into categorical views; they never fetch.
+const kidsStage = window.HomebodyScene?.mount($("kids-stage"), { label: "Kids activity stage" }) || null;
+const companionStage = window.HomebodyScene?.mount($("everyday-companion"), { variant: "compact", label: "Reachy" }) || null;
+let kidsStageStatus = { kids: {}, state: "", powerMode: "", offline: false };
+let statusSequence = 0; // advanced as each status request starts
+let kidsEndPending = false;
+let kidsEndFence = 0; // status requests started at or before this cannot re-show an ended session
+
+function renderKidsStage(sequence = statusSequence) {
+  if (!kidsStage) return;
+  const kids = kidsStageStatus.kids || {};
+  if (!kidsStageStatus.offline && kids.active !== true) kidsEndFence = 0;
+  const staleActive = kids.active === true && kidsEndFence > 0 && sequence <= kidsEndFence;
+  kidsStage.update(window.HomebodyScene.kidsView({
+    ...kidsStageStatus,
+    selected: selectedKidsActivity,
+    ending: kidsEndPending || staleActive,
+  }));
+}
+renderKidsStage();
 $("local-vision-test-button").addEventListener("click", async () => {
   const button = $("local-vision-test-button");
   const message = $("local-vision-message");
@@ -804,7 +826,7 @@ function renderTelemetry(entries) {
   });
 }
 
-function updateStatus(payload) {
+function updateStatus(payload, sequence = statusSequence) {
   renderHost(payload.host);
   const config = payload.config || {};
   $("local-vision-ask").hidden = !(config.local_vision_enabled && config.camera_enabled);
@@ -837,6 +859,12 @@ function updateStatus(payload) {
   const kidsCameraActive = Boolean(kidsMode.camera_active);
   const kidsLocked = Boolean(kidsMode.locked);
   window.HomebodyISpyInput?.update(kidsMode);
+  const sceneOffline = window.HomebodyOwner?.isOwner() !== true;
+  kidsStageStatus = { kids: kidsMode, state, powerMode: runtime.power_mode || "", offline: sceneOffline };
+  renderKidsStage(sequence);
+  companionStage?.update(window.HomebodyScene.companionView({
+    state, powerMode: runtime.power_mode || "", kidsActive: kidsActive || kidsLocked, offline: sceneOffline,
+  }));
   window.HomebodyWorkspace?.update(runtime);
   window.HomebodyVolume?.update(runtime);
   window.HomebodyNotifications.setSuppressed("kids", kidsLocked);
@@ -1269,11 +1297,12 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
 async function refreshStatus() {
   if (statusRefreshPending) return statusRefreshHealthy;
   statusRefreshPending = true;
+  const sequence = ++statusSequence;
   try {
     const response = await fetchWithTimeout("/api/status", { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const body = await response.json();
-    updateStatus(body);
+    updateStatus(body, sequence);
     window.HomebodyAgentConnection?.update(body.agent_connection);
     statusRefreshHealthy = true;
   } catch (error) {
@@ -1308,6 +1337,9 @@ async function refreshStatus() {
     $("kids-start-button").disabled = true;
     $("kids-stop-button").disabled = true;
     $("kids-status-badge").textContent = "Offline";
+    kidsStageStatus = { ...kidsStageStatus, offline: true };
+    renderKidsStage();
+    companionStage?.update(window.HomebodyScene.companionView({ offline: true }));
     $("presence-enabled").disabled = true;
     $("presence-acknowledgement-enabled").disabled = true;
     $("presence-badge").textContent = "Offline";
@@ -1785,6 +1817,7 @@ document.querySelectorAll("[data-kids-activity]").forEach((button) => {
     $("kids-activity-badge").textContent = kidsActivityLabels[selectedKidsActivity];
     $("kids-ispy-consent-row").hidden = selectedKidsActivity !== "ispy";
     $("kids-ispy-camera-consent").checked = false;
+    renderKidsStage();
   });
   button.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
@@ -1846,19 +1879,26 @@ $("kids-start-button").addEventListener("click", async () => {
 $("kids-stop-button").addEventListener("click", async () => {
   const message = $("kids-message");
   kidsRequestPending = true;
+  kidsEndPending = true;
+  renderKidsStage();
   message.textContent = "Ending voice and motion, then folding Reachy safely…";
   message.className = "message";
   try {
     const response = await fetch("/api/kids/stop", { method: "POST" });
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    // A status poll already in flight may still describe the session that just ended.
+    kidsEndFence = statusSequence;
     message.textContent = "Kids Mode ended. Reachy is safely folded in Standby.";
     notifyFeedback(message, "ok");
   } catch (error) {
+    kidsEndFence = 0;
     message.textContent = String(error);
     notifyFeedback(message, "error");
   } finally {
     kidsRequestPending = false;
+    kidsEndPending = false;
+    renderKidsStage();
     await refreshStatus();
   }
 });

@@ -3,6 +3,8 @@ const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
   "/static/style.css?v=83",
+  "/static/scene.css?v=83",
+  "/static/scene.js?v=83",
   "/static/gstwebrtc-api.js",
   "/static/camera.js?v=83",
   "/static/main.js?v=83",

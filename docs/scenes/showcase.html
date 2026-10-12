@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Homebody scenes · simulated showcase</title>
+  <!-- Local review fixture only. Not shipped in the app package; no network, storage or device access. -->
+  <link rel="stylesheet" href="../../homebody/static/style.css">
+  <link rel="stylesheet" href="../../homebody/static/scene.css">
+  <style>
+    main { padding-top: 24px; }
+    .simulated { margin: 0 0 20px; padding: 12px 16px; border: 2px dashed var(--orange); border-radius: 12px; font-family: var(--mono); font-size: .8rem; letter-spacing: .04em; }
+    .scene-row { margin: 28px 0; }
+    .scene-row h2 { margin: 0 0 12px; }
+    .scene-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    .scene-cell { padding: 14px; border-radius: 20px; }
+    .scene-cell code { display: block; margin-bottom: 8px; color: var(--screen-dim); font-size: .7rem; }
+    .companion-grid { display: flex; flex-wrap: wrap; gap: 24px; }
+  </style>
+</head>
+<body>
+<main>
+  <p class="simulated" role="note">SIMULATED STATES — fixture data for visual review. Nothing here is live Reachy telemetry.</p>
+  <p><label><input id="freeze" type="checkbox"> Freeze motion (same as an off-screen or reduced-motion stage)</label></p>
+  <div id="rows"></div>
+  <section class="scene-row card"><h2>Everyday companion (compact)</h2><div id="companions" class="companion-grid"></div></section>
+</main>
+<script src="../../homebody/static/scene.js"></script>
+<script>
+  const scene = window.HomebodyScene;
+  const live = { state: { listening: "listening", thinking: "thinking", speaking: "speaking", waiting: "waiting_for_wake_word" } };
+  const mounts = [];
+  const rows = document.getElementById("rows");
+  const phases = ["preview", "waiting", "listening", "thinking", "speaking", "paused", "ended", "offline"];
+  for (const activity of scene.ACTIVITIES) {
+    const row = document.createElement("section");
+    row.className = "scene-row";
+    row.dataset.activity = activity;
+    row.innerHTML = `<h2>${scene.sceneLabel(activity)}</h2><div class="scene-grid"></div>`;
+    const grid = row.querySelector(".scene-grid");
+    const list = activity === "ispy" ? [...phases.slice(0, 2), "searching", ...phases.slice(2)] : phases;
+    for (const phase of list) {
+      const cell = document.createElement("div");
+      cell.className = "scene-cell display";
+      cell.innerHTML = `<code>${activity} · ${phase}</code><div></div>`;
+      grid.appendChild(cell);
+      const stage = scene.mount(cell.lastElementChild, { label: "Simulated stage" });
+      const kids = { active: true, profile: { activity }, camera_active: phase === "searching" };
+      let view;
+      if (phase === "preview") view = scene.kidsView({ selected: activity });
+      else if (phase === "ended") view = scene.kidsView({ selected: activity, kids: { active: false, last_end_reason: "parent_stop" } });
+      else if (phase === "offline") view = scene.kidsView({ selected: activity, offline: true });
+      else if (phase === "paused") view = scene.kidsView({ kids, powerMode: "meeting" });
+      else view = scene.kidsView({ kids, state: live.state[phase] || "" });
+      stage.update(view);
+      mounts.push(stage);
+    }
+    rows.appendChild(row);
+  }
+  for (const state of ["waiting_for_wake_word", "listening", "thinking", "speaking", "meeting"]) {
+    const holder = document.createElement("div");
+    document.getElementById("companions").appendChild(holder);
+    const stage = scene.mount(holder, { variant: "compact", label: "Simulated companion" });
+    stage.update(scene.companionView({ state, powerMode: state === "meeting" ? "meeting" : "awake" }));
+    mounts.push(stage);
+  }
+  document.getElementById("freeze").addEventListener("change", (event) => {
+    document.querySelectorAll(".hb-scene").forEach((node) => { node.dataset.reduced = String(event.target.checked); });
+  });
+</script>
+</body>
+</html>
