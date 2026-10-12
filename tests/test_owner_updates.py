@@ -76,6 +76,7 @@ def test_reservation_stops_runtime_only_after_durable_queue(tmp_path):
 def test_later_is_persistent_across_manual_checks(app, monkeypatch):
     from homebody import update_api
     from homebody.updates import atomic_json
+    monkeypatch.setattr(update_api, "installed_identity", lambda: {"version": "0.4.0"})
     robot, client, code = app
     pair(client, code)
     headers = {"Origin": ORIGIN, "X-Homebody-CSRF": client.get("/api/owner/session").json()["csrf"]}

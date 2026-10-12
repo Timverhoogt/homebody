@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-12
+
+### Clear update messages
+- Update controls now say **Reachy software update**: they update Homebody on the robot and its dashboard, not the Android app (APK) on your phone.
+- A successful update opens with **Reachy update installed**, the previous and new versions, a verified restart result and a clear Done button. Technical release notes are collapsed below the result.
+- Checking again after installation says **Reachy is up to date** and **No installation is needed**, instead of continuing to offer the already installed version from a stale catalog.
+- Check failures remain visible instead of being hidden behind an earlier successful update. These wording changes do not change pairing, device permissions or speech settings.
+- Speaker settings have consistent spacing, a single primary Apply action, side-by-side secondary controls and a short explanation with optional details. Helper text no longer touches the buttons.
+
 ## [0.5.1] - 2026-10-12
 
 ### Managed-updater bootstrap

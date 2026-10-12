@@ -1,5 +1,6 @@
 """Real Chromium controls; network/media/hardware are explicit fixtures, not physical acceptance."""
 
+import os
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -65,6 +66,30 @@ def browser_page():
 
 def wait_ready(page):
     page.wait_for_function("document.getElementById('speaker-confirmed')?.textContent.includes('62%')")
+
+
+@pytest.mark.parametrize("width", [390, 1440])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_volume_help_has_clear_spacing_and_secondary_actions_share_row(browser_page, width, theme, tmp_path):
+    page, _, calls, _ = browser_page
+    page.set_viewport_size({"width": width, "height": 844})
+    page.emulate_media(color_scheme=theme)
+    wait_ready(page)
+    actions = page.locator("#speaker-actions").bounding_box()
+    helper = page.locator("#speaker-help").bounding_box()
+    mute = page.locator("#speaker-mute").bounding_box()
+    refresh = page.locator("#speaker-refresh").bounding_box()
+    assert helper["y"] - (actions["y"] + actions["height"]) >= 16
+    assert abs(mute["y"] - refresh["y"]) < 1
+    assert mute["height"] >= 48 and refresh["height"] >= 48
+    assert not page.locator("#speaker-details").get_attribute("open")
+    assert "Microphone settings are unchanged" in page.locator("#speaker-help").inner_text()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert calls == []  # spacing inspection must never change speaker volume
+    shots = Path(os.getenv("HOMEBODY_TEST_SCREENSHOTS", str(tmp_path)))
+    shots.mkdir(parents=True, exist_ok=True)
+    page.evaluate("window.scrollBy(0, document.getElementById('speaker-card').getBoundingClientRect().top - 100)")
+    page.locator("#speaker-card").screenshot(path=str(shots / f"speaker-spacing-{theme}-{width}.png"))
 
 
 @pytest.mark.parametrize("width", [390, 1440])

@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=79">
+  <link rel="stylesheet" href="/static/style.css?v=80">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -863,23 +863,24 @@
       <section class="card" id="speaker-card" aria-labelledby="speaker-title">
         <p class="label">Sound</p><h2 id="speaker-title">Speaker volume</h2>
         <p id="speaker-confirmed" role="status" aria-live="polite">Speaker · unknown</p>
-        <label for="speaker-volume">Volume · <output id="speaker-draft" for="speaker-volume">—</output></label>
+        <label id="speaker-volume-label" for="speaker-volume"><span>Set volume</span><output id="speaker-draft" for="speaker-volume">—</output></label>
         <input id="speaker-volume" type="range" min="0" max="100" step="1" value="0" disabled />
-        <div class="actions">
+        <div id="speaker-actions" class="actions">
           <button type="button" id="speaker-apply" disabled>Apply volume</button>
           <button type="button" id="speaker-mute" class="secondary" disabled>Mute speaker</button>
-          <button type="button" id="speaker-refresh" class="secondary" disabled>Read current volume</button>
+          <button type="button" id="speaker-refresh" class="secondary" aria-label="Read current speaker volume" disabled>Refresh level</button>
         </div>
-        <p class="muted compact-note">Speaker only · 0% mutes output, not the microphone. Silent changes never wake Reachy or play a test sound. Apply confirms the actual hardware level. Unmute restores the last known level; after a restart at 0%, choose a volume.</p>
+        <p id="speaker-help" class="muted">Speaker only. Microphone settings are unchanged.</p>
+        <details id="speaker-details"><summary>About volume and mute</summary><p class="muted">0% mutes the speaker, not the microphone. Changes are silent and do not wake Reachy. Apply verifies the actual speaker level. Unmute restores the last measured level; after restarting at 0%, select a volume first.</p></details>
         <p id="speaker-message" class="message" role="status" aria-live="polite"></p>
       </section>
       <section class="card" id="updates-card" aria-labelledby="updates-title">
-        <p class="label">Software</p><h2 id="updates-title">Updates</h2>
-        <p id="update-current">Checking installed version…</p>
-        <p class="muted">Stable releases from Timverhoogt/homebody only. Installation requires verified folded Standby and a separately configured updater. No daemon or agent bridge upgrades.</p>
+        <p class="label">On your robot</p><h2 id="updates-title">Reachy software updates</h2>
+        <p id="update-current">Checking Reachy's installed version…</p>
+        <p class="muted">Updates Homebody on Reachy and the dashboard it serves. This does not install or update the Android app (APK) on your phone. Installation requires safely folded Standby; settings are preserved. Firmware, the SDK and the agent bridge are not updated.</p>
         <div class="actions">
-          <button type="button" id="update-check" class="secondary">Check for updates</button>
-          <button type="button" id="update-preview" class="secondary" disabled>Preview release notes</button>
+          <button type="button" id="update-check" class="secondary">Check Reachy for updates</button>
+          <button type="button" id="update-preview" class="secondary" disabled>Review Reachy update</button>
         </div>
         <p id="update-status" role="status" aria-live="polite">Reading saved progress…</p>
         <details><summary>Update history and release notes</summary><div id="update-history"></div></details>
@@ -1085,26 +1086,28 @@
     </div>
   </main>
   <dialog id="update-dialog" aria-labelledby="update-dialog-title">
-    <h2 id="update-dialog-title">Homebody release notes</h2>
-    <pre id="update-notes"></pre>
+    <h2 id="update-dialog-title">Reachy software update</h2>
+    <p id="update-summary" role="status" aria-live="polite"></p>
+    <p id="update-scope" class="muted">Applies to Homebody on Reachy and its dashboard. Android app (APK): unchanged; update it separately on your phone.</p>
+    <details id="update-details"><summary>What changed — release notes</summary><pre id="update-notes"></pre></details>
     <div class="actions">
-      <button type="button" id="update-install" disabled>Install this update…</button>
-      <button type="button" id="update-ack" hidden>Got it</button>
+      <button type="button" id="update-install" disabled>Install on Reachy…</button>
+      <button type="button" id="update-ack" hidden>Done — back to dashboard</button>
       <button type="button" id="update-close" class="secondary">Close</button>
     </div>
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=79"></script>
-  <script src="/static/owner.js?v=79"></script>
+  <script src="/static/notifications.js?v=80"></script>
+  <script src="/static/owner.js?v=80"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=79"></script>
-  <script src="/static/agent-connection.js?v=79"></script>
-  <script src="/static/native-workspace.js?v=79"></script>
-  <script src="/static/workspace.js?v=79"></script>
-  <script src="/static/main.js?v=79"></script>
-  <script src="/static/updates.js?v=79"></script>
-  <script src="/static/volume.js?v=79"></script>
-  <script src="/static/assistant-modes.js?v=79"></script>
+  <script src="/static/camera.js?v=80"></script>
+  <script src="/static/agent-connection.js?v=80"></script>
+  <script src="/static/native-workspace.js?v=80"></script>
+  <script src="/static/workspace.js?v=80"></script>
+  <script src="/static/main.js?v=80"></script>
+  <script src="/static/updates.js?v=80"></script>
+  <script src="/static/volume.js?v=80"></script>
+  <script src="/static/assistant-modes.js?v=80"></script>
 </body>
 </html>
