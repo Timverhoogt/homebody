@@ -726,11 +726,12 @@ function toggleModePanels() {
   const engine = $("conversation_mode").value;
   $("realtime-settings").hidden = engine !== "realtime";
   $("live-settings").hidden = engine !== "live";
-  $("pipeline-settings").hidden = engine !== "pipeline";
+  // Kids always use STT, regardless of the adult speech engine.
+  $("pipeline-settings").hidden = false;
   $("engine-disclosure").textContent = ENGINE_DISCLOSURES[engine] || "";
   $("voice-provider").textContent = engine === "pipeline"
     ? "Wake detection stays local. Selected STT and TTS run through the authenticated Hermes-host bridge."
-    : "Speech streams in both directions; pipeline STT/TTS selectors are ignored.";
+    : "Adult speech streams in both directions. STT remains active for Kids; the Pipeline voice controls greetings and approved fallback speech, not the Live/Realtime or dedicated Kids reply voice.";
 }
 
 $("conversation_mode").addEventListener("change", toggleModePanels);
