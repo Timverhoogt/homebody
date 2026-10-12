@@ -44,7 +44,12 @@ def test_real_project_build_contains_update_ui_and_bound_identity(tmp_path):
         shutil.copytree(repo / name, root / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     for name in ("pyproject.toml", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"):
         shutil.copy2(repo / name, root / name)
-    (root / "CHANGELOG.md").write_text("## [0.4.0]\n\n- Isolated build fixture; not a published release.\n")
+    import tomllib
+
+    current_version = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+    (root / "CHANGELOG.md").write_text(
+        f"## [{current_version}]\n\n- Isolated build fixture; not a published release.\n"
+    )
     script = repo / "tools/release_manifest.py"
     args = [sys.executable, str(script), "--root", str(root), "--release-id", "42", "--commit", "a" * 40]
     subprocess.run([*args, "--prepare"], check=True, capture_output=True)

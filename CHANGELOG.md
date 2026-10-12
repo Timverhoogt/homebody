@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-12
+
 ### Everyday and Workspace (behaviour change)
 - **Routing changes for existing installs.** Adult voice turns outside Workspace now use **Everyday**: a fast, narrow host backend (Home Assistant status/on-off control from the existing allowlists, weather from a configured source, the host clock, direct knowledge answers). Everyday never reaches the full Hermes agent, memory, notes, projects or coding tools, and there is no fallback to them. Saved configs without `assistant_mode` load as Everyday with a one-time "routing changed" notice. The saved voice engine (Pipeline/Realtime) is kept.
 - **Workspace** is the adult Agent profile, entered only from the phone. A bound native Hermes session answers discussion turns through `/v1/runs` only when the host target sets `discussion_enabled`; otherwise answers are labelled "Restricted roadmap reader — not your Hermes session". Execution keeps the existing exact approval, fixed checks and receipts.
