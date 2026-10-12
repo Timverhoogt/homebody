@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-12
+
+### Managed-updater bootstrap
+- Release-bound artifacts use this small follow-up commit so the installed 0.4.0 updater can verify GitHub's commit response within its existing 500 KB download bound. The large 0.5.0 integration merge exceeded that bound and was safely refused before shutdown; its published artifacts are not changed.
+- Includes the Everyday/Workspace, GPT-Live preview, speaker-volume and managed-update features from 0.5.0 without widening device permissions or changing saved speech-engine settings.
+
 ## [0.5.0] - 2026-10-12
 
 ### Everyday and Workspace (behaviour change)
