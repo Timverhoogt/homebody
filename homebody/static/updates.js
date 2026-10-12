@@ -9,6 +9,19 @@
   const active = new Set(['queued', 'downloading', 'installing', 'stopping', 'starting', 'verifying', 'rolling_back']);
   const controls = ['update-check', 'update-preview', 'update-install', 'update-later', 'update-ack'];
   const notes = rows => (rows || []).map(row => `Homebody ${row.version}\n${row.notes}`).join('\n\n');
+  // Display-only rail (scene.js) over the durable job state. Reads are numbered as they start so an
+  // older answer that lands late can never move the rail backwards or forwards.
+  const rail = window.HomebodyScene?.mount($('update-rail'), {variant:'rail', label:'Reachy software update'}) || null;
+  let readSequence = 0;
+  let railSequence = 0;
+  let checking = false;
+  let railBase = {checked:false};
+  function renderRail(view, sequence = readSequence) {
+    if (!rail || sequence < railSequence) return;
+    railSequence = sequence;
+    const owner = window.HomebodyOwner ? window.HomebodyOwner.isOwner() === true : true;
+    rail.update(window.HomebodyScene.updaterView(owner ? view : {offline:true}));
+  }
   const newer = (next, current) => {
     if (!/^\d+\.\d+\.\d+$/.test(next || '') || !/^\d+\.\d+\.\d+$/.test(current || '')) return false;
     const a = next.split('.').map(Number), b = current.split('.').map(Number);
@@ -43,9 +56,9 @@
     $('update-dialog').scrollTop = 0;
     $('update-install').hidden = !!success;
     $('update-ack').hidden = !success;
-    if (!$('update-dialog').open) $('update-dialog').showModal();
+    if (!$('update-dialog').open) { $('update-dialog').showModal(); window.HomebodyMotion?.enter($('update-dialog')); }
   }
-  function render(body) {
+  function render(body, sequence = readSequence) {
     catalog = {...body, available:newer(body.available?.version, body.current.version) ? body.available : null};
     const job = body.job;
     const busy = pending || active.has(job?.state);
@@ -75,13 +88,20 @@
       content.textContent = `${history.error || ''}\n${notes(history.notes)}`;
       details.appendChild(summary); details.appendChild(content); $('update-history').appendChild(details);
     }
+    railBase = {
+      job: job?.state || '', acknowledged: job?.acknowledged === true,
+      available: !!catalog.available, supported: body.supported !== false, checked: !!body.checked_at,
+    };
+    renderRail({...railBase, checking}, sequence);
     const unseen = (body.history || []).find(h => h.state === 'succeeded' && !h.acknowledged && h.id !== displayedSuccess);
     if (unseen) { displayedSuccess = unseen.id; preview(unseen.notes, unseen); }
   }
   async function refresh() {
     if (pending) return;
-    try { render(await api()); }
+    const sequence = ++readSequence;
+    try { render(await api(), sequence); }
     catch (error) {
+      renderRail({unreachable:true}, sequence);
       disable();
       $('update-notice').hidden = true;
       $('update-dialog').close();
@@ -91,22 +111,33 @@
   async function action(path, payload) {
     if (pending) return false;
     pending = true; actionError = ''; disable();
+    const sequence = ++readSequence;
+    const feedback = path === '/check' ? window.HomebodyMotion?.pending($('update-check')) : null;
+    checking = path === '/check';
+    if (checking) renderRail({...railBase, checking:true}, sequence);
     $('update-status').textContent = path === '/check'
       ? 'Checking for Reachy software updates… The Android app is not being updated.'
       : 'Sending your request to the Reachy updater…';
     try {
       const body = await api(path, payload);
+      checking = false;
       if (path === '/install') {
         $('update-dialog').close();
         $('update-status').textContent = `Reachy update ${body.state}. Waiting for installation and verified restart; the Android app is unchanged.`;
-      } else { pending = false; render(body); }
+        renderRail({job: body.state}, sequence);
+      } else { pending = false; render(body, sequence); }
+      window.HomebodyMotion?.settle(feedback, 'confirmed');
       return true;
     } catch (error) {
+      checking = false;
+      window.HomebodyMotion?.settle(feedback, 'failed');
       actionError = `Reachy update request was not confirmed: ${error.message}. Saved progress will be checked on reconnect.`;
       $('update-status').textContent = actionError;
       $('update-check').disabled = false;
+      // An unconfirmed request says nothing new about the job: keep the last durable reading.
+      renderRail({...railBase}, sequence);
       return false;
-    } finally { pending = false; }
+    } finally { pending = false; checking = false; }
   }
   $('update-check').addEventListener('click', () => action('/check', {}));
   $('update-preview').addEventListener('click', () => { if (catalog?.available) preview(catalog.notes); });

@@ -282,6 +282,95 @@
         <g class="hb-fx hb-fx-thinking"><circle class="hb-thought" style="--i:0" cx="84" cy="40" r="2.6"/><circle class="hb-thought" style="--i:1" cx="92" cy="32" r="3.4"/><circle class="hb-thought" style="--i:2" cx="101" cy="23" r="4.2"/></g>
         <g class="hb-fx hb-fx-speaking"><path class="hb-arc hb-arc-out" style="--i:0" d="M93 54q5 11 0 22"/><path class="hb-arc hb-arc-out" style="--i:1" d="M101 49q8 16 0 32"/></g>`,
     },
+
+    /* ---------- Adult instrument scenes ----------
+       Small, restrained and transparent so they sit on the existing dark displays. Each declares its
+       own phase vocabulary; only `live` phases loop, everything else is a composed still. */
+
+    presence: {
+      label: "Reachy",
+      viewBox: "0 0 200 200",
+      fit: "meet",
+      phases: ["waiting", "standby", "listening", "thinking", "speaking", "paused", "asleep", "trouble", "offline", "idle"],
+      live: ["waiting", "listening", "thinking", "speaking"],
+      neutral: "idle",
+      reset: { phase: "offline", title: "Out of reach", detail: "Status unavailable." },
+      art: (p) => `<defs>${botDefs(p)}</defs>
+        <circle class="hb-pr-ring" cx="100" cy="104" r="92"/>
+        <circle class="hb-pr-ring-live" cx="100" cy="104" r="92"/>
+        <ellipse class="hb-pr-orbit" cx="100" cy="112" rx="78" ry="16" transform="rotate(-8 100 112)"/>
+        ${bot(p, 100, 106, 0.78)}
+        <g class="hb-fx hb-fx-thinking"><circle class="hb-thought" style="--i:0" cx="138" cy="52" r="3.6"/><circle class="hb-thought" style="--i:1" cx="149" cy="40" r="4.6"/><circle class="hb-thought" style="--i:2" cx="162" cy="27" r="5.8"/></g>
+        <g class="hb-fx hb-fx-listening"><path class="hb-arc hb-arc-in" style="--i:0" d="M44 92q-8 16 0 32"/><path class="hb-arc hb-arc-in" style="--i:1" d="M32 84q-12 24 0 48"/></g>
+        <g class="hb-fx hb-fx-speaking"><path class="hb-arc hb-arc-out" style="--i:0" d="M156 92q8 16 0 32"/><path class="hb-arc hb-arc-out" style="--i:1" d="M168 84q12 24 0 48"/></g>
+        <g class="hb-pr-moon"><path d="M150 40a12 12 0 1 0 10 18a9 9 0 1 1-10-18z"/><path class="hb-pr-z" d="M164 30h7l-7 8h7"/></g>
+        <g class="hb-pr-quiet"><rect x="146" y="36" width="24" height="24" rx="12"/><path d="M152 48h12"/></g>
+        <g class="hb-pr-alert"><circle cx="158" cy="48" r="11"/><path d="M158 42v7M158 53v.5"/></g>`,
+    },
+
+    workbench: {
+      label: "Project session",
+      viewBox: "20 14 200 100",
+      fit: "meet",
+      phases: ["idle", "discussing", "approval", "working", "stopping", "uncertain", "finished", "ready", "stopped", "trouble", "offline"],
+      live: ["approval", "working"],
+      neutral: "idle",
+      reset: { phase: "offline", chip: "Hidden", title: "Project work hidden", detail: "Reconnect as owner to see it." },
+      // Three stations: you, Reachy and the native worker. Links show who is talking to whom; nothing
+      // here measures progress, and the worker never draws a result it has not reported.
+      art: () => `<rect class="hb-wb-bg" width="240" height="120" rx="14"/>
+        <g class="hb-wb-grid">${[30, 60, 90].map((y) => `<path d="M12 ${y}h216"/>`).join("")}</g>
+        <path class="hb-wb-link hb-wb-link-a" d="M44 64Q82 40 120 60"/>
+        <path class="hb-wb-link hb-wb-link-b" d="M120 60Q158 40 196 64"/>
+        <path class="hb-wb-flow" d="M120 60Q158 40 196 64"/>
+        <g class="hb-wb-gate" transform="translate(158 47)"><path d="M0-9 9 0 0 9-9 0z"/><circle r="2.4"/></g>
+        <g class="hb-wb-node hb-wb-you" transform="translate(44 64)"><circle r="13"/><circle class="hb-wb-core" r="4.5"/></g>
+        <g class="hb-wb-node hb-wb-reachy" transform="translate(120 60)"><rect x="-15" y="-12" width="30" height="24" rx="10"/><circle class="hb-wb-eye" cx="-5" cy="0" r="2.6"/><circle class="hb-wb-eye hb-wb-eye-r" cx="5" cy="0" r="2.6"/></g>
+        <g class="hb-wb-node hb-wb-worker" transform="translate(196 64)"><rect x="-14" y="-14" width="28" height="28" rx="7"/>
+          <g class="hb-wb-orbit"><circle r="20"/></g>
+          <path class="hb-wb-check" d="M-6 0l4 4 8-9"/>
+          <path class="hb-wb-bang" d="M0-6v6M0 5v.5"/>
+          <path class="hb-wb-ask" d="M-3.5-4a3.6 3.6 0 1 1 4.6 3.4c-1 .4-1.1 1-1.1 2M0 5.5v.5"/>
+          <rect class="hb-wb-stop" x="-4.5" y="-4.5" width="9" height="9" rx="1.5"/></g>`,
+    },
+
+    lens: {
+      label: "Camera",
+      viewBox: "0 0 48 48",
+      fit: "meet",
+      phases: ["off", "ready", "connecting", "live", "held", "paused", "privacy", "trouble", "offline"],
+      live: ["connecting", "live"],
+      neutral: "off",
+      reset: { phase: "offline", title: "Camera off", detail: "Owner session unavailable." },
+      // The aperture only opens for decoded video the camera module has already confirmed. It never
+      // shows imagery.
+      art: (p) => `<defs><radialGradient id="${p}-glass" cx=".38" cy=".32" r=".8"><stop offset="0" stop-color="#6b7f8a"/><stop offset="1" stop-color="#101418"/></radialGradient></defs>
+        <circle class="hb-ln-body" cx="24" cy="24" r="22"/>
+        <circle class="hb-ln-seek" cx="24" cy="24" r="20"/>
+        <circle cx="24" cy="24" r="15" fill="url(#${p}-glass)"/>
+        <g class="hb-ln-iris" transform="translate(24 24)">${[0, 60, 120, 180, 240, 300].map((deg) => `<path transform="rotate(${deg})" d="M0 0 13-7.5A15 15 0 0 1 13 7.5z"/>`).join("")}</g>
+        <circle class="hb-ln-rim" cx="24" cy="24" r="15"/>
+        <path class="hb-ln-shine" d="M15 19a10 10 0 0 1 6-5"/>
+        <path class="hb-ln-slash" d="M10 38 38 10"/>
+        <circle class="hb-ln-dot" cx="40" cy="8" r="4"/>`,
+    },
+
+    updater: {
+      label: "Software update",
+      viewBox: "0 0 300 44",
+      fit: "meet",
+      phases: ["idle", "available", "checking", "queued", "downloading", "installing", "restarting", "verifying", "rolling_back", "succeeded", "rolled_back", "failed", "unreachable", "offline"],
+      live: ["checking", "queued", "downloading", "installing", "restarting", "verifying", "rolling_back"],
+      neutral: "idle",
+      reset: { phase: "offline", chip: "Hidden", title: "Updates hidden", detail: "Pair an owner device to read update progress." },
+      // Five durable updater steps, left to right. A node lights only for a step the updater journal
+      // has reached; there is no percentage and no timer.
+      art: () => `<path class="hb-up-track" d="M22 22H278"/>
+        <path class="hb-up-fill" d="M22 22H278"/>
+        ${["queued", "downloading", "installing", "restarting", "verifying"].map((step, i) => `<g class="hb-up-step hb-up-${step}" style="--i:${i}" transform="translate(${(22 + i * 51.2).toFixed(1)} 22)"><circle class="hb-up-ring" r="9"/><circle class="hb-up-core" r="4"/></g>`).join("")}
+        <g class="hb-up-end" transform="translate(278 22)"><circle class="hb-up-ring" r="11"/>
+          <path class="hb-up-check" d="M-5 0l3.5 3.5L5.5-4"/><path class="hb-up-back" d="M4-3A5.5 5.5 0 1 0 5 2M5-6v4H1"/><path class="hb-up-bang" d="M0-5v5M0 4v.5"/></g>`,
+    },
   };
 
   /* ---------- State adapters (pure; no DOM) ---------- */
@@ -360,6 +449,105 @@
     return copy ? view(phase, ...copy) : view("waiting", "Waiting", "Reachy will be ready shortly.");
   }
 
+  /** Home hero: runtime state and power mode only. Unknown or starting states stay neutral. */
+  function presenceView({ state = "", powerMode = "", offline = false, kidsActive = false } = {}) {
+    const view = (phase, title, detail) => ({ scene: "presence", phase, chip: "", title, detail });
+    if (offline) return view("offline", "Out of reach", "Status unavailable.");
+    if (kidsActive) return view("paused", "Kids Mode", "Adult voice is locked.");
+    if (powerMode === "sleep" || ["sleep", "sleeping"].includes(state)) return view("asleep", "Asleep", "Voice capture is off.");
+    if (powerMode === "meeting" || state === "meeting") return view("paused", "In a meeting", "Voice capture is off.");
+    const phase = state === "looking" ? "thinking" : STATE_PHASE[state];
+    if (phase === "listening") return view("listening", "Listening", "Microphone open for this turn.");
+    if (phase === "thinking") return view("thinking", state === "looking" ? "Taking a look" : "Thinking", "Working on a reply.");
+    if (phase === "speaking") return view("speaking", "Speaking", "Reachy is replying.");
+    if (phase === "trouble") return view("trouble", "Needs attention", "See the status details.");
+    if (phase === "waiting") {
+      return powerMode === "standby"
+        ? view("standby", "Standby", "Wake word only.")
+        : view("waiting", "Awake", "Ready for a wake word.");
+    }
+    return view("idle", "Waiting", "Reachy will be ready shortly.");
+  }
+
+  const RUN_WORKING = { submitting: "Submitting", running: "Running", verifying: "Verifying" };
+  const RUN_TROUBLE = new Set(["failed", "error", "rejected", "timed_out", "timeout"]);
+  const RUN_STOPPED = new Set(["cancelled", "canceled", "stopped", "aborted"]);
+
+  /**
+   * Workspace bench from booleans and the native run status enum only (never text, ids or receipts).
+   * `verified` must be the caller's exact receipt check; "completed" alone is never "Ready to test".
+   */
+  function workbenchView({ offline = false, showing = false, configured = false, bound = false, pending = false, status = "", verified = false, uncertain = false } = {}) {
+    const view = (phase, chip, title, detail) => ({ scene: "workbench", phase, chip, title, detail });
+    const run = String(status || "");
+    if (offline) return view("offline", "Hidden", "Project work hidden", "Reconnect as owner to see it.");
+    if (uncertain || ["disconnected", "submission_unknown"].includes(run)) {
+      return view("uncertain", "Unconfirmed", "Outcome unconfirmed", "Work may still be running. Reconnect to reconcile.");
+    }
+    if (!showing) return view("idle", "Off", "Display off", "Show the conversation to open a project.");
+    if (pending) return view("approval", "Your approval", "Waiting for your approval", "Nothing runs until you approve the exact request.");
+    if (RUN_WORKING[run]) return view("working", "Busy", RUN_WORKING[run], "The worker is busy. No progress estimate is shown.");
+    if (run === "stopping") return view("stopping", "Stopping", "Stopping", "Stop requested; waiting for the worker.");
+    if (run === "completed") {
+      return verified
+        ? view("ready", "Verified", "Ready to test", "Fixed checks passed for this run.")
+        : view("finished", "Finished", "Finished", "Not verified ready to test.");
+    }
+    if (RUN_TROUBLE.has(run)) return view("trouble", "Not done", "Did not complete", "Check the session before trying again.");
+    if (RUN_STOPPED.has(run)) return view("stopped", "Stopped", "Stopped", "No work is running.");
+    if (run) return view("idle", "Unknown", "Status unconfirmed", "Check the project session.");
+    if (bound) return view("discussing", "Selected", "Discussing", "Session selected. No work is running.");
+    return configured
+      ? view("idle", "Ready", "No session selected", "Select an owner-registered session.")
+      : view("idle", "Off", "Not configured", "No native sessions are set up on the host.");
+  }
+
+  const LENS = {
+    off: ["Camera off", "No video is being received."],
+    ready: ["Camera ready", "Nothing starts until you press Start."],
+    connecting: ["Connecting", "Waiting for decoded video."],
+    live: ["Live", "Decoded video is arriving."],
+    held: ["Video delayed", "Movement held until fresh video arrives."],
+    paused: ["Playback paused", "Connected, but this browser paused playback."],
+    privacy: ["Camera blocked", "Privacy or power mode keeps the camera off."],
+    trouble: ["Camera problem", "See the camera message."],
+    offline: ["Camera off", "Owner session unavailable."],
+  };
+
+  /** Camera lens from the camera module's own categorical phase. Unknown phases read as off. */
+  function lensView({ phase = "", offline = false } = {}) {
+    const key = offline ? "offline" : (LENS[phase] ? phase : "off");
+    return { scene: "lens", phase: key, chip: "", title: LENS[key][0], detail: LENS[key][1] };
+  }
+
+  const UPDATE_STEPS = { queued: 1, downloading: 2, installing: 3, stopping: 4, starting: 4, verifying: 5 };
+  const UPDATE_TITLES = { queued: "Queued", downloading: "Downloading", installing: "Installing", stopping: "Restarting", starting: "Restarting", verifying: "Verifying" };
+
+  /**
+   * Update rail from the durable updater job state. Success is shown only for a journal state of
+   * `succeeded` that has not been acknowledged yet; an unreachable updater never implies progress.
+   */
+  function updaterView({ offline = false, unreachable = false, job = "", acknowledged = false, checking = false, available = false, supported = true, checked = false } = {}) {
+    const view = (phase, chip, title, detail) => ({ scene: "updater", phase, chip, title, detail });
+    const state = String(job || "");
+    if (offline) return view("offline", "Hidden", "Updates hidden", "Pair an owner device to read update progress.");
+    if (unreachable) return view("unreachable", "Reconnecting", "Reading saved progress", "Success is not confirmed until the updater answers.");
+    if (UPDATE_STEPS[state]) {
+      const phase = ["stopping", "starting"].includes(state) ? "restarting" : state;
+      return view(phase, `Step ${UPDATE_STEPS[state]} of 5`, UPDATE_TITLES[state], "Saved by the Reachy updater. Reconnecting is safe.");
+    }
+    if (state === "rolling_back") return view("rolling_back", "Recovering", "Restoring the previous version", "The update did not complete. Waiting for recovery.");
+    if (state === "succeeded" && !acknowledged) return view("succeeded", "Verified", "Installed and verified", "Restart and health check passed.");
+    if (state === "rolled_back") return view("rolled_back", "Restored", "Previous version restored", "The update did not complete.");
+    if (["failed", "rollback_failed"].includes(state)) return view("failed", "Failed", "Update failed", state === "rollback_failed" ? "Operator help may be needed." : "The unchanged version was recovered.");
+    if (checking) return view("checking", "Checking", "Checking for updates", "Asking the Reachy updater.");
+    if (!supported) return view("idle", "Unavailable", "Updates unavailable", "The updater is not ready.");
+    if (available) return view("available", "Available", "Update available", "Review it before installing.");
+    return checked
+      ? view("idle", "Current", "Up to date", "No installation is needed.")
+      : view("idle", "Not checked", "Not checked yet", "Check Reachy for updates.");
+  }
+
   /* ---------- Rendering ---------- */
 
   const live = new Set();
@@ -393,12 +581,19 @@
   function buildArt(sceneName, prefix) {
     const scene = SCENES[sceneName];
     const template = document.createElement("template");
-    template.innerHTML = `<svg class="hb-art hb-art-${sceneName}" viewBox="${scene.viewBox || "0 0 400 260"}" preserveAspectRatio="xMidYMid slice" focusable="false" aria-hidden="true">${scene.art(prefix)}</svg>`;
+    template.innerHTML = `<svg class="hb-art hb-art-${sceneName}" viewBox="${scene.viewBox || "0 0 400 260"}" preserveAspectRatio="xMidYMid ${scene.fit || "slice"}" focusable="false" aria-hidden="true">${scene.art(prefix)}</svg>`;
     return template.content.firstElementChild;
   }
 
+  // Kids scenes share the global vocabulary; adult scenes declare their own phases and loops.
+  function phasesOf(sceneName) { return SCENES[sceneName]?.phases || PHASES; }
+  function loops(sceneName, phase) {
+    const own = SCENES[sceneName]?.live;
+    return own ? own.includes(phase) : LIVE_PHASES.has(phase);
+  }
+
   /**
-   * Mount a scene into `host`. Options: { variant: "stage" | "compact", label }.
+   * Mount a scene into `host`. Options: { variant: "stage" | "compact" | "figure" | "strip" | "rail" | "glyph", label }.
    * Returns { update(view) -> boolean, reset(), destroy(), snapshot() }.
    */
   function mount(host, { variant = "stage", label = "Reachy scene" } = {}) {
@@ -464,7 +659,7 @@
       update(view) {
         if (destroyed || !view) return false;
         const scene = SCENES[view.scene] ? view.scene : (current.scene || "buddy");
-        const phase = PHASES.includes(view.phase) ? view.phase : "waiting";
+        const phase = phasesOf(scene).includes(view.phase) ? view.phase : (SCENES[scene].neutral || "waiting");
         const next = {
           scene, phase,
           chip: String(view.chip || ""),
@@ -500,6 +695,7 @@
       /** Forget the current phase (owner loss, privacy): show a neutral, motionless offline still. */
       reset(view) {
         const scene = current.scene || (variant === "compact" ? "companion" : "buddy");
+        if (!view && SCENES[scene].reset) return instance.update({ scene, chip: "", ...SCENES[scene].reset });
         return instance.update(view || { scene, phase: "offline", chip: variant === "compact" ? "" : "Offline", ...(variant === "compact"
           ? { title: "Out of reach", detail: "Status unavailable." }
           : { title: GENERIC.offline[0], detail: GENERIC.offline[1] }) });
@@ -508,7 +704,14 @@
         if (destroyed) return;
         const isReduced = reduced();
         root.dataset.reduced = String(isReduced);
-        const running = onScreen && pageShown && !document.hidden && !isReduced && LIVE_PHASES.has(current.phase);
+        // The observer can miss a reveal that happens during startup (the page shell unhiding), so a
+        // real change also checks geometry once. Later scrolls and tab switches stay with the observer.
+        if (!onScreen && observer && loops(current.scene, current.phase)) {
+          const box = root.getBoundingClientRect();
+          onScreen = box.width > 0 && box.height > 0 && box.bottom > 0 && box.right > 0
+            && box.top < window.innerHeight && box.left < window.innerWidth;
+        }
+        const running = onScreen && pageShown && !document.hidden && !isReduced && loops(current.scene, current.phase);
         root.dataset.motion = running ? "on" : "off";
       },
       snapshot() {
@@ -538,6 +741,10 @@
     mount,
     kidsView,
     companionView,
+    presenceView,
+    workbenchView,
+    lensView,
+    updaterView,
     /** Owner loss: every mounted scene drops its phase and stops moving. */
     resetAll() { live.forEach((instance) => instance.reset()); },
     liveCount() { return live.size; },

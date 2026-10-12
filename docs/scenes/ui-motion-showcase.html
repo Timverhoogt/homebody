@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Homebody adult motion · simulated showcase</title>
+  <!-- Local review fixture only. Not shipped in the app package; no network, storage or device access. -->
+  <link rel="stylesheet" href="../../homebody/static/style.css">
+  <link rel="stylesheet" href="../../homebody/static/scene.css">
+  <style>
+    main { padding-top: 24px; }
+    .simulated { margin: 0 0 20px; padding: 12px 16px; border: 2px dashed var(--orange); border-radius: 12px; font-family: var(--mono); font-size: .8rem; letter-spacing: .04em; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(var(--cell, 220px), 100%), 1fr)); gap: 16px; }
+    .cell { padding: 14px; border: 1px solid var(--line); border-radius: 18px; min-width: 0; }
+    .cell code { display: block; margin-bottom: 10px; color: var(--muted); font-size: .7rem; }
+    .lens-cell { display: flex; align-items: center; gap: 12px; }
+    .lens-cell code { margin: 0; }
+    #presence { --cell: 180px; }
+    #lenses { --cell: 150px; }
+    #workbench, #updater { --cell: 300px; }
+  </style>
+</head>
+<body>
+<main>
+  <p class="simulated" role="note">SIMULATED STATES — fixture data for visual review. Nothing here is live Reachy, camera, workspace or updater telemetry.</p>
+  <p><label><input id="freeze" type="checkbox"> Freeze motion (same as an off-screen or reduced-motion scene)</label></p>
+  <section class="card" data-surface="presence"><h2>Home · presence</h2><div id="presence" class="grid"></div></section>
+  <section class="card" data-surface="workbench"><h2>Workspace · bench</h2><div id="workbench" class="grid"></div></section>
+  <section class="card" data-surface="lens"><h2>Camera · lens</h2><div id="lenses" class="grid"></div></section>
+  <section class="card" data-surface="updater"><h2>Updates · rail</h2><div id="updater" class="grid"></div></section>
+  <section class="card" data-surface="buttons"><h2>Button feedback</h2>
+    <div class="actions">
+      <button type="button" data-hb-motion="pending">Pending</button>
+      <button type="button" class="secondary" data-hb-motion="confirmed">Confirmed</button>
+      <button type="button" class="secondary" data-hb-motion="failed">Failed</button>
+    </div>
+  </section>
+</main>
+<script src="../../homebody/static/scene.js"></script>
+<script>
+  const scene = window.HomebodyScene;
+  function cell(parent, caption, variant, view, dark = false) {
+    const node = document.createElement("div");
+    node.className = `cell${dark ? " display" : ""}${variant === "glyph" ? " lens-cell" : ""}`;
+    node.innerHTML = `<div></div><code>${caption}</code>`;
+    if (variant !== "glyph") node.prepend(node.lastElementChild);
+    document.getElementById(parent).appendChild(node);
+    const host = variant === "glyph" ? node.firstElementChild : node.lastElementChild;
+    scene.mount(host, { variant, label: "Simulated" }).update(view);
+  }
+  const presence = [
+    ["awake · waiting", { state: "waiting_for_wake_word", powerMode: "awake" }],
+    ["standby", { state: "waiting_for_wake_word", powerMode: "standby" }],
+    ["listening", { state: "listening", powerMode: "awake" }],
+    ["thinking", { state: "thinking", powerMode: "awake" }],
+    ["speaking", { state: "speaking", powerMode: "awake" }],
+    ["meeting", { state: "meeting", powerMode: "meeting" }],
+    ["sleep", { state: "sleep", powerMode: "sleep" }],
+    ["error", { state: "error", powerMode: "awake" }],
+    ["offline", { offline: true }],
+    ["unknown", { state: "starting" }],
+  ];
+  presence.forEach(([name, input]) => cell("presence", name, "figure", scene.presenceView(input), true));
+  const bench = [
+    ["display off", {}],
+    ["no session", { showing: true, configured: true }],
+    ["discussing", { showing: true, configured: true, bound: true }],
+    ["approval", { showing: true, bound: true, pending: true }],
+    ["running", { showing: true, bound: true, status: "running" }],
+    ["stopping", { showing: true, bound: true, status: "stopping" }],
+    ["completed · unverified", { showing: true, bound: true, status: "completed" }],
+    ["completed · verified", { showing: true, bound: true, status: "completed", verified: true }],
+    ["connection lost", { showing: true, uncertain: true }],
+    ["failed", { showing: true, bound: true, status: "failed" }],
+    ["cancelled", { showing: true, bound: true, status: "cancelled" }],
+    ["owner lost", { offline: true }],
+  ];
+  bench.forEach(([name, input]) => cell("workbench", name, "strip", scene.workbenchView(input)));
+  ["off", "ready", "connecting", "live", "held", "paused", "privacy", "trouble", "offline"]
+    .forEach((phase) => cell("lenses", phase, "glyph", scene.lensView({ phase, offline: phase === "offline" })));
+  const updates = [
+    ["up to date", { checked: true }],
+    ["available", { available: true, checked: true }],
+    ["checking", { checking: true }],
+    ["queued", { job: "queued" }],
+    ["downloading", { job: "downloading" }],
+    ["installing", { job: "installing" }],
+    ["stopping", { job: "stopping" }],
+    ["verifying", { job: "verifying" }],
+    ["succeeded", { job: "succeeded" }],
+    ["rolling back", { job: "rolling_back" }],
+    ["rolled back", { job: "rolled_back" }],
+    ["failed", { job: "rollback_failed" }],
+    ["unreachable", { unreachable: true }],
+  ];
+  updates.forEach(([name, input]) => cell("updater", name, "rail", scene.updaterView(input)));
+  document.getElementById("freeze").addEventListener("change", (event) => {
+    document.querySelectorAll(".hb-scene").forEach((node) => { node.dataset.reduced = String(event.target.checked); });
+  });
+</script>
+</body>
+</html>

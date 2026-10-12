@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-10-12
+
+### App-wide motion language
+- **Home.** The hero's static Reachy mark is now a `presence` figure from the shared scene component. It shows awake, standby, listening, thinking, speaking, meeting, asleep, trouble and offline using only `runtime.state` and `power_mode`. Unknown and starting states stay neutral. The old always-running hero CSS loops are gone.
+- **Workspace.** A small `workbench` strip (you · Reachy · worker) reflects the native run status enum, whether an approval is pending, and connection uncertainty. "Ready to test" uses the same exact receipt check as the status text; "completed" alone reads "Finished · not verified". A pending approval gets three soft swells, then a steady still. There is no progress estimate.
+- **Camera.** A `lens` glyph beside the status badge and a quiet edge tone outside the video. The lens opens only while decoded frames are fresh: stale video reads "held", and privacy, owner loss and backgrounding read closed or offline. Nothing is drawn in fullscreen, and the lens makes no requests.
+- **Updates.** An `updater` rail shows the five durable journal steps. Success needs an unacknowledged `succeeded` job. An unreachable updater reads "Reading saved progress", not success. Reads are numbered, so a late answer cannot move the rail.
+- **Shared micro-interactions.** `motion.js` (`HomebodyMotion`) adds token-bound pending/confirmed/failed button feedback for selected requests, one-shot entrances for the update dialog, the approval section and the view switch, and opt-in `details[data-hb-disclosure]` entrances. It uses no DOM observers, storage or network.
+- **Lifecycle.** Every adult mount reuses the owner guard on each update, pauses when off screen, hidden or under reduced motion, and resets on owner loss. Scenes now re-check geometry once on a real change, so a live phase that starts during page start-up is not left paused.
+- **Accessibility.** Scroll padding keeps focused controls clear of the sticky top bar and the fixed phone tab bar. Touched Workspace and Update controls are at least 48px on phones.
+- **Showcase.** `docs/scenes/ui-motion-showcase.html` is labelled SIMULATED, is local-only and is not packaged. `motion.js` is listed in the PWA shell at the existing query version; bump it at release.
+
 ## [0.5.6] - 2026-10-12
 
 ### Activity scenes

@@ -13,8 +13,8 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=84">
-  <link rel="stylesheet" href="/static/scene.css?v=84">
+  <link rel="stylesheet" href="/static/style.css?v=85">
+  <link rel="stylesheet" href="/static/scene.css?v=85">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -90,19 +90,7 @@
     <div id="panel-dashboard" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboard" data-panel="dashboard">
       <header class="page-heading"><h1>Home</h1><p>Reachy’s current state and recent conversation.</p></header>
     <section class="display hero status-card" aria-label="Current state">
-      <div class="hero-face" aria-hidden="true">
-        <span class="hero-ring"></span>
-        <svg viewBox="0 0 160 170" focusable="false">
-          <path class="mark-antenna mark-antenna-left" d="M54 50 40 18" fill="none" stroke="#f4ede1" stroke-width="5" stroke-linecap="round" />
-          <path class="mark-antenna mark-antenna-right" d="M106 50 120 18" fill="none" stroke="#f4ede1" stroke-width="5" stroke-linecap="round" />
-          <circle class="mark-tip mark-tip-left" cx="39" cy="15" r="5.5" fill="#f4ede1" /><circle class="mark-tip mark-tip-right" cx="121" cy="15" r="5.5" fill="#f4ede1" />
-          <rect class="mark-head" x="26" y="44" width="108" height="92" rx="40" />
-          <rect class="mark-visor" x="40" y="66" width="80" height="46" rx="23" />
-          <circle class="mark-eye mark-eye-left" cx="64" cy="89" r="8.5" /><circle class="mark-eye mark-eye-right" cx="96" cy="89" r="8.5" />
-          <path d="M58 140h44" stroke="#f4ede1" stroke-width="6" stroke-linecap="round" opacity=".55" />
-          <path d="M46 160c0-9 15-14 34-14s34 5 34 14" fill="none" stroke="#f4ede1" stroke-width="3" opacity=".35" />
-        </svg>
-      </div>
+      <div id="hero-presence" class="hero-face" aria-hidden="true"></div>
       <div class="hero-copy">
         <p class="label hero-label"><span id="status-dot" class="status-dot" aria-label="Runtime status"></span>Current state <span id="power-mode-badge" class="hero-mode">—</span></p>
         <h2 id="runtime-state">Connecting…</h2>
@@ -342,6 +330,7 @@
             <select id="workspace-native-target" aria-label="Project and native session"></select>
             <button type="button" id="workspace-native-bind">Select session</button>
           </div>
+          <div id="workspace-native-scene" class="workspace-native-scene" aria-hidden="true"></div>
           <p id="workspace-native-state" role="status" aria-live="polite">Show the conversation to select an owner-registered session.</p>
           <ol id="workspace-native-timeline" class="workspace-timeline" aria-label="Native project conversation"></ol>
           <label for="workspace-native-request">Exact request for the selected worker</label>
@@ -359,7 +348,7 @@
             </details>
             <button type="button" id="workspace-native-approve">Approve exact request</button>
           </section>
-          <details id="workspace-native-verification" hidden>
+          <details id="workspace-native-verification" data-hb-disclosure hidden>
             <summary>Verification evidence</summary>
             <pre id="workspace-native-receipt"></pre>
           </details>
@@ -401,7 +390,7 @@
         <button type="button" id="agent-approve-button">Approve this exact action</button>
       </section>
 
-      <details class="card agent-session-details">
+      <details class="card agent-session-details" data-hb-disclosure>
         <summary><span><strong>Tool activity &amp; session details</strong><small>Actual sanitized broker activity, capabilities and approvals</small></span></summary>
         <div class="agent-status-grid">
           <div><span class="label">Current task</span><p id="agent-current-task" class="quote">—</p></div>
@@ -775,7 +764,7 @@
       <section class="card camera-card">
         <div class="section-heading">
           <div><p class="label">Private local viewer</p><h2>Reachy camera</h2></div>
-          <span id="camera-live-status" class="badge">Off</span>
+          <div class="camera-status-cluster"><span id="camera-lens" class="camera-lens" aria-hidden="true"></span><span id="camera-live-status" class="badge">Off</span></div>
         </div>
         <p id="camera-connectivity-message" class="muted" role="status">Pair an Owner device to check camera transport. No camera starts during pairing.</p>
         <p class="muted">A private view from Reachy. Drag to look around; release to hold. Video stays between your device and Reachy; it is never sent to Hermes or OpenAI.</p>
@@ -839,7 +828,7 @@
         </div>
         <p class="muted compact-note">No images, audio, addresses or credentials · report expires after 10 minutes.</p>
         <textarea id="camera-report-text" aria-label="Connection report to copy" rows="6" readonly hidden></textarea>
-        <details class="camera-diagnostics"><summary>Connection details</summary>
+        <details class="camera-diagnostics" data-hb-disclosure><summary>Connection details</summary>
           <dl><div><dt>Video transport</dt><dd id="camera-diag-transport">Off</dd></div>
           <div><dt>Received video</dt><dd id="camera-diag-video">Not receiving</dd></div>
           <div><dt>Network round trip</dt><dd id="camera-diag-network">Unavailable</dd></div>
@@ -901,8 +890,9 @@
           <button type="button" id="update-check" class="secondary">Check Reachy for updates</button>
           <button type="button" id="update-preview" class="secondary" disabled>Review Reachy update</button>
         </div>
+        <div id="update-rail" class="update-rail" aria-hidden="true"></div>
         <p id="update-status" role="status" aria-live="polite">Reading saved progress…</p>
-        <details><summary>Update history and release notes</summary><div id="update-history"></div></details>
+        <details data-hb-disclosure><summary>Update history and release notes</summary><div id="update-history"></div></details>
       </section>
       <section id="agent-connection-details" class="card" tabindex="-1" aria-labelledby="agent-connection-title">
         <h2 id="agent-connection-title">Agent connection</h2>
@@ -1109,7 +1099,7 @@
     <h2 id="update-dialog-title">Reachy software update</h2>
     <p id="update-summary" role="status" aria-live="polite"></p>
     <p id="update-scope" class="muted">Applies to Homebody on Reachy and its dashboard. Android app (APK): unchanged; update it separately on your phone.</p>
-    <details id="update-details"><summary>What changed — release notes</summary><pre id="update-notes"></pre></details>
+    <details id="update-details" data-hb-disclosure><summary>What changed — release notes</summary><pre id="update-notes"></pre></details>
     <div class="actions">
       <button type="button" id="update-install" disabled>Install on Reachy…</button>
       <button type="button" id="update-ack" hidden>Done — back to dashboard</button>
@@ -1118,18 +1108,19 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=84"></script>
-  <script src="/static/scene.js?v=84"></script>
-  <script src="/static/owner.js?v=84"></script>
+  <script src="/static/notifications.js?v=85"></script>
+  <script src="/static/scene.js?v=85"></script>
+  <script src="/static/motion.js?v=85"></script>
+  <script src="/static/owner.js?v=85"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=84"></script>
-  <script src="/static/agent-connection.js?v=84"></script>
-  <script src="/static/native-workspace.js?v=84"></script>
-  <script src="/static/workspace.js?v=84"></script>
-  <script src="/static/ispy-input.js?v=84"></script>
-  <script src="/static/main.js?v=84"></script>
-  <script src="/static/updates.js?v=84"></script>
-  <script src="/static/volume.js?v=84"></script>
-  <script src="/static/assistant-modes.js?v=84"></script>
+  <script src="/static/camera.js?v=85"></script>
+  <script src="/static/agent-connection.js?v=85"></script>
+  <script src="/static/native-workspace.js?v=85"></script>
+  <script src="/static/workspace.js?v=85"></script>
+  <script src="/static/ispy-input.js?v=85"></script>
+  <script src="/static/main.js?v=85"></script>
+  <script src="/static/updates.js?v=85"></script>
+  <script src="/static/volume.js?v=85"></script>
+  <script src="/static/assistant-modes.js?v=85"></script>
 </body>
 </html>

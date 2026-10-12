@@ -14,6 +14,7 @@
   }
   function reset(message = "Conversation display is off.") {
     epoch += 1;
+    window.HomebodyMotion?.clear(byId("workspace-start"));
     window.HomebodyNativeWorkspace?.reset();
     showing = false;
     signature = "";
@@ -78,6 +79,9 @@
     controller = abort;
     const timer = setTimeout(() => abort.abort(), 8000);
     const mine = epoch;
+    // Only "Show" gets button feedback, and it confirms only if the display really turned on.
+    const feedback = action === "start" ? window.HomebodyMotion?.pending(byId("workspace-start")) : null;
+    let outcome = "cleared";
     controls();
     try {
       const response = await fetch(`/api/agent/workspace${action === "read" ? "" : `/${action}`}`, {
@@ -88,13 +92,16 @@
       if (mine !== epoch) return;
       if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
       render(payload);
+      if (payload.enabled === true) outcome = "confirmed";
     } catch (error) {
+      if (mine === epoch) outcome = "failed";
       if (mine === epoch) reset("Conversation unavailable. Reconnect as owner to continue.");
       if (action !== "read") window.HomebodyNotifications?.show(String(error.message || error), {
         id: "workspace", title: "Conversation display", kind: "error",
       });
     } finally {
       clearTimeout(timer);
+      window.HomebodyMotion?.settle(feedback, outcome);
       if (controller === abort) {
         controller = null;
         pending = false;
@@ -104,8 +111,11 @@
     }
   }
   function select(view) {
+    const target = byId(`agent-${view}-view`);
+    const switching = target.hidden;
     byId("agent-companion-view").hidden = view !== "companion";
     byId("agent-workspace-view").hidden = view !== "workspace";
+    if (switching) window.HomebodyMotion?.enter(target);
     for (const name of ["companion", "workspace"]) {
       byId(`agent-view-${name}`).setAttribute("aria-pressed", String(name === view));
     }
@@ -127,6 +137,7 @@
       if (nextBlocked) reset("Conversation hidden in Kids or privacy mode.");
       blocked = nextBlocked;
       controls();
+      window.HomebodyNativeWorkspace?.sync();
       if (!blocked && runtime.agent?.pending_approval) select("workspace");
       if (!blocked) request();
     },
