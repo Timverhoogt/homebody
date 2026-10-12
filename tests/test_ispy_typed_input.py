@@ -161,3 +161,29 @@ def test_stop_invalidates_old_token_even_when_new_context_is_requested(game):
     with pytest.raises(RuntimeError):
         rt.submit_ispy_guess("cup", token)
     assert not calls
+
+
+def test_stop_then_new_wake_during_real_stream_queues_no_audio(game, monkeypatch):
+    rt, calls, client = game
+    token = rt.ispy_input_context()["token"]
+    pushed = []
+    rt.robot = SimpleNamespace(media=SimpleNamespace(push_audio_sample=lambda a: pushed.append(a)))
+    rt._motion = None
+    rt._spotter = None
+    rt._output_sample_rate = 24000
+    monkeypatch.setattr(rt, "_clear_streamed_audio", lambda: None)
+    # Restore actual producer/consumer, rather than the fixture's speech mock.
+    monkeypatch.setattr(rt, "_play_kids_stream", HermesVoiceRuntime._play_kids_stream.__get__(rt))
+
+    def speech(text, *, should_stop):
+        rt._request_conversation_stop()
+        rt._accept_wake_turn()
+        assert rt._turn_stop_requested()
+        assert should_stop()
+        yield b"\x01\x00" * 240
+
+    client.iter_kids_speech = speech
+    with pytest.raises(RuntimeError):
+        rt.submit_ispy_guess("cup", token)
+    assert pushed == []
+    assert calls == [("moderated_chat", "cup")]

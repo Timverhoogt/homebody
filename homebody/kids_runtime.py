@@ -641,7 +641,7 @@ class KidsModeMixin:
                     client.config.kids_mode_enabled
                     and not self._kids_session_is_current(client.config.kids_session_id)
                 )
-                or self._conversation_stop_requested.is_set()
+                or self._turn_stop_requested()
                 or self._privacy_requested.is_set()
                 or self._effective_power_mode() in {"meeting", "sleep"}
             )
