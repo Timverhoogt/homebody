@@ -39,7 +39,13 @@ def fake_client(monkeypatch, name="get_current_time"):
     monkeypatch.setattr(
         sub,
         "_resolve_client",
-        lambda _: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))),
+        lambda _: SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(
+                    create=create, _build_responses_kwargs=lambda kw: ({"reasoning": {"effort": "none"}}, "test", 20)
+                )
+            )
+        ),
     )
     return requests
 
@@ -57,7 +63,7 @@ def test_subscription_tool_loop_has_only_home_tools_and_no_paid_http(monkeypatch
     assert {t["function"]["name"] for t in requests[0]["tools"]} == EVERYDAY_TOOL_NAMES
     assert requests[0]["store"] is False
     assert requests[0]["timeout"] <= 20
-    assert requests[0]["extra_body"]["reasoning"]["effort"] == "low"
+    assert requests[0]["extra_body"]["reasoning"] == {"effort": "none", "enabled": False}
     assert requests[1]["messages"][-1]["role"] == "tool"
     assert result["source"] == {"kind": "everyday", "provider": "openai-codex", "model": "subscription-test"}
     assert result["tools"][0]["ok"] is (name == "get_current_time")

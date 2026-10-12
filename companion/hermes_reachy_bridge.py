@@ -971,6 +971,12 @@ class Bridge(NativeWorkspaceRoutes):
 
     async def start(self, app: web.Application) -> None:
         self.http = ClientSession(timeout=ClientTimeout(total=180, connect=10))
+        if self.llm.name == "openai-codex":
+            try:
+                from companion.subscription_reasoning import SubscriptionHttp
+            except ImportError:
+                from subscription_reasoning import SubscriptionHttp
+            self.http = SubscriptionHttp(self.http, self.llm)
         await self.start_native_workspace(
             lambda name: (_resolve_api_key("", self.profile) if name == "API_SERVER_KEY"
                           else _resolve_secret(name, self.profile)),
@@ -2938,6 +2944,7 @@ class Bridge(NativeWorkspaceRoutes):
                     "name": llm.name, "label": llm.label, "region": llm.region, "model": llm.model("everyday"),
                     "billing": "subscription" if llm.name == "openai-codex" else "api",
                     "paid_text_api_fallback": False,
+                    "reasoning_effort": getattr(llm, "reasoning_effort", None),
                 },
                 "weather": self.everyday.weather_disclosure(),
                 "devices": self.everyday.public_names(),

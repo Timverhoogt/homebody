@@ -66,13 +66,25 @@ class TextModelProvider:
     models: dict[str, str]
 
     @classmethod
-    def from_env(cls, env: Callable[[str], str] | None = None) -> TextModelProvider:
+    def from_env(cls, env: Callable[[str], str] | None = None) -> TextModelProvider | SubscriptionTextProvider:
         source = env or (lambda name: os.getenv(name, ""))
 
         def get(name: str) -> str:
             return str(source(name) or "")
 
         name = (get("REACHY_LLM_PROVIDER") or "openai").strip().lower()
+        if name == "openai-codex":
+            if get("REACHY_LLM_URL"):
+                raise LLMProviderConfigError("Subscription text models do not accept a custom API URL")
+            models = {purpose: get(_PURPOSE_ENV[purpose]).strip() or get("REACHY_LLM_MODEL").strip()
+                      for purpose in PURPOSES}
+            if not all(models.values()):
+                raise LLMProviderConfigError("Explicit subscription models are required for Agent, Kids and I Spy")
+            try:
+                from companion.subscription_reasoning import SubscriptionTextProvider
+            except ImportError:
+                from subscription_reasoning import SubscriptionTextProvider
+            return SubscriptionTextProvider(models["agent"], models=models)
         preset = PRESETS.get(name)
         if preset is None:
             raise LLMProviderConfigError(f"REACHY_LLM_PROVIDER must be one of {', '.join(PRESETS)}")
