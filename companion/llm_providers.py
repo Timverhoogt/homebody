@@ -14,8 +14,11 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from companion.subscription_reasoning import SubscriptionTextProvider
 
 PURPOSES = ("agent", "kids", "ispy")
 _PURPOSE_ENV = {"agent": "REACHY_AGENT_MODEL", "kids": "REACHY_KIDS_MODEL", "ispy": "REACHY_ISPY_MODEL"}
@@ -139,7 +142,9 @@ class TextModelProvider:
         return {"name": self.name, "label": self.label, "region": self.region, "models": dict(self.models)}
 
 
-def everyday_provider_from_env(env: Callable[[str], str] | None = None) -> TextModelProvider:
+def everyday_provider_from_env(
+    env: Callable[[str], str] | None = None,
+) -> TextModelProvider | SubscriptionTextProvider:
     """Resolve the Everyday text backend independently of the Agent/Kids provider.
 
     ``REACHY_EVERYDAY_PROVIDER`` (default: ``REACHY_LLM_PROVIDER``, else openai) and
@@ -153,6 +158,17 @@ def everyday_provider_from_env(env: Callable[[str], str] | None = None) -> TextM
         return str(source(name) or "").strip()
 
     name = (get("REACHY_EVERYDAY_PROVIDER") or get("REACHY_LLM_PROVIDER") or "openai").lower()
+    if name == "openai-codex":
+        if get("REACHY_EVERYDAY_URL"):
+            raise LLMProviderConfigError("Subscription reasoning does not accept a custom API URL")
+        model = get("REACHY_EVERYDAY_MODEL")
+        if not model:
+            raise LLMProviderConfigError("Set an explicit REACHY_EVERYDAY_MODEL for ChatGPT subscription reasoning")
+        try:
+            from companion.subscription_reasoning import SubscriptionTextProvider
+        except ImportError:
+            from subscription_reasoning import SubscriptionTextProvider
+        return SubscriptionTextProvider(model)
     preset = PRESETS.get(name)
     if preset is None:
         raise LLMProviderConfigError(f"REACHY_EVERYDAY_PROVIDER must be one of {', '.join(PRESETS)}")
