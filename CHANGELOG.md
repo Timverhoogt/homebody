@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Update status and maintenance reads no longer rewrite the private journal or create state/locks. Reads preserve bytes, inode, owner, mode and timestamps, reuse shared locks, and remain possible with read-only access; only mutations use atomic write transactions. This prevents root verification from locking the app and worker out of their 0600 journal.
 - Native project approvals use equally strong random hexadecimal identifiers, avoiding intermittent API-key-pattern collisions that could redact an approval ID before it reached the owner UI. Exact-match, expiry, source-drift and single-use checks remain unchanged.
 - Kids I Spy reconnects a failed local SDK camera reader with a bounded, consent-aware retry before waking. Awake is serialized and checked against measured hardware readiness, so an already-awake robot does not perform a second wake animation. Stop, privacy transitions and session replacement invalidate startup and search; failures after movement fold safely, while stale cleanup cannot tear down a newer Kids session.
 - Camera joystick directions match the Reachy SDK axes. Center no longer waits while holding the admission locks, uses request-scoped cancellation and reports actual completion. Streaming sends combined head/body targets, levels roll at a bounded rate, and rejects nonfinite measured poses.

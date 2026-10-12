@@ -165,9 +165,25 @@ class Store:
             yield data
             atomic_json(self.path, data)
 
+    def _snapshot(self) -> dict:
+        try:
+            return json.loads(self.path.read_text())
+        except FileNotFoundError:
+            return {"job": None, "history": []}
+
     def read(self) -> dict:
-        with self.transaction() as data:
-            return json.loads(json.dumps(data))
+        # Observation must not enter the write transaction: a privileged
+        # maintenance read used to atomically replace the journal as root.
+        # Reuse an existing lock read-only, but never create a directory/lock.
+        try:
+            lock = (self.root / "journal.lock").open("r")
+        except FileNotFoundError:
+            # Every writer replaces a fully fsynced file atomically, so a
+            # snapshot is coherent even before the first lock is created.
+            return self._snapshot()
+        with lock:
+            fcntl.flock(lock, fcntl.LOCK_SH)
+            return self._snapshot()
 
     def enqueue(self, manifest: dict, current: str, notes: list) -> dict:
         validate_manifest(manifest)
