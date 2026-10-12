@@ -115,6 +115,16 @@ class PowerMixin:
             return False
 
     def _fold_head_before_torque_release(self) -> tuple[bool, str]:
+        """Permit only serialized safety folding after shutdown, never a fresh wake."""
+        with self._motor_transition_lock:
+            prior = getattr(self, "_safety_fold_active", False)
+            self._safety_fold_active = True
+            try:
+                return self._fold_head_before_torque_release_unlocked()
+            finally:
+                self._safety_fold_active = prior
+
+    def _fold_head_before_torque_release_unlocked(self) -> tuple[bool, str]:
         """Fold Reachy into its supported pose before releasing motor torque."""
         with self._motor_transition_lock:
             if self._head_safely_folded and self._read_head_safely_folded():
@@ -289,6 +299,8 @@ class PowerMixin:
             self._set_motor_mode_unlocked(enabled, wake=wake)
 
     def _set_motor_mode_unlocked(self, enabled: bool, *, wake: bool = False) -> None:
+        if enabled and self.stop_event.is_set() and (wake or not getattr(self, "_safety_fold_active", False)):
+            raise RuntimeError("Runtime is stopping; motor enable is blocked")
         # A second caller can queue Awake using status from before the first wake.
         # Re-read hardware under the lock, rather than trusting that stale app status.
         if enabled and wake and self._motors_enabled is True and not self._head_safely_folded:

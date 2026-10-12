@@ -6,6 +6,8 @@
   let ready;
   function render() {
     window.HomebodyNotifications?.setSuppressed("owner", !session.owner);
+    window.HomebodyVolume?.owner(session.owner);
+    window.HomebodyAssistantModes?.owner(session.owner);
     byId('owner-pair-panel').hidden = session.owner;
     byId('owner-device-controls').hidden = !session.owner;
     document.querySelector('main').hidden = !session.owner;
@@ -138,5 +140,6 @@
       window.HomebodyNotifications?.show(`Owner devices: ${error.message || error}`, { id: 'owner-devices', kind: 'error' });
     }
   });
+  window.HomebodyOwner = { isOwner:() => session.owner === true };
   ready = check();
 })();

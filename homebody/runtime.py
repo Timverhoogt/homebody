@@ -40,6 +40,7 @@ from .safety_gate import (
 from .vision_runtime import VisionMixin
 from .vision_runtime import doa_yaw_degrees as doa_yaw_degrees  # re-exported for existing imports
 from .voice_ha import HomeAssistantVoiceMixin
+from .voice_live import LiveVoiceMixin
 from .voice_pipeline import PipelineVoiceMixin
 from .voice_realtime import (  # re-exported for existing imports
     PowerModeToolCall as PowerModeToolCall,
@@ -60,6 +61,7 @@ from .voice_realtime import (
 from .voice_realtime import (
     realtime_response_id as realtime_response_id,
 )
+from .voice_timing import VoiceTimings
 from .voice_workspace import VoiceWorkspace, VoiceWorkspaceMixin
 from .wakeword import WAKE_PROMPT as _WAKE_PROMPT
 from .wakeword import HeyHermesSpotter, ensure_kws_model
@@ -187,6 +189,7 @@ class HermesVoiceRuntime(
     VisionMixin,
     HomeAssistantVoiceMixin,
     RealtimeVoiceMixin,
+    LiveVoiceMixin,
     PipelineVoiceMixin,
     PowerMixin,
 ):
@@ -247,6 +250,33 @@ class HermesVoiceRuntime(
         self._safety_gate = SafetyGate(_RuntimeSafetyProbe(self))
         self._init_agent_session_state()
         self._voice_workspace = VoiceWorkspace()
+        self._voice_timings = VoiceTimings()
+        from .speaker_volume import SpeakerVolume
+        self._speaker = SpeakerVolume()
+
+    def speaker_volume(self) -> dict[str, object]:
+        with self._motor_transition_lock, self._kids_lock:
+            self._require_speaker_access()
+            return self._speaker.read()
+
+    def _require_speaker_access(self, *, agent: bool = False) -> None:
+        if self.stop_event.is_set():
+            raise RuntimeError("Reachy is stopping; speaker controls are unavailable")
+        if not self.control_ready:
+            raise RuntimeError("Reachy is still starting up")
+        if self._kids_active or self._kids_locked:
+            raise RuntimeError("Speaker controls are unavailable during a supervised child session")
+        if agent and (self.privacy_active() or self._effective_power_mode() in {"meeting", "sleep"}):
+            raise RuntimeError("Reachy is private or in Meeting/Sleep; agent speaker changes are unavailable")
+
+    def set_speaker_volume(
+        self, *, volume: int | None = None, muted: bool | None = None, agent: bool = False,
+    ) -> dict[str, object]:
+        # Serialize with Kids/power/update admission. This only touches the playback
+        # mixer: it never starts media, a voice turn, a test sound or a motor transition.
+        with self._motor_transition_lock, self._kids_lock:
+            self._require_speaker_access(agent=agent)
+            return self._speaker.set(volume=volume, muted=muted)
 
     def _request_conversation_stop(self) -> None:
         """Stop the current voice turn; only a newly accepted wake may start another."""
@@ -335,6 +365,29 @@ class HermesVoiceRuntime(
                     "kids_mode": kids_payload,
                 }
         return payload
+
+    def reserve_update(self, enqueue: Callable[[], object]) -> object:
+        """Journal the one owner-approved job while idle, then quiesce without moving hardware.
+
+        Motor transitions serialize wake/Kids admission. The voice slot is acquired nonblocking
+        (voice paths may own it before acquiring the motor lock). Shutdown wins all later wakes.
+        """
+        from .updates import require_safe
+
+        with self._motor_transition_lock:
+            if not self._voice_activity_lock.acquire(blocking=False):
+                raise ValueError("Update cannot start while voice activity is active")
+            try:
+                with self._kids_lock:
+                    if not self.control_ready or self.stop_event.is_set():
+                        raise ValueError("Runtime is not ready for an update")
+                    require_safe(self.status())
+                    job = enqueue()
+                    self._control_ready.clear()
+                    self.stop_event.set()
+                    return job
+            finally:
+                self._voice_activity_lock.release()
 
     @property
     def control_ready(self) -> bool:
@@ -714,8 +767,21 @@ class HermesVoiceRuntime(
                 self._stop_home_assistant_voice_if_active()
         elif config.conversation_mode == "realtime":
             self._run_realtime_conversation(config)
+        elif config.conversation_mode == "live":
+            self._run_live_conversation(config)
         else:
             self._run_conversation(config)
+
+    def voice_timings(self) -> list[dict[str, object]]:
+        """Owner diagnostics: text-free latency marks for the last turns (RAM only)."""
+        return self._voice_timings.snapshot()
+
+    def stop_speaking(self) -> dict[str, object]:
+        """End the voice turn and invalidate late results, keeping native project work.
+
+        The voice loops flush their own playback when they observe the stop request.
+        """
+        return self.cancel_agent_work("speech_stopped")
 
     def _clear_streamed_audio(self) -> None:
         """Flush Realtime appsrc output without stopping microphone capture."""

@@ -9,11 +9,14 @@ It runs inside Homebody instead of as a separate Reachy app. The Reachy daemon r
 | Tool | What it does | Safety rules |
 | --- | --- | --- |
 | `get_status` | Reports whether Reachy is Awake, in Standby, Meeting or Sleep, whether someone seems present, and which tools work right now. | Read-only. Presence is reported only when presence sensing is on. |
+| `get_volume` | Reads the actual speaker level (0–100), output mute and whether unmute can restore a measured level. | Read-only hardware observation; unavailable during child sessions or startup/shutdown. No microphone, camera or movement. |
+| `set_volume` | Silently sets an integer speaker level from 0 to 100. Zero mutes output. | Hardware readback required. No test tone or wake. Refused in Meeting, Sleep, privacy and child sessions. |
+| `set_mute` | Mutes output, or restores the last measured nonzero level. | Same restrictions as `set_volume`. After restart at 0%, choose an explicit level rather than inventing an unmute volume. |
 | `announce` | Speaks a short message (up to 500 characters) after any conversation in progress. | Refused in Meeting, Sleep, privacy mode and child sessions. At most 6 messages per 10 minutes. |
 | `express_emotion` | Plays one bounded emotion, for example `happy` or `surprised`. | Only while Reachy is already Awake with motors confirmed. It never wakes Reachy, and it is refused in child sessions and during camera control. |
 | `look_and_describe` | Answers a question about the current camera view. | Off unless you allow it separately. Uses your local vision model, so the agent gets text, never an image. Refused in Meeting, Sleep and child sessions. |
 
-There is no raw motor or joint control, no image download, no microphone access, and no way to change power modes, Kids Mode or settings. Every agent is limited to 30 requests a minute. When a rule blocks a request, the agent gets a plain-language reason it can relay, for example "Reachy is in Sleep mode".
+There is no raw motor or joint control, no image download, no microphone access, and no way to change power modes, Kids Mode or general settings. The explicit speaker tools adjust output only; they never mute or alter microphone capture. Quiet hardware control currently requires the named Reachy Linux ALSA speaker; unsupported or ambiguous devices are refused rather than falling back to HDMI/default audio. See [speaker volume](speaker-volume.md). Every agent is limited to 30 requests a minute. When a rule blocks a request, the agent gets a plain-language reason it can relay, for example "Reachy is in Sleep mode".
 
 ## Turn it on
 

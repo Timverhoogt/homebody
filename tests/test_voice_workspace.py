@@ -113,7 +113,7 @@ def test_pipeline_hooks_record_real_accepted_messages(monkeypatch, clear_during_
         def transcribe(self, _audio):
             return "Tell me about the roadmap"
 
-        def chat(self, _transcript):
+        def everyday_turn(self, _transcript):
             if clear_during_chat:
                 runtime.workspace("clear")
                 runtime.workspace("start")

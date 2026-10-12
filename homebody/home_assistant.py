@@ -1071,18 +1071,19 @@ class HermesHomeAssistantProvider(HomeAssistantStateProvider):
 
     def _volume(self) -> float | None:
         try:
-            import httpx
-
-            response = httpx.get("http://127.0.0.1:8000/api/volume/current", timeout=1.0)
-            response.raise_for_status()
-            payload = response.json()
-            if isinstance(payload, dict):
-                for key in ("volume", "current", "value"):
-                    if key in payload:
-                        return float(payload[key])
-            return float(payload)
-        except Exception as exc:
-            self._last_error = str(exc)
+            read = getattr(self.runtime, "speaker_volume", None)
+            if not callable(read):
+                # Existing telemetry-only daemon bridge has no full runtime. Keep
+                # its read-only hardware observation without creating an SDK client.
+                from .speaker_volume import SpeakerVolume
+                read = SpeakerVolume().read
+            state = read()
+            volume = state.get("volume") if isinstance(state, dict) else None
+            if type(volume) is not int or not 0 <= volume <= 100:
+                raise RuntimeError("Invalid speaker volume")
+            return float(volume)
+        except Exception:
+            self._last_error = "Speaker volume is unavailable"
             return None
 
     def read(self, object_id: str) -> object | None:
@@ -1159,7 +1160,10 @@ class HermesHomeAssistantProvider(HomeAssistantStateProvider):
         if object_id.startswith("look_at_"):
             return None
         if object_id == "reachy_mini_media_player":
-            return {"state": int(MediaPlayerState.IDLE), "volume": (self._volume() or 100.0) / 100.0, "muted": False}
+            volume = self._volume()
+            if volume is None:
+                return None
+            return {"state": int(MediaPlayerState.IDLE), "volume": volume / 100.0, "muted": volume == 0}
         return None
 
     def write(self, object_id: str, value: object) -> bool:
@@ -1193,11 +1197,12 @@ class HermesHomeAssistantProvider(HomeAssistantStateProvider):
                     and result.get("head_safely_folded") is True
                 )
             if object_id == "speaker_volume":
-                import httpx
-
-                volume = max(0.0, min(100.0, float(value)))
-                response = httpx.post("http://127.0.0.1:8000/api/volume/set", params={"volume": volume}, timeout=2.0)
-                response.raise_for_status()
+                if not (config.home_assistant_enabled and config.home_assistant_controls_enabled):
+                    return False
+                if (isinstance(value, bool) or not isinstance(value, (int, float))
+                        or not math.isfinite(value) or not 0 <= value <= 100):
+                    return False
+                self.runtime.set_speaker_volume(volume=round(value))
                 return True
             if object_id == "gesture_detection" and not config.home_assistant_controls_enabled:
                 return False

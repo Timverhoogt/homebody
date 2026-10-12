@@ -254,6 +254,9 @@ class RealtimeVoiceMixin:
             raise
         workspace_generation = self._workspace_lease()
         self._workspace_event(workspace_generation, "activity", "Listening via Realtime")
+        timings = self._voice_timings
+        timing_mode = "workspace" if broker_context.capability_profile == "agent" else "everyday"
+        timings.begin("realtime", timing_mode, warm=False)
         transcript_parts: list[str] = []
         response_parts: list[str] = []
         last_activity = time.monotonic()
@@ -284,6 +287,7 @@ class RealtimeVoiceMixin:
             if agent_request_id:
                 self._finish_agent_request(agent_request_id, broker_context.session_generation, succeeded=False)
             return
+        timings.mark("session_ready")
         self._set_status("listening", "Realtime session active")
         if self._motion is not None:
             self._motion.listening()
@@ -327,6 +331,12 @@ class RealtimeVoiceMixin:
                             if event_response_id == active_response_id:
                                 active_response_id = ""
                         continue
+                    if kind == "input_audio_buffer.speech_stopped":
+                        timings.mark("provider_speech_end")
+                    elif kind == "response.output_item.done" and (payload.get("item") or {}).get(
+                        "type"
+                    ) == "function_call":
+                        timings.mark("tool_requested")
                     if kind == "input_audio_buffer.speech_started":
                         now = time.monotonic()
                         last_activity = now
@@ -465,6 +475,7 @@ class RealtimeVoiceMixin:
                         audio = session.audio_samples(event)
                         if audio.size:
                             now = time.monotonic()
+                            timings.mark("first_provider_audio", at=now)
                             if not speaking:
                                 speaking = True
                                 self._workspace_event(workspace_generation, "activity", "Speaking the reply")
@@ -478,6 +489,9 @@ class RealtimeVoiceMixin:
                             output = resample_linear(audio, 24000, self._output_sample_rate)
                             self.robot.media.push_audio_sample(output)
                             playback.add(now, output.size / self._output_sample_rate)
+                            timings.mark("player_enqueued", at=now)
+                            if playback.started_at is not None:
+                                timings.mark("playback_estimated", at=playback.started_at)
                             last_activity = now
                     elif kind in {
                         "response.output_audio_transcript.delta",
@@ -517,14 +531,18 @@ class RealtimeVoiceMixin:
                     speaking = False
                     generation_done = False
                     playback.reset()
+                    timings.end()
+                    timings.begin("realtime", timing_mode, warm=True)
                     self._set_status("listening", "Waiting for a follow-up")
                     if self._motion is not None:
                         self._motion.listening()
             session_completed = True
         finally:
-            session.close()
-            self._workspace_event(workspace_generation, "activity", "Realtime voice session ended")
+            # Local Stop wins: flush the speaker before the (possibly slow) socket close.
             self._clear_streamed_audio()
+            session.close()
+            timings.end()
+            self._workspace_event(workspace_generation, "activity", "Realtime voice session ended")
             if agent_request_id:
                 self._finish_agent_request(
                     agent_request_id,

@@ -43,8 +43,12 @@ PRESETS: dict[str, _Preset] = {
     # eu_native keeps Cortecs routing to providers based and regulated in the EU.
     "cortecs": _Preset("Cortecs", "https://api.cortecs.ai/v1", ("CORTECS_API_KEY",), "EU", extras={"eu_native": True}),
     "llmrouter": _Preset("LLMrouter.eu", "https://proxy.llmrouter.eu/v1", ("LLMROUTER_API_KEY",), "EU"),
+    "openrouter": _Preset("OpenRouter", "https://openrouter.ai/api/v1", ("OPENROUTER_API_KEY",), "global"),
     "custom": _Preset("Custom provider", "", ("REACHY_LLM_API_KEY",), "custom"),
 }
+# Everyday is a small, fast tool-calling text model, never the full Hermes agent. Conservative
+# defaults that already exist on each preset; any other router must name its model explicitly.
+_EVERYDAY_DEFAULTS = {"openai": "gpt-4.1-mini", "openrouter": "openai/gpt-4.1-mini"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,3 +137,40 @@ class TextModelProvider:
 
     def public_status(self) -> dict[str, object]:
         return {"name": self.name, "label": self.label, "region": self.region, "models": dict(self.models)}
+
+
+def everyday_provider_from_env(env: Callable[[str], str] | None = None) -> TextModelProvider:
+    """Resolve the Everyday text backend independently of the Agent/Kids provider.
+
+    ``REACHY_EVERYDAY_PROVIDER`` (default: ``REACHY_LLM_PROVIDER``, else openai) and
+    ``REACHY_EVERYDAY_MODEL`` choose it. Keys are resolved on the host only, by preset key name.
+    Missing settings raise ``LLMProviderConfigError`` so Everyday reports itself unavailable
+    instead of guessing a router model name.
+    """
+    source = env or (lambda name: os.getenv(name, ""))
+
+    def get(name: str) -> str:
+        return str(source(name) or "").strip()
+
+    name = (get("REACHY_EVERYDAY_PROVIDER") or get("REACHY_LLM_PROVIDER") or "openai").lower()
+    preset = PRESETS.get(name)
+    if preset is None:
+        raise LLMProviderConfigError(f"REACHY_EVERYDAY_PROVIDER must be one of {', '.join(PRESETS)}")
+    shared_provider = name == (get("REACHY_LLM_PROVIDER") or "openai").lower()
+    base = (get("REACHY_EVERYDAY_URL") or (get("REACHY_LLM_URL") if shared_provider else "") or preset.url).rstrip("/")
+    parsed = urlparse(base)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise LLMProviderConfigError("Set REACHY_EVERYDAY_URL to the provider's OpenAI-compatible /v1 URL")
+    model = get("REACHY_EVERYDAY_MODEL") or _EVERYDAY_DEFAULTS.get(name, "")
+    if not model:
+        raise LLMProviderConfigError(f"{preset.label} needs REACHY_EVERYDAY_MODEL for Everyday")
+    return TextModelProvider(
+        name=name,
+        label=preset.label,
+        base_url=base,
+        key_names=preset.key_names,
+        region=preset.region,
+        token_field=preset.token_field,
+        extras=dict(preset.extras),
+        models={"everyday": model},
+    )

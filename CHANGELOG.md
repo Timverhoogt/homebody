@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-12
+
+### Everyday and Workspace (behaviour change)
+- **Routing changes for existing installs.** Adult voice turns outside Workspace now use **Everyday**: a fast, narrow host backend (Home Assistant status/on-off control from the existing allowlists, weather from a configured source, the host clock, direct knowledge answers). Everyday never reaches the full Hermes agent, memory, notes, projects or coding tools, and there is no fallback to them. Saved configs without `assistant_mode` load as Everyday with a one-time "routing changed" notice. The saved voice engine (Pipeline/Realtime) is kept.
+- **Workspace** is the adult Agent profile, entered only from the phone. A bound native Hermes session answers discussion turns through `/v1/runs` only when the host target sets `discussion_enabled`; otherwise answers are labelled "Restricted roadmap reader — not your Hermes session". Execution keeps the existing exact approval, fixed checks and receipts.
+- Separate **Stop speaking** (ends the voice turn and late results; native work continues) from **Stop all Agent work**. An explicit switch to Everyday parks approved native work (display hidden, running badge only); Kids, privacy, Meeting/Sleep and emergency stop still revoke it.
+- **Advanced voice engine**: Pipeline, Realtime (gpt-realtime-2.1 / 2.1-mini, voice, effort, turn-taking eagerness) and **GPT-Live preview** (gpt-live-1, Marin/Cedar, session limit) with a real bridge relay `/v1/live`, transcript-based delegation, bounded queues and cost/cloud disclosure. Physical echo/barge-in behaviour for Live is unverified.
+- Host: `openrouter` provider preset and an independent Everyday text provider (`REACHY_EVERYDAY_PROVIDER`, `REACHY_EVERYDAY_MODEL`, default `gpt-4.1-mini` / `openai/gpt-4.1-mini`). Keys stay on the host.
+- Owner-only, text-free `GET /api/voice/timings`; offline `tools/voice_timing_report.py`. PWA shell v79.
+
+### Silent speaker volume
+- Settings → Speaker volume adds an explicit Apply slider, measured output level, and mute/unmute. Drafts are not hardware confirmation; failed writes require fresh readback. PWA shell v78.
+- MCP adds `get_volume`, `set_volume` and `set_mute` with strict arguments, existing authentication and serialized privacy/Kids/startup/shutdown guards. OAuth consent discloses speaker control.
+- Named Linux ALSA playback-only control avoids SDK test tones and capture-reset side effects. No microphone change, wake, movement or default/HDMI fallback; one bounded transaction and readback confirm every change.
+- Home Assistant uses the same silent service, retains standalone read-only telemetry, and reports true 0%/muted instead of incorrectly defaulting zero to 100%. Existing telemetry-only deployments remain read-only.
+
+### Daemon-compatible managed updates
+- Preserve the existing Python 3.12 Reachy daemon and Home Assistant bootstrap; atomically replace only Homebody's package and distribution metadata through immutable slots.
+- Require the installed SDK's exact sleep-pose distance before app stop, in addition to verified folded Standby, disabled torque, owner/CSRF and idle-session admission.
+- Keep the updater outside the replaceable app, refuse unverified import/metadata drift and incompatible release Python/dependencies, and retain authenticated exact-identity health plus rollback.
+- Preserve serialized safety folding after shutdown while rejecting fresh wakes and ordinary motor enable. Retain all previously accepted Kids, camera, HA and workspace repairs.
+- This feature does not publish a stable release or change firmware, SDK, models, pairing, privacy settings or host agent bridge.
+
+### Added
+
+- Owner-only Homebody update notice and explicit install flow with accumulated release notes, persistent Later, progress, and a completion changelog retained until acknowledged (PWA shell v66).
+- An independent unprivileged updater for one documented Linux/Python 3.11/Reachy SDK 1.9.x immutable-slot user-service topology. It preserves settings and dependencies, verifies exact release identity and folded Standby startup health, and recovers interrupted or failed jobs to the prior artifact; unresolved recovery is reported as rollback_failed.
+- Canonical-repository, draft-release-bound wheel/manifest build workflow (no automatic publication), plus one-time setup and service examples in [managed update operations](docs/managed-updates.md). Target systemd/robot acceptance remains required; no deployment is implied.
+
 ### Security
 
 - Hosted agents are now approved per request in Settings on the home network instead of with a shared approval code typed on the public consent page. Settings shows the agent's name, return address, registration age and a match code that the consent page repeats, so a phishing sign-in link cannot borrow an approval meant for another agent, and strangers can no longer burn the owner's code by guessing.
@@ -21,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Update status and maintenance reads no longer rewrite the private journal or create state/locks. Reads preserve bytes, inode, owner, mode and timestamps, reuse shared locks, and remain possible with read-only access; only mutations use atomic write transactions. This prevents root verification from locking the app and worker out of their 0600 journal.
 - Native project approvals use equally strong random hexadecimal identifiers, avoiding intermittent API-key-pattern collisions that could redact an approval ID before it reached the owner UI. Exact-match, expiry, source-drift and single-use checks remain unchanged.
 - Kids I Spy reconnects a failed local SDK camera reader with a bounded, consent-aware retry before waking. Awake is serialized and checked against measured hardware readiness, so an already-awake robot does not perform a second wake animation. Stop, privacy transitions and session replacement invalidate startup and search; failures after movement fold safely, while stale cleanup cannot tear down a newer Kids session.
 - Camera joystick directions match the Reachy SDK axes. Center no longer waits while holding the admission locks, uses request-scoped cancellation and reports actual completion. Streaming sends combined head/body targets, levels roll at a bounded rate, and rejects nonfinite measured poses.

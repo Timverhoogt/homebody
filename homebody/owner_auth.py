@@ -26,6 +26,7 @@ PAIR_SECONDS = 10 * 60
 owner_authenticated = contextvars.ContextVar("owner_authenticated", default=False)
 # These have their OWN existing machine authentication. Never broaden by prefix.
 MACHINE_ROUTES = {
+    ("GET", "/api/updates/health"),
     ("POST", "/api/presence/signal"),
     ("POST", "/api/initiative/offers"),
     ("POST", "/api/agent/reminder-delivery"),

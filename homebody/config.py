@@ -42,7 +42,13 @@ class AppConfig:
     bridge_url: str = "http://127.0.0.1:8643"
     api_key: str = ""
     model: str = "hermes-agent"
+    # Voice engine (transport): pipeline | realtime | live. Independent of the assistant purpose.
     conversation_mode: str = "pipeline"
+    # Purpose: everyday (fast, narrow, no Hermes agent) | workspace (explicit project session).
+    # Workspace authority itself is the runtime Agent profile and is never restored on boot.
+    assistant_mode: str = "everyday"
+    # "migrated" when an existing config predates assistant modes; cleared once acknowledged.
+    assistant_mode_notice: str = ""
     capability_profile: str = "conversation"
     language: str = "en"
     stt_provider: str = "configured"
@@ -126,6 +132,10 @@ class AppConfig:
     kids_session_id: str = ""
     kids_age_band: str = ""
     kids_activity: str = ""
+    live_model: str = "gpt-live-1"
+    live_voice: str = "marin"
+    live_session_timeout_seconds: float = 300.0
+    realtime_semantic_eagerness: str = "auto"
     realtime_model: str = "gpt-realtime-2.1"
     realtime_voice: str = "marin"
     realtime_reasoning_effort: str = "low"
@@ -136,6 +146,9 @@ class AppConfig:
         self.api_key = self.api_key.strip()
         self.model = self.model.strip() or "hermes-agent"
         self.conversation_mode = self.conversation_mode.strip().lower() or "pipeline"
+        self.assistant_mode = str(self.assistant_mode).strip().lower() or "everyday"
+        self.live_voice = str(self.live_voice).strip().lower() or "marin"
+        self.realtime_semantic_eagerness = str(self.realtime_semantic_eagerness).strip().lower() or "auto"
         self.capability_profile = self.capability_profile.strip().lower() or "conversation"
         self.language = self.language.strip() or "en"
         self.stt_provider = self.stt_provider.strip().lower() or "configured"
@@ -209,8 +222,18 @@ class AppConfig:
             raise ValueError("Unsupported STT provider")
         if self.tts_provider not in {"configured", "elevenlabs"}:
             raise ValueError("Unsupported TTS provider")
-        if self.conversation_mode not in {"pipeline", "realtime"}:
+        if self.conversation_mode not in {"pipeline", "realtime", "live"}:
             raise ValueError("Unsupported conversation mode")
+        if self.assistant_mode not in {"everyday", "workspace"}:
+            raise ValueError("Unsupported assistant mode")
+        if self.assistant_mode_notice not in {"", "migrated"}:
+            raise ValueError("Unsupported assistant mode notice")
+        if self.live_model != "gpt-live-1" or self.live_voice not in {"marin", "cedar"}:
+            raise ValueError("Unsupported Live model or voice")
+        if not 30 <= float(self.live_session_timeout_seconds) <= 900:
+            raise ValueError("Live session timeout must be between 30 and 900 seconds")
+        if self.realtime_semantic_eagerness not in {"auto", "low", "medium", "high"}:
+            raise ValueError("Unsupported Realtime semantic eagerness")
         if self.capability_profile not in {"conversation", "agent"}:
             raise ValueError("Unsupported capability profile")
         if self.realtime_reasoning_effort not in {"minimal", "low", "medium", "high", "xhigh"}:
@@ -320,7 +343,12 @@ def load_config(path: Path | None = None) -> AppConfig:
             if not isinstance(payload, dict):
                 raise ValueError("configuration root must be an object")
             allowed = {f.name for f in fields(AppConfig)}
-            return AppConfig(**{key: value for key, value in payload.items() if key in allowed})
+            values = {key: value for key, value in payload.items() if key in allowed}
+            if "assistant_mode" not in payload:
+                # Saved before Everyday existed: routing changes (Everyday no longer reaches the
+                # full Hermes agent), so the UI must say so explicitly until acknowledged.
+                values["assistant_mode_notice"] = "migrated"
+            return AppConfig(**values)
         except Exception as exc:
             raise ValueError(f"Could not load {config_path}: {exc}") from exc
 

@@ -8,6 +8,12 @@ from fastapi import FastAPI
 
 
 @pytest.fixture(autouse=True)
+def isolate_local_credential_files(monkeypatch, tmp_path):
+    """Never let bridge unit tests fall back to the developer's real Hermes .env."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+
+
+@pytest.fixture(autouse=True)
 def isolate_unit_tests_from_live_robot(monkeypatch):
     """Allow loopback test servers, never the robot daemon or external services."""
     original = socket.socket.connect

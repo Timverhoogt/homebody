@@ -33,13 +33,21 @@ class AgentSessionMixin:
         self._agent_session_generation = time.time_ns()
         self._agent_current_task = ""
         self._agent_native_preserved_generation = None
+        # Generation at which the owner explicitly switched Workspace -> Everyday (park, not revoke).
+        self._agent_native_park_generation = None
         self._agent_active_request_id = ""
         self._agent_pending_approval = False
         self._agent_activity: list[dict[str, object]] = []
         self._agent_policy = AgentPolicy()
 
-    def set_capability_profile(self, profile: str, *, adult_ui_unlocked: bool) -> dict[str, object]:
-        """Switch profiles only from the unlocked adult UI and start a fresh generation."""
+    def set_capability_profile(
+        self, profile: str, *, adult_ui_unlocked: bool, park_native: bool = False
+    ) -> dict[str, object]:
+        """Switch profiles only from the unlocked adult UI and start a fresh generation.
+
+        ``park_native`` (explicit owner Workspace -> Everyday switch) asks the host to hide native
+        project display while keeping approved durable work; it never grants Everyday authority.
+        """
         profile = profile.strip().lower()
         if profile not in {"conversation", "agent"}:
             raise ValueError("Unsupported capability profile")
@@ -56,9 +64,13 @@ class AgentSessionMixin:
             self._voice_workspace.clear()
             with self._agent_lock:
                 active_request_id = self._agent_active_request_id
+                leaving_workspace = self._capability_profile == "agent" and profile != "agent"
                 self._agent_session_generation += 1
                 self._capability_profile = profile
                 self._agent_native_preserved_generation = None
+                self._agent_native_park_generation = (
+                    self._agent_session_generation if park_native and leaving_workspace else None
+                )
                 self._agent_current_task = ""
                 self._agent_active_request_id = ""
                 self._agent_pending_approval = False
@@ -90,17 +102,19 @@ class AgentSessionMixin:
             "privacy",
             "emergency_stop",
             "session_changed",
+            "speech_stopped",
         }
         # Only the internal, explicit session_changed reason may preserve the
         # voice loop. Unknown callers fail closed as a normal Stop request.
+        # "Stop speaking" ends the voice turn and late results, but keeps native project work.
         safe_reason = reason if reason in allowed_reasons else "stopped"
-        if safe_reason != "session_changed":
+        if safe_reason not in {"session_changed", "speech_stopped"}:
             self._voice_workspace.clear()
         with self._agent_lock:
             active_request_id = self._agent_active_request_id
             self._agent_session_generation += 1
             self._agent_native_preserved_generation = (
-                self._agent_session_generation if safe_reason == "session_changed" else None
+                self._agent_session_generation if safe_reason in {"session_changed", "speech_stopped"} else None
             )
             self._agent_current_task = ""
             self._agent_active_request_id = ""
@@ -140,11 +154,14 @@ class AgentSessionMixin:
         context = self.agent_broker_context(explicit_private_intent=False)
         with self._agent_lock:
             preserve_native = self._agent_native_preserved_generation == context.session_generation
+            park_native = self._agent_native_park_generation == context.session_generation
 
         def publish() -> None:
             client = self._new_bridge_client(config)
             try:
-                if preserve_native:
+                if park_native:
+                    client.establish_agent_session(context, park_native=True)
+                elif preserve_native:
                     client.establish_agent_session(context, preserve_native=True)
                 else:
                     client.establish_agent_session(context)

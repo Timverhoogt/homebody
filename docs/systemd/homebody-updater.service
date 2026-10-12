@@ -1,0 +1,14 @@
+[Unit]
+Description=Homebody independent update worker
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/homebody-managed
+Environment=PYTHONNOUSERSITE=1
+ExecStart=%h/.local/share/homebody-managed/updater/bin/python -m homebody.update_worker --config %h/.config/homebody/updater.json
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

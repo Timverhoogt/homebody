@@ -74,8 +74,15 @@ def test_app_notification_wiring_and_phone_layout(browser_page):
     for button in page.locator(".notification-dismiss:visible").all():
         bounds = button.bounding_box()
         assert bounds["width"] >= 44 and bounds["height"] >= 44
-    # Keep reading timers frozen until dismissal assertions are complete.
-    # Screenshot rendering may take longer than the six-second lifetime.
+    page.clock.resume()
+    page.evaluate("() => new Promise(requestAnimationFrame)")
+    page.screenshot(path=".pytest_cache/notification-browser/phone.png", animations="disabled")
+    # Screenshot duration is host-dependent; keyboard checks use non-expiring pending fixtures.
+    page.evaluate("""() => {
+        HomebodyNotifications.clear();
+        for (let i = 0; i < 3; i++)
+            HomebodyNotifications.show('Keyboard fixture ' + i, {kind: 'pending'});
+    }""")
     page.locator(".notification-dismiss").first.focus()
     page.keyboard.press("Enter")
     assert page.locator(".notification:visible").count() == 2

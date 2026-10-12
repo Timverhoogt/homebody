@@ -74,6 +74,7 @@ class HermesBridgeClient:
         self.last_kids_next_action = ""
         self.last_kids_ispy_role = ""
         self.last_kids_ispy_phase = ""
+        self.last_answer_source: dict[str, str] = {}
 
     def close(self) -> None:
         if self._owns_client:
@@ -248,12 +249,22 @@ class HermesBridgeClient:
             raise HermesBridgeError("Hermes returned an invalid Agent Mode capability manifest")
         return capabilities
 
-    def establish_agent_session(self, context: AgentBrokerContext, *, preserve_native: bool = False) -> None:
-        """Publish this device's authoritative live generation to the broker."""
+    def establish_agent_session(
+        self, context: AgentBrokerContext, *, preserve_native: bool = False, park_native: bool = False
+    ) -> None:
+        """Publish this device's authoritative live generation to the broker.
+
+        ``park_native`` marks an explicit owner switch to Everyday: the host hides native display
+        and drafts but keeps approved durable work (Kids/privacy still revoke it host-side).
+        """
         response = self._client.post(
             f"{self.config.bridge_url}/v1/agent/session",
             headers=self._headers(),
-            json={"context": asdict(context), **({"preserve_native": True} if preserve_native else {})},
+            json={
+                "context": asdict(context),
+                **({"preserve_native": True} if preserve_native else {}),
+                **({"park_native": True} if park_native else {}),
+            },
         )
         self._raise_for_error(response, "Agent Mode session update")
         payload = response.json()
@@ -430,7 +441,52 @@ class HermesBridgeClient:
         text = str(payload.get("text") or "").strip() if isinstance(payload, dict) else ""
         if not text:
             raise HermesBridgeError("Hermes returned an empty Agent Mode response")
+        source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
+        self.last_answer_source = {k: str(v)[:200] for k, v in source.items() if isinstance(v, str)}
         return text
+
+    def everyday_turn(self, transcript: str) -> str:
+        """Fast Everyday turn on the host's narrow backend; never the full Hermes agent."""
+        self._rotate_session_if_stale()
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/everyday/turn",
+            headers=self._headers(),
+            json={"text": transcript, "language": self.config.language, "session_id": self._session_id},
+            timeout=httpx.Timeout(30.0, connect=10.0),
+        )
+        self._raise_for_error(response, "Everyday response")
+        payload = response.json()
+        text = str(payload.get("text") or "").strip() if isinstance(payload, dict) else ""
+        if not text:
+            raise HermesBridgeError("Everyday returned an empty response")
+        self.last_answer_source = {"kind": "everyday"}
+        return text
+
+    def everyday_capabilities(self) -> dict[str, object]:
+        response = self._client.get(
+            f"{self.config.bridge_url}/v1/everyday/capabilities", headers=self._headers(), timeout=10.0
+        )
+        self._raise_for_error(response, "Everyday capabilities")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise HermesBridgeError("Hermes returned invalid Everyday capabilities")
+        return payload
+
+    def native_badge(self) -> dict[str, object]:
+        """Status-only native work badge (no text, project or session), usable outside Workspace."""
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/agent/native/badge", headers=self._headers(), json={}, timeout=10.0
+        )
+        self._raise_for_error(response, "Native work status")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise HermesBridgeError("Hermes returned an invalid native work status")
+        return {
+            "status": str(payload.get("status") or "idle")[:32],
+            "running": payload.get("running") is True,
+            "ready_to_test": payload.get("ready_to_test") is True,
+            "configured": payload.get("configured") is True,
+        }
 
     def preview_agent_run(
         self,
