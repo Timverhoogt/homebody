@@ -29,14 +29,23 @@ _MARKDOWN = re.compile(r"[`*_#>|]+")
 class PipelineVoiceMixin:
     """Run continued pipeline conversations and play their responses interruptibly."""
 
-    def _run_conversation(self, initial_config: AppConfig) -> None:
+    def _run_conversation(self, initial_config: AppConfig, *, typed_input: str | None = None) -> None:
+        if typed_input is not None and not (
+            initial_config.kids_mode_enabled and initial_config.kids_activity == "ispy"
+        ):
+            raise ValueError("Typed input is limited to an active Kids I Spy game")
+        if initial_config.kids_mode_enabled and initial_config.kids_activity == "ispy":
+            self._invalidate_ispy_input()
         config = initial_config
         client = self._new_bridge_client(config)
         workspace_generation = None
 
         def conversation_is_current() -> bool:
-            return not initial_config.kids_mode_enabled or self._kids_session_is_current(
+            current = not initial_config.kids_mode_enabled or self._kids_session_is_current(
                 initial_config.kids_session_id
+            )
+            return current and (
+                typed_input is None or self._ispy_typed_session_is_current(initial_config.kids_session_id)
             )
 
         try:
@@ -60,36 +69,40 @@ class PipelineVoiceMixin:
                     self._set_status("listening", "Waiting for a follow-up")
                 first_turn = False
 
-                self._play_asset("listening.wav")
-                if self._motion is not None:
-                    self._motion.listening()
-                # Keep draining the microphone while the local earcon plays so
-                # its samples cannot become the start of the user's utterance.
-                self._discard_audio(0.34)
+                if typed_input is not None:
+                    transcript = typed_input
+                    workspace_generation = None
+                else:
+                    self._play_asset("listening.wav")
+                    if self._motion is not None:
+                        self._motion.listening()
+                    # Keep draining the microphone while the local earcon plays so
+                    # its samples cannot become the start of the user's utterance.
+                    self._discard_audio(0.34)
 
-                workspace_generation = self._workspace_lease()
-                self._workspace_event(workspace_generation, "activity", "Listening for your voice")
-                with self._agent_lock:
-                    timing_mode = "workspace" if self._capability_profile == "agent" else "everyday"
-                self._voice_timings.begin("pipeline", timing_mode, warm=turns_started > 0)
-                turns_started += 1
-                endpoint = self._record_utterance(config)
-                self._voice_timings.mark("local_speech_end")
-                if not endpoint.speech_detected or endpoint.samples.size == 0:
-                    self._set_status("waiting_for_wake_word", "No speech detected")
-                    if not config.continuous_conversation:
-                        self._signal_error()
-                    break
+                    workspace_generation = self._workspace_lease()
+                    self._workspace_event(workspace_generation, "activity", "Listening for your voice")
+                    with self._agent_lock:
+                        timing_mode = "workspace" if self._capability_profile == "agent" else "everyday"
+                    self._voice_timings.begin("pipeline", timing_mode, warm=turns_started > 0)
+                    turns_started += 1
+                    endpoint = self._record_utterance(config)
+                    self._voice_timings.mark("local_speech_end")
+                    if not endpoint.speech_detected or endpoint.samples.size == 0:
+                        self._set_status("waiting_for_wake_word", "No speech detected")
+                        if not config.continuous_conversation:
+                            self._signal_error()
+                        break
 
-                self._play_asset("processing.wav")
-                if self._motion is not None:
-                    self._motion.thinking()
-                self._workspace_event(workspace_generation, "activity", "Transcribing your voice")
-                self._set_status("transcribing", "Command received; transcribing")
-                transcript = client.transcribe(encode_wav(endpoint.samples, 16000))
-                if not transcript:
-                    self._set_status("waiting_for_wake_word", "No speech detected")
-                    break
+                    self._play_asset("processing.wav")
+                    if self._motion is not None:
+                        self._motion.thinking()
+                    self._workspace_event(workspace_generation, "activity", "Transcribing your voice")
+                    self._set_status("transcribing", "Command received; transcribing")
+                    transcript = client.transcribe(encode_wav(endpoint.samples, 16000))
+                    if not transcript:
+                        self._set_status("waiting_for_wake_word", "No speech detected")
+                        break
                 if (
                     not conversation_is_current()
                     or self.stop_event.is_set()
@@ -269,6 +282,8 @@ class PipelineVoiceMixin:
                 )
                 with self._status_lock:
                     self._status.turns_completed += 1
+                if typed_input is not None:
+                    break  # One submitted guess; never open the microphone for a follow-up.
                 if interrupted:
                     first_turn = False
                     continue

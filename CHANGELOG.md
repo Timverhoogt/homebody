@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-10-12
+
+### Integrated I Spy typed guesses
+- Add an 80-character Your I Spy guess field and Guess/Enter submission to an active integrated Kids I Spy session. Objects, hints and yes/no confirmations use the existing screened game handling and exact-approved child speech path; typed input skips microphone recording and STT, while Reachy still replies aloud.
+- Serialize one submission with voice/announcement activity. Require an already-Awake active unexpired I Spy session and a short-lived-in-memory one-use input capability; rotate on lifecycle changes and spoken/typed turns. Do not auto-wake or enable new camera/motor authority. End, privacy, replacement and expiry cancel stale work. Reject oversize, extra-field, stale/replayed, busy and non-I-Spy submissions.
+- Keep guesses/tokens out of browser storage, locked status and error details. Clear the draft on End/activity change; guard asynchronous UI results and disable duplicate submits. Phone input/Guess row has bounded width and 48px button height.
+- PWA shell/query v83, including the new bundled input script. Synthetic/local browser and runtime tests are not physical camera/speaker acceptance.
+
 ## [0.5.4] - 2026-10-12
 
 ### Kids speech and voice-setting clarity

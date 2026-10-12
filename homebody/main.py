@@ -13,6 +13,8 @@ from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 from reachy_mini import ReachyMini, ReachyMiniApp
@@ -36,6 +38,7 @@ from .contextual_offers import ContextualOffer
 from .gpio_buttons import ButtonEvent, ButtonName, GpioButtonService
 from .hermes_client import HermesBridgeClient
 from .kids_mode import KidsProfile
+from .kids_runtime import ISpyInputUnavailable
 from .local_vision import LocalVisionClient, LocalVisionError
 from .mcp_oauth import OAuthError, OAuthServer
 from .mcp_public import PublicAgentListener, build_public_app
@@ -361,6 +364,12 @@ class AnnouncementStopRequest(BaseModel):
     clear_queue: bool = True
 
 
+class ISpyGuessRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    text: str = Field(min_length=1, max_length=80)
+    token: str = Field(pattern=r"^[0-9a-f]{32}$")
+
+
 class KidsModeRequest(BaseModel):
     nickname: str = Field(default="", max_length=32)
     age_band: str = Field(default="7-9", pattern=r"^(4-6|7-9|10-12)$")
@@ -491,6 +500,16 @@ class Homebody(ReachyMiniApp):
         if self.settings_app is None:
             return
 
+        @self.settings_app.exception_handler(RequestValidationError)
+        async def child_input_validation_error(request: Request, exc: RequestValidationError):
+            if request.url.path == "/api/kids/ispy/guess":
+                return JSONResponse(
+                    status_code=422,
+                    content={"detail": "Enter an I Spy guess of 1–80 characters for the current turn."},
+                    headers={"Cache-Control": "no-store"},
+                )
+            return await request_validation_exception_handler(request, exc)
+
         @self.settings_app.middleware("http")
         async def lock_management_routes(request: Request, call_next):  # type: ignore[no-untyped-def]
             """Fail closed on management APIs while the child-facing UI is locked."""
@@ -508,6 +527,8 @@ class Homebody(ReachyMiniApp):
                 "/api/owner/session",
                 "/api/owner/logout",
                 "/api/kids/stop",
+                "/api/kids/ispy/input",
+                "/api/kids/ispy/guess",
                 "/api/robot/stop",
                 "/api/agent/stop",
                 "/api/voice/stop",
@@ -1536,6 +1557,28 @@ class Homebody(ReachyMiniApp):
                 }
             except RuntimeError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        @self.settings_app.get("/api/kids/ispy/input")
+        def ispy_input_context() -> JSONResponse:
+            context = self._runtime.ispy_input_context() if self._runtime else {"available": False, "token": ""}
+            return JSONResponse(context, headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.post("/api/kids/ispy/guess")
+        def ispy_guess(request: ISpyGuessRequest) -> JSONResponse:
+            if not request.text.strip():
+                raise HTTPException(status_code=400, detail="Enter an I Spy guess first")
+            if self._runtime is None:
+                raise HTTPException(status_code=409, detail="I Spy is not active")
+            try:
+                result = self._runtime.submit_ispy_guess(request.text, request.token)
+                return JSONResponse(result, headers={"Cache-Control": "no-store"})
+            except ISpyInputUnavailable as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            except Exception as exc:
+                # Never include a child guess or upstream/provider details in the browser error.
+                raise HTTPException(
+                    status_code=502, detail="I Spy could not complete this guess. Please try again."
+                ) from exc
 
         @self.settings_app.get("/api/bluetooth/status")
         def bluetooth_status() -> dict[str, object]:

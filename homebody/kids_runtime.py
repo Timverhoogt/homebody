@@ -27,6 +27,10 @@ from .kids_mode import KidsProfile, build_kids_prompt, kids_greeting
 _LOGGER = logging.getLogger("homebody.runtime")
 
 
+class ISpyInputUnavailable(RuntimeError):
+    """A safe categorical typed-input lifecycle/availability error."""
+
+
 class KidsModeMixin:
     """Supervised Kids Mode: start/stop, timers, I Spy, voice policy, and streaming playback."""
 
@@ -45,6 +49,9 @@ class KidsModeMixin:
         self._kids_timer: threading.Timer | None = None
         self._kids_warning_timer: threading.Timer | None = None
         self._kids_generation = 0
+        self._kids_input_token = secrets.token_hex(16)
+        self._kids_input_stop_generation = -1
+        self._typed_stop_generation: int | None = None
         self._kids_ispy_player_motion_index = 0
         self._kids_ispy_motion_started = False
         self._kids_last_end_reason = ""
@@ -79,6 +86,7 @@ class KidsModeMixin:
             if previous_warning is not None:
                 previous_warning.cancel()
             self._kids_generation += 1
+            self._kids_input_token = secrets.token_hex(16)
             generation = self._kids_generation
             self._kids_ispy_player_motion_index = 0
             self._kids_ispy_motion_started = False
@@ -359,7 +367,8 @@ class KidsModeMixin:
 
     def _kids_callback_is_current(self, generation: int) -> bool:
         with self._kids_lock:
-            return self._kids_active and generation == self._kids_generation
+            return (self._kids_active and generation == self._kids_generation
+                    and time.monotonic() < self._kids_ends_at)
 
     def _warn_kids_mode(self, generation: int) -> None:
         with self._kids_lock:
@@ -436,6 +445,7 @@ class KidsModeMixin:
             if warning is not None and warning is not threading.current_thread():
                 warning.cancel()
             self._kids_generation += 1
+            self._kids_input_token = secrets.token_hex(16)
             stopped_generation = self._kids_generation
             self._kids_active = False
             self._kids_camera_active = False
@@ -503,6 +513,81 @@ class KidsModeMixin:
         _LOGGER.info("Kids Mode ended (reason=%s, was_active=%s)", reason, was_active)
         return dict(self.status()["kids_mode"])  # type: ignore[arg-type]
 
+    def _invalidate_ispy_input(self) -> None:
+        with self._kids_lock, self._conversation_stop_generation_lock:
+            self._kids_input_token = secrets.token_hex(16)
+            self._kids_input_stop_generation = self._conversation_stop_generation
+
+    def _ispy_typed_session_is_current(self, session_id: str) -> bool:
+        with self._kids_lock:
+            return (
+                self._kids_active and self._kids_session_id == session_id
+                and self._kids_profile is not None and self._kids_profile.activity == "ispy"
+                and time.monotonic() < self._kids_ends_at
+                and not self._kids_camera_active
+            )
+
+    def ispy_input_context(self) -> dict[str, object]:
+        """A RAM-only input capability, never a private session/target/transcript."""
+        with self._kids_lock:
+            available = (
+                self._ispy_typed_session_is_current(self._kids_session_id)
+                and not self.stop_event.is_set() and not self._privacy_requested.is_set()
+                and self._effective_power_mode() not in {"meeting", "sleep", "standby"}
+                and self._motors_enabled is True
+                and not self._voice_activity_lock.locked()
+                and not self._announcement_active.is_set()
+            )
+            with self._conversation_stop_generation_lock:
+                if self._kids_input_stop_generation != self._conversation_stop_generation:
+                    self._kids_input_token = secrets.token_hex(16)
+                    self._kids_input_stop_generation = self._conversation_stop_generation
+            return {"available": available, "token": self._kids_input_token if available else ""}
+
+    def submit_ispy_guess(self, text: str, token: str) -> dict[str, object]:
+        """Serialize typed input with spoken turns; never wake, capture or acquire new authority."""
+        if not isinstance(text, str) or not text.strip() or len(text) > 80:
+            raise ValueError("Enter an I Spy guess of 1–80 characters")
+        if not self._voice_activity_lock.acquire(blocking=False):
+            raise ISpyInputUnavailable("Wait until Reachy finishes the current turn")
+        try:
+            with self._kids_lock:
+                admission_stop_generation = self._kids_input_stop_generation
+            # Config I/O occurs outside locks; Stop during this wait invalidates admission.
+            base = self.config_loader()
+            with self._motor_transition_lock, self._kids_lock:
+                if (
+                    not self._ispy_typed_session_is_current(self._kids_session_id)
+                    or not token or not secrets.compare_digest(token, self._kids_input_token)
+                    or self.stop_event.is_set() or self._privacy_requested.is_set()
+                    or self._effective_power_mode() in {"meeting", "sleep", "standby"}
+                    or self._motors_enabled is not True or self._announcement_active.is_set()
+                ):
+                    raise ISpyInputUnavailable("This I Spy turn is no longer available; refresh and try again")
+                session_id = self._kids_session_id
+                config = replace(self._kids_voice_config(base), continuous_conversation=False, barge_in_enabled=False)
+                # Do not hold this cancellation lock across power/config/network work.
+                with self._conversation_stop_generation_lock:
+                    if admission_stop_generation != self._conversation_stop_generation:
+                        raise ISpyInputUnavailable("Stop invalidated this I Spy submission")
+                    # A queued spoken wake cannot reset this immutable owner generation.
+                    self._kids_input_token = secrets.token_hex(16)
+                    self._typed_stop_generation = admission_stop_generation
+                    self._conversation_stop_requested.clear()
+                    self._turn_stop_generation = admission_stop_generation
+            self._run_conversation(config, typed_input=text.strip())
+            if (
+                not self._ispy_typed_session_is_current(session_id)
+                or self._turn_stop_requested() or self._privacy_requested.is_set()
+                or self.stop_event.is_set()
+            ):
+                raise ISpyInputUnavailable("The I Spy turn ended before the reply completed")
+            return {"accepted": True}
+        finally:
+            with self._conversation_stop_generation_lock:
+                self._typed_stop_generation = None
+            self._voice_activity_lock.release()
+
     def _kids_voice_config(self, base: AppConfig) -> AppConfig:
         with self._kids_lock:
             if not self._kids_active or self._kids_profile is None:
@@ -533,7 +618,10 @@ class KidsModeMixin:
     def _kids_session_is_current(self, session_id: str) -> bool:
         """Return whether network/audio work still belongs to the active child session."""
         with self._kids_lock:
-            return bool(session_id) and self._kids_active and self._kids_session_id == session_id
+            return (
+                bool(session_id) and self._kids_active and self._kids_session_id == session_id
+                and time.monotonic() < self._kids_ends_at
+            )
 
 
     def _play_kids_stream(
@@ -553,7 +641,7 @@ class KidsModeMixin:
                     client.config.kids_mode_enabled
                     and not self._kids_session_is_current(client.config.kids_session_id)
                 )
-                or self._conversation_stop_requested.is_set()
+                or self._turn_stop_requested()
                 or self._privacy_requested.is_set()
                 or self._effective_power_mode() in {"meeting", "sleep"}
             )

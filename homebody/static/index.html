@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=82">
+  <link rel="stylesheet" href="/static/style.css?v=83">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -473,6 +473,15 @@
           <button type="button" id="kids-start-button">Start Kids Mode</button>
           <button type="button" id="kids-stop-button" class="danger" disabled>End now &amp; fold safely</button>
         </div>
+        <form id="kids-ispy-guess-form" class="ispy-guess-form" autocomplete="off" hidden>
+          <label for="kids-ispy-guess">Your I Spy guess</label>
+          <div class="ispy-guess-row">
+            <input id="kids-ispy-guess" type="text" maxlength="80" placeholder="Type an object, hint, or yes/no" autocomplete="off" spellcheck="false" disabled>
+            <button id="kids-ispy-guess-send" type="submit" disabled>Guess</button>
+          </div>
+          <p class="muted">Or say your guess to Reachy. Typed guesses skip the microphone and transcription; Reachy replies aloud through the same moderated Kids game.</p>
+          <p id="kids-ispy-guess-message" class="message" role="status" aria-live="polite"></p>
+        </form>
         <p id="kids-message" class="message" role="status" aria-live="polite"></p>
       </section>
 
@@ -1107,16 +1116,17 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=82"></script>
-  <script src="/static/owner.js?v=82"></script>
+  <script src="/static/notifications.js?v=83"></script>
+  <script src="/static/owner.js?v=83"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=82"></script>
-  <script src="/static/agent-connection.js?v=82"></script>
-  <script src="/static/native-workspace.js?v=82"></script>
-  <script src="/static/workspace.js?v=82"></script>
-  <script src="/static/main.js?v=82"></script>
-  <script src="/static/updates.js?v=82"></script>
-  <script src="/static/volume.js?v=82"></script>
-  <script src="/static/assistant-modes.js?v=82"></script>
+  <script src="/static/camera.js?v=83"></script>
+  <script src="/static/agent-connection.js?v=83"></script>
+  <script src="/static/native-workspace.js?v=83"></script>
+  <script src="/static/workspace.js?v=83"></script>
+  <script src="/static/ispy-input.js?v=83"></script>
+  <script src="/static/main.js?v=83"></script>
+  <script src="/static/updates.js?v=83"></script>
+  <script src="/static/volume.js?v=83"></script>
+  <script src="/static/assistant-modes.js?v=83"></script>
 </body>
 </html>
