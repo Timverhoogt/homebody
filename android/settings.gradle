@@ -1,0 +1,26 @@
+// Homebody Android companion.
+//
+// This build deliberately does not use the Android Gradle Plugin or the Google
+// "SDK Platform"/"Build-Tools" packages, which are only distributed after an
+// interactive Android SDK License acceptance. See README.md, "Toolchain".
+rootProject.name = 'homebody-android'
+
+dependencyResolutionManagement {
+    repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
+    repositories {
+        // aapt2, d8 and apksig: Apache-2.0/BSD-3 artifacts that AGP itself downloads.
+        // androidx.*: test-only libraries Robolectric depends on (Apache-2.0).
+        google {
+            content {
+                includeGroup 'com.android.tools'
+                includeGroup 'com.android.tools.build'
+                includeGroupByRegex 'androidx\\..*'
+            }
+        }
+        // AOSP android-all (Apache-2.0), Robolectric (MIT) and JUnit.
+        mavenCentral()
+    }
+}
+
+include 'apktool'
+include 'app'

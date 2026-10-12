@@ -1,0 +1,14 @@
+// Small host-side tool: packages the aapt2 resource APK with classes.dex,
+// signs it with apksig (the library inside the SDK's apksigner) and verifies it.
+plugins {
+    id 'java'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+dependencies {
+    implementation "com.android.tools.build:apksig:${rootProject.ext.apksigVersion}"
+}

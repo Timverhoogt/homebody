@@ -1,0 +1,2 @@
+# Store the generated Windows wrapper as LF in Git; restore CRLF on checkout.
+*.bat text eol=crlf

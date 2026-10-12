@@ -1,0 +1,306 @@
+// Builds the Homebody APK without the Android Gradle Plugin (see README.md, "Toolchain"):
+//
+//   aapt2 compile/link  ->  javac (against AOSP android-all, API 36)  ->  d8  ->  package
+//   ->  apksig sign (v2 + v3)  ->  apksig verify + aapt2 dump
+//
+// Tasks: test, assembleRelease (needs -Phomebody.signingDir), createReleaseKeystore.
+import org.gradle.api.artifacts.transform.InputArtifact
+import org.gradle.api.artifacts.transform.TransformAction
+import org.gradle.api.artifacts.transform.TransformOutputs
+import org.gradle.api.artifacts.transform.TransformParameters
+
+plugins {
+    id 'java'
+}
+
+def minSdk = 26
+def appPackage = 'io.github.timverhoogt.homebody'
+def manifestFile = file('src/main/AndroidManifest.xml')
+def resDir = file('src/main/res')
+def out = layout.buildDirectory
+
+configurations {
+    androidPlatform { canBeConsumed = false }
+    aapt2Tool { canBeConsumed = false }
+    d8Tool { canBeConsumed = false }
+    apkTool { canBeConsumed = false }
+    // Separate configurations: in one, Gradle would conflict-resolve the two SDK versions into one.
+    robolectricTargetSdk { canBeConsumed = false; transitive = false }
+    robolectricMinSdk { canBeConsumed = false; transitive = false }
+}
+
+// Robolectric depends on androidx.test AARs; outside AGP the JVM needs their classes.jar.
+abstract class ExtractAarClasses implements TransformAction<TransformParameters.None> {
+    @InputArtifact
+    abstract Provider<FileSystemLocation> getInputArtifact()
+
+    @Override
+    void transform(TransformOutputs outputs) {
+        File aar = inputArtifact.get().asFile
+        File jar = outputs.file(aar.name.replaceAll(/\.aar$/, '.jar'))
+        new java.util.zip.ZipFile(aar).withCloseable { zip ->
+            def entry = zip.getEntry('classes.jar')
+            if (entry == null) {
+                new java.util.zip.ZipOutputStream(new FileOutputStream(jar)).close()
+            } else {
+                zip.getInputStream(entry).withCloseable { input -> jar.withOutputStream { it << input } }
+            }
+        }
+    }
+}
+
+def artifactType = Attribute.of('artifactType', String)
+dependencies {
+    registerTransform(ExtractAarClasses) {
+        from.attribute(artifactType, 'aar')
+        to.attribute(artifactType, 'jar')
+    }
+}
+['testCompileClasspath', 'testRuntimeClasspath'].each { name ->
+    configurations.named(name) { attributes.attribute(artifactType, 'jar') }
+}
+
+dependencies {
+    androidPlatform "org.robolectric:android-all:${rootProject.ext.androidAllVersion}"
+    compileOnly "org.robolectric:android-all:${rootProject.ext.androidAllVersion}"
+    // Like AGP's android.jar on the unit-test classpath; Robolectric's sandbox loads the
+    // instrumented framework for each tested SDK on top of it.
+    testImplementation "org.robolectric:android-all:${rootProject.ext.androidAllVersion}"
+    aapt2Tool "com.android.tools.build:aapt2:${rootProject.ext.aapt2Version}:linux"
+    d8Tool "com.android.tools:r8:${rootProject.ext.r8Version}"
+    apkTool project(':apktool')
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation "org.robolectric:robolectric:${rootProject.ext.robolectricVersion}"
+    robolectricTargetSdk "org.robolectric:android-all-instrumented:${rootProject.ext.androidAllInstrumentedVersion}"
+    robolectricMinSdk "org.robolectric:android-all-instrumented:${rootProject.ext.androidAllMinSdkInstrumentedVersion}"
+}
+
+java {
+    // Plain Java 11 bytecode; d8 handles it for minSdk 26. App code uses only public SDK APIs.
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked']
+}
+
+def platformJar = { configurations.androidPlatform.singleFile }
+def aapt2 = out.file('tools/aapt2/aapt2')
+def compiledRes = out.file('intermediates/res/compiled.zip')
+def resourceApk = out.file('intermediates/res/resources.ap_')
+def rJavaDir = out.dir('generated/source/r')
+def dexDir = out.dir('intermediates/dex')
+def unsignedApk = out.file('intermediates/apk/homebody-unsigned.apk')
+def releaseApk = out.file('outputs/apk/release/homebody-release.apk')
+def reportsDir = out.dir('outputs/apk/release')
+
+def extractAapt2 = tasks.register('extractAapt2', Copy) {
+    from({ zipTree(configurations.aapt2Tool.singleFile) }) {
+        include 'aapt2'
+        filePermissions { unix('rwxr-xr-x') }
+    }
+    into out.dir('tools/aapt2')
+}
+
+def compileResources = tasks.register('compileResources', Exec) {
+    dependsOn extractAapt2
+    inputs.dir resDir
+    outputs.file compiledRes
+    doFirst { compiledRes.get().asFile.parentFile.mkdirs() }
+    commandLine aapt2.get().asFile, 'compile', '--dir', resDir, '-o', compiledRes.get().asFile
+}
+
+def linkResources = tasks.register('linkResources', Exec) {
+    dependsOn compileResources
+    inputs.file manifestFile
+    inputs.file compiledRes
+    inputs.files configurations.androidPlatform
+    outputs.file resourceApk
+    outputs.dir rJavaDir
+    doFirst {
+        rJavaDir.get().asFile.deleteDir()
+        rJavaDir.get().asFile.mkdirs()
+        commandLine aapt2.get().asFile, 'link',
+                '-I', platformJar(),
+                '--manifest', manifestFile,
+                '--java', rJavaDir.get().asFile,
+                '--warn-manifest-validation',
+                '-o', resourceApk.get().asFile,
+                compiledRes.get().asFile
+    }
+    // Placeholder replaced in doFirst once the platform jar is resolved.
+    commandLine 'true'
+}
+
+sourceSets.main.java.srcDir(rJavaDir)
+tasks.named('compileJava') { dependsOn linkResources }
+
+def dexClasses = tasks.register('dexClasses', JavaExec) {
+    dependsOn tasks.named('jar')
+    inputs.file tasks.named('jar').flatMap { it.archiveFile }
+    outputs.dir dexDir
+    classpath = configurations.d8Tool
+    mainClass = 'com.android.tools.r8.D8'
+    doFirst {
+        dexDir.get().asFile.deleteDir()
+        dexDir.get().asFile.mkdirs()
+        // android-all omits java.* (libcore); the JDK supplies those library classes to d8.
+        args '--release', '--min-api', "${minSdk}", '--lib', platformJar(), '--lib', System.getProperty('java.home'),
+                '--output', dexDir.get().asFile, tasks.named('jar').get().archiveFile.get().asFile
+    }
+}
+
+def packageUnsigned = tasks.register('packageUnsignedApk', JavaExec) {
+    dependsOn linkResources, dexClasses
+    inputs.file resourceApk
+    inputs.dir dexDir
+    outputs.file unsignedApk
+    classpath = configurations.apkTool
+    mainClass = 'io.github.timverhoogt.homebody.buildtools.ApkTool'
+    args 'package', '--resources', resourceApk.get().asFile, '--dex', dexDir.get().file('classes.dex').asFile,
+            '--out', unsignedApk.get().asFile
+}
+
+// Private signing material lives outside the repository, e.g.
+//   -Phomebody.signingDir=$HOME/.hermes/cache/scratch/homebody-android-artifacts/signing
+def signingDir = providers.gradleProperty('homebody.signingDir')
+        .orElse(providers.environmentVariable('HOMEBODY_SIGNING_DIR'))
+def keystoreFile = signingDir.map { new File(it, 'homebody-release.p12') }
+def passwordFile = signingDir.map { new File(it, 'homebody-release.password') }
+
+def ownerOnly = { File file, String mode ->
+    java.nio.file.Files.setPosixFilePermissions(file.toPath(),
+            java.nio.file.attribute.PosixFilePermissions.fromString(mode))
+}
+
+def repositoryRoot = rootProject.rootDir.parentFile.canonicalPath
+def requireSigningDir = {
+    if (!signingDir.isPresent()) {
+        throw new GradleException('Set -Phomebody.signingDir=<private dir outside the repo> (or HOMEBODY_SIGNING_DIR).')
+    }
+    def dir = new File(signingDir.get())
+    if (dir.canonicalPath.startsWith(repositoryRoot + File.separator)) {
+        throw new GradleException('The signing directory must be outside the source repository.')
+    }
+}
+
+tasks.register('createReleaseKeystore', Exec) {
+    description = 'Creates a private release key (once). Losing it means users must reinstall to update.'
+    onlyIf { !keystoreFile.get().exists() }
+    doFirst {
+        requireSigningDir()
+        def dir = new File(signingDir.get())
+        dir.mkdirs()
+        ownerOnly(dir, 'rwx------')
+        def bytes = new byte[32]
+        new java.security.SecureRandom().nextBytes(bytes)
+        def pw = passwordFile.get()
+        pw.createNewFile()
+        ownerOnly(pw, 'rw-------') // before the secret is written
+        pw.text = bytes.encodeHex().toString()
+        commandLine "${System.getProperty('java.home')}/bin/keytool", '-genkeypair',
+                '-storetype', 'PKCS12', '-keystore', keystoreFile.get(),
+                '-storepass:file', pw, '-keypass:file', pw,
+                '-alias', 'homebody', '-keyalg', 'RSA', '-keysize', '3072', '-validity', '10000',
+                '-dname', 'CN=Homebody Android (private sideload build)'
+    }
+    doLast { ownerOnly(keystoreFile.get(), 'rw-------') }
+    commandLine 'true'
+}
+
+def signRelease = tasks.register('signReleaseApk', JavaExec) {
+    dependsOn packageUnsigned
+    inputs.file unsignedApk
+    outputs.file releaseApk
+    classpath = configurations.apkTool
+    mainClass = 'io.github.timverhoogt.homebody.buildtools.ApkTool'
+    doFirst {
+        requireSigningDir()
+        if (!keystoreFile.get().exists()) throw new GradleException('Run createReleaseKeystore first.')
+        args 'sign', '--in', unsignedApk.get().asFile, '--out', releaseApk.get().asFile,
+                '--keystore', keystoreFile.get(), '--password-file', passwordFile.get(), '--min-sdk', "${minSdk}"
+    }
+}
+
+def verifyRelease = tasks.register('verifyReleaseApk', JavaExec) {
+    dependsOn signRelease
+    inputs.file releaseApk
+    def report = reportsDir.map { it.file('signature-verification.txt') }
+    outputs.file report
+    classpath = configurations.apkTool
+    mainClass = 'io.github.timverhoogt.homebody.buildtools.ApkTool'
+    args 'verify', '--apk', releaseApk.get().asFile, '--min-sdk', "${minSdk}"
+    doFirst { standardOutput = new FileOutputStream(report.get().asFile) }
+    doLast { println report.get().asFile.text }
+}
+
+def inspectRelease = tasks.register('inspectReleaseApk', Exec) {
+    dependsOn signRelease, extractAapt2
+    inputs.file releaseApk
+    def report = reportsDir.map { it.file('manifest-badging.txt') }
+    outputs.file report
+    commandLine aapt2.get().asFile, 'dump', 'badging', releaseApk.get().asFile
+    doFirst { standardOutput = new FileOutputStream(report.get().asFile) }
+    doLast { println report.get().asFile.text }
+}
+
+def dumpReleaseManifest = tasks.register('dumpReleaseManifest', Exec) {
+    dependsOn signRelease, extractAapt2
+    inputs.file releaseApk
+    def report = reportsDir.map { it.file('manifest-xmltree.txt') }
+    outputs.file report
+    commandLine aapt2.get().asFile, 'dump', 'xmltree', '--file', 'AndroidManifest.xml', releaseApk.get().asFile
+    doFirst { standardOutput = new FileOutputStream(report.get().asFile) }
+}
+
+tasks.register('assembleRelease') {
+    group = 'build'
+    description = 'Builds, signs and verifies build/outputs/apk/release/homebody-release.apk.'
+    dependsOn verifyRelease, inspectRelease, dumpReleaseManifest
+}
+
+// Robolectric: point it at the aapt2 output and a pre-resolved, offline android-all-instrumented.
+def robolectricConfigDir = out.dir('generated/robolectric')
+def robolectricDepsDir = out.dir('robolectric-deps')
+
+def robolectricConfig = tasks.register('robolectricConfig') {
+    dependsOn linkResources
+    outputs.dir robolectricConfigDir
+    doLast {
+        def file = robolectricConfigDir.get().file('com/android/tools/test_config.properties').asFile
+        file.parentFile.mkdirs()
+        file.text = """android_merged_manifest=${manifestFile.absolutePath}
+android_resource_apk=${resourceApk.get().asFile.absolutePath}
+android_custom_package=${appPackage}
+"""
+    }
+}
+
+def robolectricDeps = tasks.register('robolectricDeps', Copy) {
+    from configurations.robolectricTargetSdk
+    from configurations.robolectricMinSdk
+    into robolectricDepsDir
+}
+
+sourceSets.test.resources.srcDir(robolectricConfigDir)
+tasks.named('processTestResources') { dependsOn robolectricConfig }
+
+tasks.named('test', Test) {
+    dependsOn robolectricDeps
+    useJUnit()
+    maxParallelForks = 1
+    maxHeapSize = '1536m'
+    // Robolectric's FileDescriptor interceptor on JDK 17+ (test JVM only).
+    jvmArgs '--add-exports=java.base/jdk.internal.access=ALL-UNNAMED',
+            '--add-opens=java.base/java.io=ALL-UNNAMED'
+    systemProperty 'robolectric.offline', 'true'
+    systemProperty 'robolectric.dependency.dir', robolectricDepsDir.get().asFile.absolutePath
+    systemProperty 'homebody.sourceDir', file('src/main').absolutePath
+    testLogging {
+        events 'failed', 'skipped'
+        exceptionFormat 'full'
+    }
+}

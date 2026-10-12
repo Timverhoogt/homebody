@@ -1,0 +1,9 @@
+.gradle/
+build/
+local.properties
+# Signing material must never enter the repository.
+*.p12
+*.jks
+*.keystore
+*.password
+*.apk

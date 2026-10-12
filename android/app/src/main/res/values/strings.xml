@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Homebody</string>
+
+    <string name="action_retry">Try again</string>
+    <string name="action_server_settings">Server settings</string>
+    <string name="no_browser">No browser is available to open this link.</string>
+
+    <string name="exit_title">Leave Homebody?</string>
+    <string name="exit_message">The dashboard closes and any robot camera view stops. Your Owner pairing on this phone is kept.</string>
+    <string name="exit_leave">Leave</string>
+    <string name="exit_stay">Stay</string>
+
+    <string name="error_hint_tailscale">This is a Tailscale address. Open the Tailscale app on this phone, make sure it is connected to the same tailnet as the robot, then try again.</string>
+    <string name="error_host_title">Homebody server not found</string>
+    <string name="error_host_message">The phone could not look up the dashboard address. Check that the phone is online and that the address in Server settings is right.</string>
+    <string name="error_connect_title">Homebody is not answering</string>
+    <string name="error_connect_message">The server address was found but did not respond. The robot may be off or restarting, or its HTTPS service may be stopped.</string>
+    <string name="error_server_title">Homebody is unavailable</string>
+    <string name="error_server_message">The server answered with an error, which usually means Homebody is restarting or updating. Wait a moment and try again.</string>
+    <string name="error_tls_title">Secure connection refused</string>
+    <string name="error_tls_message">The server\'s HTTPS certificate was not accepted, so Homebody did not connect. This app never ignores certificate errors and never falls back to unencrypted HTTP. For Tailscale Serve, use the full machine name ending in .ts.net and make sure HTTPS certificates are enabled for your tailnet.</string>
+    <string name="error_blocked_title">Navigation blocked</string>
+    <string name="error_blocked_message">The page tried to open something outside your Homebody server. Only the configured server is shown inside this app.</string>
+    <string name="error_crash_title">The dashboard stopped</string>
+    <string name="error_crash_message">Android stopped the web page. Nothing was sent to the robot. Try again to reload it.</string>
+    <string name="error_other_title">Could not open Homebody</string>
+    <string name="error_other_message">The dashboard could not be loaded. Check the phone\'s connection and the server address, then try again.</string>
+
+    <string name="settings_title">Server settings</string>
+    <string name="settings_address_label">Homebody dashboard address</string>
+    <string name="settings_address_help">The HTTPS address of your robot\'s dashboard, for example https://robot.your-tailnet.ts.net/. Only this exact address (scheme, host and port) is opened inside the app; other links open in your browser after you tap them. Tailscale (.ts.net) addresses need the Tailscale app connected on this phone.</string>
+    <string name="settings_save">Save</string>
+    <string name="settings_default">Use default address</string>
+    <string name="address_empty">Enter the dashboard address.</string>
+    <string name="address_not_https">The address must start with https://. Unencrypted http is not supported.</string>
+    <string name="address_userinfo">Remove the user name or password (the part before @). Pairing happens in the dashboard instead.</string>
+    <string name="address_origin_only">Enter only the server, such as https://robot.example.ts.net/ — no path, ?query or #fragment.</string>
+    <string name="address_port">The port must be a number from 1 to 65535.</string>
+    <string name="address_characters">The address contains spaces or characters that are not allowed. Enter international domain names in their xn-- form.</string>
+    <string name="address_invalid">This is not a valid server address. Use a host name such as robot.example.ts.net or an IPv4 address.</string>
+
+    <string name="pairing_title">Owner pairing</string>
+    <string name="pairing_help">Pair inside the dashboard with a one-time Owner code generated on the robot. The app stores no codes, tokens or passwords; the dashboard\'s own Owner cookie keeps this phone paired. To unpair, use Forget this device in the dashboard.</string>
+    <string name="clear_site_data">Clear sign-in and site data on this phone</string>
+    <string name="clear_site_data_title">Clear site data?</string>
+    <string name="clear_site_data_message">This removes the Owner cookie and all dashboard data stored on this phone. You will need a new pairing code. It does not revoke the device on the robot; use Forget this device in the dashboard for that.</string>
+    <string name="clear_site_data_confirm">Clear</string>
+    <string name="clear_site_data_done">Sign-in and site data cleared.</string>
+</resources>

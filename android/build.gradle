@@ -1,0 +1,12 @@
+// Tool and platform versions shared by the subprojects.
+ext {
+    // Android 16 (API 36) framework built from AOSP and published by Robolectric.
+    androidAllVersion = '16-robolectric-13921718'
+    androidAllInstrumentedVersion = '16-robolectric-13921718-i7'
+    // Robolectric's runtime for minSdk 26 (Android 8.0), so tests run on both ends.
+    androidAllMinSdkInstrumentedVersion = '8.0.0_r4-robolectric-r1-i7'
+    aapt2Version = '9.4.1-15978811'
+    apksigVersion = '9.4.1'
+    r8Version = '9.4.28'
+    robolectricVersion = '4.17'
+}

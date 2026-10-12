@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- From the dashboard's web manifest and icon. -->
+    <color name="homebody_background">#f1ebe0</color>
+    <color name="homebody_ink">#1c1b19</color>
+    <color name="homebody_orange">#ff6b2c</color>
+</resources>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Homebody" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">@color/homebody_orange</item>
+        <item name="android:colorAccent">@color/homebody_orange</item>
+        <item name="android:windowBackground">@color/homebody_background</item>
+        <item name="android:statusBarColor">@color/homebody_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <style name="Theme.Homebody.Settings" parent="@android:style/Theme.Material.Light">
+        <item name="android:colorPrimary">@color/homebody_orange</item>
+        <item name="android:colorAccent">@color/homebody_orange</item>
+        <item name="android:windowBackground">@color/homebody_background</item>
+    </style>
+</resources>
