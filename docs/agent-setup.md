@@ -7,9 +7,32 @@ Hermes Agent and OpenClaw can run commands on the computer they live on, so they
 - starts the bridge;
 - pairs with the robot.
 
-This replaces the manual steps in [`companion/README.md`](../companion/README.md). Those steps remain the reference if you prefer doing it by hand.
+This automates the **basic restricted conversation connection** in [`companion/README.md`](../companion/README.md), not every current host feature. Manual setup remains available.
+
+> **Installed-release boundary:** setup guides and bridge files come from the robot and match its installed release. Latest robot release **0.5.2** does not include the PR #77/#78 subscription host changes now on GitHub main and the Hugging Face landing page; the reference host bridge was deployed separately. See [release status](release-status.md). Do not replace a newer configured host bridge with an older robot bundle without reviewing the component versions.
+
+## Choose the setup path
+
+- **Basic voice conversation / OpenClaw compatibility:** follow the one-time message steps below.
+- **Everyday:** configure its narrow host backend and allowlists using [Everyday / Workspace](everyday-workspace.md). It has no full-agent/private-memory fallback; a restricted conversation profile is not its backend.
+- **Native project Workspace:** explicitly register the project and exact Hermes session on the host, enable discussion/approved execution as needed, then select it in the paired owner UI. Native session identity/history are distinct from broker discussion. Exact phone approvals and verifier/artifact receipts gate the planned execution flow, alongside normal Hermes approvals. Native discussion still uses the worker's configured tools: “discuss only” is an instruction, **not enforcement**, and those execution approvals do not universally gate its tool calls. Configure owner-scoped read-only tools if discussion must be read-only; CWD is **not a sandbox**. Follow [native Workspace](native-workspace.md).
+- **Subscription text/vision:** follow the explicit [subscription and native setup guide](subscription-reasoning.md). Agent-led pairing does not configure saved Hermes Codex auth, subscription entry points or native sessions. There is no paid text fallback. The validated reference uses `gpt-6-sol` for Everyday/planning/native Workspace and `gpt-6-luna` for Kids/I Spy with reasoning `none`; these are not universal defaults. `gpt-6.1-sol` currently does not support genuine `none`.
+
+**Everyday / Workspace / Kids** are purpose modes, not **Pipeline / Realtime / GPT-Live preview** speech engines. Speech API costs remain separate from optional subscription text/vision; Kids moderation is retained. Kids has no adult memory/tools, and its camera consent, moderation and lifecycle do not change. Existing OpenClaw conversation support is not native Workspace or subscription parity.
 
 ![Homebody's Connect your agent card with a one-time setup message for Hermes Agent, waiting for the agent](assets/ui-agent-setup.webp)
+
+## Pair your owner browser
+
+Before changing Settings, pair the browser with the running app. On the robot host, as the app user and with the app's effective `HOME`, run:
+
+```bash
+python3 -m homebody.owner_auth pair --origin https://your-robot.example.net
+```
+
+Use your actual private trusted HTTPS origin. The CLI prints a one-time code valid for ten minutes; enter it in that browser. The owner device is remembered for thirty days. If the service uses a different `HOME` or `HOMEBODY_OWNER_DB`, use that same environment or pass `--db /path/to/the-running-app-owner-database`. A code generated in another user's database will not pair the app. Do not post pairing codes, bearer tokens or database contents publicly.
+
+This owner-browser code is separate from the thirty-minute **Connect your agent** code below. Keep dashboard access on a trusted LAN/VPN, never an unauthenticated public port.
 
 ## How to use it
 
@@ -19,11 +42,11 @@ This replaces the manual steps in [`companion/README.md`](../companion/README.md
    - If a bridge API key is already set, enter it under *Current API key* first.
 3. Press **Create setup message**, then **Copy message**, and send it to your agent in the chat you normally use with it.
 4. The agent explains its plan and waits for your OK, then does the work. Settings shows the progress: *Waiting for Hermes Agent…*, any problem the agent ran into, and finally *Connected to … at http://…:8643*.
-5. Say **"Hey Homebody"**.
+5. Test the connection and configured speech provider, then try **"Hey Homebody"** under supervision. Connected is not proof of physical speech readiness or native Workspace setup.
 
 The message looks like this:
 
-> Please connect my Reachy Mini robot (Homebody app) to you, Hermes Agent, on this computer. Read and follow the setup guide at http://192.168.1.50:8042/agent-setup/hermes.md. The one-time setup code is K7QM-3XRP; it is valid for 30 minutes and only for that robot. […]
+> Please connect my Reachy Mini robot (Homebody app) to you, Hermes Agent, on this computer. Read and follow the setup guide at http://REACHY_HOST:8042/agent-setup/hermes.md. The one-time setup code is `[code from Settings]`; it is valid for 30 minutes and only for that robot. […]
 
 ## What the agent does
 
@@ -37,7 +60,7 @@ The message looks like this:
 
 Your own Hermes profile or OpenClaw agents keep their tools; only the Reachy-facing side is restricted. The guides the agent follows are served by the robot itself (`/agent-setup/hermes.md`, `/agent-setup/openclaw.md`). They match the installed Homebody version, and you can read them first.
 
-## Why it is safe to hand this to an agent
+## Setup security boundaries
 
 - **The code is the owner's permission.** Only Settings can create one, and it needs the bridge API key when one is set. It lasts 30 minutes, works once, and five wrong codes end it. The message itself contains no password.
 - **Nothing is saved until it works.** Before saving, the robot calls the bridge's health check and an authenticated route with the key the agent sent. It also checks that the agent behind the bridge is ready and restricted: a Hermes profile that still exposes `terminal` or file tools is refused, with the tool names. The agent gets the exact reason and can retry with the same code.
@@ -45,7 +68,7 @@ Your own Hermes profile or OpenClaw agents keep their tools; only the Reachy-fac
 - **LAN only.** Setup routes live on the dashboard port. They are not reachable through the hosted-agent tunnel and are blocked while Kids Mode is locked.
 - **The agent asks first.** The message asks it to explain its plan and wait for your OK before installing, configuring or starting anything. It also tells the agent to send keys only to the robot's pairing address.
 
-## Tested
+## Historical basic-setup verification
 
 | Agent setup | Result |
 | --- | --- |

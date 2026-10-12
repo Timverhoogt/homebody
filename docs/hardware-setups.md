@@ -9,21 +9,29 @@ Homebody runs on the computer that drives Reachy. This guide lists the setups yo
 
 | Label | Meaning |
 | --- | --- |
-| ✅ **Reference-tested** | Exercised on real hardware during this project's acceptance work (Tim's Reachy Mini Lite + Raspberry Pi 4). Each robot still needs its own safety checks. |
+| ✅ **Reference-tested** | The named capability has reference hardware evidence. Original Lite + Pi 4 acceptance and current Lite + Jetson deployment are tracked separately; this is not whole-platform certification. Each robot still needs its own safety checks. |
 | ◐ **Supported** | Implemented, covered by the automated test suite, and expected to work on this setup. It has not had physical acceptance on this exact setup yet. |
-| 🧪 **Experimental** | Implemented for this setup, but nobody has run it on that hardware yet. Expect to troubleshoot, and please report results. |
+| 🧪 **Experimental** | Implemented capability without hardware acceptance on that setup. Other capabilities may already be deployed there. Expect to troubleshoot and report results. |
 | — **Not available** | The hardware cannot do it, or the app deliberately does not offer it there. |
 
 The app detects its host at start-up (Raspberry Pi, NVIDIA Jetson, Linux PC, Mac or Windows PC) and shows only the hardware controls that host can drive. Settings → Danger zone shows what it detected, for example *Running on: NVIDIA Jetson Orin Nano Developer Kit · local AI on TensorRT*.
 
-## The three roles
+## Reference evidence and limits
+
+The Lite + Raspberry Pi 4 remains the original reference build and mounting/power history. A Lite + Jetson host now has reference deployment of the app, camera, Home Assistant integration, power lifecycle, silent speaker volume/mute and managed updates. The stale “never run on Jetson” description no longer applies.
+
+This does **not** verify every Jetson GPU vision model, TensorRT/CUDA gesture path, GPIO button, Bluetooth mapping or live acoustic echo/barge-in behaviour. New camera startup/lifecycle repairs and safe joystick/Center controls still require supervised acceptance. The camera's private HTTPS frame fallback runs only after explicit **Start**, at a lower frame rate than WebRTC; a signalling connection is not proof of decoded video.
+
+See [speaker volume](speaker-volume.md), [managed updates](managed-updates.md) and [release status](release-status.md). Updates replace Reachy software/dashboard assets, not an Android APK. Robot release **0.5.2** and a separately updated host bridge must not be treated as one deployment.
+
+## The three hosting roles
 
 Every setup has the same three jobs. They can live on one machine or be spread over your network.
 
 | Role | Runs | Needs |
 | --- | --- | --- |
 | **Robot computer** | The Reachy daemon and this app: wake word, audio, camera, motor safety, phone UI. | USB to a Lite (or the Wireless' own CM4). Light CPU load. |
-| **Agent host** | Hermes Agent and/or OpenClaw, plus the companion bridge (`companion/`): conversation, memory, tools, speech providers. | Optional. Any always-on computer; can be the robot computer. The agent can [set this up itself](agent-setup.md) from one message in Settings. |
+| **Bridge / agent host** | Narrow Everyday and Kids backends, speech providers, optional native Hermes Workspace, or legacy Hermes/OpenClaw conversation adapters. | Optional trusted host. [Agent-led setup](agent-setup.md) connects the basic adapter; [subscription/native setup](subscription-reasoning.md) is explicit and separate. Credentials stay here. |
 | **Local AI server** *(optional)* | An OpenAI-compatible vision model, e.g. Ollama. Used by the local vision features. | A GPU, an Apple Silicon Mac, or a Jetson. Can be the robot computer or another machine on your LAN. |
 
 Because the local AI server is reached over HTTP, a Raspberry Pi robot computer can use a vision model running on a Jetson or GPU PC elsewhere in the house.
@@ -33,25 +41,27 @@ Because the local AI server is reached over HTTP, a Raspberry Pi robot computer 
 | | Lite + PC (Linux or Windows) | Lite + Mac | Lite + Raspberry Pi 4/5 | Lite + Jetson Orin Nano | Reachy Mini Wireless |
 | --- | --- | --- | --- | --- | --- |
 | Official Pollen setup | Yes | Yes | No (community) | No (community) | Yes |
-| This app's status | ◐ | ◐ | ✅ Pi 4 (reference) | 🧪 | ◐ |
+| This app's status | ◐ | ◐ | ✅ Pi 4 (original reference) | Reference-deployed core; per-feature acceptance below | ◐ |
 | Always-on, dedicated | Your computer must stay on | Your Mac must stay on | Yes | Yes | Yes, battery |
 | On-device AI | Depends on GPU | Core ML, Apple Silicon | CPU only | GPU (CUDA, TensorRT) | CPU only |
 | Best for | Development, trying it out | Development, local vision with Ollama | A dedicated, proven robot | Local vision and private AI in one box | The official untethered robot |
 
-**Recommendation:** for a dedicated robot today, use a Raspberry Pi 4 or 5 as the robot computer. Add a Jetson or GPU PC as a **local AI server** on the network if you want local vision. Run everything on a Jetson only if you want a single box and are happy to be an early tester.
+**Choose by evidence, not GPU promises:** Pi 4 has the original reference guide; Pi 5 is expected, not reference-tested. Jetson is now a deployed community robot host, but its optional accelerator/vision/GPIO/controller features still need their own acceptance. A separate trusted local AI server is optional on either setup. Keep separate approved supplies, ventilation, cable strain relief and clear motor space; neither is an official Wireless conversion.
 
 ## Feature support by setup
 
 | Feature | PC | Mac | Raspberry Pi | Jetson | Wireless | Notes |
 | --- | :---: | :---: | :---: | :---: | :---: | --- |
-| Phone dashboard, Standby/Awake/Meeting/Sleep, app lifecycle | ◐ | ◐ | ✅ | 🧪 | ◐ | |
-| Guarded wake, bounded movement, Stop, fold before torque off | ◐ | ◐ | ✅ | 🧪 | ◐ | Clear-space and fold checks are mandatory on every robot. |
+| Phone dashboard, Standby/Awake/Meeting/Sleep, app lifecycle | ◐ | ◐ | ✅ | ✅ core reference | ◐ | Per-installation safety checks remain required. |
+| Guarded wake, bounded movement, Stop, fold before torque off | ◐ | ◐ | ✅ | ✅ power reference | ◐ | Clear-space/fold checks mandatory; not every motion preset is physically accepted. |
 | Local wake word (Hey Homebody, Hey Hermes, Okay Nabu, Hey Reachy) | ◐ | ◐ | ✅ | 🧪 | ◐ | Runs on the robot computer's CPU. |
-| Local live camera viewer and camera joystick | ◐ | ◐ | ✅ | 🧪 | ◐ | Opt-in; stays between browser and robot. |
-| Voice conversation through Hermes (Realtime or pipeline) | ◐ | ◐ | ✅ | 🧪 | ◐ | Needs the agent host and providers. |
+| Local live camera viewer | ◐ | ◐ | ✅ | ✅ camera reference | ◐ | Explicit Start; WebRTC or lower-rate private HTTPS fallback. |
+| Camera joystick / newer safe controls | ◐ | ◐ | ◐ | ◐ | ◐ | Separate movement opt-in; supervised acceptance remains required. |
+| Voice engines: Pipeline / Realtime / GPT-Live preview | ◐ | ◐ | ◐ | ◐ | ◐ | Purpose routing is separate. Prior Pi speech evidence does not validate GPT-Live echo/barge-in. |
 | Voice conversation through OpenClaw | ◐ | ◐ | ◐ | ◐ | ◐ | Bridge-side; independent of the robot computer. Verified against a live OpenClaw 2026.9.8 Gateway; not yet spoken to on a robot. |
 | Supervised Kids Mode | ◐ | ◐ | ✅ | 🧪 | ◐ | Adult supervision always required. |
-| Home Assistant ESPHome device | ◐ | ◐ | ◐ | 🧪 | ◐ | Identity comes from `/etc/machine-id`, or the network card's hardware address on Mac and Windows. |
+| Home Assistant ESPHome device | ◐ | ◐ | ◐ | ✅ integration reference | ◐ | Controls/camera/Assist are separate opt-ins; spoken Assist acceptance remains pending. |
+| Silent speaker volume/mute; managed updates | ◐ | ◐ | ◐ | ✅ reference | ◐ | Named playback backend and managed installation prerequisites apply. |
 | On-device hand gestures (CPU) | ◐ | ◐ | ◐ | 🧪 | ◐ | |
 | Gesture detection on an accelerator | 🧪 CUDA, DirectML | 🧪 Core ML | — | 🧪 TensorRT, CUDA | — | Needs an onnxruntime build with that provider; falls back to the CPU. |
 | Local vision model for camera questions | 🧪 with a GPU | 🧪 Apple Silicon | ◐ via a server on the LAN | 🧪 on the device | ◐ via a server on the LAN | Any OpenAI-compatible vision server. |
@@ -74,21 +84,21 @@ Follow Pollen's [official Lite setup](https://huggingface.co/docs/reachy_mini/pl
 
 ## Lite + Raspberry Pi
 
-This is the reference setup. Follow the [Lite + Raspberry Pi 4 companion-host guide](lite-raspberry-pi-4.md) for parts, power and mounting. A Raspberry Pi 5 is expected to behave the same way but is not reference-tested.
+This is the original reference setup. Follow the [Lite + Raspberry Pi 4 companion-host guide](lite-raspberry-pi-4.md) for parts, power and mounting. A Raspberry Pi 5 is expected to behave the same way but is not reference-tested.
 
 - **Physical buttons:** wire them as described in [OPERATIONS.md](../OPERATIONS.md#physical-gpio-buttons), then enable them under Robot → *Physical buttons*.
-- **Bluetooth controller:** see the README's Bluetooth section.
-- **Local vision:** a Pi is too small for a vision model. Point *Vision server URL* at a Jetson, a GPU PC or a Mac on your network, for example `http://192.168.1.40:11434/v1`. Make sure that server is only reachable on your trusted LAN.
+- **Bluetooth controller:** see [Bluetooth setup](#bluetooth-controller-setup).
+- **Local vision:** a Pi is too small for a vision model. Point *Vision server URL* at a Jetson, a GPU PC or a Mac on your network, for example `http://VISION_HOST:11434/v1`. Make sure that server is only reachable on your trusted LAN.
 
-## Lite + NVIDIA Jetson Orin Nano (experimental)
+## Lite + NVIDIA Jetson Orin Nano
 
-A Jetson Orin Nano gives you a GPU next to Reachy, so camera questions can be answered without any image leaving your home. This setup is **experimental**: the code supports it, but the Reachy SDK and this app have not yet been run on a Jetson. Please treat your first run as acceptance testing.
+The app and Reachy SDK have now run on the Jetson reference host. App/camera/HA/power/speaker/managed-update deployment is established; local GPU vision, accelerated gestures, GPIO, controller and physical live echo/barge-in acceptance are **not** implied. Treat your own setup and optional features as acceptance work. A configured trusted local vision server can keep image inference at home; merely choosing Jetson does not make cloud speech or vision local.
 
 **Suggested order:**
 
-1. **Flash JetPack 6** and enable the highest power mode your power supply allows. Use NVMe storage if you can, because models are large.
+1. **Choose a compatible JetPack image** and a power mode within the board, supply and cooling limits. JetPack 6 is a starting point, not a universal compatibility guarantee. NVMe helps with large optional models.
 2. **Python version:** JetPack 6 ships Python 3.10, and this app needs Python 3.11 or newer. Use a [uv](https://docs.astral.sh/uv/)-managed Python 3.11 or 3.12 for the Reachy SDK and the app.
-3. **Smoke-test the Reachy SDK** first. Install `reachy-mini`, start the daemon, and confirm the robot wakes, the camera returns frames, and audio plays. Stop here and report back if any of that fails.
+3. **Smoke-test the Reachy SDK** first using [operations](../OPERATIONS.md): start with folded/motor-off checks; perform wake, camera and audible tests only with owner supervision and explicit consent. Stop if any check fails.
 4. **Install and start the app.** Settings → Danger zone should say *Running on: NVIDIA Jetson …*.
 5. **Local vision:**
    1. Install Ollama, whose installer supports Jetson.
@@ -100,11 +110,17 @@ A Jetson Orin Nano gives you a GPU next to Reachy, so camera questions can be an
    1. Install an `onnxruntime-gpu` build that matches your JetPack and Python version. NVIDIA's Jetson AI Lab package index provides them.
    2. Leave *On-device AI accelerator* on *Automatic*. Danger zone then shows *local AI on TensorRT* or *CUDA*.
    3. The first start builds TensorRT engines into `~/.cache/homebody/onnx`.
-   4. If no matching build exists, everything still works on the CPU.
+   4. If no matching build exists, gesture inference can fall back to CPU; verify throughput and robot responsiveness rather than assuming equivalence.
 7. **GPIO buttons:**
    1. The Jetson header lines have higher numbers than the Pi's BCM pins. Find yours with `gpioinfo`, and enter those line numbers under Robot → *Physical buttons*.
    2. Check that the pins are configured as GPIO inputs in your Jetson pinmux.
 8. **I Spy on the Jetson:** if the bridge also runs here, set `REACHY_ISPY_VISION_URL=http://127.0.0.1:11434/v1` and a vision model that supports JSON-schema output. See [companion/README.md](../companion/README.md).
+
+## Bluetooth controller setup
+
+Linux with a Bluetooth radio is required; controls are hidden on Mac/Windows. Install BlueZ and joystick support, give the **app service account** access to input devices, and verify its BlueZ D-Bus/polkit permissions. Do not grant blanket passwordless sudo to the dashboard.
+
+Only DualShock 4 / DualSense identities with implemented mappings are accepted; other controllers need separate validation. Use Share + PS (DS4) or Create + PS (DualSense), then Robot → Scan → Pair & connect → Enable controller movement. Input remains opt-in and bounded through the existing action queue; Kids/privacy/power gates remain authoritative. Real mapping acceptance is still pending, including Jetson. DS4 gyro/touchpad/rumble extensions are experimental. See [operations](../OPERATIONS.md) for deployment checks.
 
 ## Reachy Mini Wireless
 
@@ -113,6 +129,12 @@ Use Pollen's [official Wireless setup](https://huggingface.co/docs/reachy_mini/p
 - The onboard CM4 behaves like the Raspberry Pi row above: CPU-only AI.
 - Use a vision server elsewhere on the LAN for local vision.
 - The internal GPIO header is not exposed for buttons.
+
+## Purpose modes are not hardware tiers
+
+Everyday / Workspace / Kids describe authority; Pipeline / Realtime / GPT-Live preview describe speech. Everyday never inherits full agent memory/tools or falls back to them. Native Workspace requires explicit registered project/session selection and real Hermes identity/history. Exact phone approvals gate the planned execution flow, not every native discussion tool call. Discussion uses the worker's configured tools; “discuss only” is an instruction, not enforcement. Use owner-scoped read-only tools when that guarantee is needed; CWD is not a sandbox. Kids remains isolated from adult memory/tools with unchanged moderation, camera consent and lifecycle.
+
+Optional [subscription text/vision](subscription-reasoning.md) uses saved host Hermes Codex auth with no paid text fallback and genuine reasoning `none`. Validated reference models are `gpt-6-sol` for Everyday/planning/native Workspace and `gpt-6-luna` for Kids/I Spy, not universal defaults; `gpt-6.1-sol` currently lacks `none`. Speech API costs and Kids moderation remain. OpenClaw conversation compatibility is not native Workspace/subscription parity. [Agent-led connection](agent-setup.md) does not provision these host settings or sessions automatically.
 
 ## Privacy notes for local AI
 
