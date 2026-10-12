@@ -103,6 +103,25 @@ active app are rejected. Do not run pip/app-store installs or uninstalls of Home
 while this managed layout is enabled; those may replace the import anchors. Use
 managed updates or deliberately restore the private pre-setup package backup.
 
+## Journal ownership and maintenance
+
+The app and worker share one private journal. Its directory must remain owned by
+the provisioned robot user at mode 0700; `journal.json` remains that user's file at
+mode 0600. Do not make it world-readable/writable or expand the daemon sandbox to
+work around an ownership failure.
+
+`Store.read()` is a read-only snapshot: it reuses an existing lock with a shared
+read lock but never creates state or replaces the journal. Mutations alone use
+exclusive write transactions. Privileged inspection must not initialize/mutate
+runtime state; raw `json.loads(path.read_text())` is also appropriate for an
+atomic-file maintenance snapshot. Run deliberate journal mutations as the robot
+user. Root-run read verification previously recreated a 0600 journal as root,
+preventing both the dashboard and worker from reading it.
+
+After maintenance, verify file ownership/mode and unchanged state bytes, then
+exercise the real paired-Owner HTTPS Updates status and CSRF-protected Check.
+A worker-only test or successful package health check does not prove the panel.
+
 ## Deployment acceptance
 
 See [the measured Jetson acceptance record](managed-updates-target-acceptance.md)
