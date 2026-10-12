@@ -176,11 +176,19 @@
           <span id="everyday-badge" class="badge">Checking…</span>
         </div>
         <dl class="everyday-facts">
-          <div><dt>Text model</dt><dd id="everyday-model">—</dd></div>
+          <div><dt>Selected voice engine</dt><dd id="everyday-voice">—</dd></div>
           <div><dt>Weather</dt><dd id="everyday-weather">—</dd></div>
-          <div><dt>Time</dt><dd id="everyday-time">—</dd></div>
-          <div><dt>Devices you can name</dt><dd id="everyday-devices">—</dd></div>
+          <div><dt>Home controls</dt><dd id="everyday-devices">—</dd></div>
         </dl>
+        <p id="everyday-voice-note" class="muted">Voice and text-backend settings are separate.</p>
+        <details id="everyday-technical-details"><summary>Providers and device details</summary>
+          <dl class="everyday-facts">
+            <div><dt>Text backend — not the voice model</dt><dd id="everyday-model">—</dd></div>
+            <div><dt>Time source</dt><dd id="everyday-time">—</dd></div>
+          </dl>
+          <p class="muted">Technical entity IDs permitted for home controls and status:</p>
+          <pre id="everyday-device-ids">—</pre>
+        </details>
         <p id="everyday-message" class="muted compact-note" role="status" aria-live="polite">Names and providers are set on the Hermes host; keys and coordinates never reach this page.</p>
       </section>
 

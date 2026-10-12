@@ -4,6 +4,7 @@
   const $ = id => document.getElementById(id);
   let generation = 0, ownerAllowed = false, blocked = true, capabilities = null;
   let lastCapabilitiesAt = 0, lastBadgeAt = 0, stopping = false;
+  let voiceConfig = {};
   const text = (id, value) => { $(id).textContent = value; };
 
   function reset(message) {
@@ -11,10 +12,23 @@
     capabilities = null; lastCapabilitiesAt = 0; lastBadgeAt = 0;
     text('everyday-badge', 'Unavailable');
     $('everyday-badge').dataset.status = 'failed';
-    ['everyday-model', 'everyday-weather', 'everyday-time', 'everyday-devices'].forEach(id => text(id, '—'));
+    voiceConfig = {};
+    ['everyday-voice', 'everyday-voice-note', 'everyday-model', 'everyday-weather', 'everyday-time', 'everyday-devices', 'everyday-device-ids'].forEach(id => text(id, '—'));
     text('everyday-message', message);
     $('native-work-badge').hidden = true;
     $('voice-stop-button').disabled = blocked || stopping;
+  }
+
+  function renderVoice() {
+    const mode = voiceConfig.conversation_mode;
+    text('everyday-voice', mode === 'realtime'
+      ? `OpenAI Realtime · ${voiceConfig.realtime_model || 'model not reported'}`
+      : mode === 'live' ? `OpenAI GPT-Live · ${voiceConfig.live_model || 'model not reported'}`
+        : mode === 'pipeline' ? 'Pipeline · speech → text → speech' : 'Not reported by Reachy');
+    text('everyday-voice-note', mode === 'realtime'
+      ? 'Selected in Settings. Realtime handles conversation and calls home tools directly; the text backend below is not your voice model.'
+      : mode === 'live' ? 'Selected in Settings. GPT-Live handles listening and speech; its tool requests use the separate text backend below.'
+        : 'Selected in Settings. Pipeline transcribes your speech, uses the text backend, then generates speech.');
   }
 
   function renderCapabilities(body) {
@@ -23,14 +37,16 @@
     text('everyday-model', provider ? `${provider.model} · ${provider.label} (${provider.region})` : 'Not configured');
     const weather = body.weather || {};
     text('everyday-weather', weather.source
-      ? `${weather.label}${weather.location_leaves_home ? ' · your configured location is sent to this provider' : ' · stays in your home'}`
+      ? `${weather.label}${weather.location_leaves_home ? ' · your configured location is sent to this provider' : ' · retrieved through your home system'}`
       : 'No weather source configured · Everyday will say so instead of guessing');
     text('everyday-time', body.time_source === 'hermes_host_clock' ? 'Hermes host clock' : 'Unavailable');
     const controls = body.devices?.controls || [], status = body.devices?.status || [];
     text('everyday-devices', controls.length || status.length
-      ? `Control: ${controls.join(', ') || 'none'} · Status: ${status.join(', ') || 'none'}`
+      ? `${controls.length} permitted control${controls.length === 1 ? '' : 's'} · ${status.length} status source${status.length === 1 ? '' : 's'}`
       : 'None shared with Everyday');
-    text('everyday-badge', body.available ? 'Ready' : 'Unavailable');
+    text('everyday-device-ids', `Control: ${controls.join(', ') || 'none'}\nStatus: ${status.join(', ') || 'none'}`);
+    renderVoice();
+    text('everyday-badge', body.available ? 'Tools ready' : 'Unavailable');
     $('everyday-badge').dataset.status = body.available ? 'completed' : 'failed';
     text('everyday-message', body.available
       ? 'Names and providers are set on the Hermes host; keys and coordinates never reach this page.'
@@ -91,6 +107,8 @@
       return;
     }
     $('voice-stop-button').disabled = stopping;
+    voiceConfig = payload?.config || {};
+    renderVoice();
     const now = Date.now();
     if (wasBlocked || now - lastCapabilitiesAt > 60000) { lastCapabilitiesAt = now; refreshCapabilities(); }
     if (wasBlocked || now - lastBadgeAt > 5000) { lastBadgeAt = now; refreshBadge(); }

@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Checking again after installation says **Reachy is up to date** and **No installation is needed**, instead of continuing to offer the already installed version from a stale catalog.
 - Check failures remain visible instead of being hidden behind an earlier successful update. These wording changes do not change pairing, device permissions or speech settings.
 - Speaker settings have consistent spacing, a single primary Apply action, side-by-side secondary controls and a short explanation with optional details. Helper text no longer touches the buttons.
+- Everyday shows the selected voice engine before the separate text backend. Provider details and technical device IDs are collapsed; tool readiness is not labelled as a verified live voice session.
 
 ## [0.5.1] - 2026-10-12
 
