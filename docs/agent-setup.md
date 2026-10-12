@@ -9,7 +9,7 @@ Hermes Agent and OpenClaw can run commands on the computer they live on, so they
 
 This automates the **basic restricted conversation connection** in [`companion/README.md`](../companion/README.md), not every current host feature. Manual setup remains available.
 
-> **Installed-release boundary:** setup guides and bridge files come from the robot and match its installed release. Latest robot release **0.5.2** does not include the PR #77/#78 subscription host changes now on GitHub main and the Hugging Face landing page; the reference host bridge was deployed separately. See [release status](release-status.md). Do not replace a newer configured host bridge with an older robot bundle without reviewing the component versions.
+> **Installed-release boundary:** setup guides and bridge files come from the robot and match its installed release. Robot release **0.5.3** includes the PR #77/#78 companion source that landed after 0.5.2. Saved subscription authentication, bootstrap entry points and native-session registration still need explicit host configuration; the reference bridge was deployed separately. See [release status](release-status.md). Do not replace a newer configured host bridge with an older robot bundle without reviewing the component versions.
 
 ## Choose the setup path
 

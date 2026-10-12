@@ -560,10 +560,13 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .agent-hero .muted { max-width: 680px; margin: 4px 0 0; }
 .agent-mode-bar { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--screen-line); }
 .agent-mode-bar .danger { margin-left: auto; }
-.agent-mode-bar .badge { align-self: center; }
+.agent-mode-bar .badge { align-self: center; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .assistant-mode-switch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
-.assistant-mode-switch button { display: grid; gap: 4px; text-align: left; background: transparent; color: var(--text); border: 1px solid var(--line-strong); }
-.assistant-mode-switch button small { color: var(--muted); font-weight: 400; }
+.assistant-mode-switch button { display: grid; align-content: start; gap: 6px; min-width: 0; min-height: 100px; padding: 16px 14px; border-radius: 16px; text-align: left; white-space: normal; background: transparent; color: var(--text); border: 1px solid var(--line-strong); }
+.assistant-mode-switch button strong { display: block; line-height: 1.3; }
+.assistant-mode-switch button small { display: block; font-size: .82rem; line-height: 1.45; color: var(--muted); font-weight: 400; overflow-wrap: anywhere; }
+#assistant-mode-help { margin: 18px 0 16px; line-height: 1.55; }
+@media (max-width: 360px) { .assistant-mode-switch { grid-template-columns: 1fr; } }
 .assistant-mode-switch button[aria-pressed="true"] { border-color: var(--orange); box-shadow: inset 0 0 0 1px var(--orange); }
 .assistant-mode-switch button[aria-pressed="true"]:disabled { opacity: 1; }
 .warning-note { border-left: 3px solid var(--warn); padding-left: 10px; }
@@ -822,7 +825,7 @@ body.camera-app-fullscreen-active { overflow: hidden; }
   .agent-hero { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .agent-hero .badge { grid-row: 1; justify-self: start; }
   .agent-hero > div { grid-row: 2; }
-  .agent-mode-bar { display: grid; grid-template-columns: 1fr 1fr; }
+  .agent-mode-bar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .agent-mode-bar .danger { grid-column: 1 / -1; width: 100%; margin-left: 0; }
   .agent-run-toolbar { display: grid; grid-template-columns: 1fr 1fr; }
   .agent-run-toolbar > button { width: 100%; }
