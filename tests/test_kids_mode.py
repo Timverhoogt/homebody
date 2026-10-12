@@ -4,6 +4,7 @@ import asyncio
 import importlib.util
 import json
 import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -222,6 +223,7 @@ def test_ispy_both_picker_roles_use_the_base_motor(monkeypatch: pytest.MonkeyPat
         runtime._kids_locked = True
         runtime._kids_profile = profile
         runtime._kids_generation = 4
+        runtime._kids_ends_at = time.monotonic() + profile.duration_minutes * 60
         runtime._kids_session_id = "kids-" + "f" * 32
     def confirm_awake(*_args, **_kwargs):
         runtime._power_mode = "awake"
@@ -621,8 +623,8 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     worker = (STATIC / "service-worker.js").read_text(encoding="utf-8")
     assert "homebody-shell-v" in worker
     for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=82" in html
-        assert f'"/static/{asset}?v=82"' in worker
+        assert f"/static/{asset}?v=83" in html
+        assert f'"/static/{asset}?v=83"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

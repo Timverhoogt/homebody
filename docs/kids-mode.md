@@ -25,6 +25,15 @@ I Spy alternates roles between Reachy and the child.
 
 Camera access is revoked before the return movement and guessing. Targets use a strict broker schema. Bridge state is deleted on Stop or expiry.
 
+### Say or type your guess
+
+In an active Homebody I Spy game, the Kids tab now shows **Your I Spy guess**. Type an object, ask for a hint, or enter a yes/no confirmation for Reachy's guess, then press **Guess** or Enter. The field accepts up to 80 characters. It is disabled while Reachy is searching, speaking or processing a turn; wait for that turn to finish. Spoken guessing remains available.
+
+Typing skips microphone recording and speech recognition for that turn. **Reachy still replies aloud**, using the same moderated game and exact-approved Kids speech path. The field does not start/wake a session or enable new camera or motion permissions; a normal caregiver-started, already-Awake game is required. Any next consented round retains the existing I Spy choreography.
+
+Guesses and input capabilities stay out of browser storage and status. The draft is cleared when the activity ends/changes. Expiry, End, privacy, replacement and replayed/stale submissions fail closed. Input uses a separate ephemeral one-use capability, not an exposed private game-session ID.
+
+
 ## Safety boundaries
 
 Kids Mode is deliberately separate from the normal Hermes agent session. It opens a fresh, bounded child pipeline through the private `/v1/kids/chat` route, with pre/post moderation and no Hermes memory or tool session.

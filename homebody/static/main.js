@@ -836,6 +836,7 @@ function updateStatus(payload) {
   const kidsActive = Boolean(kidsMode.active);
   const kidsCameraActive = Boolean(kidsMode.camera_active);
   const kidsLocked = Boolean(kidsMode.locked);
+  window.HomebodyISpyInput?.update(kidsMode);
   window.HomebodyWorkspace?.update(runtime);
   window.HomebodyVolume?.update(runtime);
   window.HomebodyNotifications.setSuppressed("kids", kidsLocked);
