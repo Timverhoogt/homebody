@@ -5,9 +5,16 @@
   let pending = false;
   let acknowledgedId = null;
   let displayedSuccess = null;
+  let actionError = '';
   const active = new Set(['queued', 'downloading', 'installing', 'stopping', 'starting', 'verifying', 'rolling_back']);
   const controls = ['update-check', 'update-preview', 'update-install', 'update-later', 'update-ack'];
   const notes = rows => (rows || []).map(row => `Homebody ${row.version}\n${row.notes}`).join('\n\n');
+  const newer = (next, current) => {
+    if (!/^\d+\.\d+\.\d+$/.test(next || '') || !/^\d+\.\d+\.\d+$/.test(current || '')) return false;
+    const a = next.split('.').map(Number), b = current.split('.').map(Number);
+    for (let i = 0; i < 3; i++) { if (a[i] !== b[i]) return a[i] > b[i]; }
+    return false;
+  };
   async function api(path = '', payload) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 45000);
@@ -27,34 +34,43 @@
   function disable() { controls.forEach(id => { $(id).disabled = true; }); }
   function preview(rows, success = null) {
     acknowledgedId = success?.id || null;
-    $('update-notes').textContent = success
-      ? `Updated and verified: ${success.from_version} → ${success.manifest.version}\n\n${notes(rows)}` : notes(rows);
+    $('update-dialog-title').textContent = success ? 'Reachy update installed' : 'Reachy software update available';
+    $('update-summary').textContent = success
+      ? `Homebody on Reachy updated from ${success.from_version} to ${success.manifest.version}. Installation and restart were verified. No need to install that version again.`
+      : `Install Homebody ${catalog.available.version} on Reachy. Its dashboard will update too; your settings are preserved.`;
+    $('update-notes').textContent = notes(rows);
+    $('update-details').open = false;
+    $('update-dialog').scrollTop = 0;
     $('update-install').hidden = !!success;
     $('update-ack').hidden = !success;
     if (!$('update-dialog').open) $('update-dialog').showModal();
   }
   function render(body) {
-    catalog = body;
+    catalog = {...body, available:newer(body.available?.version, body.current.version) ? body.available : null};
     const job = body.job;
     const busy = pending || active.has(job?.state);
-    $('update-current').textContent = `Installed Homebody ${body.current.version}`;
+    $('update-current').textContent = `Reachy software: Homebody ${body.current.version}`;
     $('update-status').textContent = job && active.has(job.state)
-      ? `Update ${job.state.replaceAll('_',' ')} · reconnecting is safe; progress is saved.`
-      : body.error || (job ? `Last update: ${job.state.replaceAll('_',' ')}${job.error ? ` · ${job.error}` : ''}` : '')
-        || (body.available ? `Homebody ${body.available.version} is available.` : 'No newer stable release found.');
-    if (!body.supported) $('update-status').textContent += ` ${body.reason}`;
+      ? `Reachy update: ${job.state.replaceAll('_',' ')}. Reconnecting is safe; progress is saved.`
+      : actionError || (body.error ? `Could not check for Reachy updates. ${body.error}` : '')
+        || (job && ['failed','rolled_back','rollback_failed'].includes(job.state)
+          ? `${job.state === 'rolled_back' ? 'Update did not complete; the previous Reachy version was restored.' : 'Reachy update failed; operator help may be needed.'} ${job.error || ''}` : '')
+        || (catalog.available ? `Reachy software ${catalog.available.version} is available; currently installed: ${body.current.version}.`
+          : body.checked_at ? `Reachy is up to date: Homebody ${body.current.version}. No installation is needed. The Android app is updated separately.`
+            : 'Check for newer Reachy software. This does not check the Android app.');
+    if (!body.supported) $('update-status').textContent += ` Updates unavailable: ${body.reason || 'updater is not ready'}.`;
     $('update-check').disabled = busy;
-    $('update-preview').disabled = busy || !body.available;
-    $('update-later').disabled = busy || !body.available;
-    $('update-install').disabled = busy || !body.supported || !body.available;
+    $('update-preview').disabled = busy || !catalog.available;
+    $('update-later').disabled = busy || !catalog.available;
+    $('update-install').disabled = busy || !body.supported || !catalog.available;
     $('update-ack').disabled = pending;
-    $('update-notice').hidden = !body.available || busy || body.deferred_release_id === body.available.release_id;
-    $('update-notice-text').textContent = body.available ? `Homebody ${body.available.version} is available` : '';
+    $('update-notice').hidden = !catalog.available || busy || body.deferred_release_id === catalog.available.release_id;
+    $('update-notice-text').textContent = catalog.available ? `Reachy software ${catalog.available.version} is available` : '';
     $('update-history').replaceChildren();
     for (const history of [...(body.history || [])].reverse()) {
       const details = document.createElement('details');
       const summary = document.createElement('summary');
-      summary.textContent = `${history.from_version} → ${history.manifest.version} · ${history.state.replaceAll('_',' ')}`;
+      summary.textContent = `Reachy ${history.from_version} → ${history.manifest.version} · ${history.state.replaceAll('_',' ')}`;
       const content = document.createElement('pre');
       content.textContent = `${history.error || ''}\n${notes(history.notes)}`;
       details.appendChild(summary); details.appendChild(content); $('update-history').appendChild(details);
@@ -69,20 +85,27 @@
       disable();
       $('update-notice').hidden = true;
       $('update-dialog').close();
-      $('update-status').textContent = `Updates unavailable; reconnecting to read saved progress. ${error.message}`;
+      $('update-status').textContent = `Reachy updater unavailable; reconnecting to read saved progress. Update success is not confirmed. ${error.message}`;
     }
   }
   async function action(path, payload) {
-    if (pending) return;
-    pending = true; disable();
+    if (pending) return false;
+    pending = true; actionError = ''; disable();
+    $('update-status').textContent = path === '/check'
+      ? 'Checking for Reachy software updates… The Android app is not being updated.'
+      : 'Sending your request to the Reachy updater…';
     try {
       const body = await api(path, payload);
       if (path === '/install') {
         $('update-dialog').close();
-        $('update-status').textContent = `Update ${body.state} · waiting for verified restart.`;
+        $('update-status').textContent = `Reachy update ${body.state}. Waiting for installation and verified restart; the Android app is unchanged.`;
       } else { pending = false; render(body); }
+      return true;
     } catch (error) {
-      $('update-status').textContent = `Update action was not confirmed: ${error.message}. Saved progress will be checked on reconnect.`;
+      actionError = `Reachy update request was not confirmed: ${error.message}. Saved progress will be checked on reconnect.`;
+      $('update-status').textContent = actionError;
+      $('update-check').disabled = false;
+      return false;
     } finally { pending = false; }
   }
   $('update-check').addEventListener('click', () => action('/check', {}));
@@ -92,13 +115,12 @@
   $('update-later').addEventListener('click', () => action('/later', {release_id:catalog.available.release_id}));
   $('update-ack').addEventListener('click', async () => {
     if (!acknowledgedId) return;
-    await action('/acknowledge', {job_id:acknowledgedId});
-    $('update-dialog').close();
+    if (await action('/acknowledge', {job_id:acknowledgedId})) $('update-dialog').close();
   });
   $('update-install').addEventListener('click', async () => {
     if (pending || !catalog?.supported || !catalog?.available) return;
     const target = catalog.available;
-    if (!window.confirm(`Install Homebody ${target.version}? Reachy must already be in safely folded Standby. The app will stop and restart. Settings are preserved; failed startup is rolled back.`)) return;
+    if (!window.confirm(`Install Homebody ${target.version} on Reachy? Its app and dashboard will restart. The Android app (APK) will not change. Reachy must be safely folded in Standby. Settings are preserved; failed startup is rolled back.`)) return;
     await action('/install', {confirm:'INSTALL', release_id:target.release_id});
   });
   window.HomebodyUpdates = {refresh};

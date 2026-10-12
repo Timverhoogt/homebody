@@ -79,11 +79,15 @@ def test_modes_stop_controls_and_everyday_disclosure(ui, width):
     page, state, posts, errors = ui
     page.set_viewport_size({"width": width, "height": 900})
     page.click("#tab-agent")
-    page.wait_for_function("document.getElementById('everyday-badge').textContent === 'Ready'")
+    page.wait_for_function("document.getElementById('everyday-badge').textContent === 'Tools ready'")
     assert page.locator("#agent-conversation-button").get_attribute("aria-pressed") == "true"
-    assert "openai/gpt-4.1-mini" in page.locator("#everyday-model").inner_text()
-    assert "stays in your home" in page.locator("#everyday-weather").inner_text()
-    assert "desk light" in page.locator("#everyday-devices").inner_text()
+    assert "OpenAI Realtime" in page.locator("#everyday-voice").inner_text()
+    assert "gpt-4o-realtime-preview" in page.locator("#everyday-voice").inner_text()
+    assert "openai/gpt-4.1-mini" in page.locator("#everyday-model").text_content()
+    assert "retrieved through your home system" in page.locator("#everyday-weather").inner_text()
+    assert "1 permitted control" in page.locator("#everyday-devices").inner_text()
+    assert "desk light" in page.locator("#everyday-device-ids").text_content()
+    assert not page.locator("#everyday-technical-details").get_attribute("open")
     assert page.locator("#native-work-badge").is_visible()  # durable work visible as a badge in Everyday
     assert page.locator("#assistant-mode-notice").is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
@@ -133,6 +137,21 @@ def test_unavailable_state_kids_exclusion_and_late_reply_after_owner_loss(ui):
     page.evaluate("refreshStatus()")
     page.wait_for_function("document.getElementById('everyday-card').hidden")
     assert not errors
+
+
+@pytest.mark.parametrize("engine, label", [("realtime", "OpenAI Realtime"), ("live", "OpenAI GPT-Live"),
+                                           ("pipeline", "Pipeline")])
+def test_everyday_primary_label_follows_saved_voice_not_text_backend(ui, engine, label):
+    page, state, posts, _ = ui
+    page.click("#tab-agent")
+    state["config"].update(conversation_mode=engine, realtime_model="gpt-realtime-2.1", live_model="gpt-live-1")
+    before = len(posts)
+    page.evaluate("payload => HomebodyAssistantModes.update(payload)",
+                  {"config": state["config"], "runtime": state["runtime"]})
+    assert label in page.locator("#everyday-voice").inner_text()
+    assert "gpt-4.1-mini" not in page.locator("#everyday-voice").inner_text()
+    assert not page.locator("#everyday-technical-details").get_attribute("open")
+    assert len(posts) == before  # rendering never changes the saved engine
 
 
 @pytest.mark.parametrize("width", [390, 1440])

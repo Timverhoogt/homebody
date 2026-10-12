@@ -1,4 +1,5 @@
 """Actual browser update confirmation/reconnect/text-only behavior; all network is intercepted."""
+import os
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -6,7 +7,7 @@ from urllib.parse import urlparse
 import pytest
 
 
-def test_updates_in_chromium():
+def test_updates_in_chromium(tmp_path):
     playwright = pytest.importorskip("playwright.sync_api")
     with playwright.sync_playwright() as p:
         browser = p.chromium.launch()
@@ -42,6 +43,8 @@ def test_updates_in_chromium():
         page.locator("#update-open").click()
         assert page.locator("#update-dialog").is_visible()
         assert page.locator("#update-notes img").count() == 0
+        assert not page.locator("#update-notes").is_visible()
+        page.locator("#update-details summary").click()
         assert "0.4.1" in page.locator("#update-notes").inner_text()
         page.once("dialog", lambda dialog: dialog.dismiss())
         page.locator("#update-install").click()
@@ -60,9 +63,24 @@ def test_updates_in_chromium():
         catalog["current"] = {"version": "0.5.0"}
         page.evaluate("HomebodyUpdates.refresh()")
         assert page.locator("#update-dialog").is_visible()
-        assert "Updated and verified" in page.locator("#update-notes").inner_text()
+        assert page.locator("#update-dialog-title").inner_text() == "Reachy update installed"
+        assert "Installation and restart were verified" in page.locator("#update-summary").inner_text()
+        assert "Android app (APK): unchanged" in page.locator("#update-scope").inner_text()
+        assert not page.locator("#update-details").get_attribute("open")
+        assert page.locator("#update-ack").is_visible()
+        shots = Path(os.getenv("HOMEBODY_TEST_SCREENSHOTS", str(tmp_path)))
+        shots.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(shots / "update-clarity-phone.png"))
         page.locator("#update-ack").click()
         page.wait_for_function("!document.getElementById('update-dialog').open")
         page.evaluate("HomebodyUpdates.refresh()")
         assert not page.locator("#update-dialog").is_visible()
+        page.click("#tab-settings")
+        assert page.locator("#update-preview").is_disabled()
+        for _ in range(2):
+            page.locator("#update-check").click()
+            page.wait_for_function("document.getElementById('update-status').textContent.includes('up to date')")
+        assert "No installation is needed" in page.locator("#update-status").inner_text()
+        assert "Android app is updated separately" in page.locator("#update-status").inner_text()
+        assert len(installed) == 1
         browser.close()

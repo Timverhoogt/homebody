@@ -11,7 +11,7 @@ class Element {
   close() { this.open = false; }
 }
 for (const id of ['update-notice','update-notice-text','update-open','update-later','update-check','update-preview',
-  'update-current','update-status','update-history','update-dialog','update-notes','update-install','update-ack','update-close']) elements.set(id, new Element());
+  'update-current','update-status','update-history','update-dialog','update-dialog-title','update-summary','update-details','update-notes','update-install','update-ack','update-close']) elements.set(id, new Element());
 let calls = [], confirm = false;
 const catalog = {checked_at:Date.now()/1000,current:{version:'0.4.0'}, supported:true, available:{version:'0.5.0',release_id:42},
   notes:[{version:'0.4.1',notes:'<script>never execute</script>'},{version:'0.5.0',notes:'latest'}],history:[],job:null};
@@ -28,7 +28,7 @@ vm.runInContext(fs.readFileSync('homebody/static/updates.js','utf8'), context);
 const ui = window.HomebodyUpdates;
 (async () => {
  await ui.refresh();
- assert.equal(elements.get('update-current').textContent, 'Installed Homebody 0.4.0');
+ assert.equal(elements.get('update-current').textContent, 'Reachy software: Homebody 0.4.0');
  assert.equal(elements.get('update-notice').hidden, false);
  await elements.get('update-preview').events.click();
  assert.match(elements.get('update-notes').textContent, /<script>never execute<\/script>/);
@@ -50,11 +50,23 @@ const ui = window.HomebodyUpdates;
   from_version:'0.4.0',manifest:{version:'0.5.0'},notes:catalog.notes}]};
  await ui.refresh();
  assert.equal(elements.get('update-dialog').open,true);
+ assert.equal(elements.get('update-dialog-title').textContent,'Reachy update installed');
+ assert.match(elements.get('update-summary').textContent,/Installation and restart were verified/);
+ assert.equal(elements.get('update-details').open,false);
  assert.match(elements.get('update-notes').textContent,/0.4.1/);
  await elements.get('update-ack').events.click();
  assert.ok(calls.some(c=>c[0].endsWith('/acknowledge')));
  response = {...catalog,deferred_release_id:42};
  await ui.refresh();
  assert.equal(elements.get('update-notice').hidden,true);
+ response = {...catalog,current:{version:'0.5.0'},job:{state:'succeeded'},history:[]};
+ await ui.refresh();
+ assert.equal(elements.get('update-install').disabled,true,'already installed catalog cannot reinstall');
+ assert.equal(elements.get('update-preview').disabled,true);
+ assert.match(elements.get('update-status').textContent,/up to date/);
+ assert.match(elements.get('update-status').textContent,/Android app is updated separately/);
+ response = {...response,error:'Network check failed'};
+ await ui.refresh();
+ assert.match(elements.get('update-status').textContent,/Could not check/,'old success must not mask check failure');
  console.log('Update UI behavioral contracts passed');
 })().catch(error=>{console.error(error);process.exit(1);});

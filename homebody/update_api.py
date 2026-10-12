@@ -20,6 +20,7 @@ from .updates import (
     discover,
     installed_identity,
     require_safe,
+    version,
 )
 
 
@@ -73,6 +74,7 @@ class UpdateService:
 
     def status(self) -> dict:
         supported, reason = self.supported()
+        current = installed_identity()
         try:
             state = self.store().read()
             cache = self.root / "catalog.json"
@@ -81,7 +83,17 @@ class UpdateService:
         except (OSError, ValueError) as exc:
             state = {"job": None, "history": []}
             catalog = {"available": None, "notes": [], "error": str(exc)}
-        return {"current": installed_identity(), "supported": supported, "reason": reason, **catalog, **state}
+        # A pre-install catalog survives restart. Never offer the installed (or an older)
+        # version again; retain completion history and errors independently of that offer.
+        available = catalog.get("available")
+        if available:
+            try:
+                if version(available["version"]) <= version(current["version"]):
+                    catalog = {**catalog, "available": None, "notes": []}
+            except (KeyError, TypeError, ValueError):
+                catalog = {**catalog, "available": None, "notes": [],
+                           "error": "Saved update offer is invalid. Check for Reachy updates again."}
+        return {"current": current, "supported": supported, "reason": reason, **catalog, **state}
 
     def check(self) -> dict:
         with self.lock:
