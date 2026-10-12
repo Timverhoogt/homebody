@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Everyday and Workspace (behaviour change)
+- **Routing changes for existing installs.** Adult voice turns outside Workspace now use **Everyday**: a fast, narrow host backend (Home Assistant status/on-off control from the existing allowlists, weather from a configured source, the host clock, direct knowledge answers). Everyday never reaches the full Hermes agent, memory, notes, projects or coding tools, and there is no fallback to them. Saved configs without `assistant_mode` load as Everyday with a one-time "routing changed" notice. The saved voice engine (Pipeline/Realtime) is kept.
+- **Workspace** is the adult Agent profile, entered only from the phone. A bound native Hermes session answers discussion turns through `/v1/runs` only when the host target sets `discussion_enabled`; otherwise answers are labelled "Restricted roadmap reader — not your Hermes session". Execution keeps the existing exact approval, fixed checks and receipts.
+- Separate **Stop speaking** (ends the voice turn and late results; native work continues) from **Stop all Agent work**. An explicit switch to Everyday parks approved native work (display hidden, running badge only); Kids, privacy, Meeting/Sleep and emergency stop still revoke it.
+- **Advanced voice engine**: Pipeline, Realtime (gpt-realtime-2.1 / 2.1-mini, voice, effort, turn-taking eagerness) and **GPT-Live preview** (gpt-live-1, Marin/Cedar, session limit) with a real bridge relay `/v1/live`, transcript-based delegation, bounded queues and cost/cloud disclosure. Physical echo/barge-in behaviour for Live is unverified.
+- Host: `openrouter` provider preset and an independent Everyday text provider (`REACHY_EVERYDAY_PROVIDER`, `REACHY_EVERYDAY_MODEL`, default `gpt-4.1-mini` / `openai/gpt-4.1-mini`). Keys stay on the host.
+- Owner-only, text-free `GET /api/voice/timings`; offline `tools/voice_timing_report.py`. PWA shell v79.
+
 ### Silent speaker volume
 - Settings → Speaker volume adds an explicit Apply slider, measured output level, and mute/unmute. Drafts are not hardware confirmation; failed writes require fresh readback. PWA shell v78.
 - MCP adds `get_volume`, `set_volume` and `set_mute` with strict arguments, existing authentication and serialized privacy/Kids/startup/shutdown guards. OAuth consent discloses speaker control.

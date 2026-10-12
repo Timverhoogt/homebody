@@ -143,8 +143,9 @@ def test_pipeline_wake_session_completes_first_turn_after_agent_generation_chang
             calls.append("transcribe")
             return "hello"
 
-        def chat(self, transcript: str) -> str:
-            calls.append("chat")
+        def everyday_turn(self, transcript: str) -> str:
+            # Adult conversation-profile turns use the narrow Everyday route, never full Hermes chat.
+            calls.append("everyday_turn")
             return "Hi there"
 
         def synthesize(self, text: str) -> SpeechAudio:
@@ -166,7 +167,7 @@ def test_pipeline_wake_session_completes_first_turn_after_agent_generation_chang
     runtime.cancel_agent_work("session_changed")
     runtime._run_conversation(AppConfig(continuous_conversation=False))
 
-    assert calls == ["health", "transcribe", "chat", "synthesize", "close"]
+    assert calls == ["health", "transcribe", "everyday_turn", "synthesize", "close"]
     assert runtime.status()["turns_completed"] == 1
 
 

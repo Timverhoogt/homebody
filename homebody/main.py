@@ -112,6 +112,12 @@ class SettingsUpdate(BaseModel):
     home_assistant_camera_enabled: bool | None = None
     home_assistant_assist_enabled: bool | None = None
     home_assistant_port: int | None = Field(default=None, ge=1024, le=65535)
+    # Only acknowledgement ("") is accepted; assistant_mode itself changes via /api/agent/profile.
+    assistant_mode_notice: Literal[""] | None = None
+    live_model: str | None = Field(default=None, max_length=80)
+    live_voice: str | None = Field(default=None, max_length=40)
+    live_session_timeout_seconds: float | None = Field(default=None, ge=30, le=900)
+    realtime_semantic_eagerness: str | None = Field(default=None, max_length=12)
     realtime_model: str | None = Field(default=None, max_length=200)
     realtime_voice: str | None = Field(default=None, max_length=64)
     realtime_reasoning_effort: str | None = Field(default=None, max_length=32)
@@ -367,6 +373,8 @@ class KidsModeRequest(BaseModel):
 
 class AgentProfileRequest(BaseModel):
     profile: Literal["conversation", "agent"]
+    # Explicit Workspace -> Everyday switch: keep approved native work running, hide its display.
+    preserve_work: bool = False
 
 
 class AgentApprovalRequest(BaseModel):
@@ -502,6 +510,7 @@ class Homebody(ReachyMiniApp):
                 "/api/kids/stop",
                 "/api/robot/stop",
                 "/api/agent/stop",
+                "/api/voice/stop",
             }
             if (
                 request.url.path.startswith("/api/")
@@ -728,9 +737,15 @@ class Homebody(ReachyMiniApp):
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
             try:
-                agent = self._runtime.set_capability_profile(update.profile, adult_ui_unlocked=True)
+                agent = self._runtime.set_capability_profile(
+                    update.profile, adult_ui_unlocked=True, park_native=update.preserve_work
+                )
                 with config_transaction():
-                    save_config(merge_config(load_config(), {"capability_profile": update.profile}))
+                    save_config(merge_config(load_config(), {
+                        "capability_profile": update.profile,
+                        "assistant_mode": "workspace" if update.profile == "agent" else "everyday",
+                        "assistant_mode_notice": "",
+                    }))
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except RuntimeError as exc:
@@ -742,6 +757,48 @@ class Homebody(ReachyMiniApp):
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
             return {"ok": True, "agent": self._runtime.cancel_agent_work("stopped")}
+
+        @self.settings_app.post("/api/voice/stop")
+        def stop_speaking() -> dict[str, object]:
+            """Stop speaking: end the voice turn and late results; native project work continues."""
+            if self._runtime is None:
+                raise HTTPException(status_code=409, detail="Voice runtime has not started")
+            return {"ok": True, "agent": self._runtime.stop_speaking()}
+
+        @self.settings_app.get("/api/voice/timings")
+        def voice_timings() -> JSONResponse:
+            if not owner_authenticated.get():
+                raise HTTPException(status_code=401, detail="A paired owner device is required")
+            if self._runtime is None:
+                raise HTTPException(status_code=409, detail="Voice runtime has not started")
+            return JSONResponse({"turns": self._runtime.voice_timings()}, headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.get("/api/everyday/capabilities")
+        def everyday_capabilities() -> JSONResponse:
+            if not owner_authenticated.get():
+                raise HTTPException(status_code=401, detail="A paired owner device is required")
+            client = HermesBridgeClient(load_config())
+            try:
+                payload = client.everyday_capabilities()
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail="Everyday status is unavailable from the bridge") from exc
+            finally:
+                client.close()
+            return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.get("/api/agent/workspace/native-badge")
+        def native_work_badge() -> JSONResponse:
+            """Status-only running-work badge, available in Everyday without native authority."""
+            if not owner_authenticated.get():
+                raise HTTPException(status_code=401, detail="A paired owner device is required")
+            client = HermesBridgeClient(load_config())
+            try:
+                payload = client.native_badge()
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail="Project work status is unavailable") from exc
+            finally:
+                client.close()
+            return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
         @self.settings_app.get("/api/agent/capabilities")
         def agent_capabilities() -> dict[str, object]:

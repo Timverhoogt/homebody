@@ -34,6 +34,11 @@ class WorkspaceError(ValueError):
 
 _TERMINAL = {"completed", "failed", "cancelled", "interrupted", "verification_failed"}
 _ACTIVE = {"submitting", "running", "stopping", "disconnected", "verifying", "submission_unknown"}
+DISCUSSION_INSTRUCTIONS = (
+    "Homebody Workspace discussion turn from the owner's voice. Discuss and explain only: do not edit "
+    "files, run commands or take external actions in this turn. Execution needs a separate phone "
+    "approval. Reply in a few spoken sentences."
+)
 
 
 @dataclass(frozen=True)
@@ -50,9 +55,12 @@ class TargetConfig:
     allow_primary: bool = False
     project_root: str = ""
     observe_approvals: bool = False
+    discussion_enabled: bool = False
 
     def config_dict(self):
-        return {k: v for k, v in asdict(self).items() if k not in {"target_id", "project_root"}}
+        # An unset discussion switch keeps the fingerprint of journals written before it existed.
+        hidden = {"target_id", "project_root"} | (set() if self.discussion_enabled else {"discussion_enabled"})
+        return {k: v for k, v in asdict(self).items() if k not in hidden}
 
     @classmethod
     def parse(cls, payload, projects: ProjectCatalog):
@@ -70,6 +78,7 @@ class TargetConfig:
                 "artifacts",
                 "allow_primary",
                 "observe_approvals",
+                "discussion_enabled",
             }
             if not isinstance(raw, dict) or not required <= raw.keys() or raw.keys() - required - optional:
                 raise WorkspaceError("invalid native target configuration")
@@ -99,6 +108,9 @@ class TargetConfig:
             observe_approvals = raw.get("observe_approvals", False)
             if type(observe_approvals) is not bool:
                 raise WorkspaceError("native approval observation must be an explicit host boolean")
+            discussion = raw.get("discussion_enabled", False)
+            if type(discussion) is not bool or (discussion and backend != "hermes"):
+                raise WorkspaceError("native discussion is an explicit host boolean for Hermes sessions only")
             if type(enabled) is not bool or type(primary) is not bool:
                 raise WorkspaceError("execution and primary switches must be booleans")
             if session in {"main", "global", "agent:main", "agent:main:main"} and not primary:
@@ -146,6 +158,7 @@ class TargetConfig:
                 primary,
                 str(projects.projects[raw["project_id"]].root),
                 observe_approvals,
+                discussion,
             )
         return targets
 
@@ -204,7 +217,86 @@ class NativeWorkspace:
         binding = self.bindings.get(device)
         if not binding or binding.get("detached"):
             raise WorkspaceError("Select an owner-registered project/session first")
+        if binding.get("parked"):
+            raise WorkspaceError("Switch to Workspace on the phone to continue this project")
         return binding
+
+    async def park(self, device):
+        """Explicit owner switch to Everyday: hide the display and invalidate drafts, keep durable work."""
+        async with self._lock:
+            binding = self.bindings.get(device)
+            if not binding or binding.get("detached"):
+                return self.badge(device)
+            self._discard_draft(device)
+            binding["epoch"] = secrets.token_hex(16)
+            binding["display_until"] = 0
+            binding["parked"] = True
+            self.events.pop(device, None)
+            self._save()
+            return self.badge(device)
+
+    def parked(self, device):
+        binding = self.bindings.get(device)
+        return bool(binding and binding.get("parked") and not binding.get("detached"))
+
+    async def unpark(self, device):
+        async with self._lock:
+            binding = self.bindings.get(device)
+            if binding and binding.pop("parked", None):
+                binding["epoch"] = secrets.token_hex(16)
+                self._save()
+
+    def badge(self, device):
+        """Status-only view (no text, project or session) that is safe outside Workspace."""
+        binding = self.bindings.get(device) or {}
+        run = binding.get("run", {}) if not binding.get("detached") or binding.get("run", {}).get(
+            "status") in _ACTIVE else {}
+        status = str(run.get("status") or "idle")
+        return {"status": status, "running": status in _ACTIVE, "ready_to_test": run.get("ready_to_test") is True,
+                "parked": bool(binding.get("parked"))}
+
+    async def discuss(self, device, text):
+        """One discussion turn in the bound native Hermes session, only if the host enabled it."""
+        async with self._lock:
+            binding = self._binding(device)
+            target = self._target(binding)
+            if not target.discussion_enabled:
+                raise WorkspaceError("Native discussion is not enabled for this project on the host")
+            if binding.get("run", {}).get("status") in _ACTIVE:
+                raise WorkspaceError("Project work is running; ask for its status instead")
+            if (
+                type(text) is not str
+                or not text.strip()
+                or len(text) > 4000
+                or any(ord(c) < 32 and c not in "\n\t" for c in text)
+            ):
+                raise WorkspaceError("native discussion text must contain 1–4000 characters")
+            epoch = binding["epoch"]
+        result = await self.adapters[target.backend].discuss(
+            target, str(redact_payload(text)), secrets.token_hex(16), DISCUSSION_INSTRUCTIONS
+        )
+        if (
+            self.bindings.get(device) is not binding
+            or binding["epoch"] != epoch
+            or binding.get("detached")
+            or binding.get("parked")
+        ):
+            raise WorkspaceError("Workspace changed during the discussion turn; the answer was discarded")
+        output = result.get("output") or ""
+        if result.get("status") != "completed" or not output:
+            raise WorkspaceError(f"Native discussion turn {result.get('status', 'failed')}; no answer is confirmed")
+        self._event(device, binding, "user", text)
+        self._event(device, binding, "assistant", output)
+        return {
+            "text": output,
+            "source": {
+                "kind": "native_hermes",
+                "backend": target.backend,
+                "project_id": target.project_id,
+                "session_id": target.session_id,
+                "run_id": result["run_id"],
+            },
+        }
 
     def _target(self, binding):
         return self.targets[binding["target_id"]]
@@ -549,8 +641,9 @@ class NativeWorkspace:
             and (observer is None or observer.done())
         ):
             self.tasks[device] = asyncio.create_task(self._resume_observer(device, binding))
-        if binding.get("detached"):
+        if binding.get("detached") or binding.get("parked"):
             payload["run"] = dict(binding.get("run", {}))
+            payload["parked"] = bool(binding.get("parked"))
             return redact_payload(payload)
         target = self._target(binding)
         payload["binding"] = {

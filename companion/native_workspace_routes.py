@@ -64,6 +64,11 @@ class NativeWorkspaceRoutes:
             raise web.HTTPForbidden(text="Native Workspace requires a device identity")
         manager = self.native_workspace
         action = request.match_info["action"]
+        if action == "badge":
+            # Status-only (no text, project or session); safe in Everyday so a running badge can show.
+            badge = manager.badge(device) if manager is not None else {"status": "idle", "running": False}
+            return web.json_response({**badge, "configured": manager is not None and bool(manager.targets)},
+                                     headers={"Cache-Control": "no-store"})
         if manager is None:
             if action in {"read", "stop", "show"}:
                 return web.json_response(

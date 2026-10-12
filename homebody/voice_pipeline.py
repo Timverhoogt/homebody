@@ -45,6 +45,7 @@ class PipelineVoiceMixin:
             _LOGGER.debug("Hermes bridge health: %s", health.get("status"))
 
             first_turn = True
+            turns_started = 0
             while (
                 not self.stop_event.is_set()
                 and not self._turn_stop_requested()
@@ -68,7 +69,12 @@ class PipelineVoiceMixin:
 
                 workspace_generation = self._workspace_lease()
                 self._workspace_event(workspace_generation, "activity", "Listening for your voice")
+                with self._agent_lock:
+                    timing_mode = "workspace" if self._capability_profile == "agent" else "everyday"
+                self._voice_timings.begin("pipeline", timing_mode, warm=turns_started > 0)
+                turns_started += 1
                 endpoint = self._record_utterance(config)
+                self._voice_timings.mark("local_speech_end")
                 if not endpoint.speech_detected or endpoint.samples.size == 0:
                     self._set_status("waiting_for_wake_word", "No speech detected")
                     if not config.continuous_conversation:
@@ -125,8 +131,12 @@ class PipelineVoiceMixin:
                         succeeded=True,
                     ):
                         break
+                elif client.config.kids_mode_enabled:
+                    response_text = client.chat(transcript)  # dedicated Kids route, unchanged
                 else:
-                    response_text = client.chat(transcript)
+                    # Everyday: the narrow fast backend, never the full Hermes agent.
+                    response_text = client.everyday_turn(transcript)
+                self._voice_timings.mark("tool_result")  # backend text returned (not "heard")
                 if (
                     not conversation_is_current()
                     or self.stop_event.is_set()
@@ -136,6 +146,18 @@ class PipelineVoiceMixin:
                 ):
                     break
                 self._workspace_event(workspace_generation, "assistant", response_text)
+                source = getattr(client, "last_answer_source", None) or {}
+                if source.get("kind") == "native_hermes":
+                    self._workspace_event(
+                        workspace_generation, "activity",
+                        f"Answered in your Hermes session {source.get('session_id', '')} "
+                        f"(run {source.get('run_id', '')})",
+                    )
+                elif source.get("kind") == "restricted_broker":
+                    self._workspace_event(
+                        workspace_generation, "activity",
+                        "Answered by the restricted roadmap reader — not your Hermes session",
+                    )
                 self._workspace_event(workspace_generation, "activity", "Preparing the spoken reply")
                 preserve_ispy_guess_motion = False
                 if (
@@ -204,12 +226,14 @@ class PipelineVoiceMixin:
                         )
                 else:
                     speech = client.synthesize(spoken_text)
+                    self._voice_timings.mark("first_provider_audio")
                     if (
                         self._turn_stop_requested()
                         or self._privacy_requested.is_set()
                         or self._effective_power_mode() in {"meeting", "sleep"}
                     ):
                         break
+                    self._voice_timings.mark("player_enqueued")
                     self._workspace_event(workspace_generation, "activity", "Speaking the reply")
                     self._set_status("speaking", "Reachy is speaking", tts_provider=speech.provider)
                     interrupted = self._play_response(
@@ -254,6 +278,7 @@ class PipelineVoiceMixin:
             self._set_status("error", "Hermes bridge request failed", bridge_healthy=False)
             raise
         finally:
+            self._voice_timings.end()
             self._workspace_event(workspace_generation, "activity", "Voice session ended")
             client.close()
 

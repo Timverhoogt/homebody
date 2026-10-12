@@ -40,6 +40,7 @@ from .safety_gate import (
 from .vision_runtime import VisionMixin
 from .vision_runtime import doa_yaw_degrees as doa_yaw_degrees  # re-exported for existing imports
 from .voice_ha import HomeAssistantVoiceMixin
+from .voice_live import LiveVoiceMixin
 from .voice_pipeline import PipelineVoiceMixin
 from .voice_realtime import (  # re-exported for existing imports
     PowerModeToolCall as PowerModeToolCall,
@@ -60,6 +61,7 @@ from .voice_realtime import (
 from .voice_realtime import (
     realtime_response_id as realtime_response_id,
 )
+from .voice_timing import VoiceTimings
 from .voice_workspace import VoiceWorkspace, VoiceWorkspaceMixin
 from .wakeword import WAKE_PROMPT as _WAKE_PROMPT
 from .wakeword import HeyHermesSpotter, ensure_kws_model
@@ -187,6 +189,7 @@ class HermesVoiceRuntime(
     VisionMixin,
     HomeAssistantVoiceMixin,
     RealtimeVoiceMixin,
+    LiveVoiceMixin,
     PipelineVoiceMixin,
     PowerMixin,
 ):
@@ -247,6 +250,7 @@ class HermesVoiceRuntime(
         self._safety_gate = SafetyGate(_RuntimeSafetyProbe(self))
         self._init_agent_session_state()
         self._voice_workspace = VoiceWorkspace()
+        self._voice_timings = VoiceTimings()
         from .speaker_volume import SpeakerVolume
         self._speaker = SpeakerVolume()
 
@@ -763,8 +767,21 @@ class HermesVoiceRuntime(
                 self._stop_home_assistant_voice_if_active()
         elif config.conversation_mode == "realtime":
             self._run_realtime_conversation(config)
+        elif config.conversation_mode == "live":
+            self._run_live_conversation(config)
         else:
             self._run_conversation(config)
+
+    def voice_timings(self) -> list[dict[str, object]]:
+        """Owner diagnostics: text-free latency marks for the last turns (RAM only)."""
+        return self._voice_timings.snapshot()
+
+    def stop_speaking(self) -> dict[str, object]:
+        """End the voice turn and invalidate late results, keeping native project work.
+
+        The voice loops flush their own playback when they observe the stop request.
+        """
+        return self.cancel_agent_work("speech_stopped")
 
     def _clear_streamed_audio(self) -> None:
         """Flush Realtime appsrc output without stopping microphone capture."""

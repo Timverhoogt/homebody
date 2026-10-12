@@ -5,7 +5,8 @@ const fields = [
   "motion_enabled", "barge_in_enabled", "camera_enabled", "camera_feed_enabled", "camera_controls_enabled", "camera_controls_handedness", "face_tracking_enabled", "face_tracking_weight",
   "doa_enabled", "robot_tools_enabled", "home_assistant_enabled", "home_assistant_controls_enabled",
   "home_assistant_camera_enabled", "home_assistant_assist_enabled", "home_assistant_port",
-  "realtime_model", "realtime_voice", "realtime_reasoning_effort",
+  "realtime_model", "realtime_voice", "realtime_reasoning_effort", "realtime_semantic_eagerness",
+  "live_model", "live_voice", "live_session_timeout_seconds",
   "local_vision_enabled", "local_vision_url", "local_vision_model", "local_ai_accelerator",
   "mcp_enabled", "mcp_vision_enabled", "mcp_oauth_enabled", "mcp_public_url", "mcp_public_bind", "mcp_public_port",
   "end_silence_seconds", "max_utterance_seconds", "vad_min_rms", "vad_noise_multiplier",
@@ -693,7 +694,13 @@ function fillConfig(config) {
     const el = $(name);
     if (!el || !(name in config)) return;
     if (el.type === "checkbox") el.checked = Boolean(config[name]);
-    else el.value = config[name] ?? "";
+    else {
+      // Keep an existing saved Realtime model even if it is not one of the offered choices.
+      if (name === "realtime_model" && config[name] && ![...el.options].some((o) => o.value === config[name])) {
+        el.add(new Option(String(config[name]), String(config[name])));
+      }
+      el.value = config[name] ?? "";
+    }
   });
   loaded = true;
   toggleModePanels();
@@ -709,12 +716,21 @@ function toggleHomeAssistantOptions(clearWhenDisabled = true) {
   });
 }
 
+const ENGINE_DISCLOSURES = {
+  pipeline: "Records your turn, then speech-to-text, the text model and text-to-speech run one after another via the Hermes host. Slowest; uses your configured STT/TTS providers.",
+  realtime: "Microphone audio streams to OpenAI Realtime through the Hermes host while a session is open (cloud, billed per audio minute). The OpenAI key stays on the host.",
+  live: "Preview. Full-duplex audio streams to OpenAI GPT-Live through the Hermes host until the session limit or Stop (cloud, billed; preview pricing and behaviour may change). Echo and talking over Reachy are not yet verified on this robot.",
+};
+
 function toggleModePanels() {
-  const realtime = $("conversation_mode").value === "realtime";
-  $("realtime-settings").hidden = !realtime;
-  $("voice-provider").textContent = realtime
-    ? "OpenAI Realtime streams speech in both directions; pipeline STT/TTS selectors are ignored."
-    : "Wake detection stays local. Selected STT and TTS run through the authenticated Hermes-host bridge.";
+  const engine = $("conversation_mode").value;
+  $("realtime-settings").hidden = engine !== "realtime";
+  $("live-settings").hidden = engine !== "live";
+  $("pipeline-settings").hidden = engine !== "pipeline";
+  $("engine-disclosure").textContent = ENGINE_DISCLOSURES[engine] || "";
+  $("voice-provider").textContent = engine === "pipeline"
+    ? "Wake detection stays local. Selected STT and TTS run through the authenticated Hermes-host bridge."
+    : "Speech streams in both directions; pipeline STT/TTS selectors are ignored.";
 }
 
 $("conversation_mode").addEventListener("change", toggleModePanels);
@@ -928,7 +944,10 @@ function updateStatus(payload) {
   const agentBlocked = kidsActive || kidsLocked || ["meeting", "sleep"].includes(powerMode) || agentRequestPending;
   $("agent-conversation-button").disabled = agentBlocked || agentProfile === "conversation";
   $("agent-enable-button").disabled = agentBlocked || agentProfile === "agent";
+  $("agent-conversation-button").setAttribute("aria-pressed", String(agentProfile !== "agent"));
+  $("agent-enable-button").setAttribute("aria-pressed", String(agentProfile === "agent"));
   $("agent-stop-button").disabled = agentRequestPending;
+  window.HomebodyAssistantModes?.update(payload);
   renderAgentRun();
   const robotBusy = Boolean(runtime.robot_action_busy);
   const motorsEnabled = runtime.motors_enabled;
@@ -1260,6 +1279,7 @@ async function refreshStatus() {
     window.HomebodyWorkspace?.reset("Reachy is unreachable; conversation hidden.");
     window.HomebodyAgentConnection?.offline();
     window.HomebodyVolume?.offline();
+    window.HomebodyAssistantModes?.offline();
     if (window.ReachyCamera?.isActive()) {
       window.ReachyCamera.stop("Camera stopped because Hermes status is unavailable.");
     }
@@ -2472,23 +2492,25 @@ async function setAgentProfile(profile) {
     profile !== "agent"
     && currentAgentRun
     && !["completed", "partial", "failed", "cancelled"].includes(runStatus)
-    && !window.confirm("Leaving Agent Mode invalidates this run and every pending approval. Continue?")
+    && !window.confirm("Leaving Workspace invalidates this Agent run and every pending approval. Approved native project work keeps running. Continue?")
   ) return;
   agentRequestPending = true;
   const message = $("agent-message");
-  message.textContent = profile === "agent" ? "Starting a fresh Agent session…" : "Returning to Conversation…";
+  message.textContent = profile === "agent" ? "Entering Workspace…" : "Switching to Everyday…";
   message.className = "message";
   try {
+    // Leaving Workspace from here keeps approved project work running (hidden, badge only);
+    // Kids, privacy and power changes still stop it.
     const response = await fetch("/api/agent/profile", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Reachy-Adult-UI": "unlocked" },
-      body: JSON.stringify({ profile }),
+      body: JSON.stringify({ profile, preserve_work: profile !== "agent" }),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     message.textContent = profile === "agent"
-      ? "Agent profile active. Reversible owner tools are available; consequential actions pause for exact phone approval."
-      : "Conversation profile active.";
+      ? "Workspace active. Reversible owner tools are available; consequential actions pause for exact phone approval."
+      : "Everyday active. Any approved project work keeps running; its details stay hidden until you return to Workspace.";
     notifyFeedback(message, "ok");
   } catch (error) {
     message.textContent = String(error);

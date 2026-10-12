@@ -13,7 +13,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=78">
+  <link rel="stylesheet" href="/static/style.css?v=79">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -156,12 +156,32 @@
           </div>
           <span id="agent-profile-badge" class="badge">Conversation</span>
         </div>
-        <div class="agent-mode-bar" aria-label="Agent session controls">
-          <button type="button" id="agent-enable-button">New Agent session</button>
-          <button type="button" id="agent-conversation-button" class="secondary">Conversation only</button>
+        <div class="assistant-mode-switch" role="group" aria-label="Assistant mode">
+          <button type="button" id="agent-conversation-button" aria-pressed="true"><strong>Everyday</strong><small>Fast answers, home and weather</small></button>
+          <button type="button" id="agent-enable-button" aria-pressed="false"><strong>Workspace</strong><small>Your selected project session</small></button>
+        </div>
+        <p id="assistant-mode-help" class="muted compact-note">Everyday never uses your Hermes memory, projects or coding tools. Workspace is entered only here and may take longer.</p>
+        <p id="assistant-mode-notice" class="message warning-note" role="status" hidden>Voice routing changed: ordinary questions now use Everyday (fast, no Hermes memory or projects). Choose Workspace for project work. <button type="button" id="assistant-mode-notice-ack" class="secondary">Got it</button></p>
+        <div class="agent-mode-bar" aria-label="Stop controls">
+          <button type="button" id="voice-stop-button" class="secondary">Stop speaking</button>
+          <span id="native-work-badge" class="badge" data-status="running" hidden>Project work running</span>
           <button type="button" id="agent-stop-button" class="danger">Stop all Agent work</button>
         </div>
         <p id="agent-message" class="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="everyday-card" class="card everyday-card" aria-labelledby="everyday-heading">
+        <div class="section-heading">
+          <div><p class="label">Everyday</p><h2 id="everyday-heading">Quick help at home</h2></div>
+          <span id="everyday-badge" class="badge">Checking…</span>
+        </div>
+        <dl class="everyday-facts">
+          <div><dt>Text model</dt><dd id="everyday-model">—</dd></div>
+          <div><dt>Weather</dt><dd id="everyday-weather">—</dd></div>
+          <div><dt>Time</dt><dd id="everyday-time">—</dd></div>
+          <div><dt>Devices you can name</dt><dd id="everyday-devices">—</dd></div>
+        </dl>
+        <p id="everyday-message" class="muted compact-note" role="status" aria-live="polite">Names and providers are set on the Hermes host; keys and coordinates never reach this page.</p>
       </section>
 
       <div class="agent-view-switch" role="group" aria-label="Agent view">
@@ -900,12 +920,14 @@
         <h2>Agent connection and voice</h2>
         <p class="muted">Run the companion bridge on the machine hosting Hermes Agent or OpenClaw (or both), then enter its trusted LAN URL and API key. The API key is the bridge's <code>API_SERVER_KEY</code> environment variable — the same key your agent uses to reach the bridge.</p>
         <form id="settings-form">
-          <label>Conversation mode
+          <label>Voice engine <span class="muted">(Advanced · separate from Everyday/Workspace)</span>
             <select id="conversation_mode" name="conversation_mode">
-              <option value="pipeline">Agent pipeline · configurable agent, STT and TTS</option>
-              <option value="realtime">OpenAI Realtime · native speech-to-speech</option>
+              <option value="pipeline">Pipeline · speech-to-text, text model, text-to-speech</option>
+              <option value="realtime">Realtime · OpenAI speech-to-speech</option>
+              <option value="live">GPT-Live preview · OpenAI full-duplex speech</option>
             </select>
           </label>
+          <p id="engine-disclosure" class="muted compact-note" role="note"></p>
           <label>Bridge URL
             <input id="bridge_url" name="bridge_url" type="url" placeholder="http://hermes.local:8643" required />
           </label>
@@ -923,7 +945,12 @@
             <label>Language<input id="language" name="language" value="en" maxlength="12" /></label>
           </div>
           <div id="realtime-settings" class="grid-two">
-            <label>Realtime model<input id="realtime_model" name="realtime_model" value="gpt-realtime-2.1" /></label>
+            <label>Realtime model
+              <select id="realtime_model" name="realtime_model"><option value="gpt-realtime-2.1">gpt-realtime-2.1</option><option value="gpt-realtime-2.1-mini">gpt-realtime-2.1-mini · lower cost</option></select>
+            </label>
+            <label>Turn-taking eagerness
+              <select id="realtime_semantic_eagerness" name="realtime_semantic_eagerness"><option value="auto">Auto</option><option value="low">Low · waits longer</option><option value="medium">Medium</option><option value="high">High · answers sooner</option></select>
+            </label>
             <label>Realtime voice
               <select id="realtime_voice" name="realtime_voice"><option value="marin">Marin</option><option value="cedar">Cedar</option></select>
             </label>
@@ -933,7 +960,14 @@
               </select>
             </label>
           </div>
-          <div class="grid-two">
+          <div id="live-settings" class="grid-two" hidden>
+            <label>Live model<select id="live_model" name="live_model"><option value="gpt-live-1">gpt-live-1 · preview</option></select></label>
+            <label>Live voice
+              <select id="live_voice" name="live_voice"><option value="marin">Marin</option><option value="cedar">Cedar</option></select>
+            </label>
+            <label>Session limit (seconds)<input id="live_session_timeout_seconds" name="live_session_timeout_seconds" type="number" min="30" max="900" step="30" value="300" /></label>
+          </div>
+          <div id="pipeline-settings" class="grid-two">
             <label>Speech recognition
               <select id="stt_provider" name="stt_provider"><option value="configured">Hermes configured STT</option><option value="local">Local Whisper</option></select>
             </label>
@@ -1061,15 +1095,16 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=78"></script>
-  <script src="/static/owner.js?v=78"></script>
+  <script src="/static/notifications.js?v=79"></script>
+  <script src="/static/owner.js?v=79"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=78"></script>
-  <script src="/static/agent-connection.js?v=78"></script>
-  <script src="/static/native-workspace.js?v=78"></script>
-  <script src="/static/workspace.js?v=78"></script>
-  <script src="/static/main.js?v=78"></script>
-  <script src="/static/updates.js?v=78"></script>
-  <script src="/static/volume.js?v=78"></script>
+  <script src="/static/camera.js?v=79"></script>
+  <script src="/static/agent-connection.js?v=79"></script>
+  <script src="/static/native-workspace.js?v=79"></script>
+  <script src="/static/workspace.js?v=79"></script>
+  <script src="/static/main.js?v=79"></script>
+  <script src="/static/updates.js?v=79"></script>
+  <script src="/static/volume.js?v=79"></script>
+  <script src="/static/assistant-modes.js?v=79"></script>
 </body>
 </html>

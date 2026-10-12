@@ -56,6 +56,10 @@ class RealtimeBridgeSession:
         self.config = config
         self.agent_context = agent_context
         self.agent_request_id = agent_request_id
+        # Workspace is exactly the adult Agent profile; everything else is Everyday. The bridge
+        # re-checks and fails closed to Everyday.
+        profile = agent_context.capability_profile if agent_context is not None else "conversation"
+        self.assistant_mode = "workspace" if profile == "agent" else "everyday"
         self._socket: ClientConnection | None = None
         self._events: queue.Queue[RealtimeEvent] = queue.Queue(maxsize=_EVENT_QUEUE_LIMIT)
         self._receiver: threading.Thread | None = None
@@ -81,6 +85,8 @@ class RealtimeBridgeSession:
                         "model": self.config.realtime_model,
                         "voice": self.config.realtime_voice,
                         "reasoning_effort": self.config.realtime_reasoning_effort,
+                        "semantic_eagerness": self.config.realtime_semantic_eagerness,
+                        "assistant_mode": self.assistant_mode,
                         "camera_enabled": self.config.camera_enabled,
                         "robot_tools_enabled": self.config.robot_tools_enabled,
                         "agent_tools_enabled": self.config.agent_tools_enabled,

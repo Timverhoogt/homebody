@@ -7,6 +7,7 @@
   function render() {
     window.HomebodyNotifications?.setSuppressed("owner", !session.owner);
     window.HomebodyVolume?.owner(session.owner);
+    window.HomebodyAssistantModes?.owner(session.owner);
     byId('owner-pair-panel').hidden = session.owner;
     byId('owner-device-controls').hidden = !session.owner;
     document.querySelector('main').hidden = !session.owner;

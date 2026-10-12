@@ -31,7 +31,18 @@ from aiohttp import ClientSession, ClientTimeout, FormData, web
 
 try:
     from companion.agent_backends import OpenClawBackend, OpenClawConfig, OpenClawConfigError
-    from companion.llm_providers import LLMProviderConfigError, TextModelProvider
+    from companion.everyday_tools import (
+        EVERYDAY_INSTRUCTIONS,
+        EVERYDAY_TOOL_NAMES,
+        EverydayConfig,
+        EverydayTools,
+        TurnBudget,
+        realtime_tool_specs,
+        session_generation,
+    )
+    from companion.live_transport import serve_live
+    from companion.llm_providers import LLMProviderConfigError, TextModelProvider, everyday_provider_from_env
+    from companion.native_workspace import WorkspaceError
     from companion.native_workspace_routes import NativeWorkspaceRoutes
     from companion.reachy_agent_broker import (
         BrokerContext,
@@ -61,7 +72,22 @@ except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.pa
         OpenClawConfig,
         OpenClawConfigError,
     )
-    from llm_providers import LLMProviderConfigError, TextModelProvider  # type: ignore[no-redef]
+    from everyday_tools import (  # type: ignore[no-redef]
+        EVERYDAY_INSTRUCTIONS,
+        EVERYDAY_TOOL_NAMES,
+        EverydayConfig,
+        EverydayTools,
+        TurnBudget,
+        realtime_tool_specs,
+        session_generation,
+    )
+    from live_transport import serve_live  # type: ignore[no-redef]
+    from llm_providers import (  # type: ignore[no-redef]
+        LLMProviderConfigError,
+        TextModelProvider,
+        everyday_provider_from_env,
+    )
+    from native_workspace import WorkspaceError  # type: ignore[no-redef]
     from native_workspace_routes import NativeWorkspaceRoutes  # type: ignore[no-redef]
     from reachy_agent_broker import (  # type: ignore[no-redef]
         BrokerContext,
@@ -717,6 +743,29 @@ def _completed_hermes_call(
     return call_id, arguments
 
 
+def _completed_everyday_call(kind: str, event: dict[str, Any]) -> tuple[str, str, dict[str, Any]] | None:
+    """Parse an Everyday host tool call only after OpenAI marks it completed."""
+    if kind != "response.output_item.done":
+        return None
+    item = event.get("item")
+    if not isinstance(item, dict):
+        return None
+    call_id = str(item.get("call_id") or "")
+    name = str(item.get("name") or "")
+    if (
+        item.get("type") != "function_call"
+        or item.get("status") != "completed"
+        or name not in EVERYDAY_TOOL_NAMES
+        or not call_id
+    ):
+        return None
+    try:
+        arguments = json.loads(item.get("arguments") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        arguments = {}
+    return call_id, name, arguments if isinstance(arguments, dict) else {}
+
+
 def _hermes_home(profile: str | None = None) -> Path:
     root = Path(os.getenv("HERMES_HOME", "~/.hermes")).expanduser()
     return root / "profiles" / profile if profile else root
@@ -841,6 +890,21 @@ class Bridge(NativeWorkspaceRoutes):
         self._kids_ended: dict[str, None] = {}
         self.agent_broker = ReachyAgentBroker()
         self.agent_runs = AgentRunManager()
+        # Everyday: narrow home/weather/time tools on a fast text model, never the Hermes agent.
+        self.everyday_error = ""
+        try:
+            self.everyday = EverydayTools(self.agent_broker, EverydayConfig.from_env())
+        except ValueError as exc:
+            self.everyday = EverydayTools(self.agent_broker)
+            self.everyday_error = f"Everyday configuration is invalid: {exc}"
+        try:
+            self.everyday_llm: TextModelProvider | None = everyday_provider_from_env(
+                lambda name: _resolve_secret(name, profile)
+            )
+        except LLMProviderConfigError as exc:
+            self.everyday_llm = None
+            self.everyday_error = self.everyday_error or str(exc)
+        self._answer_sources: dict[str, dict[str, object]] = {}
         self.init_native_workspace()
         self._native_session_states = {}
         self._broker_tasks: dict[tuple[str, str], asyncio.Task[Any]] = {}
@@ -1980,8 +2044,9 @@ class Bridge(NativeWorkspaceRoutes):
         try:
             payload = await request.json()
             if (not isinstance(payload, dict) or "context" not in payload
-                    or set(payload) - {"context", "preserve_native"}
-                    or type(payload.get("preserve_native", False)) is not bool):
+                    or set(payload) - {"context", "preserve_native", "park_native"}
+                    or type(payload.get("preserve_native", False)) is not bool
+                    or type(payload.get("park_native", False)) is not bool):
                 raise BrokerValidationError("invalid session update")
             device = _device_id(request)
             context = await self.agent_broker.establish_session(device, payload["context"])
@@ -1996,9 +2061,20 @@ class Bridge(NativeWorkspaceRoutes):
                 changed = previous is not None and previous != (context.session_generation, state)
                 preserve = safe and (not changed or (payload.get("preserve_native") is True
                                                      and previous[1] == state))
+                # Kids, privacy, Meeting/Sleep and emergency stop keep revoking native work.
+                teardown = (context.kids_mode_active or not context.privacy_enabled
+                            or context.emergency_stop_active or context.power_mode in {"meeting", "sleep"})
+                if not teardown and payload.get("park_native") is True:
+                    # Explicit owner switch to Everyday: hide the display, keep durable approved work.
+                    await self.native_workspace.park(device)
+                    preserve = True
+                elif not teardown and self.native_workspace.parked(device):
+                    if safe:
+                        await self.native_workspace.unpark(device)  # owner returned to Workspace
+                    preserve = True
                 self._native_session_states[device] = (context.session_generation, state)
                 await self.invalidate_native_workspace(device, preserve=preserve)
-                if preserve:
+                if preserve and safe:
                     await self.seed_native_project_conversation(device, context)
             return web.json_response(
                 {"ok": True, "session_generation": context.session_generation},
@@ -2161,11 +2237,33 @@ class Bridge(NativeWorkspaceRoutes):
         )
 
     async def _agent_answer(self, text: str, *, context: dict[str, object], device_id: str) -> str:
-        """Retain brief project dialogue in the current restricted broker lease."""
+        """Workspace turn: bound native Hermes discussion when enabled, else the restricted broker.
+
+        Provenance is recorded per device so a broker answer is never labelled as the native
+        Hermes session.
+        """
         parsed = BrokerContext.parse(context)
+        self._answer_sources[device_id] = {"kind": "workspace_status"}
         proposal = await self.native_voice_proposal(device_id, context, text)
         if proposal is not None:
             return proposal
+        manager = self.native_workspace
+        binding = manager.bindings.get(device_id) if manager is not None else None
+        if binding and not binding.get("detached") and not binding.get("parked"):
+            if manager._target(binding).discussion_enabled:
+                self.agent_broker.authorize_context(parsed)
+                try:
+                    result = await manager.discuss(device_id, text)
+                except WorkspaceError as exc:
+                    self._answer_sources[device_id] = {"kind": "native_unavailable"}
+                    return f"{exc}. No answer came from your Hermes session."
+                await self.agent_broker.assert_current(device_id, parsed.session_generation)
+                self._answer_sources[device_id] = dict(result["source"])
+                return str(result["text"])
+        self._answer_sources[device_id] = {
+            "kind": "restricted_broker",
+            "label": "Restricted roadmap reader — not your Hermes session",
+        }
         async with self.agent_broker.project_conversation(device_id, parsed) as lease:
             explicit = _has_explicit_private_intent(text, "read_project_roadmap")
             followup = bool(lease.selected_project_id) and re.fullmatch(
@@ -2525,7 +2623,8 @@ class Bridge(NativeWorkspaceRoutes):
             # Recheck after task cleanup; no await occurs between this check and
             # constructing the response handed to the authenticated client.
             await self.agent_broker.assert_current(device_id, parsed_generation)
-            return web.json_response({"text": answer}, headers={"Cache-Control": "no-store"})
+            source = self._answer_sources.pop(device_id, {"kind": "restricted_broker"})
+            return web.json_response({"text": answer, "source": source}, headers={"Cache-Control": "no-store"})
         except BrokerValidationError as exc:
             raise web.HTTPForbidden(text=str(exc)) from exc
         except BrokerUnavailableError as exc:
@@ -2754,6 +2853,155 @@ class Bridge(NativeWorkspaceRoutes):
     async def broker_run_cancel(self, request: web.Request) -> web.Response:
         return await self._run_request(request, "cancel")
 
+    def _everyday_key(self) -> str:
+        if self.everyday_llm is None:
+            return ""
+        return self.everyday_llm.api_key(lambda name: _resolve_secret(name, self.profile))
+
+    async def everyday_answer(
+        self,
+        text: str,
+        *,
+        device_id: str,
+        session_key: str,
+        language: str = "",
+        context: str = "",
+        is_current: Callable[[], bool] = lambda: True,
+    ) -> dict[str, object]:
+        """One Everyday text turn (Pipeline and GPT-Live): fast model plus Everyday tools only."""
+        if self.http is None:
+            raise BrokerUnavailableError("Bridge HTTP client is not ready")
+        if self.everyday_llm is None:
+            raise BrokerUnavailableError(self.everyday_error or "Everyday is not configured on the Hermes host")
+        if self.kids_session_live():
+            raise BrokerValidationError("kids_mode_active")
+        request = text if not context else (
+            f"Earlier conversation (context only, may be incomplete):\n{context}\n\nCurrent request:\n{text}"
+        )
+        return await self.everyday.answer(
+            request,
+            http=self.http,
+            provider=self.everyday_llm,
+            key=self._everyday_key(),
+            device_id=device_id,
+            generation=session_generation(session_key),
+            language=language,
+            kids_live=self.kids_session_live,
+            is_current=is_current,
+        )
+
+    async def everyday_turn(self, request: web.Request) -> web.Response:
+        self.require_auth(request)
+        device_id = _device_id(request)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict) or "text" not in payload or set(payload) - {
+                "text", "language", "session_id",
+            }:
+                raise BrokerValidationError("Everyday turn must contain text, language and session_id only")
+            text = str(payload.get("text") or "").strip()
+            if not text or len(text) > 2_000:
+                raise BrokerValidationError("text must be 1-2000 characters")
+            result = await self.everyday_answer(
+                text,
+                device_id=device_id,
+                session_key=f"{device_id}:{str(payload.get('session_id') or '')[:96]}",
+                language=str(payload.get("language") or "")[:12],
+            )
+        except BrokerValidationError as exc:
+            raise web.HTTPForbidden(text=str(exc)) from exc
+        except BrokerUnavailableError as exc:
+            raise web.HTTPServiceUnavailable(text=str(exc)) from exc
+        except TimeoutError as exc:
+            raise web.HTTPGatewayTimeout(text="Everyday did not answer in time; nothing is confirmed") from exc
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            _LOGGER.warning("Everyday provider returned an invalid payload (%s)", type(exc).__name__)
+            raise web.HTTPBadGateway(text="Everyday provider returned an invalid response") from exc
+        return web.json_response(result, headers={"Cache-Control": "no-store"})
+
+    async def everyday_capabilities(self, request: web.Request) -> web.Response:
+        """Public-safe disclosure: provider/model names and device labels, never keys or coordinates."""
+        self.require_auth(request)
+        llm = self.everyday_llm
+        key_ready = bool(self._everyday_key())
+        return web.json_response(
+            {
+                "available": llm is not None and key_ready,
+                "error": "" if llm is not None and key_ready else (
+                    self.everyday_error or "The Everyday text provider key is not configured on the Hermes host"
+                ),
+                "text_provider": None if llm is None else {
+                    "name": llm.name, "label": llm.label, "region": llm.region, "model": llm.model("everyday"),
+                },
+                "weather": self.everyday.weather_disclosure(),
+                "devices": self.everyday.public_names(),
+                "time_source": "hermes_host_clock",
+                "voice": {
+                    "openai_key_configured": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
+                    "realtime_models": ["gpt-realtime-2.1", "gpt-realtime-2.1-mini"],
+                    "live_models": ["gpt-live-1"],
+                    "provider": "OpenAI (direct from the Hermes host)",
+                },
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def live(self, request: web.Request) -> web.StreamResponse:
+        """GPT-Live preview relay. Everyday delegations use the Everyday backend; Workspace uses the
+        same bounded Workspace answer as Realtime. Never full Hermes, camera or movement."""
+        self.require_auth(request)
+        device_id = _device_id(request)
+        key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        if not key:
+            raise web.HTTPServiceUnavailable(text="OPENAI_API_KEY is not configured on the Hermes host")
+        session_key = f"{device_id}:live:{secrets.token_hex(8)}"
+
+        def workspace_context(config: dict[str, Any]) -> dict[str, Any] | None:
+            context = config.get("agent_context")
+            if (config.get("assistant_mode") == "workspace" and isinstance(context, dict)
+                    and context.get("capability_profile") == "agent"):
+                return context
+            return None
+
+        async def allowed(config: dict[str, Any]) -> bool:
+            if self.kids_session_live():
+                return False
+            context = workspace_context(config)
+            if context is None:
+                return True
+            try:
+                await self.agent_broker.assert_current(device_id, int(context.get("session_generation") or 0))
+            except BrokerValidationError:
+                return False
+            return True
+
+        def answer(config: dict[str, Any]) -> Callable[[str, str], Awaitable[str]]:
+            context = workspace_context(config)
+            language = str(config.get("language") or "")[:12]
+
+            async def everyday(text: str, earlier: str) -> str:
+                result = await self.everyday_answer(
+                    text, device_id=device_id, session_key=session_key, language=language, context=earlier,
+                )
+                return str(result["text"])
+
+            async def workspace(text: str, earlier: str) -> str:
+                assert context is not None
+                request_id = new_request_id()
+                parsed = await self.agent_broker.register_request(device_id, context, request_id)
+                try:
+                    self.agent_broker.authorize_context(parsed)
+                    return await asyncio.wait_for(
+                        self._agent_answer(text, context=context, device_id=device_id),
+                        timeout=self._agent_ask_timeout_seconds,
+                    )
+                finally:
+                    await self.agent_broker.unregister_request(device_id, parsed.session_generation, request_id)
+
+            return everyday if context is None else workspace
+
+        return await serve_live(request, key=key, answer=answer, allowed=allowed)
+
     async def realtime(self, request: web.Request) -> web.StreamResponse:
         """Proxy a private Reachy audio session to OpenAI Realtime.
 
@@ -2802,6 +3050,16 @@ class Bridge(NativeWorkspaceRoutes):
         if not isinstance(agent_context, dict):
             agent_context = {}
         agent_request_id = str(config.get("agent_request_id") or "")
+        eagerness = str(config.get("semantic_eagerness") or "auto")
+        if eagerness not in {"auto", "low", "medium", "high"}:
+            eagerness = "auto"
+        # Robots that predate assistant modes send none and keep the legacy routing unchanged.
+        assistant_mode = config.get("assistant_mode")
+        if assistant_mode == "workspace" and agent_context.get("capability_profile") != "agent":
+            assistant_mode = "everyday"  # Workspace authority comes only from the adult Agent profile
+        everyday = assistant_mode == "everyday"
+        if everyday:
+            agent_tools_enabled = False  # no ask_hermes, memory or project tools in Everyday
         agent_tool_name, agent_label = self._agent_identity(agent_model)
         realtime_tools = _build_realtime_tools(
             camera_enabled,
@@ -2811,6 +3069,9 @@ class Bridge(NativeWorkspaceRoutes):
             agent_tool_name=agent_tool_name,
             agent_label=agent_label,
         )
+        if everyday:
+            realtime_tools = realtime_tool_specs() + realtime_tools
+            agent_label = "Homebody"
         camera_instruction = (
             "The camera is still-image-only. When the user explicitly asks you to look, see, read, identify, "
             "inspect, or answer from Reachy's current view, call capture_reachy_camera before answering and "
@@ -2838,7 +3099,7 @@ class Bridge(NativeWorkspaceRoutes):
             if power_tools_enabled
             else "Power and privacy tools are unavailable in this session. "
         )
-        agent_instruction = (
+        agent_instruction = EVERYDAY_INSTRUCTIONS + " " if everyday else (
             (
                 "You may answer simple social conversation directly. For personal memory, current information, Home "
                 "Assistant, files, devices, or any consequential action, "
@@ -2886,6 +3147,7 @@ class Bridge(NativeWorkspaceRoutes):
                                         "format": {"type": "audio/pcm", "rate": 24000},
                                         "turn_detection": {
                                             "type": "semantic_vad",
+                                            "eagerness": eagerness,
                                             "create_response": True,
                                             "interrupt_response": True,
                                         },
@@ -3024,6 +3286,29 @@ class Bridge(NativeWorkspaceRoutes):
                                 await client.send_json({"type": "bridge.error", "error": failure})
                             await upstream.close()
 
+                    everyday_budget = [TurnBudget()]
+                    everyday_generation = session_generation(f"{device_id}:{session_id}")
+
+                    async def run_everyday_call(
+                        call_id: str, name: str, arguments: dict[str, Any], response_generation: int,
+                    ) -> None:
+                        if self.http is None:
+                            result: dict[str, object] = {"ok": False, "error": "Bridge is not ready"}
+                        else:
+                            result = await self.everyday.call(
+                                name, arguments, self.http, device_id=device_id, generation=everyday_generation,
+                                budget=everyday_budget[0], call_id=call_id, kids_live=self.kids_session_live,
+                                is_current=lambda: not client.closed,
+                            )
+                        if client.closed:
+                            return  # Stop/privacy closed the robot socket: never revive the reply
+                        await send_upstream_json({
+                            "type": "conversation.item.create",
+                            "item": {"type": "function_call_output", "call_id": call_id,
+                                     "output": json.dumps(result)[:2_000]},
+                        })
+                        await lifecycle.request_create(response_generation)
+
                     async def openai_to_client() -> None:
                         async for message in upstream:
                             if message.type != web.WSMsgType.TEXT:
@@ -3032,6 +3317,15 @@ class Bridge(NativeWorkspaceRoutes):
                                 continue
                             event = json.loads(message.data)
                             await lifecycle.observe(event)
+                            if everyday:
+                                if event.get("type") == "input_audio_buffer.committed":
+                                    everyday_budget[0] = TurnBudget()  # one budget per user request
+                                everyday_call = _completed_everyday_call(str(event.get("type") or ""), event)
+                                if everyday_call is not None and everyday_call[0] not in handled_hermes_call_ids:
+                                    handled_hermes_call_ids.add(everyday_call[0])
+                                    task = asyncio.create_task(run_everyday_call(*everyday_call, lifecycle.generation))
+                                    tool_tasks.add(task)
+                                    task.add_done_callback(tool_tasks.discard)
                             hermes_call = _completed_hermes_call(str(event.get("type") or ""), event)
                             if (
                                 agent_tools_enabled
@@ -3367,6 +3661,9 @@ def create_app(
     app.router.add_get("/v1/models", bridge.models)
     app.router.add_get("/v1/voice-options", bridge.voice_options)
     app.router.add_get("/v1/realtime", bridge.realtime)
+    app.router.add_get("/v1/live", bridge.live)
+    app.router.add_post("/v1/everyday/turn", bridge.everyday_turn)
+    app.router.add_get("/v1/everyday/capabilities", bridge.everyday_capabilities)
     app.router.add_get("/v1/agent/capabilities", bridge.broker_capabilities)
     app.router.add_post("/v1/agent/session", bridge.broker_session)
     app.router.add_post("/v1/agent/activity", bridge.broker_activity)
