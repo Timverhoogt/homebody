@@ -1,0 +1,11 @@
+# ChatGPT-subscription Everyday reasoning
+
+Use `REACHY_EVERYDAY_PROVIDER=openai-codex` with an explicit `REACHY_EVERYDAY_MODEL` supported by the owner's subscription. This uses the installed Hermes provider router and Codex Responses adapter; it is not the API-key-backed OpenAI provider and has no paid text-API fallback. Authentication/quota/provider failures are explicit.
+
+Launch the host bridge through `companion/subscription_bridge_entry.py` with `HOMEBODY_HERMES_SOURCE` pointing to the trusted installed Hermes checkout. That entry bootstraps the managed runtime before importing the server. Do not import the current Hermes SDK into a running bridge on an older interpreter: the SDK can request a runtime re-exec. An unbootstrapped subscription adapter fails closed.
+
+Credentials remain in the owner's Hermes credential store. No OAuth tokens, API credentials, repository contexts or personal memories are copied to Reachy or the dashboard. The direct inference adapter receives only the narrow Everyday prompt, its current request and five approved home-tool schemas. Tool execution still goes through the existing validation, allowlists, verification, at-most-once budget and Kids/generation gates. It does not instantiate a full Hermes agent or grant filesystem/shell tools.
+
+The host configuration, not Reachy's voice-engine dropdown, chooses this backend. The dashboard displays `ChatGPT subscription` and its actual model through existing capability disclosure. OpenAI Realtime/GPT-Live speech remains separately API-billed. Kids routing and native Workspace target registration are not changed by this Everyday switch.
+
+For a host-only deployment, back up the installed bridge modules and host environment/drop-ins, deploy the two provider modules and subscription entry, change only the Everyday provider/model and entry point, reload/restart the host service, and independently read back effective configuration and authenticated capabilities. Test a harmless explanation and real read-only clock/weather tools without speech or motion. Retain rollback files and verify the robot's selected speech engine and physical state are unchanged. This does not require replacing the Android APK or restarting the robot app.

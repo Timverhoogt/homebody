@@ -2928,10 +2928,16 @@ class Bridge(NativeWorkspaceRoutes):
             {
                 "available": llm is not None and key_ready,
                 "error": "" if llm is not None and key_ready else (
-                    self.everyday_error or "The Everyday text provider key is not configured on the Hermes host"
+                    self.everyday_error or (
+                        "ChatGPT subscription authentication unavailable; no paid text API fallback"
+                        if llm is not None and llm.name == "openai-codex"
+                        else "The Everyday text provider key is not configured on the Hermes host"
+                    )
                 ),
                 "text_provider": None if llm is None else {
                     "name": llm.name, "label": llm.label, "region": llm.region, "model": llm.model("everyday"),
+                    "billing": "subscription" if llm.name == "openai-codex" else "api",
+                    "paid_text_api_fallback": False,
                 },
                 "weather": self.everyday.weather_disclosure(),
                 "devices": self.everyday.public_names(),

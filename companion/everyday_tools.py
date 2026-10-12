@@ -550,6 +550,10 @@ class EverydayTools:
     ) -> dict[str, object]:
         """One bounded tool-calling text turn on the fast Everyday model."""
         if not key:
+            if provider.name == "openai-codex":
+                raise BrokerUnavailableError(
+                    "ChatGPT subscription authentication unavailable; no paid text API fallback"
+                )
             raise BrokerUnavailableError("The Everyday text provider key is not configured on the Hermes host")
         system = EVERYDAY_INSTRUCTIONS + (f" Reply in the language with code '{language[:12]}'." if language else "")
         messages: list[dict[str, Any]] = [
@@ -561,7 +565,10 @@ class EverydayTools:
         tools = chat_tool_specs()
 
         async def run() -> str:
+            deadline = asyncio.get_running_loop().time() + timeout_seconds
             for round_index in range(_MAX_TOOL_ROUNDS + 1):
+                if not is_current() or kids_live():
+                    raise BrokerValidationError("stale_session")
                 body = provider.request({
                     "model": provider.model("everyday"),
                     "messages": messages,
@@ -569,11 +576,17 @@ class EverydayTools:
                     "store": False,
                     **({"tools": tools, "tool_choice": "auto"} if round_index < _MAX_TOOL_ROUNDS else {}),
                 })
-                async with http.post(provider.chat_url, headers={"Authorization": f"Bearer {key}"}, json=body,
-                                     allow_redirects=False) as response:
-                    payload = await response.json(content_type=None)
-                    if response.status != 200 or not isinstance(payload, dict):
-                        raise BrokerUnavailableError(f"Everyday text provider returned HTTP {response.status}")
+                if provider.name == "openai-codex":
+                    remaining = max(0.1, deadline - asyncio.get_running_loop().time())
+                    payload = await provider.complete(body, timeout_seconds=remaining)
+                else:
+                    async with http.post(provider.chat_url, headers={"Authorization": f"Bearer {key}"}, json=body,
+                                         allow_redirects=False) as response:
+                        payload = await response.json(content_type=None)
+                        if response.status != 200 or not isinstance(payload, dict):
+                            raise BrokerUnavailableError(f"Everyday text provider returned HTTP {response.status}")
+                if not is_current() or kids_live():
+                    raise BrokerValidationError("stale_session")
                 message = payload["choices"][0]["message"]
                 calls = message.get("tool_calls") or []
                 if not calls:
