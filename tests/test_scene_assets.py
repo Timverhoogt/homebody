@@ -126,7 +126,10 @@ def test_one_component_backs_every_mount_and_owner_loss_resets_it() -> None:
 def test_built_wheel_carries_the_current_scene_assets() -> None:
     import zipfile
 
-    wheels = sorted((ROOT / "dist").glob("reachy_mini_homebody-*.whl"))
+    from homebody import __version__
+
+    # Lexicographic ordering puts 0.5.9 after 0.5.10; verify this tree's exact version.
+    wheels = sorted((ROOT / "dist").glob(f"reachy_mini_homebody-{__version__}-*.whl"))
     if not wheels:
         pytest.skip("no wheel has been built in dist/")
     with zipfile.ZipFile(wheels[-1]) as wheel:

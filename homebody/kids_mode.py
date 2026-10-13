@@ -35,14 +35,37 @@ _ACTIVITY_INSTRUCTIONS = {
     ),
 }
 
-_WAKE_HINT = "Say Hey Homebody, Hey Hermes, Okay Nabu, or Hey Reachy"
+# Fixed, deterministic copy per selected language. Start opens the microphone right after the
+# greeting, so each greeting ends with a question the child can answer immediately.
 _ACTIVITY_GREETINGS = {
-    "buddy": f"Kids Mode is ready. {_WAKE_HINT}, then tell me what you would like to talk about.",
-    "story": f"Story time is ready. {_WAKE_HINT}, then choose a character or a place for our story.",
-    "quiz": f"Quiz time is ready. {_WAKE_HINT}, then tell me your favorite subject.",
-    "riddles": f"Riddle time is ready. {_WAKE_HINT} when you want your first riddle.",
-    "calm": f"Calm time is ready. Sit comfortably, then {_WAKE_HINT.lower()} when you want to begin.",
-    "ispy": "I Spy is ready. I will briefly look only for a safe household object, then the camera turns off.",
+    "en": {
+        "buddy": "Kids Mode is ready. What would you like to talk about?",
+        "story": "Story time is ready. Who should our story be about?",
+        "quiz": "Quiz time is ready. What is your favourite subject?",
+        "riddles": "Riddle time is ready. Shall I tell you the first riddle?",
+        "calm": "Calm time is ready. Sit comfortably. Are you ready to begin?",
+        "ispy": "I Spy is ready. I will briefly look only for a safe household object, then the camera turns off.",
+    },
+    "nl": {
+        "buddy": "Kindermodus staat klaar. Waar wil je over praten?",
+        "story": "Verhaaltijd staat klaar. Over wie zal ons verhaal gaan?",
+        "quiz": "Quiztijd staat klaar. Wat is je lievelingsvak?",
+        "riddles": "Raadseltijd staat klaar. Zal ik het eerste raadsel vertellen?",
+        "calm": "Rusttijd staat klaar. Ga lekker zitten. Ben je klaar om te beginnen?",
+        "ispy": (
+            "Ik zie, ik zie staat klaar. Ik kijk heel even rond naar een veilig voorwerp, "
+            "daarna gaat de camera uit."
+        ),
+    },
+}
+_GREETING_PREFIX = {"en": "Hi {name}. ", "nl": "Hoi {name}. "}
+_FIXED_MESSAGES = {
+    "en": {
+        "five_minutes": "Five minutes left in Kids Mode. Let's finish this activity soon.",
+    },
+    "nl": {
+        "five_minutes": "Nog vijf minuten in de kindermodus. Laten we deze activiteit bijna afronden.",
+    },
 }
 
 
@@ -89,10 +112,15 @@ class KidsProfile:
 
 def kids_greeting(profile: KidsProfile) -> str:
     """Return deterministic TTS copy; no model or private tool is involved."""
-    greeting = _ACTIVITY_GREETINGS[profile.activity]
+    greeting = _ACTIVITY_GREETINGS[profile.language][profile.activity]
     if profile.nickname:
-        return f"Hi {profile.nickname}. {greeting}"
+        return _GREETING_PREFIX[profile.language].format(name=profile.nickname) + greeting
     return greeting
+
+
+def kids_message(language: str, key: str) -> str:
+    """Return short fixed Kids copy in the selected language without a model call."""
+    return _FIXED_MESSAGES["nl" if language == "nl" else "en"][key]
 
 
 def build_kids_prompt(profile: KidsProfile) -> str:

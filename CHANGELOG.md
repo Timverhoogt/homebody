@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.10] - Candidate (not released or deployed)
+
+### Fixed
+- Localize deterministic Kids introductions, warnings and safety/fallback replies in the selected English or Dutch; open the first listening turn after the introduction without a wake phrase.
+- Bind automatic first-listen admission to an immutable cancellation receipt and the exact child session, checked before motor admission. Stop, End, privacy, expiry and replacement invalidate delayed starts.
+- Retry empty Kids speech up to twice without demanding another wake phrase; preserve bounded inactivity and adult behaviour.
+- Pass the selected Kids language to local Whisper and reuse its cached model through an owner-private, hard-time-bounded local worker. Keep input/output moderation, exact speech approvals and local-only STT; synthetic timings are not physical child-speech acceptance.
+- End I Spy rounds after three meaningful guesses, handle English/Dutch give-up and hint requests, and avoid repeating approved hints.
+- Align family instructions with first-turn listening and advance the PWA shell to v88. Host bridge/STT source must be updated separately; installing a robot wheel alone does not change a running host bridge.
+
 ## [0.5.9] - 2026-10-13
 
 ### Fixed

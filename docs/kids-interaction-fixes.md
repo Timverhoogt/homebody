@@ -1,0 +1,42 @@
+# Kids interaction fixes (language, first turn, latency, I Spy rounds)
+
+## Root causes and changes
+
+1. **English start-up copy for Dutch sessions.** `kids_greeting` only had English text, and so did the five-minute warning and the bridge safety/fallback replies. Greetings and short fixed messages now come from fixed English/Dutch tables (`homebody/kids_mode.py`), with no model call. Greetings end with a question the child can answer straight away; they no longer list the wake phrases. The nickname is still only used in the spoken greeting and never appears in public status.
+2. **The first answer needed a wake word.** Start queued a `wake_and_stay` announcement, which changes power state but never opens the microphone. Now a Start announcement carries its session id. Only when that announcement has **played to the end**, while the same session is still active, does the worker arm a single-use ticket `(session, Kids generation, Start's cancellation receipt, 10 s deadline)`. **Cancellation receipt:** `_request_conversation_stop()` returns the stop generation it set, read under the same lock as the increment. Start calls it inside its own admission locks (motor → Kids → stop generation), before any unlocked callback such as the bridge session notification, and keeps that receipt as its fixed baseline. It never re-reads the counter later, so a Stop that completes at any point after Start's cancellation (even one racing a still-pending Start) leaves the baseline stale. A receipt that isn't a valid integer fails closed with `-1`. Any later Stop, End, Standby or privacy request bumps the stop generation, so the ticket stops being valid. The wake loop checks the ticket when it takes it. It then checks again **while holding the motor lock, before any motor admission**, and does the turn-acceptance step (`_admit_kids_first_listen`) under the Kids lock and stop-generation lock (lock order motor → Kids → stop generation). That second check is in the same critical section that clears the cancellation flag, so a Stop/End that completes after the ticket was taken still wins: no listening, and End's fold/torque release is never undone. If End starts after admission, it folds after this wake. End, replacement, expiry, privacy/Meeting/Sleep, a failed announcement or shutdown either stops the ticket from being armed or makes it invalid. Manual wakes and new Parent Starts are unaffected. The listening earcon and audio discard run after the greeting has been flushed, so the robot does not hear its own greeting. Camera consent, motion and tool policy are unchanged.
+3. **Thinking delay.** The local STT command loaded Whisper for every turn and always auto-detected the language, which costs an extra 30-second encoder pass. Changes:
+   - Kids uploads now send `kids=1`. The bridge then renames the temp file `homebody-stt-<profile language>-*`, and the command passes that language to Whisper. Adult uploads keep their old name, so auto-detection still applies to them.
+   - The command reuses the model through one worker per user, which handles one request at a time.
+     - **Endpoint trust:** the client checks the directory first (real directory, owned by this user, mode 0700, not a symlink) and then the socket (real socket, owned by this user, no group/other access). This happens before any connection, any disclosure of the audio path, any spawn or any decode, including on the warm fast path. Untrusted endpoints are refused with `UntrustedEndpointError`, so the command fails closed.
+     - **Startup:** the worker publishes its socket atomically (bind and listen on a staging name, then rename). Only one worker can hold the lock.
+     - **Hard bounds:** in worker-process mode, a SIGALRM with its default action limits model load (60 s), each decode (60 s) and idle time (300 s), each plus 5 s grace. The kernel delivers it, so it also ends a load or decode that is stuck inside a C extension holding the GIL. A decode that misses its deadline also ends serving. The command process sets the same kind of alarm around all of its own work and cancels it, restoring the previous handler, when it returns.
+     - **Client side:** a worker this client started that is not ready within 30 s is killed and reaped. While another worker holds the lock, the client never starts a second (fallback) load. It decodes in-process only when no worker can run at all.
+     - `--no-worker` or `HOMEBODY_STT_WORKER=0` gives the bounded one-shot behaviour.
+   - Beam size stays at 5 (greedy decoding gave no measurable speed-up). VAD and the silence-hallucination AND gate are unchanged, and there is no cloud fallback.
+   - In a Kids conversation, silence or an empty transcript now re-opens listening up to **2** times in a row (each attempt still limited by the endpoint timeout) instead of going back to the wake word. Every retry re-checks session, End, privacy and power state. Adult behaviour is unchanged.
+4. **I Spy never ended.** The reveal only came after 6 guesses, there were at most 3 hints (turns 4–5 repeated the last one), and "ik weet het niet" counted as a guess or as "no". New rules in the bridge:
+   - A round allows **3** meaningful guesses.
+   - Hints never repeat: first the approved target hints, then a fixed colour reminder. Hints that differ only in case, whitespace or punctuation, including one that duplicates the colour reminder, are given only once. When the de-duplicated hints run out, a hint request reveals the answer and a wrong guess says "Not quite" until the guess limit.
+   - Give-up phrases ("I don't know", "ik weet het niet", "geen idee", "ik geef het op", …) reveal the answer immediately.
+   - Hint requests ("hint", "mag ik een hint", "nog een tip", "help") give the next hint without using up a guess. When the hints run out, the answer is revealed.
+   - When the robot guesses, it gives up after 3 wrong guesses (was 6). A give-up, or any non-answer intent in the reveal phase, ends the round **without** starting a camera search; only a later ordinary answer such as "play again" does.
+   - Intents only match when the whole utterance (ignoring filler words) is one of the phrases, so a guess that contains these words stays a guess. Input and output moderation, exact-text single-use speech approvals and the target safety filter are unchanged.
+
+## Measured evidence (synthetic audio only)
+
+`tools/kids_stt_benchmark.py` was run on generated, non-child `english.wav` (3.2 s) and `dutch.wav` (3.6 s) with faster-whisper `base` int8, CPU, 2 threads, offline. Each figure is the wall time for one command process per turn. The final run was against the hardened worker.
+
+| Approach | Model cold start | Warm | Transcripts |
+|---|---|---|---|
+| Original command (loads the model on every call, auto-detect) | every call: 6.10 / 6.14 s (en / nl) | repeat median 6.39 s | both exact |
+| Revised one-shot (language hint, loads every call) | every call: 3.75 / 3.96 s | — | both exact |
+| Revised with model worker | 3.66 s, once (first request: spawn + load) | median 2.58 s; first Dutch request after English 2.54 s | both exact |
+
+The worker summary separates the single real model cold start from warm requests. The first request in the second language reuses the model that is already loaded, so it is warm, not cold. No worker was left running after the benchmark. In-process profile: model load 0.75–0.83 s, auto-detect transcribe 4.5–4.9 s, transcribe with the language set 2.3–2.9 s. Beam 1 and beam 5 differ by less than 0.2 s, and VAD on/off makes no meaningful difference. Transcripts: "The yellow ball is next to the red chair." / "De gele bal ligt naast de rode stoel."
+
+## Limits / still to verify on the device
+
+- The language hint relies on Hermes passing the bridge's temp path to the command unchanged (`{input_path}`). The parent verified this independently: the filename was preserved through the real installed Hermes preprocessing and `_transcribe_local_command` on synthetic Dutch, and the transcript was exact.
+- The remaining ~2.4 s is Whisper's fixed 30-second-window encoder pass on 2 CPU threads. The benchmark runs on the same VM as the Hermes bridge.
+- These timings are for STT only. Moderation, the model reply and the streaming-TTS time to first audio were not measured here.
+- Physical acceptance (microphone pickup right after the greeting, real child speech, the full I Spy game) needs a supervised session with the user. Accuracy on real microphone audio or real child speech has not been shown.

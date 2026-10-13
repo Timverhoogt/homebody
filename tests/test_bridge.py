@@ -277,17 +277,17 @@ def test_ispy_bridge_policy_and_reply_state_are_deterministic() -> None:
         "hints_nl": ["Je kunt erop zitten", "Het heeft poten"],
     }
     target = bridge._validate_bridge_ispy_target(candidate, frame_count=5)
-    answer, count, complete = bridge._ispy_reply(
+    answer, count, _hints, complete = bridge._ispy_reply(
         target, language="en", matched=False, previous_count=0
     )
-    assert answer == "Nice guess. Here is a hint: You can sit on it"
+    assert answer == "Nice guess, but not yet. New hint: You can sit on it. You have 2 guesses left."
     assert (count, complete) == (1, False)
-    answer, count, complete = bridge._ispy_reply(
-        target, language="nl", matched=False, previous_count=5
+    answer, count, _hints, complete = bridge._ispy_reply(
+        target, language="nl", matched=False, previous_count=2
     )
     assert answer == "Goed geprobeerd! Het was de chair."
-    assert (count, complete) == (6, True)
-    answer, count, complete = bridge._ispy_reply(
+    assert (count, complete) == (3, True)
+    answer, count, _hints, complete = bridge._ispy_reply(
         target, language="en", matched=True, previous_count=1
     )
     assert answer == "Yes! It was the chair."

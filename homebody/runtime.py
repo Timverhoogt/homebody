@@ -278,11 +278,16 @@ class HermesVoiceRuntime(
             self._require_speaker_access(agent=agent)
             return self._speaker.set(volume=volume, muted=muted)
 
-    def _request_conversation_stop(self) -> None:
-        """Stop the current voice turn; only a newly accepted wake may start another."""
+    def _request_conversation_stop(self) -> int:
+        """Stop the current voice turn; only a newly accepted wake may start another.
+
+        Returns the stop generation this call set, read under the same lock as the increment,
+        so a caller gets an immutable receipt that no later Stop can be mistaken for.
+        """
         with self._conversation_stop_generation_lock:
             self._conversation_stop_generation += 1
             self._conversation_stop_requested.set()
+            return self._conversation_stop_generation
 
     def _accept_wake_turn(self) -> None:
         """Begin a new wake-started turn that earlier stop requests no longer cancel."""
@@ -669,32 +674,38 @@ class HermesVoiceRuntime(
             detail = "Local wake detection only" if mode == "standby" else _WAKE_PROMPT
             self._expire_turn_error()
             self._set_status("waiting_for_wake_word", detail)
-            frame = self._read_16k_frame()
-            if frame is None:
-                continue
-            if config.doa_enabled:
-                try:
-                    self._sample_doa()
-                except Exception:
-                    _LOGGER.debug("Could not sample local wake DOA", exc_info=True)
-            rms = float(np.sqrt(np.mean(np.square(frame), dtype=np.float64)))
-            peak = float(np.max(np.abs(frame))) if frame.size else 0.0
-            with self._status_lock:
-                self._status.audio_rms = rms
-                self._status.audio_peak = peak
-                self._status.audio_frames_processed += 1
-            self._noise.update(frame)
-            keyword = self._spotter.accept(frame, 16000)
-            if not keyword and self._take_button_wake():
-                keyword = "button"
+            # A parent's Kids Start opens the first turn once its greeting has finished playing.
+            first_listen = (
+                self._take_kids_first_listen(config.kids_session_id) if config.kids_mode_enabled else None
+            )
+            keyword = "kids_start" if first_listen is not None else ""
             if not keyword:
-                continue
+                frame = self._read_16k_frame()
+                if frame is None:
+                    continue
+                if config.doa_enabled:
+                    try:
+                        self._sample_doa()
+                    except Exception:
+                        _LOGGER.debug("Could not sample local wake DOA", exc_info=True)
+                rms = float(np.sqrt(np.mean(np.square(frame), dtype=np.float64)))
+                peak = float(np.max(np.abs(frame))) if frame.size else 0.0
+                with self._status_lock:
+                    self._status.audio_rms = rms
+                    self._status.audio_peak = peak
+                    self._status.audio_frames_processed += 1
+                self._noise.update(frame)
+                keyword = self._spotter.accept(frame, 16000)
+                if not keyword and self._take_button_wake():
+                    keyword = "button"
+                if not keyword:
+                    continue
             if self._presentation_window_active():
                 self._spotter.reset()
                 continue
             now = time.monotonic()
-            # The cooldown filters repeated spoken detections; a button press is deliberate.
-            if keyword != "button" and now - self._last_wake_at < config.wake_cooldown_seconds:
+            # The cooldown filters repeated spoken detections; a button press or Start is deliberate.
+            if keyword not in {"button", "kids_start"} and now - self._last_wake_at < config.wake_cooldown_seconds:
                 continue
             self._last_wake_at = now
             _LOGGER.info("Wake word detected: %s", keyword)
@@ -707,7 +718,13 @@ class HermesVoiceRuntime(
             with self._motor_transition_lock:
                 if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
                     continue
-                self._accept_wake_turn()
+                if first_listen is not None:
+                    # Automatic Start never overrides a Stop/End that happened after consumption.
+                    if not self._admit_kids_first_listen(first_listen):
+                        _LOGGER.info("Discarding stale Kids first-listen after Stop/End")
+                        continue
+                else:
+                    self._accept_wake_turn()
                 try:
                     self._set_motor_mode(True, wake=True)
                 except RuntimeError as exc:

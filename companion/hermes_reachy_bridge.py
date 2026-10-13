@@ -514,23 +514,105 @@ def _validate_bridge_ispy_target(payload: object, *, frame_count: int) -> dict[s
     }
 
 
+_ISPY_MAX_GUESSES = 3
+_ISPY_FILLER_WORDS = frozenset({
+    "um", "uh", "uhm", "hmm", "hm", "eh", "euh", "ehm", "well", "oh", "sorry", "please", "okay", "ok",
+    "nou", "alsjeblieft", "alstublieft", "oké", "oke", "really", "echt", "just", "gewoon",
+})
+_ISPY_GIVE_UP_PHRASES = frozenset({
+    "i dont know", "dont know", "i do not know", "i dont know what it is", "no idea", "i have no idea",
+    "i give up", "give up", "tell me", "tell me the answer", "what is it", "what was it", "im stuck",
+    "ik weet het niet", "weet ik niet", "ik weet niet", "weet niet", "ik weet het niet meer", "geen idee",
+    "ik heb geen idee", "ik geef het op", "ik geef op", "opgeven", "zeg het maar", "vertel het maar",
+    "wat is het", "wat was het",
+})
+_ISPY_HINT_PHRASES = frozenset({
+    "hint", "a hint", "give me a hint", "can i have a hint", "can i get a hint", "another hint",
+    "one more hint", "more hints", "help", "help me", "clue", "a clue", "give me a clue", "another clue",
+    "een hint", "geef me een hint", "mag ik een hint", "nog een hint", "tip", "een tip", "geef me een tip",
+    "mag ik een tip", "nog een tip", "hulp", "help mij", "aanwijzing", "een aanwijzing",
+    "nog een aanwijzing",
+})
+
+
+def _ispy_intent(text: str) -> str:
+    """Classify an explicit give-up or hint request; anything else stays an ordinary answer."""
+    cleaned = text.casefold().replace("’", "'").replace("'", "")
+    words = [word for word in re.findall(r"[\wÀ-ÿ]+", cleaned) if word not in _ISPY_FILLER_WORDS]
+    phrase = " ".join(words)
+    if phrase in _ISPY_GIVE_UP_PHRASES:
+        return "give_up"
+    if phrase in _ISPY_HINT_PHRASES:
+        return "hint"
+    return "answer"
+
+
+def _ispy_hint_ladder(target: dict[str, Any], language: str) -> list[str]:
+    """Approved hints first, then a deterministic colour reminder; never a new target."""
+    raw_hints = [str(item) for item in target.get("hints_nl" if language == "nl" else "hints_en") or []]
+    colour = str(target.get("colour") or "")
+    if colour in _ISPY_COLOUR_COPY[language]:
+        copy = _ISPY_COLOUR_COPY[language][colour]
+        raw_hints.append(f"Zoek iets dat {copy} is." if language == "nl" else f"Look for something {copy}.")
+    ladder: list[str] = []
+    seen: set[str] = set()
+    for hint in raw_hints:
+        # Case, whitespace and punctuation variants of one approved hint count once.
+        key = " ".join(re.findall(r"[\wÀ-ÿ]+", hint.casefold()))
+        if key and key not in seen:
+            seen.add(key)
+            ladder.append(hint)
+    return ladder
+
+
 def _ispy_reply(
-    target: dict[str, Any], *, language: str, matched: bool, previous_count: int
-) -> tuple[str, int, bool]:
-    """Return deterministic hint/reveal state; the model only judges synonyms."""
-    count = previous_count + 1
+    target: dict[str, Any],
+    *,
+    language: str,
+    matched: bool,
+    previous_count: int,
+    intent: str = "answer",
+    hints_given: int = 0,
+) -> tuple[str, int, int, bool]:
+    """Return deterministic (answer, guesses, hints given, complete); the model only judges synonyms.
+
+    A round allows at most three meaningful guesses. Hints never repeat; give-up reveals.
+    """
+    nl = language == "nl"
     name = str(target["object_name"])
-    if matched:
-        return (f"Ja! Het was de {name}." if language == "nl" else f"Yes! It was the {name}."), count, True
-    if count >= 6:
-        return (
-            f"Goed geprobeerd! Het was de {name}." if language == "nl" else f"Good trying! It was the {name}."
-        ), count, True
-    raw_hints = target["hints_nl"] if language == "nl" else target["hints_en"]
-    hints = [str(item) for item in raw_hints]
-    hint = hints[min(count - 1, len(hints) - 1)]
-    prefix = "Goede gok. Hier is een hint:" if language == "nl" else "Nice guess. Here is a hint:"
-    return f"{prefix} {hint}", count, False
+    if intent == "give_up":
+        return (f"Dat geeft niet! Het was de {name}." if nl else f"That's okay! It was the {name}."), \
+            previous_count, hints_given, True
+    count = previous_count
+    if intent != "hint":
+        count += 1
+        if matched:
+            return (f"Ja! Het was de {name}." if nl else f"Yes! It was the {name}."), count, hints_given, True
+        if count >= _ISPY_MAX_GUESSES:
+            return (
+                f"Goed geprobeerd! Het was de {name}." if nl else f"Good try! It was the {name}."
+            ), count, hints_given, True
+    left = _ISPY_MAX_GUESSES - count
+    tries = (
+        (f"Je mag nog {left} keer raden." if left > 1 else "Je mag nog één keer raden.") if nl
+        else (f"You have {left} guesses left." if left > 1 else "You have one guess left.")
+    )
+    ladder = _ispy_hint_ladder(target, language)
+    if hints_given >= len(ladder):
+        if intent == "hint":
+            return (
+                f"Dat waren al mijn hints. Het was de {name}." if nl
+                else f"Those were all my hints. It was the {name}."
+            ), count, hints_given, True
+        return (f"Nog niet. {tries}" if nl else f"Not quite. {tries}"), count, hints_given, False
+    hint = ladder[hints_given].rstrip()
+    if hint[-1:] not in {".", "!", "?"}:
+        hint += "."
+    if intent == "hint":
+        prefix = "Hier is een hint:" if nl else "Here is a hint:"
+    else:
+        prefix = "Goede gok, maar nog niet. Nieuwe hint:" if nl else "Nice guess, but not yet. New hint:"
+    return f"{prefix} {hint} {tries}", count, hints_given + 1, False
 
 
 def _ispy_text_unsafe(text: str) -> bool:
@@ -1628,7 +1710,10 @@ class Bridge(NativeWorkspaceRoutes):
         history = list(child_session.get("history") or [])[-8:]
 
         safety_reply = (
-            "I can't help with that. Please tell a trusted grown-up nearby now. "
+            "Daar kan ik niet mee helpen. Vertel het nu aan een volwassene die je vertrouwt. "
+            "Is iemand in direct gevaar, bel dan de hulpdiensten."
+            if language == "nl"
+            else "I can't help with that. Please tell a trusted grown-up nearby now. "
             "If someone is in immediate danger, contact your local emergency services."
         )
         if await self._moderation_flagged(text, openai_key):
@@ -1664,16 +1749,24 @@ class Bridge(NativeWorkspaceRoutes):
                 target = child_session.get("ispy_target")
                 if not isinstance(target, dict):
                     raise web.HTTPConflict(text="I Spy has no approved active target")
-                matched = await self._judge_ispy_guess(text, target, language=language, openai_key=openai_key)
-                answer, count, complete = _ispy_reply(
+                intent = _ispy_intent(text)
+                # Give-up and hint requests are game moves, never judged as guesses.
+                matched = intent == "answer" and await self._judge_ispy_guess(
+                    text, target, language=language, openai_key=openai_key
+                )
+                answer, count, hints_given, complete = _ispy_reply(
                     target,
                     language=language,
                     matched=matched,
                     previous_count=int(child_session.get("ispy_guess_count", 0)),
+                    intent=intent,
+                    hints_given=int(child_session.get("ispy_hints_given", 0)),
                 )
                 child_session["ispy_guess_count"] = count
+                child_session["ispy_hints_given"] = hints_given
                 if complete:
                     child_session.pop("ispy_target", None)
+                    child_session.pop("ispy_hints_given", None)
                     child_session.update({
                         "ispy_role": "player_picker",
                         "ispy_player_phase": "awaiting_clue",
@@ -1691,7 +1784,26 @@ class Bridge(NativeWorkspaceRoutes):
                 phase = str(child_session.get("ispy_player_phase") or "awaiting_clue")
                 clues = [str(item) for item in child_session.get("ispy_player_clues") or []][-6:]
                 guesses = [str(item) for item in child_session.get("ispy_player_guesses") or []][-6:]
-                if phase == "awaiting_clue":
+                intent = _ispy_intent(text)
+                if (
+                    intent == "give_up" and phase in {"awaiting_clue", "awaiting_confirmation", "awaiting_reveal"}
+                ) or (intent != "answer" and phase == "awaiting_reveal"):
+                    # End this player round without a reveal and without starting a camera search.
+                    child_session["ispy_role"] = "reachy_pending"
+                    child_session["ispy_player_phase"] = "complete"
+                    ispy_role = "reachy_pending"
+                    answer = (
+                        "Dat geeft niet, deze ronde is klaar. Zeg 'nog een keer' als ik weer iets mag zoeken."
+                        if language == "nl"
+                        else "That's okay, this round is finished. Say 'play again' when I may look for something."
+                    )
+                elif intent == "hint" and phase == "awaiting_clue":
+                    answer = (
+                        "Vertel me iets over jouw voorwerp, bijvoorbeeld de kleur of waar het staat."
+                        if language == "nl"
+                        else "Tell me something about your object, like its colour or where it is."
+                    )
+                elif phase == "awaiting_clue":
                     if _ispy_text_unsafe(text):
                         answer = (
                             "Kies alsjeblieft een ander, veilig voorwerp in huis en geef me een nieuwe hint."
@@ -1734,7 +1846,7 @@ class Bridge(NativeWorkspaceRoutes):
                             if language == "nl"
                             else "Yes! Good object. Now it's my turn again. I'll look around."
                         )
-                    elif confirmation == "no" and len(guesses) >= 6:
+                    elif confirmation == "no" and len(guesses) >= _ISPY_MAX_GUESSES:
                         child_session["ispy_player_phase"] = "awaiting_reveal"
                         answer = (
                             "Je hebt me verslagen! Welk voorwerp had je gekozen?"
@@ -1766,6 +1878,13 @@ class Bridge(NativeWorkspaceRoutes):
                     )
                 else:
                     raise web.HTTPConflict(text="I Spy player turn has invalid state")
+            elif ispy_role == "reachy_pending" and _ispy_intent(text) != "answer":
+                # A give-up or hint request never starts a camera search.
+                answer = (
+                    "Geen probleem. Zeg 'nog een keer' als ik weer iets mag zoeken."
+                    if language == "nl"
+                    else "No problem. Say 'play again' when I may look for something."
+                )
             elif ispy_role == "reachy_pending":
                 ispy_next_action = "prepare_robot_round"
                 answer = "Ik ga nu rondkijken." if language == "nl" else "I'll look around now."
@@ -1802,7 +1921,7 @@ class Bridge(NativeWorkspaceRoutes):
                 raise web.HTTPBadGateway(text="Kids Mode model returned invalid data") from exc
         answer = _kids_speech_friendly(answer[:_MAX_KIDS_OUTPUT_CHARACTERS])
         if not answer:
-            answer = "I don't have a spoken answer for that."
+            answer = "Daar heb ik geen antwoord op." if language == "nl" else "I don't have a spoken answer for that."
         if await self._moderation_flagged(answer, openai_key):
             answer = safety_reply
             ispy_next_action = ""
@@ -1927,6 +2046,7 @@ class Bridge(NativeWorkspaceRoutes):
             "ispy_target": target,
             "ispy_role": "reachy_picker",
             "ispy_guess_count": 0,
+            "ispy_hints_given": 0,
             "history": [],
             "updated_at": time.monotonic(),
         })
@@ -3392,7 +3512,7 @@ class Bridge(NativeWorkspaceRoutes):
                 if parts_seen > _MAX_STT_PARTS:
                     raise web.HTTPBadRequest(text="Too many form parts")
                 if part.name != "file":
-                    if part.name in {"provider", "model", "language"}:
+                    if part.name in {"provider", "model", "language", "kids"}:
                         value = await part.read_chunk(_MAX_STT_OPTION_BYTES + 1)
                         if len(value) > _MAX_STT_OPTION_BYTES:
                             raise web.HTTPBadRequest(text=f"Form field {part.name} is too long")
@@ -3414,6 +3534,15 @@ class Bridge(NativeWorkspaceRoutes):
                         output.write(chunk)
             if not temp_path:
                 raise web.HTTPBadRequest(text="Missing audio file")
+            if options.get("kids") == "1" and options.get("language") in _KIDS_LANGUAGES:
+                # Kids turns carry the parent-selected language to the local command so it can
+                # skip auto-detection; adult turns keep the unchanged name (auto-detect).
+                original = Path(temp_path)
+                hinted = original.with_name(
+                    original.name.replace("homebody-stt-", f"homebody-stt-{options['language']}-", 1)
+                )
+                os.replace(original, hinted)
+                temp_path = str(hinted)
 
             provider = options.get("provider", "configured").lower()
             if provider == "elevenlabs":

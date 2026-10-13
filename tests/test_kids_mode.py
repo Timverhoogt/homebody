@@ -58,7 +58,7 @@ def test_kids_profile_is_bounded_and_prompt_has_core_safeguards() -> None:
     assert "Camera access is disabled" in prompt
     assert "trusted grown-up" in prompt
     assert "Current activity:" in prompt
-    assert kids_greeting(profile).startswith("Hi Sam.")
+    assert kids_greeting(profile).startswith("Hoi Sam.")  # Dutch profile, Dutch greeting
 
 
 def test_ispy_requires_fresh_narrow_camera_consent() -> None:
@@ -67,7 +67,8 @@ def test_ispy_requires_fresh_narrow_camera_consent() -> None:
     profile = KidsProfile(activity="ispy", camera_consent=True, language="nl")
     assert profile.public_dict()["camera_active"] is False
     assert "camera_consent" not in profile.public_dict()
-    assert "camera turns off" in kids_greeting(profile)
+    assert "daarna gaat de camera uit" in kids_greeting(profile)
+    assert "camera turns off" in kids_greeting(replace(profile, language="en"))
 
 
 def test_locked_kids_voice_always_bypasses_home_assistant_assist(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -623,8 +624,8 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     worker = (STATIC / "service-worker.js").read_text(encoding="utf-8")
     assert "homebody-shell-v" in worker
     for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=87" in html
-        assert f'"/static/{asset}?v=87"' in worker
+        assert f"/static/{asset}?v=88" in html
+        assert f'"/static/{asset}?v=88"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

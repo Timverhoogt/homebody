@@ -24,6 +24,8 @@ _LOGGER = logging.getLogger("homebody.runtime")
 
 _MEDIA_TAG = re.compile(r"(?m)^\s*(?:\[\[audio_as_voice\]\]\s*)?MEDIA:\S+\s*$")
 _MARKDOWN = re.compile(r"[`*_#>|]+")
+# Consecutive silent/empty Kids turns that re-open the microphone before returning to wake.
+_KIDS_EMPTY_TURN_RETRIES = 2
 
 
 class PipelineVoiceMixin:
@@ -47,6 +49,28 @@ class PipelineVoiceMixin:
             return current and (
                 typed_input is None or self._ispy_typed_session_is_current(initial_config.kids_session_id)
             )
+
+        kids_misses = 0
+
+        def kids_retry_allowed() -> bool:
+            """Give a child a bounded re-listen after silence or an empty transcript."""
+            nonlocal kids_misses
+            if not initial_config.kids_mode_enabled or typed_input is not None:
+                return False
+            kids_misses += 1
+            if kids_misses > _KIDS_EMPTY_TURN_RETRIES or not conversation_is_current():
+                return False
+            if (
+                self.stop_event.is_set()
+                or self._turn_stop_requested()
+                or self._privacy_requested.is_set()
+                or self._effective_power_mode() in {"meeting", "sleep"}
+            ):
+                return False
+            _LOGGER.info("Kids turn heard nothing usable; listening again (%s/%s)", kids_misses,
+                         _KIDS_EMPTY_TURN_RETRIES)
+            self._set_status("listening", "Didn't catch that; listening again")
+            return True
 
         try:
             health = client.health()
@@ -89,6 +113,8 @@ class PipelineVoiceMixin:
                     endpoint = self._record_utterance(config)
                     self._voice_timings.mark("local_speech_end")
                     if not endpoint.speech_detected or endpoint.samples.size == 0:
+                        if kids_retry_allowed():
+                            continue
                         self._set_status("waiting_for_wake_word", "No speech detected")
                         if not config.continuous_conversation:
                             self._signal_error()
@@ -101,8 +127,11 @@ class PipelineVoiceMixin:
                     self._set_status("transcribing", "Command received; transcribing")
                     transcript = client.transcribe(encode_wav(endpoint.samples, 16000))
                     if not transcript:
+                        if kids_retry_allowed():
+                            continue
                         self._set_status("waiting_for_wake_word", "No speech detected")
                         break
+                    kids_misses = 0
                 if (
                     not conversation_is_current()
                     or self.stop_event.is_set()

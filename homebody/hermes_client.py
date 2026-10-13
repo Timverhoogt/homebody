@@ -207,14 +207,17 @@ class HermesBridgeClient:
         return payload
 
     def transcribe(self, wav_data: bytes) -> str:
+        fields = {
+            "language": self.config.language,
+            "provider": self.config.stt_provider,
+            "model": self.config.stt_model,
+        }
+        if self.config.kids_mode_enabled:
+            fields["kids"] = "1"  # The bridge may then skip local language auto-detection.
         response = self._client.post(
             f"{self.config.bridge_url}/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {self.config.api_key}"},
-            data={
-                "language": self.config.language,
-                "provider": self.config.stt_provider,
-                "model": self.config.stt_model,
-            },
+            data=fields,
             files={"file": ("utterance.wav", wav_data, "audio/wav")},
         )
         self._raise_for_error(response, "transcription")
