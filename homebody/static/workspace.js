@@ -11,6 +11,7 @@
   function controls() {
     byId("workspace-start").disabled = blocked || pending || showing;
     byId("workspace-clear").disabled = blocked || writing;
+    window.HomebodyAssistantModes?.sync();
   }
   function reset(message = "Conversation display is off.") {
     epoch += 1;
@@ -119,6 +120,7 @@
     for (const name of ["companion", "workspace"]) {
       byId(`agent-view-${name}`).setAttribute("aria-pressed", String(name === view));
     }
+    window.HomebodyAssistantModes?.sync();
     if (view === "workspace") request();
   }
   byId("agent-view-companion").addEventListener("click", () => select("companion"));
@@ -131,6 +133,8 @@
   window.HomebodyWorkspace = {
     reset,
     show: () => select("workspace"),
+    /** Display-only facts for the Workspace mode card. */
+    state: () => ({ showing, view: byId("agent-workspace-view").hidden ? "companion" : "workspace" }),
     update(runtime) {
       const nextBlocked = Boolean(runtime.kids_mode?.active || runtime.kids_mode?.locked)
         || ["meeting", "sleep"].includes(runtime.power_mode);

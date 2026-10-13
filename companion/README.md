@@ -31,7 +31,7 @@ Subscription inference does not replace Realtime/GPT-Live speech APIs, configure
 
 ## Prerequisites
 
-For a **basic restricted conversation connection**, use [agent-led setup](../docs/agent-setup.md). The robot serves a bundle matching its installed release, not necessarily current GitHub main. It does not provision subscription text/vision or native Workspace sessions. Robot release **0.5.8** bundles the PR #77/#78 host source, but the reference bridge was updated and configured separately; installing a wheel does not update a running host service. See [release status](../docs/release-status.md).
+For a **basic restricted conversation connection**, use [agent-led setup](../docs/agent-setup.md). The robot serves a bundle matching its installed release, not necessarily current GitHub main. It does not provision subscription text/vision or native Workspace sessions. Robot release **0.5.9** bundles the PR #77/#78 host source, but the reference bridge was updated and configured separately; installing a wheel does not update a running host service. See [release status](../docs/release-status.md).
 
 For subscription text/vision and native sessions, follow the explicit [subscription and native setup guide](../docs/subscription-reasoning.md) instead of assuming the direct bridge command below enables them.
 

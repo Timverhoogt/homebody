@@ -13,8 +13,8 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=86">
-  <link rel="stylesheet" href="/static/scene.css?v=86">
+  <link rel="stylesheet" href="/static/style.css?v=87">
+  <link rel="stylesheet" href="/static/scene.css?v=87">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -149,6 +149,7 @@
           <button type="button" id="agent-conversation-button" aria-pressed="true"><strong>Everyday</strong><small>Fast answers, home and weather</small></button>
           <button type="button" id="agent-enable-button" aria-pressed="false"><strong>Workspace</strong><small>Your selected project session</small></button>
         </div>
+        <p id="assistant-mode-state" class="assistant-mode-state" role="status" aria-live="polite"><span class="label">Current mode</span> <strong id="assistant-mode-current">Checking…</strong> <span id="assistant-mode-detail" class="muted">Waiting for Reachy to confirm.</span></p>
         <p id="assistant-mode-help" class="muted compact-note">Everyday never uses your Hermes memory, projects or coding tools. Workspace is entered only here and may take longer.</p>
         <p id="assistant-mode-notice" class="message warning-note" role="status" hidden>Voice routing changed: ordinary questions now use Everyday (fast, no Hermes memory or projects). Choose Workspace for project work. <button type="button" id="assistant-mode-notice-ack" class="secondary">Got it</button></p>
         <div class="agent-mode-bar" aria-label="Stop controls">
@@ -180,6 +181,18 @@
           <pre id="everyday-device-ids">—</pre>
         </details>
         <p id="everyday-message" class="muted compact-note" role="status" aria-live="polite">Names and providers are set on the Hermes host; keys and coordinates never reach this page.</p>
+      </section>
+
+      <section id="workspace-mode-card" class="card workspace-mode-card" aria-labelledby="workspace-mode-heading" hidden>
+        <div><p class="label">Workspace</p><h2 id="workspace-mode-heading">Project work with Hermes</h2></div>
+        <dl class="everyday-facts workspace-mode-facts">
+          <div><dt>Agent view</dt><dd id="workspace-mode-view">Companion</dd></div>
+          <div><dt>Conversation display</dt><dd id="workspace-mode-display">Off</dd></div>
+          <div><dt>GitHub repository</dt><dd id="workspace-mode-repository">None selected</dd></div>
+          <div><dt>Project session</dt><dd id="workspace-mode-session">Not checked</dd></div>
+        </dl>
+        <p id="workspace-mode-work" class="muted compact-note">Review planned coding work before approving it.</p>
+        <button type="button" id="workspace-mode-open" class="secondary">Open Conversation &amp; projects</button>
       </section>
 
       <div class="agent-view-switch" role="group" aria-label="Agent view">
@@ -1116,19 +1129,19 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=86"></script>
-  <script src="/static/scene.js?v=86"></script>
-  <script src="/static/motion.js?v=86"></script>
-  <script src="/static/owner.js?v=86"></script>
+  <script src="/static/notifications.js?v=87"></script>
+  <script src="/static/scene.js?v=87"></script>
+  <script src="/static/motion.js?v=87"></script>
+  <script src="/static/owner.js?v=87"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=86"></script>
-  <script src="/static/agent-connection.js?v=86"></script>
-  <script src="/static/native-workspace.js?v=86"></script>
-  <script src="/static/workspace.js?v=86"></script>
-  <script src="/static/ispy-input.js?v=86"></script>
-  <script src="/static/main.js?v=86"></script>
-  <script src="/static/updates.js?v=86"></script>
-  <script src="/static/volume.js?v=86"></script>
-  <script src="/static/assistant-modes.js?v=86"></script>
+  <script src="/static/camera.js?v=87"></script>
+  <script src="/static/agent-connection.js?v=87"></script>
+  <script src="/static/native-workspace.js?v=87"></script>
+  <script src="/static/workspace.js?v=87"></script>
+  <script src="/static/ispy-input.js?v=87"></script>
+  <script src="/static/main.js?v=87"></script>
+  <script src="/static/updates.js?v=87"></script>
+  <script src="/static/volume.js?v=87"></script>
+  <script src="/static/assistant-modes.js?v=87"></script>
 </body>
 </html>

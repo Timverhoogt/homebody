@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-10-13
+
+### Fixed
+- Make confirmed Everyday/Workspace mode explicit, distinguish pending/offline state, and show only the appropriate mode card. Workspace summaries distinguish display consent, repository choice, actual binding and approved work status.
+- Keep repository/session selects stable through normal polls: reads do not disable controls; identical options are not replaced. Writes supersede stale reads, and failed reads retain separate Stop while clearing unconfirmed session/target state.
+- Clear private summary copies on owner loss; keep successful mode changes pending until a matching status reply rather than briefly reverting to an old mode.
+- Add real Chromium repeated-poll/option-identity and mode/privacy regression coverage.
+
 ## [0.5.8] - 2026-10-12
 
 ### Added

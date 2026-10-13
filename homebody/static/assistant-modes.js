@@ -5,7 +5,62 @@
   let generation = 0, ownerAllowed = false, blocked = true, capabilities = null;
   let lastCapabilitiesAt = 0, lastBadgeAt = 0, stopping = false;
   let voiceConfig = {};
-  const text = (id, value) => { $(id).textContent = value; };
+  // Only a status reply names the mode; pending switches, offline and owner loss never claim one.
+  let confirmedMode = '', switchingTo = '', kidsHidden = false, unknownReason = 'Waiting for Reachy to confirm.';
+  let badgeState = 'unknown';
+  const text = (id, value) => { if ($(id).textContent !== value) $(id).textContent = value; };
+  const MODE_LABELS = { everyday: 'Everyday', workspace: 'Workspace' };
+
+  function renderMode() {
+    const mode = switchingTo ? 'pending' : confirmedMode || 'unknown';
+    $('panel-agent').dataset.assistantMode = mode;
+    $('assistant-mode-state').dataset.mode = mode;
+    document.querySelector('.assistant-mode-switch').dataset.confirmed = String(mode === 'everyday' || mode === 'workspace');
+    text('assistant-mode-current', mode === 'pending' ? `Switching to ${MODE_LABELS[switchingTo]}…`
+      : MODE_LABELS[mode] || 'Not confirmed');
+    text('agent-profile-badge', mode === 'pending' ? 'Switching…' : MODE_LABELS[mode] || 'Mode unknown');
+    text('assistant-mode-detail', mode === 'pending' ? 'Not active until Reachy confirms.'
+      : mode === 'everyday' ? 'Fast home answers. No Hermes memory, projects or coding tools.'
+        : mode === 'workspace' ? 'Hermes project sessions. Review planned coding work before approving it.'
+          : unknownReason);
+    $('everyday-card').hidden = kidsHidden || mode !== 'everyday';
+    $('workspace-mode-card').hidden = kidsHidden || mode !== 'workspace';
+    sync();
+  }
+
+  /** Repaint the Workspace card from the display and project lanes; display-only, never fetches. */
+  function sync() {
+    if ($('workspace-mode-card').hidden) return;
+    const display = window.HomebodyWorkspace?.state() || { showing: false, view: 'companion' };
+    const native = window.HomebodyNativeWorkspace?.summary() || { session: 'unchecked', repository: '' };
+    text('workspace-mode-view', display.view === 'workspace' ? 'Conversation & projects' : 'Companion');
+    text('workspace-mode-display', display.showing ? 'Showing live · RAM only' : 'Off');
+    text('workspace-mode-repository', native.repository || 'None selected');
+    text('workspace-mode-session', {
+      unchecked: 'Not checked · show the conversation to see it',
+      checking: 'Checking…',
+      unconfirmed: 'Unconfirmed · reconnecting',
+      bound: `Open · ${native.label}`,
+      other: 'None open for this repository',
+      none: 'None open',
+    }[native.session] || 'Not checked');
+    text('workspace-mode-work', native.uncertain ? 'Project work status unconfirmed. Stop project work stays available.'
+      : badgeState === 'running' ? 'Project work running.'
+        : badgeState === 'stopping' ? 'Project work stopping.'
+          : badgeState === 'idle' ? 'No approved project run is reported. Native discussion uses its configured tools.'
+            : 'Project work status not confirmed.');
+    $('workspace-mode-open').hidden = display.view === 'workspace';
+  }
+
+  function unconfirmed(reason) {
+    confirmedMode = '';
+    switchingTo = '';
+    text('workspace-mode-repository', 'None selected');
+    text('workspace-mode-session', 'Not checked');
+    text('workspace-mode-display', 'Off');
+    unknownReason = reason;
+    renderMode();
+  }
 
   function reset(message) {
     generation += 1;
@@ -16,6 +71,7 @@
     ['everyday-voice', 'everyday-voice-note', 'everyday-model', 'everyday-weather', 'everyday-time', 'everyday-devices', 'everyday-device-ids'].forEach(id => text(id, '—'));
     text('everyday-message', message);
     $('native-work-badge').hidden = true;
+    badgeState = 'unknown';
     $('voice-stop-button').disabled = blocked || stopping;
   }
 
@@ -85,9 +141,11 @@
       if (!body || token !== generation || blocked) return;
       $('native-work-badge').hidden = body.running !== true;
       text('native-work-badge', body.status === 'stopping' ? 'Project work stopping' : 'Project work running');
+      badgeState = body.running !== true ? 'idle' : body.status === 'stopping' ? 'stopping' : 'running';
     } catch {
-      if (token === generation) $('native-work-badge').hidden = true;
+      if (token === generation) { $('native-work-badge').hidden = true; badgeState = 'unknown'; }
     }
+    if (token === generation) sync();
   }
 
   function update(payload) {
@@ -96,7 +154,7 @@
     ownerAllowed = window.HomebodyOwner?.isOwner() === true;
     const wasBlocked = blocked;
     blocked = !ownerAllowed || kids.active === true || kids.locked === true || !runtime.state || runtime.state === 'not_started';
-    $('everyday-card').hidden = kids.active === true || kids.locked === true;
+    kidsHidden = kids.active === true || kids.locked === true;
     const notice = payload?.config?.assistant_mode_notice === 'migrated';
     $('assistant-mode-notice').hidden = !notice || blocked;
     if (blocked) {
@@ -104,8 +162,13 @@
         reset(kids.active || kids.locked ? 'Hidden during Kids Mode.' : 'Pair an owner device and wait for Reachy to be ready.');
       }
       $('voice-stop-button').disabled = true;
+      unconfirmed(kidsHidden ? 'Hidden during Kids Mode.' : 'Pair an owner device and wait for Reachy to be ready.');
       return;
     }
+    // Same default as the switch buttons and the host: no reported profile is Everyday.
+    confirmedMode = runtime.agent?.profile === 'agent' ? 'workspace' : 'everyday';
+    if (switchingTo === confirmedMode) switchingTo = '';
+    renderMode();
     $('voice-stop-button').disabled = stopping;
     voiceConfig = payload?.config || {};
     renderVoice();
@@ -142,8 +205,19 @@
 
   function owner(allowed) {
     ownerAllowed = allowed === true;
-    if (!ownerAllowed) { blocked = true; reset('Owner session ended. Everyday details hidden.'); }
+    if (!ownerAllowed) {
+      blocked = true; reset('Owner session ended. Everyday details hidden.');
+      unconfirmed('Owner session ended. Pair an owner device to see the mode.');
+    }
   }
 
-  window.HomebodyAssistantModes = { update, owner, offline: () => { blocked = true; reset('Reachy is unreachable.'); } };
+  $('workspace-mode-open').addEventListener('click', () => window.HomebodyWorkspace?.show());
+
+  window.HomebodyAssistantModes = {
+    update, owner, sync,
+    offline: () => { blocked = true; reset('Reachy is unreachable.'); unconfirmed('Reachy is unreachable, so the mode cannot be confirmed.'); },
+    /** A mode change was requested ('everyday'/'workspace') or settled (''); only status confirms it. */
+    switching: (mode) => { switchingTo = MODE_LABELS[mode] ? mode : ''; renderMode(); },
+  };
+  renderMode();
 })();
