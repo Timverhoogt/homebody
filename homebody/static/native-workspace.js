@@ -38,9 +38,9 @@
     repositories = null;
     repositoryChoice = "";
     byId("workspace-repository").replaceChildren();
-    byId("workspace-repository-state").textContent = "Enable Workspace and tap Show conversation above to load your repositories.";
+    byId("workspace-repository-state").textContent = "Tap Show conversation above to load your repositories.";
     byId("workspace-native-identity").textContent = "No native project selected.";
-    byId("workspace-native-state").textContent = "Tap Workspace beside Everyday, then Show conversation above, to choose a project.";
+    byId("workspace-native-state").textContent = "Tap Show conversation above, then choose a repository and Open project.";
     byId("workspace-native-timeline").replaceChildren();
     byId("workspace-native-scope").textContent = "";
     byId("workspace-native-request-summary").textContent = "";
@@ -108,8 +108,27 @@
     setDisabled("workspace-native-stop", !enabled || (!busy && !pending && !uncertain));
     setDisabled("workspace-native-target", !enabled || pending || busy);
     setDisabled("workspace-native-request", !enabled || pending || busy || (!payload?.binding || !selectionMatchesBinding()));
+    renderBindHelp();
     renderBench();
     window.HomebodyAssistantModes?.sync();
+  }
+  /** Why Open project is (un)available, next to the button; text only, so polls never touch the pickers. */
+  function renderBindHelp() {
+    const repo = selectedRepository();
+    const help = !enabled ? "Show conversation first. Opening a project is a separate, explicit step."
+      : uncertain ? "Project connection unconfirmed. Open project returns once Reachy reconnects."
+        : !payload ? "Checking project sessions…"
+          : repo && !repo.target_ids.length
+            ? `Setup needed: ${repo.repository} has no project session on the agent host. Map it in `
+              + "REACHY_GITHUB_PROJECT_MAP_JSON to a target in REACHY_NATIVE_TARGETS_JSON and restart the bridge. "
+              + "Open project stays off until then."
+            : !payload.targets?.length
+              ? "Setup needed: no project session is configured on the agent host (REACHY_NATIVE_TARGETS_JSON). "
+                + "Open project stays off until one is added."
+              : payload.binding && selectionMatchesBinding()
+                ? `Open: ${payload.binding.backend} · ${payload.binding.project_id}. Opening a project does not submit work.`
+                : "Open project connects this page to the selected session; opening it does not submit work.";
+    if (byId("workspace-native-bind-help").textContent !== help) byId("workspace-native-bind-help").textContent = help;
   }
   /** Display-only facts for the Workspace mode card; never fetches or grants anything. */
   function summary() {

@@ -67,6 +67,13 @@ Without a registered target Workspace shows the honest unavailable state; withou
 | Switch back to Workspace | — | un-parked; Show to view again |
 | Stop project work (Workspace card) | — | stopped, binding kept |
 | Stop all Agent work, Kids, privacy, Meeting/Sleep | stops | revoked/stopped (unchanged) |
+| Clear & disconnect (confirmed) | display cleared | stopped and disconnected; Show + Open project again |
+
+In the Agent tab, Everyday shows only its home/voice card and Companion. The project picker, request
+forms, Advanced home actions and session details appear only once status confirms Workspace. In
+Everyday, Stop all Agent work is shown while the status-only badge reports running work or cannot be
+checked, and hidden only when it confirms none. Private Agent polls pause during a mode switch and
+late replies from the previous mode are dropped; the server's 423 checks are unchanged.
 
 ## Voice engines
 

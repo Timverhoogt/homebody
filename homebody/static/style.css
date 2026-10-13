@@ -1,11 +1,19 @@
 /* Text-only update notes stay readable on a phone; native modal provides focus trapping. */
 .update-notice { display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; margin:1rem 0; padding:1rem; border:1px solid var(--line); border-radius:12px; }
 .update-notice span { flex:1; }
-#update-dialog { box-sizing:border-box; width:min(720px,calc(100vw - 24px)); max-height:85vh; overflow:auto; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:16px; padding:24px; }
+#update-dialog { box-sizing:border-box; width:min(720px,calc(100vw - 24px)); max-height:min(85vh,calc(100dvh - 24px)); overflow:auto; overscroll-behavior:contain; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:16px; padding:24px; }
 #update-dialog::backdrop { background:rgba(0,0,0,.5); }
+/* Owned by updates.js while the dialog is open; the dialog keeps its own scrolling. */
+html.update-dialog-scroll-lock { overflow:hidden; overscroll-behavior:none; scrollbar-gutter:stable; }
+#update-notes section + section, #update-history section + section { margin-top:16px; padding-top:12px; border-top:1px solid var(--line); }
+#update-notes h3, #update-history h3 { margin:0 0 6px; font-size:1rem; }
+#update-dialog .actions { flex-wrap:wrap; }
+/* In the sticky footer so the warning stays beside the actions at any scroll position. */
+#update-dialog-error { flex:1 0 100%; margin:0; color:var(--danger-text); font-weight:600; }
 #update-summary { font-size:1.1rem; font-weight:600; line-height:1.5; }
 #update-dialog .actions { position:sticky; bottom:-24px; background:var(--paper); padding:12px 0; }
 #update-details { margin:16px 0; }
+.update-note-text { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; }
 #update-notes, #update-history pre { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; line-height:1.5; }
 #updates-card details { margin-top:1rem; }
 
@@ -560,6 +568,13 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .assistant-mode-state:is([data-mode="everyday"], [data-mode="workspace"]) strong { color: var(--orange-text); }
 .assistant-mode-state[data-mode="unknown"] strong { color: var(--danger-text); }
 .workspace-mode-card #workspace-mode-open { margin-top: 4px; }
+/* Fail closed: only a status-confirmed Workspace (set by assistant-modes.js) has a project surface. */
+#panel-agent:not([data-projects="true"]) :is(#agent-workspace-view, .agent-view-switch, #workspace-mode-card) { display: none !important; }
+.workspace-mode-steps { margin: 14px 0 4px; padding-left: 1.4em; display: grid; gap: 8px; line-height: 1.5; }
+.workspace-clear-confirm { margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--danger); border-radius: 14px; }
+.workspace-clear-confirm h3 { margin: 0 0 6px; }
+.workspace-clear-confirm p { margin: 0; line-height: 1.5; }
+.workspace-clear-confirm .workspace-toolbar { margin-bottom: 0; }
 .warning-note { border-left: 3px solid var(--warn); padding-left: 10px; }
 .everyday-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 16px 0 8px; }
 .everyday-facts dt { font-family: var(--mono); font-size: .64rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }

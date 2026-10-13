@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.12] - 2026-10-13
+
+### Fixed
+- Agent tab follows the confirmed assistant mode. Everyday shows only its home/voice card and Companion; the project picker, request forms, Advanced home actions and session details exist only in a status-confirmed Workspace. Pending, offline, owner-loss and Kids states fail closed, and every reveal path (view button, Open card, approval or run prompts) is refused outside Workspace.
+- Approved project work that keeps running in Everyday, or whose status cannot be confirmed, shows a compact badge and keeps Stop all Agent work reachable; it is hidden only when the badge confirms no work. Badge replies are ordered and mode changes force fresh status, so an older idle reply cannot hide a newer running-work Stop.
+- Workspace explains its three separate steps (Show conversation = display only, Open project = connection, “Hey Homebody” = voice) and reports display, connection and voice state honestly. An unconfigured repository explains the exact setup needed beside the disabled Open project button.
+- Clear is now “Clear & disconnect…” with an inline confirmation naming its full scope (display erased, selected project work stopped, project disconnected) and says to Show conversation and Open project again. Backend Clear/Stop behaviour is unchanged.
+- Neutral “Homebody” labels where backend provenance is unknown; Pipeline/Realtime progress no longer claims Hermes is answering Everyday turns.
+- Private Agent polls pause during a mode switch; admitted replies are also fenced on owner loss, offline state and Kids transitions. Server-side 423 enforcement is unchanged. Project connection copy distinguishes opening/history from submitting work and does not claim enforced read-only native discussion. PWA shell/query v91.
+- Update dialogs own dashboard scroll locking, preserve the previous page position and contain long-note scrolling; Close, Escape, acknowledgement, install admission and errors release the lock. Owner loss closes them immediately and fences prior catalog replies. Text-only release notes are grouped by semantic version, with a current-to-target summary and honest coverage for one direct installation across skipped releases.
+- Only the newest relevant verified update completion is shown automatically once per page session. Older unacknowledged results stay in History rather than alternating messages; expanded history sections survive polling. Install is bound to the exact reviewed offer and is disabled if the catalog changes or withdraws it. Acknowledgement errors remain visible inside the dialog.
+
+### Deployment notes
+- No installer, worker, permission or lifecycle policy changes; this release retains the existing Kids game master and Hermes-host transcription. Jetson-native recognition is not included.
+- Chromium verifies modal lock/gesture contracts and phone/desktop layout; reported Android WebView background scrolling still requires owner acceptance on that device.
+
 ## [0.5.11] - 2026-10-13
 
 ### Added

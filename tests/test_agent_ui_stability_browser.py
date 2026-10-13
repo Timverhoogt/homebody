@@ -247,6 +247,10 @@ def test_mode_switch_owner_loss_and_late_catalog_clear_picker(picker):
     runtime["agent"]["profile"] = "agent"
     page.evaluate("refreshStatus()")
     page.wait_for_timeout(100)
+    # Leaving Workspace closed the projects view; reopening it is explicit (this fixture's display lease
+    # stays on, so the reopened view reads again without a new Show).
+    assert page.locator("#agent-workspace-view").is_hidden()
+    page.click("#agent-view-workspace")
     for _ in range(100):
         if any(action == "repositories" for action, _ in state["held"]):
             break
@@ -366,7 +370,9 @@ def test_current_mode_is_unambiguous_and_shows_only_its_content(ui, width, schem
     assert "Workspace" not in offline["current"] and "Workspace" not in offline["badge"]
     # The last pressed button is no longer presented as a confirmed mode.
     assert page.locator(".assistant-mode-switch").get_attribute("data-confirmed") == "false"
-    _shot(page, f"offline-{width}-{scheme}", ".agent-view-switch")
+    # Unconfirmed mode fails closed: no projects view switch, only Companion beneath.
+    assert page.locator(".agent-view-switch").is_hidden() and page.locator("#agent-workspace-view").is_hidden()
+    _shot(page, f"offline-{width}-{scheme}", ".presence-card")
     assert body == {"profile": "agent", "preserve_work": False}
     assert not any(path.startswith("/api/agent/workspace") for path, _ in posts)  # mode entry starts no work
     assert not errors

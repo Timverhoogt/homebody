@@ -240,18 +240,22 @@ class PipelineVoiceMixin:
                     with self._status_lock:
                         self._status.turns_completed += 1
                     break
+                with self._agent_lock:
+                    agent_profile_active = self._capability_profile == "agent"
+                # Name the route actually taken below; Everyday never reaches the full Hermes agent.
                 self._workspace_event(workspace_generation, "user", transcript)
-                self._workspace_event(workspace_generation, "activity", "Hermes is responding")
+                self._workspace_event(
+                    workspace_generation, "activity",
+                    "Workspace is responding" if agent_profile_active else "Everyday is responding",
+                )
                 _LOGGER.info("Transcript accepted (%s characters)", len(transcript))
                 self._set_status(
                     "thinking",
-                    "Hermes is working",
+                    "Homebody is working",
                     transcript=transcript,
                     stt_provider=client.last_stt_provider,
                 )
 
-                with self._agent_lock:
-                    agent_profile_active = self._capability_profile == "agent"
                 if agent_profile_active:
                     request_id, broker_context = self._begin_agent_request(transcript)
                     try:

@@ -96,6 +96,10 @@ def test_native_session_exact_approval_and_verified_receipt(native_browser, widt
     page.evaluate("HomebodyNativeWorkspace.update(true)")
     page.wait_for_timeout(50)
     assert held
+    # Revoke the display lease as a real Clear/owner/privacy boundary would. A local-only
+    # native reset with a still-enabled server lease permits a legitimate fresh poll.
+    _voice["enabled"] = False
+    _voice["generation"] += 1
     page.evaluate("HomebodyNativeWorkspace.reset()")
     held[0].fulfill(json=fixture)
     page.wait_for_timeout(50)

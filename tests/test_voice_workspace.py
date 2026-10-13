@@ -140,6 +140,47 @@ def test_pipeline_hooks_record_real_accepted_messages(monkeypatch, clear_during_
         assert "workspace" not in runtime.status()  # Never added to public status.
 
 
+def test_everyday_pipeline_progress_does_not_claim_full_hermes(monkeypatch):
+    runtime = runtime_fixture()
+    runtime.workspace("start")
+    runtime._record_utterance = lambda _config: EndpointResult(
+        np.ones(160, dtype=np.float32), True, "end_silence", 0.01,
+    )
+    runtime._play_response = lambda _speech, _text, barge_in: False
+    details = []
+    set_status = runtime._set_status
+    runtime._set_status = lambda state, detail="", **kwargs: (
+        details.append(detail), set_status(state, detail, **kwargs)
+    )
+
+    class Client:
+        last_stt_provider = "fixture-stt"
+
+        def __init__(self, config):
+            self.config = config
+
+        def health(self):
+            return {"status": "ok"}
+
+        def transcribe(self, _audio):
+            return "What time is it?"
+
+        def everyday_turn(self, _transcript):
+            return "It is noon."
+
+        def synthesize(self, _text):
+            return SpeechAudio(b"audio", "audio/wav", ".wav", "fixture-tts")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("homebody.runtime.HermesBridgeClient", Client)
+    runtime._run_conversation(AppConfig(continuous_conversation=False))
+    activity = [e["text"] for e in runtime.workspace()["events"] if e["role"] == "activity"]
+    assert "Everyday is responding" in activity
+    assert not any("Hermes" in text for text in activity + details), (activity, details)
+
+
 def test_realtime_completed_transcripts_and_duplicates(monkeypatch):
     runtime = runtime_fixture()
     runtime.workspace("start")

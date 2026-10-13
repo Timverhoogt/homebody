@@ -7,25 +7,43 @@
   let voiceConfig = {};
   // Only a status reply names the mode; pending switches, offline and owner loss never claim one.
   let confirmedMode = '', switchingTo = '', kidsHidden = false, unknownReason = 'Waiting for Reachy to confirm.';
-  let badgeState = 'unknown';
+  // 'unknown' = no answer yet, 'uncertain' = the status check failed; both keep the global Stop reachable.
+  let badgeState = 'unknown', voiceState = '', badgeSequence = 0;
   const text = (id, value) => { if ($(id).textContent !== value) $(id).textContent = value; };
   const MODE_LABELS = { everyday: 'Everyday', workspace: 'Workspace' };
 
+  function currentMode() {
+    return kidsHidden ? 'unknown' : switchingTo ? 'pending' : confirmedMode || 'unknown';
+  }
+
   function renderMode() {
-    const mode = switchingTo ? 'pending' : confirmedMode || 'unknown';
+    const mode = currentMode();
+    if ($('panel-agent').dataset.assistantMode === 'workspace' && mode !== 'workspace') {
+      window.invalidateAgentPolls?.();
+    }
     $('panel-agent').dataset.assistantMode = mode;
+    $('panel-agent').dataset.projects = String(mode === 'workspace');
     $('assistant-mode-state').dataset.mode = mode;
     document.querySelector('.assistant-mode-switch').dataset.confirmed = String(mode === 'everyday' || mode === 'workspace');
     text('assistant-mode-current', mode === 'pending' ? `Switching to ${MODE_LABELS[switchingTo]}…`
       : MODE_LABELS[mode] || 'Not confirmed');
     text('agent-profile-badge', mode === 'pending' ? 'Switching…' : MODE_LABELS[mode] || 'Mode unknown');
     text('assistant-mode-detail', mode === 'pending' ? 'Not active until Reachy confirms.'
-      : mode === 'everyday' ? 'Fast home answers. No Hermes memory, projects or coding tools.'
-        : mode === 'workspace' ? 'Hermes project sessions. Review planned coding work before approving it.'
+      : mode === 'everyday' ? 'Fast home answers. No agent memory, projects or coding tools.'
+        : mode === 'workspace' ? 'Project sessions on your agent host. Review planned coding work before approving it.'
           : unknownReason);
-    $('everyday-card').hidden = kidsHidden || mode !== 'everyday';
-    $('workspace-mode-card').hidden = kidsHidden || mode !== 'workspace';
+    $('everyday-card').hidden = mode !== 'everyday';
+    $('workspace-mode-card').hidden = mode !== 'workspace';
+    // Only a confirmed Workspace has a project surface; everything else fails closed to Companion.
+    document.querySelector('.agent-view-switch').hidden = mode !== 'workspace';
+    window.HomebodyWorkspace?.gate(mode);
+    renderStop();
     sync();
+  }
+
+  /** Global work Stop: hidden only when Everyday is confirmed and the badge confirmed no work. */
+  function renderStop() {
+    $('agent-stop-button').hidden = currentMode() === 'everyday' && badgeState === 'idle';
   }
 
   /** Repaint the Workspace card from the display and project lanes; display-only, never fetches. */
@@ -34,16 +52,20 @@
     const display = window.HomebodyWorkspace?.state() || { showing: false, view: 'companion' };
     const native = window.HomebodyNativeWorkspace?.summary() || { session: 'unchecked', repository: '' };
     text('workspace-mode-view', display.view === 'workspace' ? 'Conversation & projects' : 'Companion');
-    text('workspace-mode-display', display.showing ? 'Showing live · RAM only' : 'Off');
+    text('workspace-mode-display', display.showing ? 'Showing live · RAM only · not a project connection' : 'Off');
     text('workspace-mode-repository', native.repository || 'None selected');
     text('workspace-mode-session', {
-      unchecked: 'Not checked · show the conversation to see it',
+      unchecked: 'Not checked yet · Show conversation, then Open project',
       checking: 'Checking…',
       unconfirmed: 'Unconfirmed · reconnecting',
       bound: `Open · ${native.label}`,
       other: 'None open for this repository',
-      none: 'None open',
+      none: 'Not open · choose a repository, then Open project',
     }[native.session] || 'Not checked');
+    // Reported runtime state only. Awake is not listening; there is no remote "start listening".
+    text('workspace-mode-voice', voiceState === 'listening' ? 'Listening now'
+      : ['thinking', 'looking', 'speaking'].includes(voiceState) ? 'In a voice turn'
+        : 'Not listening · say “Hey Homebody” to Reachy to talk');
     text('workspace-mode-work', native.uncertain ? 'Project work status unconfirmed. Stop project work stays available.'
       : badgeState === 'running' ? 'Project work running.'
         : badgeState === 'stopping' ? 'Project work stopping.'
@@ -72,6 +94,7 @@
     text('everyday-message', message);
     $('native-work-badge').hidden = true;
     badgeState = 'unknown';
+    renderStop();
     $('voice-stop-button').disabled = blocked || stopping;
   }
 
@@ -135,17 +158,24 @@
   }
 
   async function refreshBadge() {
-    const token = generation;
+    const token = generation, sequence = ++badgeSequence;
     try {
       const body = await getJson('/api/agent/workspace/native-badge', token);
-      if (!body || token !== generation || blocked) return;
+      if (!body || token !== generation || sequence !== badgeSequence || blocked) return;
       $('native-work-badge').hidden = body.running !== true;
+      $('native-work-badge').dataset.status = 'running';
       text('native-work-badge', body.status === 'stopping' ? 'Project work stopping' : 'Project work running');
       badgeState = body.running !== true ? 'idle' : body.status === 'stopping' ? 'stopping' : 'running';
     } catch {
-      if (token === generation) { $('native-work-badge').hidden = true; badgeState = 'unknown'; }
+      // Preserved work may still be running; say so and keep Stop all Agent work reachable.
+      if (token === generation && sequence === badgeSequence && !blocked) {
+        $('native-work-badge').hidden = false;
+        $('native-work-badge').dataset.status = 'waiting_approval';
+        text('native-work-badge', 'Project work status unconfirmed');
+        badgeState = 'uncertain';
+      }
     }
-    if (token === generation) sync();
+    if (token === generation && sequence === badgeSequence) { renderStop(); sync(); }
   }
 
   function update(payload) {
@@ -168,6 +198,7 @@
     // Same default as the switch buttons and the host: no reported profile is Everyday.
     confirmedMode = runtime.agent?.profile === 'agent' ? 'workspace' : 'everyday';
     if (switchingTo === confirmedMode) switchingTo = '';
+    voiceState = String(runtime.state || '');
     renderMode();
     $('voice-stop-button').disabled = stopping;
     voiceConfig = payload?.config || {};
@@ -215,9 +246,15 @@
 
   window.HomebodyAssistantModes = {
     update, owner, sync,
+    /** True only for a status-confirmed Workspace with no switch in flight; gates private Agent polls. */
+    workspaceConfirmed: () => currentMode() === 'workspace',
     offline: () => { blocked = true; reset('Reachy is unreachable.'); unconfirmed('Reachy is unreachable, so the mode cannot be confirmed.'); },
     /** A mode change was requested ('everyday'/'workspace') or settled (''); only status confirms it. */
-    switching: (mode) => { switchingTo = MODE_LABELS[mode] ? mode : ''; renderMode(); },
+    switching: (mode) => {
+      switchingTo = MODE_LABELS[mode] ? mode : '';
+      if (switchingTo) { badgeSequence += 1; badgeState = 'unknown'; lastBadgeAt = 0; }
+      renderMode();
+    },
   };
   renderMode();
 })();
