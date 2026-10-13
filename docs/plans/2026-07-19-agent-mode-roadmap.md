@@ -10,7 +10,7 @@
 
 ---
 
-## Product direction and next steps (updated 2026-10-05)
+## Product direction and next steps (updated 2026-10-13)
 
 ### North star: one Hermes, several surfaces
 
@@ -18,7 +18,7 @@ Homebody is the embodied voice doorway into the owner's Hermes, not a separate t
 
 The desired end-to-end experience:
 
-1. Tim: “Hey Homebody, I want to work on the raw photo agent. Tell me about the roadmap.”
+1. Tim opens the paired app, selects a repository and explicitly starts its project session; Reachy is put in Awake if needed. Then: “Hey Homebody, I want to work on the raw photo agent. Tell me about the roadmap.”
 2. Hermes reads the selected project's actual roadmap and work state: “We finished this part; next we can work on this.”
 3. Tim: “Let's work on this.” The same contextual session resolves “this” to the discussed next item, confirms scope, and starts the authorized work.
 4. Homebody shows user/assistant messages, actual tool starts/results and current activity. Reachy speaks concise milestones, not every tool call.
@@ -43,15 +43,29 @@ This sequence is the target, **not a claim that the existing bounded Agent Broke
 
 Reconsider an isolated, resource-bounded local Hermes runtime only for a measured need (offline household capability, standalone deployment or lower orchestration latency). Before choosing it, compare remote and local orchestration latency, RAM/CPU under the normal robot+vision workload, supervision/Stop/recovery, session synchronization and credential scope. No silent install, model load, provider-key copying or shared robotics dependency changes.
 
-### Implementation record
+### Current implementation and acceptance status (2026-10-13)
 
-- Goal 1 implementation: Companion/Workspace switch, accepted Pipeline and Realtime message hooks, real voice-stage events, owner/CSRF-protected RAM timeline, Clear/Stop/privacy/Kids/power invalidation, stale-producer/poll protection, and existing sanitized tool activity retained under details. Shell revision 70.
-- Verified locally: 872 non-browser tests, 23 Chromium UI checks (including 390px/1440px layouts, text-only rendering and late-poll privacy), Ruff and whitespace checks. Browser screenshots use explicit fixtures, not a live robot conversation.
-- Goal 1 merged in [PR #65](https://github.com/Timverhoogt/homebody/pull/65), with green PR and post-merge CI. It is not deployed or physically accepted yet. Owner-supervised spoken conversation on Reachy remains the acceptance gate; no camera or motion test was run.
-- Goal 2a implemented locally: host-owned exact project/roadmap registration, private read-only catalog and roadmap capabilities, bounded line/hash/freshness evidence, narrow current-lease project follow-ups, fresh reads rather than cached answers, and actual RAM expiry/safety invalidation. Project discussions cannot invoke unrelated broker tools. See [project-voice.md](../project-voice.md). Tests exercise real files and authenticated HTTP with explicit provider fixtures, not a live-model/voice demo. The actual [raw-photo-agent repository](https://github.com/Timverhoogt/raw-photo-agent) was identified and its `ROADMAP.md` read through the new broker from a temporary checkout at `b764b5e3774639b8e62188358baecd9a42640fdb`, with all 50 lines and exact source hash. No live project catalog, real-model/spoken acceptance or project execution was enabled.
-- Next in goal 2: visible owner project/session selection; bind a verified native Hermes session rather than equating the current broker lease with Desktop identity; implement the separately scoped host-side project-work launcher and native run/tool-event streaming. Verify authorized scope and Stop/reconnect semantics before enabling coding. Project execution, durable job notifications and Desktop identity remain **unimplemented**; goal 2 is not complete.
-- Goals 3–4 remain planned.
-- The legacy Phase 0–6 material below is historical capability/security detail, not the new product priority.
+- **Deployed baseline: Homebody 0.5.8**, [PR #85](https://github.com/Timverhoogt/homebody/pull/85). Goal 1's owner-only RAM conversation display is shipped, with separate Workspace mode and Conversation & projects view. The complete supervised spoken coding workflow is **not accepted**.
+- Goal 2 is **partially implemented**, not unimplemented and not complete: native session binding/history, native discussion routing, exact single-use planned-work approvals, durable run/event observation, Stop/recovery and fixed verification exist. The private GitHub picker lists 21 owner repositories as observed during deployment; only Homebody currently has a configured native session. Listing a repository is not provisioning its checkout/session or granting tools.
+- Deployed phone acceptance confirmed the repository list, mode entry, configured/unconfigured project explanations, no unintended work submission, retained settings and folded motor-off Standby. Local release tests: 1,362 non-browser tests, repository/native/workspace Chromium checks and independent privacy/authority/lifecycle review. These are not microphone-to-speaker coding acceptance.
+- The registered Homebody worker checkout was clean but at `d1bca085f4ba5cdd67c3696e327e6d4b47a259b7` (PR #78), behind the then-current GitHub main `91034f7453792f7a5dc3b00e89946af7cb94fc08`. This is a dated review observation, not permission to reset/sync it automatically.
+- Goal 3 has supporting durable-run/verification plumbing, but task-specific readiness, reliable spoken milestones and the full work/test loop remain unaccepted. Goal 4's unified Hermes Desktop embodiment remains planned; a native session ID alone is not proof of that integration.
+- Historical first-increment evidence is recorded in [PR #65](https://github.com/Timverhoogt/homebody/pull/65), [voice-workspace.md](../voice-workspace.md), [project-voice.md](../project-voice.md) and the changelog. Earlier “not deployed”/“execution unimplemented” statements describe those increments, not the current baseline.
+
+### Next acceptance gates: the complete coding session
+
+**Target experience:** open app → select repository → Start project session → wake/talk to Reachy → agree the exact work → approve → follow actual progress → test. Robot Awake may come before selection, but choose the mode/project before starting the voice conversation; a mode change stops an active voice session. Start project session is a **proposed consolidated entry flow**, not a shipped button.
+
+Keep this work inside delivery goals 2–3, with the following ordered gates rather than a new task board or parallel feature programme:
+
+1. **Enforce discussion versus coding authority (blocking).** The live native listener currently exposes terminal and file-writing tools during discussion. “Discuss only” is a prompt, not enforced read-only access. A mocked routing reproduction showed `Implement the fixture feature` creates a phone draft while `Please implement the fixture feature` goes directly to native discussion without one. No actual unauthorized write was attempted or proven. Do not rely on verb matching/model obedience as an execution boundary. Require host-enforced discussion permissions and an explicit approved transition to coding; preserve native command/external-action approvals. Acceptance: adversarial phrasing, indirect requests and repository instructions cannot edit/run actions before authorization; ordinary discussion still works, and exact scope changes require renewed approval.
+2. **Make project entry coherent and checkouts explicit.** Consolidate Workspace activation, explicit private-display consent and verified native binding into the proposed Start project session flow, without silently starting the microphone or granting tools. Show repository, branch/commit, dirty state, native session and permissions. Provision unconfigured repositories only through an explicit owner-approved host flow. Decide whether to resume the existing checkout or prepare a fresh branch/worktree; never silently reset local changes or imply an old checkout is latest main. Acceptance: selected GitHub identity matches the actual worker and verifier checkout; unavailable/stale/dirty states are understandable; changing repository cannot submit work to an old binding.
+3. **Verify project-aware voice routing and continuity.** GPT-Live currently chooses delegation using generic instructions; an adapter that can answer from native Hermes does not prove every spoken project question reaches the bound session. Make project questions and coding proposals reliably use that session while preserving concise speech. Acceptance: supervised microphone → correct native session → spoken answer; a roadmap question, follow-up “this”, correction, new wake and reconnect retain the correct project/history; Stop speaking remains distinct from Stop project work. Verify each supported engine separately and do not treat simulated providers as physical acceptance.
+4. **Tie readiness to the agreed task and close the loop.** The configured Homebody verifier currently runs subscription-related tests and records fixed artifacts; passing these does not establish readiness for arbitrary code changes. Show and agree task-relevant checks/artifacts before work, keep safe fixed verifier execution and exact session/run receipts, and distinguish check results from owner acceptance. Acceptance: actual diff/artifact and relevant passing checks accompany Ready to test; failed/missing/unconfirmed evidence never yields readiness; approved work survives voice timeout, reports actual progress, supports cancellation and reconnect, and cannot silently resubmit.
+
+**End-to-end sign-off:** an owner-supervised, explicitly scoped small coding change on a prepared project branch, from app selection through spoken discussion, approval, real edit, tests, completion evidence and owner testing. Include Stop, reconnect and project-switch cases. Until that trial and the enforced permission boundary pass, describe the product as **working components / partially verified workflow**, not a seamless approval-gated agentic coding session. A roadmap update does not authorize implementing these gates, enabling new projects, touching robot power/audio/camera, or synchronizing code checkouts.
+
+The legacy Phase 0–6 material below is historical capability/security detail, not the current product priority.
 
 ## Shipped capability baseline
 
