@@ -2,6 +2,7 @@
 (() => {
   const byId = (id) => document.getElementById(id);
   let epoch = 0, enabled = false, pending = false, uncertain = false, payload = null, controller = null;
+  let repositories = null;
   const active = new Set(["submitting", "running", "stopping", "disconnected", "verifying", "submission_unknown"]);
   const feedbackButtons = { bind: "workspace-native-bind", prepare: "workspace-native-prepare", approve: "workspace-native-approve" };
   // Display-only bench (scene.js). It reads categorical fields of the current payload, never text or ids.
@@ -14,11 +15,11 @@
     bench?.update(window.HomebodyScene.workbenchView({
       offline: window.HomebodyOwner?.isOwner() !== true,
       showing: enabled,
-      configured: Boolean(payload?.targets?.length),
-      bound: Boolean(payload?.binding),
-      pending: Boolean(payload?.pending),
-      status: payload?.run?.status || "",
-      verified: verifiedReady(payload?.run, payload?.binding),
+      configured: Boolean(byId("workspace-native-target").options.length),
+      bound: Boolean(payload?.binding) && selectionMatchesBinding(),
+      pending: Boolean(payload?.pending) && selectionMatchesBinding(),
+      status: selectionMatchesBinding() ? payload?.run?.status || "" : "",
+      verified: selectionMatchesBinding() && verifiedReady(payload?.run, payload?.binding),
       uncertain,
     }));
   }
@@ -31,8 +32,11 @@
     enabled = false;
     uncertain = false;
     payload = null;
+    repositories = null;
+    byId("workspace-repository").replaceChildren();
+    byId("workspace-repository-state").textContent = "Enable Workspace and tap Show conversation above to load your repositories.";
     byId("workspace-native-identity").textContent = "No native project selected.";
-    byId("workspace-native-state").textContent = "Show the conversation to select an owner-registered session.";
+    byId("workspace-native-state").textContent = "Tap Workspace beside Everyday, then Show conversation above, to choose a project.";
     byId("workspace-native-timeline").replaceChildren();
     byId("workspace-native-scope").textContent = "";
     byId("workspace-native-request-summary").textContent = "";
@@ -43,29 +47,63 @@
     byId("workspace-native-request").value = "";
     controls();
   }
+  function selectedRepository() {
+    return repositories?.repositories?.find((row) => row.repository === byId("workspace-repository").value);
+  }
+  function selectionMatchesBinding() {
+    const repo = selectedRepository();
+    return !repo || repo.target_ids.includes(payload?.binding?.target_id);
+  }
+  function renderRepositories() {
+    const select = byId("workspace-repository"), previous = select.value;
+    select.replaceChildren();
+    const all = document.createElement("option"); all.value = ""; all.textContent = "Choose a repository…"; select.append(all);
+    for (const repo of repositories?.repositories || []) {
+      const option = document.createElement("option"); option.value = repo.repository;
+      option.textContent = `${repo.repository}${repo.private ? " · Private" : ""}${repo.archived ? " · Archived" : ""}${repo.target_ids.length ? " · Session available" : ""}`;
+      select.append(option);
+    }
+    if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+    const repo = selectedRepository();
+    byId("workspace-repository-state").textContent = repo
+      ? repo.target_ids.length ? `${repo.repository}: a project session is available. Tap Open project; no work starts until you review and approve a request.`
+        : `${repo.repository}: listed on GitHub, but no project session is configured on the host yet. Selection does not clone code or enable tools.`
+      : repositories?.available ? `${repositories.repositories.length} repositories from ${repositories.owner}. Checked ${new Date(repositories.checked_at * 1000).toLocaleTimeString()}.${repositories.possibly_truncated ? " List limit reached (500)." : ""}`
+        : repositories?.error || "Enable Workspace and tap Show conversation above to load your repositories.";
+  }
+  function renderTargets() {
+    const select = byId("workspace-native-target"), previous = select.value, repo = selectedRepository();
+    select.replaceChildren();
+    for (const target of payload?.targets || []) {
+      if (repo && !repo.target_ids.includes(target.target_id)) continue;
+      const option = document.createElement("option"); option.value = target.target_id;
+      option.textContent = `${target.title} · ${target.backend}`; select.append(option);
+    }
+    if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+  }
   function controls() {
     const busy = active.has(payload?.run?.status);
-    byId("workspace-native-bind").disabled = !enabled || pending || busy || !payload?.targets?.length;
-    byId("workspace-native-prepare").disabled = !enabled || pending || busy || !payload?.binding;
-    byId("workspace-native-approve").disabled = !enabled || pending || !payload?.pending;
+    const modeActive = byId("agent-enable-button").getAttribute("aria-pressed") === "true";
+    byId("workspace-enable-mode").hidden = modeActive;
+    byId("workspace-enable-mode").disabled = byId("agent-enable-button").disabled;
+    byId("workspace-mode-help").textContent = !modeActive
+      ? "Tap Enable Workspace here, or Workspace beside Everyday at the top of this screen."
+      : !enabled ? "Workspace is enabled. Tap Show conversation above to load and select your projects."
+        : "Choose a GitHub repository, then Open project. Selection does not start work.";
+    byId("workspace-repository").disabled = !enabled || pending || busy || !repositories?.available;
+    byId("workspace-repositories-reload").disabled = !enabled || pending || busy;
+    byId("workspace-native-bind").disabled = !enabled || pending || busy || !byId("workspace-native-target").options.length;
+    byId("workspace-native-prepare").disabled = !enabled || pending || busy || (!payload?.binding || !selectionMatchesBinding());
+    byId("workspace-native-approve").disabled = !enabled || pending || (!payload?.pending || !selectionMatchesBinding());
     byId("workspace-native-stop").disabled = !enabled || (!busy && !pending && !uncertain);
     byId("workspace-native-target").disabled = !enabled || pending || busy;
-    byId("workspace-native-request").disabled = !enabled || pending || busy || !payload?.binding;
+    byId("workspace-native-request").disabled = !enabled || pending || busy || (!payload?.binding || !selectionMatchesBinding());
     renderBench();
   }
   function render(next) {
     payload = next;
     uncertain = false;
-    const select = byId("workspace-native-target");
-    const previous = select.value;
-    select.replaceChildren();
-    for (const target of next.targets || []) {
-      const option = document.createElement("option");
-      option.value = target.target_id;
-      option.textContent = `${target.title} · ${target.backend} · ${target.session_id}`;
-      select.append(option);
-    }
-    if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+    renderTargets();
     const binding = next.binding;
     byId("workspace-native-identity").textContent = binding
       ? `${binding.backend} · ${binding.project_id} · ${binding.session_id}` : "No native project selected.";
@@ -119,13 +157,18 @@
       const next = await response.json();
       if (mine !== epoch || controller !== abort) return;
       if (!response.ok) throw new Error(next.detail || `HTTP ${response.status}`);
-      if (["read", "show", "bind"].includes(action)) render(next);
+      if (action === "repositories") { repositories = next; renderRepositories(); renderTargets(); }
+      else if (["read", "show", "bind"].includes(action)) render(next);
       else if (action === "prepare") render({...payload, pending: next});
       else render({...payload, run: next, pending: null});
       outcome = "confirmed";
     } catch (error) {
       if (mine !== epoch || controller !== abort) return;
       outcome = "failed";
+      if (action === "repositories") {
+        repositories = {available: false, repositories: [], error: "GitHub repositories unavailable. Reload to try again."};
+        renderRepositories(); renderTargets(); return;
+      }
       byId("workspace-native-timeline").replaceChildren();
       byId("workspace-native-approval").hidden = true;
       byId("workspace-native-scope").textContent = "";
@@ -142,9 +185,17 @@
     } finally {
       clearTimeout(timer);
       window.HomebodyMotion?.settle(feedback, mine === epoch ? outcome : "cleared");
-      if (controller === abort) { controller = null; pending = false; controls(); }
+      if (controller === abort) {
+        controller = null; pending = false; controls();
+        if (outcome === "confirmed" && !repositories && ["show", "read"].includes(action)) {
+          queueMicrotask(() => { if (mine === epoch && enabled) request("repositories"); });
+        }
+      }
     }
   }
+  byId("workspace-enable-mode").addEventListener("click", () => byId("agent-enable-button").click());
+  byId("workspace-repository").addEventListener("change", () => { renderRepositories(); renderTargets(); controls(); });
+  byId("workspace-repositories-reload").addEventListener("click", () => request("repositories"));
   byId("workspace-native-bind").addEventListener("click", () => request("bind", {target_id: byId("workspace-native-target").value}));
   byId("workspace-native-prepare").addEventListener("click", () => request("prepare", {text: byId("workspace-native-request").value}));
   byId("workspace-native-approve").addEventListener("click", () => request("approve", {approval_id: payload?.pending?.approval_id}));
@@ -154,7 +205,7 @@
     /** Repaint the bench from current state (owner/display changes); never fetches. */
     sync: renderBench,
     update(displayEnabled) {
-      if (!displayEnabled) { if (enabled) reset(); else renderBench(); return; }
+      if (!displayEnabled || byId("agent-enable-button").getAttribute("aria-pressed") !== "true") { if (enabled) reset(); else renderBench(); return; }
       const first = !enabled;
       enabled = true;
       controls();

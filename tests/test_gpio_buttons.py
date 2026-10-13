@@ -546,7 +546,7 @@ def test_robot_tab_has_the_physical_button_card_wired_to_the_gpio_routes() -> No
         assert f'id="{element}"' in html
     assert '"/api/gpio/status"' in script and '"/api/gpio/buttons"' in script
     # Status text is rendered with textContent, never as HTML.
-    assert "gpio-last-event\").innerHTML" not in script
+    assert 'gpio-last-event").innerHTML' not in script
 
 
 def test_status_numbers_each_gesture_and_counts_ignored_presses() -> None:
@@ -566,7 +566,11 @@ def test_status_numbers_each_gesture_and_counts_ignored_presses() -> None:
         reader.push(EdgeSample(17, False, now))  # release of the held button: ignored
         reader.push(EdgeSample(17, True, now + 0.1), EdgeSample(17, False, now + 0.2))
         reader.push(EdgeSample(27, True, now + 0.3), EdgeSample(27, False, now + 0.4))
-        wait_for(lambda: service.status()["event_count"] == 2)
+        wait_for(
+            lambda: (
+                service.status()["event_count"] == 2 and all(e["result"] for e in service.status()["recent_events"])
+            )
+        )
         status = service.status()
         assert status["buttons"]["green"]["ignored"] == 1 and status["buttons"]["green"]["presses"] == 1
         events = status["recent_events"]

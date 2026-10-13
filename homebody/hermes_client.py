@@ -276,7 +276,7 @@ class HermesBridgeClient:
             raise HermesBridgeError("Hermes returned an invalid Agent Mode session acknowledgement")
 
     def native_workspace_action(self, action: str, context: AgentBrokerContext | None = None, **fields):
-        if action not in {"read", "show", "bind", "prepare", "approve", "stop", "cancel"}:
+        if action not in {"read", "show", "bind", "prepare", "approve", "stop", "cancel", "repositories"}:
             raise ValueError("unsupported native Workspace action")
         response = self._client.post(
             f"{self.config.bridge_url}/v1/agent/native/{action}", headers=self._headers(),

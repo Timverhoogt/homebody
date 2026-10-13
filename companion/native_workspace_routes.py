@@ -11,10 +11,12 @@ from pathlib import Path
 from aiohttp import web
 
 try:
+    from companion.github_repositories import GitHubRepositories
     from companion.native_adapters import HermesNativeAdapter, OpenClawNativeAdapter
     from companion.native_workspace import NativeWorkspace, TargetConfig, WorkspaceError
     from companion.reachy_agent_broker import BrokerContext, BrokerValidationError, new_request_id
 except ModuleNotFoundError:
+    from github_repositories import GitHubRepositories
     from native_adapters import HermesNativeAdapter, OpenClawNativeAdapter
     from native_workspace import NativeWorkspace, TargetConfig, WorkspaceError
     from reachy_agent_broker import BrokerContext, BrokerValidationError, new_request_id
@@ -23,6 +25,7 @@ except ModuleNotFoundError:
 class NativeWorkspaceRoutes:
     def init_native_workspace(self):
         self.native_workspace = None
+        self.github_repositories = GitHubRepositories.from_env()
 
     async def start_native_workspace(self, secret, home):
         raw = os.getenv("REACHY_NATIVE_TARGETS_JSON", "").strip()
@@ -67,24 +70,21 @@ class NativeWorkspaceRoutes:
         if action == "badge":
             # Status-only (no text, project or session); safe in Everyday so a running badge can show.
             badge = manager.badge(device) if manager is not None else {"status": "idle", "running": False}
-            return web.json_response({**badge, "configured": manager is not None and bool(manager.targets)},
-                                     headers={"Cache-Control": "no-store"})
-        if manager is None:
-            if action in {"read", "stop", "show"}:
-                return web.json_response(
-                    {"targets": [], "binding": None, "messages": [], "events": [], "run": {}, "pending": None},
-                    headers={"Cache-Control": "no-store"},
-                )
-            raise web.HTTPConflict(text="Native project sessions are not configured; no work has started")
+            return web.json_response(
+                {**badge, "configured": manager is not None and bool(manager.targets)},
+                headers={"Cache-Control": "no-store"},
+            )
         if action == "stop":
             # Stopping is safe even after the generation/profile has changed or Kids has latched.
-            await manager.stop(device, detach=True)
+            if manager is not None:
+                await manager.stop(device, detach=True)
             return web.json_response({"ok": True}, headers={"Cache-Control": "no-store"})
         request_id = new_request_id()
         context = None
         try:
             payload = await request.json()
             fields = {
+                "repositories": set(),
                 "read": set(),
                 "show": set(),
                 "bind": {"target_id"},
@@ -96,7 +96,13 @@ class NativeWorkspaceRoutes:
                 raise WorkspaceError("invalid native Workspace action fields")
             context = await self.agent_broker.register_request(device, payload["context"], request_id)
             self.agent_broker.authorize_context(context)
-            if action == "bind":
+            if action == "repositories":
+                result = await self.github_repositories.read(manager.targets if manager else {})
+            elif manager is None:
+                if action not in {"read", "show"}:
+                    raise WorkspaceError("Native project sessions are not configured; no work has started")
+                result = {"targets": [], "binding": None, "messages": [], "events": [], "run": {}, "pending": None}
+            elif action == "bind":
                 result = await manager.bind(device, payload["target_id"])
                 async with self.agent_broker.project_conversation(device, context) as lease:
                     project = manager.targets[payload["target_id"]].project_id

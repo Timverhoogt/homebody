@@ -9,6 +9,9 @@
 #update-notes, #update-history pre { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; line-height:1.5; }
 #updates-card details { margin-top:1rem; }
 
+/* Long repository identifiers remain readable below the native select. */
+#workspace-repository-state { overflow-wrap: anywhere; }
+
 /* Homebody dashboard
    A cream enclosure with dark displays set into it. Live state (what Reachy is doing right now)
    lives on a display; controls and settings sit on the enclosure. Serif for the human side,

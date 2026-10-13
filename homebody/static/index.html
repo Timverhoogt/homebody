@@ -13,8 +13,8 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=85">
-  <link rel="stylesheet" href="/static/scene.css?v=85">
+  <link rel="stylesheet" href="/static/style.css?v=86">
+  <link rel="stylesheet" href="/static/scene.css?v=86">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -184,7 +184,7 @@
 
       <div class="agent-view-switch" role="group" aria-label="Agent view">
         <button type="button" id="agent-view-companion" aria-pressed="true">Companion</button>
-        <button type="button" id="agent-view-workspace" aria-pressed="false">Workspace</button>
+        <button type="button" id="agent-view-workspace" aria-pressed="false">Conversation &amp; projects</button>
       </div>
       <div id="agent-companion-view">
       <section class="card presence-card" aria-labelledby="presence-heading">
@@ -316,7 +316,7 @@
         </div>
         <p class="muted">Say “Hey Homebody” and talk to Hermes. This view shows accepted voice messages and actual activity—not private reasoning.</p>
         <div class="workspace-toolbar">
-          <button type="button" id="workspace-start">Show next conversation</button>
+          <button type="button" id="workspace-start">Show conversation</button>
           <button type="button" id="workspace-clear" class="secondary">Stop showing &amp; clear</button>
         </div>
         <p class="muted compact-note">Owner-only · kept in memory for up to one hour · cleared by Kids, privacy, power changes or Stop. Showing this view does not start the microphone or grant new tools.</p>
@@ -325,13 +325,21 @@
         <section class="workspace-native" aria-labelledby="workspace-native-heading">
           <div class="section-heading"><div><p class="label">Shared project session</p><h3 id="workspace-native-heading">Continue the real work</h3></div></div>
           <p id="workspace-native-identity" class="muted">No native project selected.</p>
-          <label for="workspace-native-target">Owner-registered project and session</label>
+          <p id="workspace-mode-help" class="muted">First enable Workspace, then tap Show conversation above. Selecting a repository does not start work.</p>
+          <button type="button" id="workspace-enable-mode">Enable Workspace</button>
+          <label for="workspace-repository">GitHub repository</label>
+          <div class="workspace-toolbar">
+            <select id="workspace-repository" aria-label="GitHub repository"></select>
+            <button type="button" id="workspace-repositories-reload" class="secondary">Reload repositories</button>
+          </div>
+          <p id="workspace-repository-state" class="muted" role="status">Repositories appear after you enable Workspace and show the conversation.</p>
+          <label for="workspace-native-target">Available project session</label>
           <div class="workspace-toolbar">
             <select id="workspace-native-target" aria-label="Project and native session"></select>
-            <button type="button" id="workspace-native-bind">Select session</button>
+            <button type="button" id="workspace-native-bind">Open project</button>
           </div>
           <div id="workspace-native-scene" class="workspace-native-scene" aria-hidden="true"></div>
-          <p id="workspace-native-state" role="status" aria-live="polite">Show the conversation to select an owner-registered session.</p>
+          <p id="workspace-native-state" role="status" aria-live="polite">Enable Workspace, then tap Show conversation above to choose a project.</p>
           <ol id="workspace-native-timeline" class="workspace-timeline" aria-label="Native project conversation"></ol>
           <label for="workspace-native-request">Exact request for the selected worker</label>
           <textarea id="workspace-native-request" rows="3" maxlength="4000" placeholder="Discuss the next item, or describe the work you want to authorize."></textarea>
@@ -1108,19 +1116,19 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=85"></script>
-  <script src="/static/scene.js?v=85"></script>
-  <script src="/static/motion.js?v=85"></script>
-  <script src="/static/owner.js?v=85"></script>
+  <script src="/static/notifications.js?v=86"></script>
+  <script src="/static/scene.js?v=86"></script>
+  <script src="/static/motion.js?v=86"></script>
+  <script src="/static/owner.js?v=86"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=85"></script>
-  <script src="/static/agent-connection.js?v=85"></script>
-  <script src="/static/native-workspace.js?v=85"></script>
-  <script src="/static/workspace.js?v=85"></script>
-  <script src="/static/ispy-input.js?v=85"></script>
-  <script src="/static/main.js?v=85"></script>
-  <script src="/static/updates.js?v=85"></script>
-  <script src="/static/volume.js?v=85"></script>
-  <script src="/static/assistant-modes.js?v=85"></script>
+  <script src="/static/camera.js?v=86"></script>
+  <script src="/static/agent-connection.js?v=86"></script>
+  <script src="/static/native-workspace.js?v=86"></script>
+  <script src="/static/workspace.js?v=86"></script>
+  <script src="/static/ispy-input.js?v=86"></script>
+  <script src="/static/main.js?v=86"></script>
+  <script src="/static/updates.js?v=86"></script>
+  <script src="/static/volume.js?v=86"></script>
+  <script src="/static/assistant-modes.js?v=86"></script>
 </body>
 </html>
