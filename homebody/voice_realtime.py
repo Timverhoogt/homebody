@@ -383,7 +383,7 @@ class RealtimeVoiceMixin:
                                 )
                             self._set_status(
                                 "thinking",
-                                "Hermes is responding",
+                                "Homebody is responding",
                                 transcript="".join(transcript_parts).strip(),
                                 stt_provider="openai-realtime",
                             )
@@ -468,12 +468,12 @@ class RealtimeVoiceMixin:
                         last_activity = time.monotonic()
                         generation_done = False
                         playback.reset()
-                        self._set_status("thinking", "Hermes is responding")
+                        self._set_status("thinking", "Homebody is responding")
                         if self._motion is not None:
                             self._motion.thinking()
                     elif kind == "response.output_item.added":
                         last_activity = time.monotonic()
-                        self._set_status("thinking", "Hermes is responding")
+                        self._set_status("thinking", "Homebody is responding")
                     elif kind in {"response.output_audio.delta", "response.audio.delta"}:
                         audio = session.audio_samples(event)
                         if audio.size:

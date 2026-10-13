@@ -32,6 +32,8 @@ let bluetoothRefreshPending = false;
 let bluetoothState = null;
 let agentRequestPending = false;
 let agentProfileActive = false;
+// Bumped on every mode request or reported profile change; older Agent poll replies are dropped.
+let agentPollEpoch = 0;
 let runtimeAgentActivity = [];
 let brokerAgentActivity = [];
 let pendingAgentApproval = null;
@@ -878,6 +880,7 @@ function updateStatus(payload, sequence = statusSequence) {
   window.HomebodyNotifications.setSuppressed("kids", kidsLocked);
   const agent = runtime.agent || {};
   const agentProfile = agent.profile || "conversation";
+  if (agentProfileActive !== (agentProfile === "agent")) agentPollEpoch += 1;
   agentProfileActive = agentProfile === "agent";
   $("tab-agent").dataset.profileActive = String(agentProfileActive);
   $("agent-capabilities").textContent = (agent.enabled_capabilities || []).join(", ") || "None in Conversation profile";
@@ -1398,8 +1401,19 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+/** Any loss of the confirmed Workspace display fences admitted private Agent reads. */
+function invalidateAgentPolls() {
+  agentPollEpoch += 1;
+}
+
+/** Private Agent polls run only in a status-confirmed Workspace with no mode switch in flight. */
+function agentPollsAllowed() {
+  return agentProfileActive && !agentRequestPending && window.HomebodyAssistantModes?.workspaceConfirmed() === true;
+}
+
 async function refreshAgentRun() {
-  if (!agentProfileActive || agentRunRequestPending) return;
+  if (!agentPollsAllowed() || agentRunRequestPending) return;
+  const epoch = agentPollEpoch;
   try {
     const endpoint = agentRunId ? "/api/agent/run/status" : "/api/agent/run/current";
     const response = await fetchWithTimeout(endpoint, {
@@ -1407,6 +1421,7 @@ async function refreshAgentRun() {
       headers: { "Content-Type": "application/json", "X-Reachy-Adult-UI": "unlocked" },
       body: agentRunId ? JSON.stringify({ run_id: agentRunId }) : undefined,
     });
+    if (epoch !== agentPollEpoch || !agentPollsAllowed()) return;
     if (!response.ok) {
       // Only an authoritative 4xx (stale, locked, forbidden, unknown run) ends the local run;
       // a network blip or bridge 5xx must not re-enable Preview while a plan is running.
@@ -1419,6 +1434,7 @@ async function refreshAgentRun() {
       return;
     }
     const body = await response.json();
+    if (epoch !== agentPollEpoch || !agentPollsAllowed()) return;
     currentAgentRun = body.run || null;
     if (currentAgentRun?.run_id) {
       agentRunId = String(currentAgentRun.run_id);
@@ -1443,15 +1459,19 @@ async function refreshAgentActivity() {
     return;
   }
   if (agentActivityPending) return;
+  if (!agentPollsAllowed()) return;
   agentActivityPending = true;
+  const epoch = agentPollEpoch;
   try {
     await refreshAgentRun();
+    if (epoch !== agentPollEpoch || !agentPollsAllowed()) return;
     const response = await fetchWithTimeout("/api/agent/activity", {
       cache: "no-store",
       headers: { "X-Reachy-Adult-UI": "unlocked" },
     });
-    if (!response.ok) return;
+    if (!response.ok || epoch !== agentPollEpoch) return;
     const body = await response.json();
+    if (epoch !== agentPollEpoch || !agentPollsAllowed()) return;
     brokerAgentActivity = Array.isArray(body.activity) ? body.activity : [];
     renderAgentActivity();
     const activeCapability = [...brokerAgentActivity]
@@ -1460,12 +1480,14 @@ async function refreshAgentActivity() {
     if (activeCapability) {
       $("agent-current-task").textContent = `Using ${String(activeCapability.capability_id).replaceAll("_", " ")}…`;
     }
+    if (epoch !== agentPollEpoch || !agentPollsAllowed()) return;
     const pendingResponse = await fetchWithTimeout("/api/agent/pending-approval", {
       cache: "no-store",
       headers: { "X-Reachy-Adult-UI": "unlocked" },
     });
-    if (!pendingResponse.ok) return;
+    if (!pendingResponse.ok || epoch !== agentPollEpoch) return;
     const pendingBody = await pendingResponse.json();
+    if (epoch !== agentPollEpoch || !agentPollsAllowed()) return;
     pendingAgentApproval = pendingBody.pending_approval || null;
     const sheet = $("agent-approval-sheet");
     sheet.hidden = !pendingAgentApproval;
@@ -2613,6 +2635,7 @@ async function setAgentProfile(profile) {
     && !window.confirm("Leaving Workspace invalidates this Agent run and every pending approval. Approved native project work keeps running. Continue?")
   ) return;
   agentRequestPending = true;
+  agentPollEpoch += 1; // in-flight Agent replies belong to the mode being left
   window.HomebodyAssistantModes?.switching(profile === "agent" ? "workspace" : "everyday");
   const message = $("agent-message");
   message.textContent = profile === "agent" ? "Entering Workspace…" : "Switching to Everyday…";
@@ -2631,8 +2654,9 @@ async function setAgentProfile(profile) {
     modeWriteAccepted = true;
     message.textContent = profile === "agent"
       ? "Workspace active. Reversible owner tools are available; consequential actions pause for exact phone approval."
-      : "Everyday active. Any approved project work keeps running; its details stay hidden until you return to Workspace.";
+      : "Everyday active. Any approved project work keeps running; its details stay hidden until you return to Workspace, and Stop all Agent work stays available while it runs.";
     notifyFeedback(message, "ok");
+    // Still pending here: the projects view opens only once status confirms Workspace.
     if (profile === "agent") window.HomebodyWorkspace?.show();
   } catch (error) {
     message.textContent = String(error);

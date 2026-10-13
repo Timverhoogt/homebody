@@ -15,7 +15,9 @@ def workspace_browser():
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         fixture = {"enabled": False, "generation": 1, "events": [], "seconds_remaining": 0}
-        runtime = {"state": "waiting_for_wake_word", "power_mode": "standby", "kids_mode": {}}
+        # The conversation/projects surface exists only in a confirmed Workspace.
+        runtime = {"state": "waiting_for_wake_word", "power_mode": "standby", "kids_mode": {},
+                   "agent": {"profile": "agent", "activity": [], "pending_approval": False}}
 
         def respond(route):
             path = urlparse(route.request.url).path
@@ -43,6 +45,7 @@ def workspace_browser():
         page.goto("http://homebody.test/")
         page.wait_for_function("!document.querySelector('main').hidden && typeof updateStatus === 'function'")
         page.click("#tab-agent")
+        page.wait_for_function("document.getElementById('panel-agent').dataset.assistantMode === 'workspace'")
         yield page, fixture, runtime, errors
         browser.close()
 
@@ -73,6 +76,7 @@ def test_companion_default_and_conversation_layout(workspace_browser, width):
     Path(".pytest_cache/workspace-browser").mkdir(parents=True, exist_ok=True)
     page.screenshot(path=f".pytest_cache/workspace-browser/workspace-{width}.png", full_page=True)
     page.click("#workspace-clear")
+    page.click("#workspace-clear-confirm-button")
     page.wait_for_function("document.querySelectorAll('.workspace-event').length === 0")
     assert fixture["events"] == []
     assert not fixture["enabled"]
@@ -145,8 +149,9 @@ def test_clear_does_not_wait_for_slow_poll(workspace_browser):
     assert held
     assert page.locator("#workspace-clear").is_enabled()
     page.click("#workspace-clear")
+    page.click("#workspace-clear-confirm-button")
     page.wait_for_function(
-        "document.getElementById('workspace-state').textContent.includes('Nothing is being retained')"
+        "document.getElementById('workspace-state').textContent.includes('Open project again')"
     )
     assert fixture["enabled"] is False
     assert fixture["events"] == []

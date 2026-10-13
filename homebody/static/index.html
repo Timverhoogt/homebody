@@ -13,8 +13,8 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=90">
-  <link rel="stylesheet" href="/static/scene.css?v=90">
+  <link rel="stylesheet" href="/static/style.css?v=91">
+  <link rel="stylesheet" href="/static/scene.css?v=91">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -140,7 +140,7 @@
         <div class="agent-hero">
           <div>
             <p class="label">Your embodied companion</p>
-            <h2>Hermes, through Reachy</h2>
+            <h2>Homebody, through Reachy</h2>
             <p class="muted">A helpful presence at home. Speak to Reachy, and follow the conversation in your workspace.</p>
           </div>
           <span id="agent-profile-badge" class="badge">Conversation</span>
@@ -155,7 +155,7 @@
         <div class="agent-mode-bar" aria-label="Stop controls">
           <button type="button" id="voice-stop-button" class="secondary">Stop speaking</button>
           <span id="native-work-badge" class="badge" data-status="running" hidden>Project work running</span>
-          <button type="button" id="agent-stop-button" class="danger">Stop all Agent work</button>
+          <button type="button" id="agent-stop-button" class="danger" title="Stops the voice turn, pending approvals and approved project work">Stop all Agent work</button>
         </div>
         <p id="agent-message" class="message" role="status" aria-live="polite"></p>
       </section>
@@ -184,12 +184,18 @@
       </section>
 
       <section id="workspace-mode-card" class="card workspace-mode-card" aria-labelledby="workspace-mode-heading" hidden>
-        <div><p class="label">Workspace</p><h2 id="workspace-mode-heading">Project work with Hermes</h2></div>
+        <div><p class="label">Workspace</p><h2 id="workspace-mode-heading">Project work</h2></div>
+        <ol id="workspace-mode-steps" class="workspace-mode-steps">
+          <li><strong>Show conversation</strong> lets this page display your voice turns, in memory only. It does not open a project.</li>
+          <li>Choose a configured repository and tap <strong>Open project</strong>. That is the project connection.</li>
+          <li>Say <strong>“Hey Homebody”</strong> to Reachy. Awake is not listening; Reachy listens after the wake word.</li>
+        </ol>
         <dl class="everyday-facts workspace-mode-facts">
           <div><dt>Agent view</dt><dd id="workspace-mode-view">Companion</dd></div>
           <div><dt>Conversation display</dt><dd id="workspace-mode-display">Off</dd></div>
           <div><dt>GitHub repository</dt><dd id="workspace-mode-repository">None selected</dd></div>
-          <div><dt>Project session</dt><dd id="workspace-mode-session">Not checked</dd></div>
+          <div><dt>Project connection</dt><dd id="workspace-mode-session">Not checked</dd></div>
+          <div><dt>Voice</dt><dd id="workspace-mode-voice">Not listening · say “Hey Homebody” to Reachy to talk</dd></div>
         </dl>
         <p id="workspace-mode-work" class="muted compact-note">Review planned coding work before approving it.</p>
         <button type="button" id="workspace-mode-open" class="secondary">Open Conversation &amp; projects</button>
@@ -327,11 +333,19 @@
           <div><p class="label">Conversation</p><h2 id="voice-workspace-heading">Speak. See. Continue.</h2></div>
           <span id="workspace-badge" class="badge">Not showing</span>
         </div>
-        <p class="muted">Say “Hey Homebody” and talk to Hermes. This view shows accepted voice messages and actual activity—not private reasoning.</p>
+        <p class="muted">Say “Hey Homebody” to talk to Reachy in Workspace. This view shows accepted voice messages and actual activity—not private reasoning.</p>
         <div class="workspace-toolbar">
           <button type="button" id="workspace-start">Show conversation</button>
-          <button type="button" id="workspace-clear" class="secondary">Stop showing &amp; clear</button>
+          <button type="button" id="workspace-clear" class="secondary" aria-controls="workspace-clear-confirm">Clear &amp; disconnect…</button>
         </div>
+        <section id="workspace-clear-confirm" class="workspace-clear-confirm" role="alertdialog" aria-labelledby="workspace-clear-title" aria-describedby="workspace-clear-scope" hidden>
+          <h3 id="workspace-clear-title">Clear and disconnect?</h3>
+          <p id="workspace-clear-scope">This erases the conversation shown here, stops the selected project's work and disconnects the project. To continue afterwards, tap Show conversation and Open project again. To only stop speaking, use Stop speaking instead.</p>
+          <div class="workspace-toolbar">
+            <button type="button" id="workspace-clear-confirm-button" class="danger">Clear and disconnect</button>
+            <button type="button" id="workspace-clear-cancel" class="secondary">Keep everything</button>
+          </div>
+        </section>
         <p class="muted compact-note">Owner-only · kept in memory for up to one hour · cleared by Kids, privacy, power changes or Stop. Showing this view does not start the microphone or grant new tools.</p>
         <p id="workspace-state" role="status" aria-live="polite">Conversation display is off.</p>
         <ol id="workspace-timeline" class="workspace-timeline" aria-label="Voice conversation"></ol>
@@ -349,13 +363,15 @@
           <label for="workspace-native-target">Available project session</label>
           <div class="workspace-toolbar">
             <select id="workspace-native-target" aria-label="Project and native session"></select>
-            <button type="button" id="workspace-native-bind">Open project</button>
+            <button type="button" id="workspace-native-bind" aria-describedby="workspace-native-bind-help">Open project</button>
           </div>
+          <p id="workspace-native-bind-help" class="muted compact-note" role="status">Show conversation first. Opening a project is a separate, explicit step.</p>
           <div id="workspace-native-scene" class="workspace-native-scene" aria-hidden="true"></div>
           <p id="workspace-native-state" role="status" aria-live="polite">Enable Workspace, then tap Show conversation above to choose a project.</p>
           <ol id="workspace-native-timeline" class="workspace-timeline" aria-label="Native project conversation"></ol>
-          <label for="workspace-native-request">Exact request for the selected worker</label>
-          <textarea id="workspace-native-request" rows="3" maxlength="4000" placeholder="Discuss the next item, or describe the work you want to authorize."></textarea>
+          <p id="workspace-native-permissions-note" class="muted compact-note">Opening a project does not submit work. Native conversations use the backend’s configured tools; this screen does not enforce read-only discussion. Review and approve exact worker requests below; native command and external-action approvals still apply.</p>
+          <label for="workspace-native-request">Exact work request for the selected worker</label>
+          <textarea id="workspace-native-request" rows="3" maxlength="4000" placeholder="Describe the exact work you want to review and authorize."></textarea>
           <div class="workspace-toolbar">
             <button type="button" id="workspace-native-prepare">Review request</button>
             <button type="button" id="workspace-native-stop" class="secondary">Stop project work</button>
@@ -373,7 +389,7 @@
             <summary>Verification evidence</summary>
             <pre id="workspace-native-receipt"></pre>
           </details>
-          <p class="muted compact-note">Native history remains on its existing backend; the display is RAM-only. Host credentials stay on the host. Clear also requests a stop of selected project work. Native approvals are reviewed in the backend’s owner UI.</p>
+          <p class="muted compact-note">Native history remains on its existing backend; the display is RAM-only. Host credentials stay on the host. Clear also stops selected project work and disconnects the project. Native approvals are reviewed in the backend’s owner UI.</p>
         </section>
       </section>
       <details class="card agent-advanced-actions">
@@ -1135,8 +1151,10 @@
     <h2 id="update-dialog-title">Reachy software update</h2>
     <p id="update-summary" role="status" aria-live="polite"></p>
     <p id="update-scope" class="muted">Applies to Homebody on Reachy and its dashboard. Android app (APK): unchanged; update it separately on your phone.</p>
-    <details id="update-details" data-hb-disclosure><summary>What changed — release notes</summary><pre id="update-notes"></pre></details>
+    <p id="update-coverage" class="muted"></p>
+    <details id="update-details" data-hb-disclosure><summary>What changed — release notes</summary><div id="update-notes"></div></details>
     <div class="actions">
+      <p id="update-dialog-error" role="alert" hidden></p>
       <button type="button" id="update-install" disabled>Install on Reachy…</button>
       <button type="button" id="update-ack" hidden>Done — back to dashboard</button>
       <button type="button" id="update-close" class="secondary">Close</button>
@@ -1144,19 +1162,19 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=90"></script>
-  <script src="/static/scene.js?v=90"></script>
-  <script src="/static/motion.js?v=90"></script>
-  <script src="/static/owner.js?v=90"></script>
+  <script src="/static/notifications.js?v=91"></script>
+  <script src="/static/scene.js?v=91"></script>
+  <script src="/static/motion.js?v=91"></script>
+  <script src="/static/owner.js?v=91"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=90"></script>
-  <script src="/static/agent-connection.js?v=90"></script>
-  <script src="/static/native-workspace.js?v=90"></script>
-  <script src="/static/workspace.js?v=90"></script>
-  <script src="/static/ispy-input.js?v=90"></script>
-  <script src="/static/main.js?v=90"></script>
-  <script src="/static/updates.js?v=90"></script>
-  <script src="/static/volume.js?v=90"></script>
-  <script src="/static/assistant-modes.js?v=90"></script>
+  <script src="/static/camera.js?v=91"></script>
+  <script src="/static/agent-connection.js?v=91"></script>
+  <script src="/static/native-workspace.js?v=91"></script>
+  <script src="/static/workspace.js?v=91"></script>
+  <script src="/static/ispy-input.js?v=91"></script>
+  <script src="/static/main.js?v=91"></script>
+  <script src="/static/updates.js?v=91"></script>
+  <script src="/static/volume.js?v=91"></script>
+  <script src="/static/assistant-modes.js?v=91"></script>
 </body>
 </html>

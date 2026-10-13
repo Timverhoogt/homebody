@@ -9,7 +9,7 @@ REACHY_GITHUB_OWNER=your-github-login
 REACHY_GITHUB_PROJECT_MAP_JSON='{"your-github-login/repository":"registered-project-id"}'
 ```
 
-The map is explicit owner-managed metadata. Matching native targets must already exist in `REACHY_NATIVE_TARGETS_JSON` and their project roots in `REACHY_AGENT_PROJECTS_JSON`. The picker cannot clone, create sessions, register roots, submit work, enable execution, or choose arbitrary paths. Unconfigured repositories remain selectable in the list, with a clear setup-needed explanation and disabled Open project/Review controls. Selecting another repository cannot submit a request to the previously bound project by mistake. Existing Stop control remains separate.
+The map is explicit owner-managed metadata. Matching native targets must already exist in `REACHY_NATIVE_TARGETS_JSON` and their project roots in `REACHY_AGENT_PROJECTS_JSON`. The picker cannot clone, create sessions, register roots, submit work, enable execution, or choose arbitrary paths. Unconfigured repositories remain selectable in the list, with a setup-needed explanation beside the disabled Open project button (naming the repository and the two host variables) and disabled Review controls. Selecting another repository cannot submit a request to the previously bound project by mistake. Existing Stop control remains separate.
 
 `repositories` is a paired-owner + CSRF native action requiring an adult Workspace profile, current runtime generation and active RAM display lease. Bridge-side authorization is checked even when no native targets exist, and rechecked after the GitHub query. No repository metadata is added to public status, Kids status, audit bodies or browser storage. Reset/owner loss/clear removes it and fences late responses.
 

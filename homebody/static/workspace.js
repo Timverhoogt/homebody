@@ -8,9 +8,13 @@
   let blocked = true;
   let showing = false;
   let signature = "";
+  // Set only by HomebodyAssistantModes: 'workspace' once status confirms it; anything else fails closed.
+  let mode = "unknown";
+  let openWhenConfirmed = false;
   function controls() {
     byId("workspace-start").disabled = blocked || pending || showing;
     byId("workspace-clear").disabled = blocked || writing;
+    if (byId("workspace-clear").disabled) byId("workspace-clear-confirm").hidden = true;
     window.HomebodyAssistantModes?.sync();
   }
   function reset(message = "Conversation display is off.") {
@@ -22,6 +26,7 @@
     byId("workspace-timeline").replaceChildren();
     byId("workspace-badge").textContent = "Not showing";
     byId("workspace-state").textContent = message;
+    byId("workspace-clear-confirm").hidden = true;
     controls();
   }
   function render(payload) {
@@ -39,7 +44,8 @@
         const role = ["user", "assistant"].includes(event.role) ? event.role : "activity";
         row.className = `workspace-event workspace-${role}`;
         const label = document.createElement("strong");
-        label.textContent = role === "user" ? "You" : role === "assistant" ? "Hermes" : "Activity";
+        // Events carry no backend provenance; the activity rows below name it when it is known.
+        label.textContent = role === "user" ? "You" : role === "assistant" ? "Homebody" : "Activity";
         const body = document.createElement("p");
         body.textContent = String(event.text || "");
         row.append(label, body);
@@ -94,6 +100,11 @@
       if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
       render(payload);
       if (payload.enabled === true) outcome = "confirmed";
+      // Clear keeps its backend scope (stop + disconnect); say exactly what is needed to continue.
+      if (action === "clear") {
+        byId("workspace-state").textContent = "Cleared. Selected project work was asked to stop and the project "
+          + "is disconnected. To continue, tap Show conversation, then Open project again.";
+      }
     } catch (error) {
       if (mine === epoch) outcome = "failed";
       if (mine === epoch) reset("Conversation unavailable. Reconnect as owner to continue.");
@@ -112,6 +123,11 @@
     }
   }
   function select(view) {
+    if (view === "workspace" && mode !== "workspace") {
+      // A reveal during a pending switch waits for confirmation; any other mode refuses it.
+      openWhenConfirmed = mode === "pending";
+      view = "companion";
+    }
     const target = byId(`agent-${view}-view`);
     const switching = target.hidden;
     byId("agent-companion-view").hidden = view !== "companion";
@@ -126,13 +142,41 @@
   byId("agent-view-companion").addEventListener("click", () => select("companion"));
   byId("agent-view-workspace").addEventListener("click", () => select("workspace"));
   byId("workspace-start").addEventListener("click", () => request("start"));
+  // Clear is destructive beyond the display, so it states its scope and asks first.
   byId("workspace-clear").addEventListener("click", () => {
-    reset("Clearing this conversation…");
+    const confirm = byId("workspace-clear-confirm");
+    const reveal = confirm.hidden;
+    confirm.hidden = false;
+    if (reveal) window.HomebodyMotion?.enter(confirm);
+    byId("workspace-clear-cancel").focus();
+  });
+  byId("workspace-clear-cancel").addEventListener("click", () => {
+    byId("workspace-clear-confirm").hidden = true;
+    byId("workspace-clear").focus();
+  });
+  byId("workspace-clear-confirm-button").addEventListener("click", () => {
+    if (blocked || writing) return;
+    reset("Clearing the conversation and disconnecting the project…");
     request("clear");
   });
   window.HomebodyWorkspace = {
     reset,
     show: () => select("workspace"),
+    /** Assistant-mode authority: 'workspace' only when confirmed. Leaving it hides and fences everything. */
+    gate(next) {
+      const previous = mode;
+      mode = next;
+      if (next === "workspace") {
+        if (openWhenConfirmed) { openWhenConfirmed = false; select("workspace"); }
+        return;
+      }
+      if (next !== "pending") openWhenConfirmed = false;
+      if (previous === "workspace" || !byId("agent-workspace-view").hidden) {
+        select("companion");
+        // The host clears the display on every profile change; drop rendered content and late replies.
+        reset("Conversation & projects are available in Workspace.");
+      }
+    },
     /** Display-only facts for the Workspace mode card. */
     state: () => ({ showing, view: byId("agent-workspace-view").hidden ? "companion" : "workspace" }),
     update(runtime) {
