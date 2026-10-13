@@ -198,6 +198,8 @@ class AnnouncementsMixin:
                 with self._voice_activity_lock:
                     if self._announcement_item_cancelled(item):
                         continue
+                    if self._ack_output_quarantined():
+                        raise RuntimeError("Audio output is busy; announcement not played")
                     mode = self._effective_power_mode()
                     if mode in {"meeting", "sleep"} or self._privacy_requested.is_set():
                         raise RuntimeError("Announcement was blocked by the current privacy mode")

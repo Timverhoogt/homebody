@@ -439,6 +439,7 @@ def test_kids_locked_status_does_not_expose_presence_state() -> None:
     assert "presence" not in payload
     assert set(payload) == {
         "state",
+        "stt_locality",  # categorical local/cloud/unknown only
         "power_mode",
         "motors_enabled",
         "head_safely_folded",

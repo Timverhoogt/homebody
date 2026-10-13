@@ -296,11 +296,13 @@ def test_locked_child_status_exposes_only_readiness_and_clears_private_runtime_t
     status = runtime.status()
     assert set(status) == {
         "state",
+        "stt_locality",  # categorical enum only
         "power_mode",
         "motors_enabled",
         "head_safely_folded",
         "kids_mode",
     }
+    assert status["stt_locality"] in {"local", "cloud", "unknown"}
     serialized = str(status)
     for private_value in (
         "private detail",
@@ -624,8 +626,8 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     worker = (STATIC / "service-worker.js").read_text(encoding="utf-8")
     assert "homebody-shell-v" in worker
     for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=88" in html
-        assert f'"/static/{asset}?v=88"' in worker
+        assert f"/static/{asset}?v=89" in html
+        assert f'"/static/{asset}?v=89"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

@@ -615,6 +615,45 @@ def _ispy_reply(
     return f"{prefix} {hint} {tries}", count, hints_given + 1, False
 
 
+_KIDS_STREAM_MODEL = "eleven_flash_v2_5"
+
+
+def _kids_stream_voice(profile: str | None) -> str:
+    """The single resolver for the effective Kids streaming voice ('' if invalid)."""
+    voice = (_resolve_secret("ELEVENLABS_KIDS_VOICE_ID", profile) or "cgSgspJ2msm6clMCkdW9").strip()
+    return voice if voice and all(character.isalnum() or character in "_-" for character in voice) else ""
+
+
+def _kids_voice_proof(profile: str | None) -> dict[str, str]:
+    """Health proof of the effective Kids streaming voice: a digest and the model, never the raw id."""
+    voice = _kids_stream_voice(profile)
+    if not voice:
+        return {}
+    return {
+        "kids_voice_sha256": hashlib.sha256(voice.encode("utf-8")).hexdigest(),
+        "kids_tts_model": _KIDS_STREAM_MODEL,
+    }
+
+
+_LOCAL_STT_PROVIDERS = frozenset({"local", "local_command"})
+_CLOUD_STT_PROVIDERS = frozenset({"openai", "groq", "mistral", "elevenlabs", "deepgram", "assemblyai", "azure"})
+
+
+def _stt_locality(provider: str, hermes_enabled: bool) -> str:
+    """Server-derived categorical location of configured STT on this Hermes host.
+
+    'local' only for Hermes' on-host providers; unrecognised values stay 'unknown'.
+    """
+    value = provider.strip().casefold()
+    if not hermes_enabled or not value:
+        return "unknown"
+    if value in _LOCAL_STT_PROVIDERS:
+        return "local"
+    if value in _CLOUD_STT_PROVIDERS:
+        return "cloud"
+    return "unknown"
+
+
 def _ispy_text_unsafe(text: str) -> bool:
     words = set(re.findall(r"[\wÀ-ÿ]+", text.casefold()))
     return bool(words & _ISPY_DISALLOWED_TERMS)
@@ -1301,6 +1340,8 @@ class Bridge(NativeWorkspaceRoutes):
         except (ImportError, OSError, TypeError, ValueError):
             pass
         legacy = {"hermes_api": hermes_ok} if self.hermes_enabled else {}
+        providers["stt_locality"] = _stt_locality(providers.get("stt_provider", ""), self.hermes_enabled)
+        providers.update(_kids_voice_proof(self.profile))
         return web.json_response(
             {
                 "status": "ok" if agent_ok else "degraded",
@@ -2099,6 +2140,11 @@ class Bridge(NativeWorkspaceRoutes):
             },
             headers={"Cache-Control": "no-store"},
         )
+
+    async def kids_voice_proof(self, request: web.Request) -> web.Response:
+        """Current digest+model of the effective Kids streaming voice (same resolver); no raw id."""
+        self.require_auth(request)
+        return web.json_response(_kids_voice_proof(self.profile), headers={"Cache-Control": "no-store"})
 
     async def kids_ispy_cancel(self, request: web.Request) -> web.Response:
         """Delete bridge-side target, guess state, history, and speech approvals."""
@@ -3621,8 +3667,9 @@ class Bridge(NativeWorkspaceRoutes):
         eleven_key = _resolve_secret("ELEVENLABS_API_KEY", self.profile)
         if not eleven_key:
             raise web.HTTPServiceUnavailable(text="ElevenLabs is not configured on the Hermes host")
-        voice = (_resolve_secret("ELEVENLABS_KIDS_VOICE_ID", self.profile) or "cgSgspJ2msm6clMCkdW9").strip()
-        if not voice or not all(character.isalnum() or character in "_-" for character in voice):
+        # ELEVENLABS_KIDS_VOICE_ID or the default, via the one resolver health also proves.
+        voice = _kids_stream_voice(self.profile)
+        if not voice:
             raise web.HTTPServiceUnavailable(text="The Kids Mode ElevenLabs voice ID is invalid")
         self._consume_kids_speech_approval(approval_token, session_id, text)
 
@@ -3633,7 +3680,7 @@ class Bridge(NativeWorkspaceRoutes):
             headers={"xi-api-key": eleven_key, "Content-Type": "application/json"},
             json={
                 "text": text,
-                "model_id": "eleven_flash_v2_5",
+                "model_id": "eleven_flash_v2_5",  # == _KIDS_STREAM_MODEL, the health proof's model
             },
         ) as upstream:
             if upstream.status != 200:
@@ -3833,6 +3880,7 @@ def create_app(
     app.router.add_post("/v1/kids/speech/stream", bridge.kids_speech_stream)
     app.router.add_post("/v1/kids/speech/fallback", bridge.kids_speech_fallback)
     app.router.add_post("/v1/audio/transcriptions", bridge.transcribe)
+    app.router.add_get("/v1/kids/voice-proof", bridge.kids_voice_proof)
     app.router.add_post("/v1/audio/speech", bridge.speech)
     app.router.add_get("/v1/warm-agents", bridge.warm_agents_status)
     app.router.add_delete("/v1/warm-agents", bridge.warm_agents_evict)

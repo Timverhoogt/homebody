@@ -15,9 +15,11 @@ from pathlib import Path
 
 import httpx
 
-from .audio import AdaptiveEndpointRecorder, EndpointResult, encode_wav
+from .audio import AdaptiveEndpointRecorder, EndpointResult, encode_wav, resample_linear
 from .config import AppConfig
 from .hermes_client import HermesBridgeError, SpeechAudio
+from .kids_acknowledgements import KidsAckPlayer, eligible_clips, output_quarantined
+from .kids_acknowledgements import catalog as kids_ack_catalog
 
 # Keep the runtime logger name so existing log filters still match these lines.
 _LOGGER = logging.getLogger("homebody.runtime")
@@ -26,6 +28,33 @@ _MEDIA_TAG = re.compile(r"(?m)^\s*(?:\[\[audio_as_voice\]\]\s*)?MEDIA:\S+\s*$")
 _MARKDOWN = re.compile(r"[`*_#>|]+")
 # Consecutive silent/empty Kids turns that re-open the microphone before returning to wake.
 _KIDS_EMPTY_TURN_RETRIES = 2
+_STT_LOCALITIES = frozenset({"local", "cloud"})
+_LOCAL_STT_RECEIPTS = frozenset({"local", "local_command"})
+_CLOUD_STT_RECEIPTS = frozenset({"openai", "groq", "mistral", "elevenlabs", "deepgram", "assemblyai", "azure"})
+
+
+def receipt_locality(provider: object) -> str:
+    """Categorical locality of one actual transcription receipt; anything else is 'unknown'."""
+    value = str(provider or "").strip().casefold()
+    if value in _LOCAL_STT_RECEIPTS:
+        return "local"
+    if value in _CLOUD_STT_RECEIPTS:
+        return "cloud"
+    return "unknown"
+
+
+def stt_locality(config: AppConfig, health: dict[str, object]) -> str:
+    """Categorical STT location for this turn: 'local', 'cloud' or 'unknown'.
+
+    ElevenLabs is always a cloud transcription. Otherwise the bridge uses Hermes' configured
+    provider, so only the bridge's own server-derived health receipt can confirm 'local'.
+    """
+    if config.conversation_mode != "pipeline" and not config.kids_mode_enabled:
+        return "unknown"
+    if config.stt_provider == "elevenlabs":
+        return "cloud"
+    value = health.get("stt_locality") if isinstance(health, dict) else None
+    return value if value in _STT_LOCALITIES else "unknown"
 
 
 class PipelineVoiceMixin:
@@ -72,9 +101,37 @@ class PipelineVoiceMixin:
             self._set_status("listening", "Didn't catch that; listening again")
             return True
 
+        ack_player: KidsAckPlayer | None = None
+
+        def settle_ack() -> bool:
+            """Quiesce the filler; False means audio output is quarantined (fail closed)."""
+            nonlocal ack_player
+            quiet = True
+            if ack_player is not None:
+                quiet = ack_player.settle()
+                ack_player = None
+            if quiet and not self._ack_output_quarantined():
+                return True
+            self._set_status("waiting_for_wake_word", "Audio output is busy; ending this turn")
+            return False
+
+        def set_locality(value: str) -> None:
+            with self._status_lock:
+                self._status.stt_locality = value
+
         try:
             health = client.health()
-            self._set_status("listening", "Wake word accepted", bridge_healthy=True, last_error="")
+            if not isinstance(health, dict):
+                health = {}
+            # Per-conversation proofs; RAM only. The voice digest never enters public status.
+            voice_proof = (health.get("kids_voice_sha256"), health.get("kids_tts_model"))
+            locality = stt_locality(config, health)
+            locality_provider = config.stt_provider
+            stt_turns = 0
+            self._set_status(
+                "listening", "Wake word accepted", bridge_healthy=True, last_error="",
+                stt_locality=locality,
+            )
             _LOGGER.debug("Hermes bridge health: %s", health.get("status"))
 
             first_turn = True
@@ -97,6 +154,10 @@ class PipelineVoiceMixin:
                     transcript = typed_input
                     workspace_generation = None
                 else:
+                    if self._ack_output_quarantined():
+                        # An old filler push is still blocked in the SDK: no new microphone turn.
+                        self._set_status("waiting_for_wake_word", "Audio output is busy; ending this turn")
+                        break
                     self._play_asset("listening.wav")
                     if self._motion is not None:
                         self._motion.listening()
@@ -124,9 +185,37 @@ class PipelineVoiceMixin:
                     if self._motion is not None:
                         self._motion.thinking()
                     self._workspace_event(workspace_generation, "activity", "Transcribing your voice")
-                    self._set_status("transcribing", "Command received; transcribing")
-                    transcript = client.transcribe(encode_wav(endpoint.samples, 16000))
+                    if config.stt_provider != locality_provider:
+                        # Provider selection changed: drop any older local claim until a receipt.
+                        locality = "cloud" if config.stt_provider == "elevenlabs" else "unknown"
+                        locality_provider = config.stt_provider
+                    self._set_status("transcribing", "Command received; transcribing", stt_locality=locality)
+                    # A cached Kids clip may play only if STT is still pending after a pause.
+                    # Turn 1 uses the proof sampled with this conversation's health; every later
+                    # turn re-proves the effective Kids voice from the bridge before any clip.
+                    if stt_turns == 0:
+                        ack_player = self._start_kids_ack(initial_config, voice_proof)
+                    else:
+                        refresh = getattr(client, "kids_voice_proof", None)
+                        ack_player = (
+                            self._start_kids_ack(initial_config, refresh=refresh) if callable(refresh) else None
+                        )
+                    stt_turns += 1
+                    try:
+                        transcript = client.transcribe(encode_wav(endpoint.samples, 16000))
+                    except BaseException:
+                        locality = "unknown"
+                        set_locality(locality)
+                        raise
+                    finally:
+                        if ack_player is not None:
+                            ack_player.stt_finished()
+                    # The latest actual receipt wins over the conversation-start health snapshot;
+                    # a missing receipt never keeps an older "local" claim.
+                    locality = receipt_locality(getattr(client, "last_stt_receipt", ""))
                     if not transcript:
+                        if not settle_ack():  # never re-open the microphone over the filler
+                            break
                         if kids_retry_allowed():
                             continue
                         self._set_status("waiting_for_wake_word", "No speech detected")
@@ -201,6 +290,8 @@ class PipelineVoiceMixin:
                         "Answered by the restricted roadmap reader — not your Hermes session",
                     )
                 self._workspace_event(workspace_generation, "activity", "Preparing the spoken reply")
+                if not settle_ack():  # the moderated answer never overlaps a cached clip
+                    break
                 preserve_ispy_guess_motion = False
                 if (
                     client.config.kids_mode_enabled
@@ -322,9 +413,79 @@ class PipelineVoiceMixin:
             self._set_status("error", "Hermes bridge request failed", bridge_healthy=False)
             raise
         finally:
+            settle_ack()
+            set_locality("unknown")  # provenance is per conversation; never left stale
             self._voice_timings.end()
             self._workspace_event(workspace_generation, "activity", "Voice session ended")
             client.close()
+
+    def _ack_output_quarantined(self) -> bool:
+        """True while an old filler push is still blocked inside the SDK (fail closed)."""
+        return output_quarantined(self)
+
+    def _start_kids_ack(
+        self,
+        config: AppConfig,
+        voice_proof: tuple[object, object] | None = None,
+        refresh: Callable[[], object] | None = None,
+    ) -> KidsAckPlayer | None:
+        """Arm one delayed cached clip for an active Kids audio turn; None when not eligible.
+
+        ``voice_proof`` is a just-sampled bridge proof (voice digest, model) of the effective Kids
+        streaming voice, used for the first turn of a conversation. ``refresh`` instead fetches a
+        fresh proof from the bridge when the delay elapses (later turns), off the answer path.
+        Missing, failed or mismatching proof => no filler.
+        """
+        if not config.kids_mode_enabled or config.kids_activity == "calm":
+            return None
+        if (voice_proof is None and refresh is None) or self._ack_output_quarantined():
+            return None
+        language_clips = kids_ack_catalog().get(config.language, ())
+        push = getattr(self.robot.media, "push_audio_sample", None)
+        if not language_clips or not callable(push):
+            return None  # missing/rejected assets or no PCM output: no filler, never live TTS
+        if refresh is None:
+            clips = eligible_clips(language_clips, *voice_proof)
+            if not clips:
+                return None
+        else:
+
+            def clips() -> tuple:
+                proof = refresh()
+                if not isinstance(proof, dict):
+                    return ()
+                return eligible_clips(language_clips, proof.get("kids_voice_sha256"), proof.get("kids_tts_model"))
+        session_id = config.kids_session_id
+        with self._conversation_stop_generation_lock:
+            turn_generation = self._turn_stop_generation  # immutable snapshot; never resampled
+
+        def is_current() -> bool:
+            with self._conversation_stop_generation_lock:
+                stopped = (
+                    self._conversation_stop_requested.is_set()
+                    or self._conversation_stop_generation != turn_generation
+                )
+            return (
+                not stopped
+                and self._kids_session_is_current(session_id)
+                and not self.stop_event.is_set()
+                and not self._privacy_requested.is_set()
+                and self._effective_power_mode() not in {"meeting", "sleep"}
+            )
+
+        if not is_current():
+            return None
+        self._kids_ack_producer = player = KidsAckPlayer(
+            clips=clips,
+            selector=self._kids_ack_selector,
+            push=push,
+            clear=self._clear_streamed_audio,
+            is_current=is_current,
+            resample=resample_linear,
+            output_rate=self._output_sample_rate,
+            clock=time.monotonic,
+        )
+        return player.start()
 
     def _record_utterance(
         self,

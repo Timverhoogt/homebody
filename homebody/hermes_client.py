@@ -68,6 +68,7 @@ class HermesBridgeClient:
         self._session_id = self._new_session_id()
         self._last_turn_at = 0.0
         self.last_stt_provider = ""
+        self.last_stt_receipt = ""
         self.last_tts_provider = ""
         self._kids_speech_approval = ""
         self._kids_fallback_speech_approval = ""
@@ -214,6 +215,7 @@ class HermesBridgeClient:
         }
         if self.config.kids_mode_enabled:
             fields["kids"] = "1"  # The bridge may then skip local language auto-detection.
+        self.last_stt_receipt = ""  # cleared first: an error leaves no stale provenance
         response = self._client.post(
             f"{self.config.bridge_url}/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {self.config.api_key}"},
@@ -224,8 +226,27 @@ class HermesBridgeClient:
         payload = response.json()
         transcript = str(payload.get("text") or payload.get("transcript") or "").strip()
         self.last_stt_provider = str(payload.get("provider") or self.config.stt_provider)
+        # The bridge's actual provider receipt for this transcription only (no transcript kept).
+        self.last_stt_receipt = str(payload.get("provider") or "")[:64]
         # Silence or unintelligible audio is a normal no-speech turn, not a bridge failure.
         return transcript
+
+    def kids_voice_proof(self, *, timeout: float = 1.5) -> dict[str, str]:
+        """Fresh bridge proof (digest + model) of the effective Kids streaming voice; bounded."""
+        response = self._client.get(
+            f"{self.config.bridge_url}/v1/kids/voice-proof",
+            headers={"Authorization": f"Bearer {self.config.api_key}"},
+            timeout=timeout,
+        )
+        self._raise_for_error(response, "Kids voice proof")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            return {}
+        return {
+            key: str(payload[key])
+            for key in ("kids_voice_sha256", "kids_tts_model")
+            if isinstance(payload.get(key), str)
+        }
 
     def models(self, *, timeout: float = 10.0) -> list[dict[str, object]]:
         response = self._client.get(

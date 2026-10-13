@@ -21,6 +21,7 @@ from .audio import resample_linear
 from .config import AppConfig
 from .hermes_client import HermesBridgeClient, HermesBridgeError
 from .ispy import ISpyTarget
+from .kids_acknowledgements import AckSelector
 from .kids_mode import KidsProfile, build_kids_prompt, kids_greeting, kids_message
 
 # Keep the runtime logger name so existing log filters and dashboards still match Kids Mode lines.
@@ -63,6 +64,8 @@ class KidsModeMixin:
         # armed only after the Start greeting/clue finished playing. The stop generation is the
         # one sampled right after Start, so any later Stop, End, privacy or Standby invalidates it.
         self._kids_first_listen: tuple[str, int, int, float] | None = None
+        self._kids_ack_selector = AckSelector()
+        self._kids_ack_producer = None  # latest filler producer; quarantines audio while a push is blocked
         self._kids_start_stop_generation = -1
 
     def _kids_first_listen_valid(self, ticket: tuple[str, int, int, float], session_id: str) -> bool:
@@ -716,8 +719,8 @@ class KidsModeMixin:
                 or self._effective_power_mode() in {"meeting", "sleep"}
             )
 
-        if cancelled():
-            return False
+        if cancelled() or self._ack_output_quarantined():
+            return False  # never stream over (or let an old flush cut) a still-blocked filler push
         if animate_motion and self._motion is not None:
             self._motion.speaking()
         if self._spotter is not None:

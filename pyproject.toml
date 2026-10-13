@@ -66,7 +66,7 @@ include-package-data = true
 packages = ["homebody", "homebody.bridge"]
 
 [tool.setuptools.package-data]
-homebody = ["release.json", "assets/*", "assets/gesture_models/*", "static/*", "agent_guides/*.md"]
+homebody = ["release.json", "assets/*", "assets/gesture_models/*", "assets/kids_acknowledgements/*", "static/*", "agent_guides/*.md"]
 "homebody.bridge" = ["*.py", "*.example"]
 
 [tool.pytest.ini_options]

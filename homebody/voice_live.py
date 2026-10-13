@@ -13,6 +13,7 @@ import time
 
 from .audio import resample_linear
 from .config import AppConfig
+from .kids_acknowledgements import output_quarantined
 from .live_client import LiveBridgeSession
 from .realtime_client import RealtimeBridgeError
 from .voice_realtime import RealtimePlayback
@@ -31,6 +32,8 @@ class LiveVoiceMixin:
     def _run_live_conversation(self, config: AppConfig) -> None:
         if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
             return
+        if output_quarantined(self):
+            return  # direct entry: same common audio-quarantine gate as the dispatcher
         broker_context = self.agent_broker_context(explicit_private_intent=False)
         agent_request_id = ""
         if broker_context.capability_profile == "agent":

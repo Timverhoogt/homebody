@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 AGE_BANDS = frozenset({"4-6", "7-9", "10-12"})
+# The single Kids voice identity and Flash model for fixed Kids announcements and cached clips.
+KIDS_VOICE_ID = "cgSgspJ2msm6clMCkdW9"
+KIDS_TTS_MODEL = "eleven_flash_v2_5"
 ACTIVITIES = frozenset({"buddy", "story", "quiz", "riddles", "calm", "ispy"})
 LANGUAGES = frozenset({"en", "nl"})
 

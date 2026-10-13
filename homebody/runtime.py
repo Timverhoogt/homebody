@@ -23,6 +23,7 @@ from .audio import (
 from .config import AppConfig, load_config
 from .hermes_client import HermesBridgeClient
 from .home_assistant import HermesHomeAssistantProvider, HomeAssistantBridge
+from .kids_acknowledgements import output_quarantined
 from .kids_runtime import KidsModeMixin
 from .manual_control import ManualControlMixin
 from .motion import VoiceMotion
@@ -84,6 +85,8 @@ class RuntimeStatus:
     model_ready: bool = False
     turns_completed: int = 0
     stt_provider: str = ""
+    # Categorical, server-derived: "local" only when the bridge confirmed Hermes-host STT.
+    stt_locality: str = "unknown"
     tts_provider: str = ""
     audio_rms: float = 0.0
     audio_peak: float = 0.0
@@ -365,8 +368,11 @@ class HermesVoiceRuntime(
             }
             payload["kids_mode"] = kids_payload
             if self._kids_locked:
+                locality = payload.get("stt_locality")
                 return {
                     "state": payload.get("state", "waiting_for_wake_word"),
+                    # Only a safe categorical enum; never a provider, model, path or error.
+                    "stt_locality": locality if locality in {"local", "cloud"} else "unknown",
                     "power_mode": payload.get("power_mode", "standby"),
                     "motors_enabled": self._motors_enabled,
                     "head_safely_folded": self._head_safely_folded,
@@ -718,6 +724,10 @@ class HermesVoiceRuntime(
             with self._motor_transition_lock:
                 if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
                     continue
+                if output_quarantined(self):
+                    # Before motor admission or turn acceptance; any first-listen ticket is dropped.
+                    self._set_status("waiting_for_wake_word", "Audio output is busy; try again shortly")
+                    continue
                 if first_listen is not None:
                     # Automatic Start never overrides a Stop/End that happened after consumption.
                     if not self._admit_kids_first_listen(first_listen):
@@ -778,6 +788,11 @@ class HermesVoiceRuntime(
 
     def _run_selected_voice_conversation(self, config: AppConfig, keyword: str) -> None:
         """Route locked child sessions before every adult conversation provider."""
+        if output_quarantined(self):
+            # Common gate for every engine and mode: no earcon, session, playback or microphone
+            # while an old Kids filler push is still blocked in the SDK. It does not touch stop state.
+            self._set_status("waiting_for_wake_word", "Audio output is busy; try again shortly")
+            return
         if config.kids_mode_enabled:
             self._run_conversation(config)
         elif config.home_assistant_assist_enabled:

@@ -803,10 +803,13 @@ const STATE_HEADLINES = {
   disconnected: ["Out of", "reach."],
 };
 
-function renderStateHeadline(state) {
+function renderStateHeadline(state, sttLocality = "") {
   const headline = $("runtime-state");
   headline.replaceChildren();
-  const parts = STATE_HEADLINES[state];
+  // "Local" only for a bridge-confirmed Hermes-host STT receipt; otherwise stay neutral.
+  const parts = state === "transcribing"
+    ? (sttLocality === "local" ? ["Local", "transcription…"] : ["Transcribing", "…"])
+    : STATE_HEADLINES[state];
   if (!parts) {
     const words = String(state || "unknown").replaceAll("_", " ");
     headline.textContent = `${words.charAt(0).toUpperCase()}${words.slice(1)}.`;
@@ -833,7 +836,8 @@ function updateStatus(payload, sequence = statusSequence) {
   $("local-vision-ask").hidden = !(config.local_vision_enabled && config.camera_enabled);
   const runtime = payload.runtime || {};
   const state = runtime.state || "unknown";
-  renderStateHeadline(state);
+  const sttLocality = ["local", "cloud"].includes(runtime.stt_locality) ? runtime.stt_locality : "unknown";
+  renderStateHeadline(state, sttLocality);
   $("runtime-detail").textContent = runtime.detail || "";
   // The hero face reads this to open, half-close or shut Reachy's eyes.
   document.body.dataset.runtimeState = state;
@@ -861,13 +865,13 @@ function updateStatus(payload, sequence = statusSequence) {
   const kidsLocked = Boolean(kidsMode.locked);
   window.HomebodyISpyInput?.update(kidsMode);
   const sceneOffline = window.HomebodyOwner?.isOwner() !== true;
-  kidsStageStatus = { kids: kidsMode, state, powerMode: runtime.power_mode || "", offline: sceneOffline };
+  kidsStageStatus = { kids: kidsMode, state, powerMode: runtime.power_mode || "", offline: sceneOffline, sttLocality };
   renderKidsStage(sequence);
   companionStage?.update(window.HomebodyScene.companionView({
-    state, powerMode: runtime.power_mode || "", kidsActive: kidsActive || kidsLocked, offline: sceneOffline,
+    state, powerMode: runtime.power_mode || "", kidsActive: kidsActive || kidsLocked, offline: sceneOffline, sttLocality,
   }));
   presenceStage?.update(window.HomebodyScene.presenceView({
-    state, powerMode: runtime.power_mode || "", kidsActive: kidsActive || kidsLocked, offline: sceneOffline,
+    state, powerMode: runtime.power_mode || "", kidsActive: kidsActive || kidsLocked, offline: sceneOffline, sttLocality,
   }));
   window.HomebodyWorkspace?.update(runtime);
   window.HomebodyVolume?.update(runtime);
@@ -1340,7 +1344,7 @@ async function refreshStatus() {
     $("kids-start-button").disabled = true;
     $("kids-stop-button").disabled = true;
     $("kids-status-badge").textContent = "Offline";
-    kidsStageStatus = { ...kidsStageStatus, offline: true };
+    kidsStageStatus = { ...kidsStageStatus, offline: true, sttLocality: "unknown" };
     renderKidsStage();
     companionStage?.update(window.HomebodyScene.companionView({ offline: true }));
     presenceStage?.update(window.HomebodyScene.presenceView({ offline: true }));
