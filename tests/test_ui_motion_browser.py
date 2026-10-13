@@ -59,6 +59,7 @@ def _running(page, selector):
 
 
 def _apply(page, state, runtime_state="waiting_for_wake_word", power="awake", **runtime):
+    page.wait_for_function("!statusRefreshPending", timeout=5000)
     state["runtime"].update(state=runtime_state, power_mode=power, kids_mode={}, **runtime)
     page.evaluate("s => updateStatus({config:s.config,runtime:s.runtime})", state)
 
