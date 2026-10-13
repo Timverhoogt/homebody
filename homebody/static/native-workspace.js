@@ -1,7 +1,9 @@
 /* Shared native project lane; no storage, raw HTML, primary-session discovery or model consent. */
 (() => {
   const byId = (id) => document.getElementById(id);
-  let epoch = 0, enabled = false, pending = false, uncertain = false, payload = null, controller = null;
+  // `pending` is a write or catalog refresh and locks the controls; `polling` is a read-only poll and never
+  // touches them (disabling an open <select> closes it in Chromium, which made the picker flicker).
+  let epoch = 0, enabled = false, pending = false, polling = false, uncertain = false, payload = null, controller = null;
   let repositories = null;
   const active = new Set(["submitting", "running", "stopping", "disconnected", "verifying", "submission_unknown"]);
   const feedbackButtons = { bind: "workspace-native-bind", prepare: "workspace-native-prepare", approve: "workspace-native-approve" };
@@ -29,6 +31,7 @@
     controller?.abort();
     controller = null;
     pending = false;
+    polling = false;
     enabled = false;
     uncertain = false;
     payload = null;
@@ -54,16 +57,22 @@
     const repo = selectedRepository();
     return !repo || repo.target_ids.includes(payload?.binding?.target_id);
   }
+  // Options are replaced only when the list really changed, so polls keep an open picker and its value.
+  function syncOptions(select, rows) {
+    const options = select.options;
+    if (options.length === rows.length && rows.every(([value, label], i) => options[i].value === value && options[i].textContent === label)) return;
+    const previous = select.value;
+    select.replaceChildren(...rows.map(([value, label]) => {
+      const option = document.createElement("option"); option.value = value; option.textContent = label; return option;
+    }));
+    if (rows.some(([value]) => value === previous)) select.value = previous;
+  }
+  function setDisabled(id, value) {
+    if (byId(id).disabled !== value) byId(id).disabled = value;
+  }
   function renderRepositories() {
-    const select = byId("workspace-repository"), previous = select.value;
-    select.replaceChildren();
-    const all = document.createElement("option"); all.value = ""; all.textContent = "Choose a repository…"; select.append(all);
-    for (const repo of repositories?.repositories || []) {
-      const option = document.createElement("option"); option.value = repo.repository;
-      option.textContent = `${repo.repository}${repo.private ? " · Private" : ""}${repo.archived ? " · Archived" : ""}${repo.target_ids.length ? " · Session available" : ""}`;
-      select.append(option);
-    }
-    if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+    syncOptions(byId("workspace-repository"), [["", "Choose a repository…"], ...(repositories?.repositories || []).map((repo) => [repo.repository,
+      `${repo.repository}${repo.private ? " · Private" : ""}${repo.archived ? " · Archived" : ""}${repo.target_ids.length ? " · Session available" : ""}`])]);
     const repo = selectedRepository();
     byId("workspace-repository-state").textContent = repo
       ? repo.target_ids.length ? `${repo.repository}: a project session is available. Tap Open project; no work starts until you review and approve a request.`
@@ -72,14 +81,10 @@
         : repositories?.error || "Enable Workspace and tap Show conversation above to load your repositories.";
   }
   function renderTargets() {
-    const select = byId("workspace-native-target"), previous = select.value, repo = selectedRepository();
-    select.replaceChildren();
-    for (const target of payload?.targets || []) {
-      if (repo && !repo.target_ids.includes(target.target_id)) continue;
-      const option = document.createElement("option"); option.value = target.target_id;
-      option.textContent = `${target.title} · ${target.backend}`; select.append(option);
-    }
-    if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+    const repo = selectedRepository();
+    syncOptions(byId("workspace-native-target"), (payload?.targets || [])
+      .filter((target) => !repo || repo.target_ids.includes(target.target_id))
+      .map((target) => [target.target_id, `${target.title} · ${target.backend}`]));
   }
   function controls() {
     const busy = active.has(payload?.run?.status);
@@ -90,15 +95,27 @@
       ? "Tap Enable Workspace here, or Workspace beside Everyday at the top of this screen."
       : !enabled ? "Workspace is enabled. Tap Show conversation above to load and select your projects."
         : "Choose a GitHub repository, then Open project. Selection does not start work.";
-    byId("workspace-repository").disabled = !enabled || pending || busy || !repositories?.available;
-    byId("workspace-repositories-reload").disabled = !enabled || pending || busy;
-    byId("workspace-native-bind").disabled = !enabled || pending || busy || !byId("workspace-native-target").options.length;
-    byId("workspace-native-prepare").disabled = !enabled || pending || busy || (!payload?.binding || !selectionMatchesBinding());
-    byId("workspace-native-approve").disabled = !enabled || pending || (!payload?.pending || !selectionMatchesBinding());
-    byId("workspace-native-stop").disabled = !enabled || (!busy && !pending && !uncertain);
-    byId("workspace-native-target").disabled = !enabled || pending || busy;
-    byId("workspace-native-request").disabled = !enabled || pending || busy || (!payload?.binding || !selectionMatchesBinding());
+    setDisabled("workspace-repository", !enabled || pending || busy || !repositories?.available);
+    setDisabled("workspace-repositories-reload", !enabled || pending || busy);
+    setDisabled("workspace-native-bind", !enabled || pending || busy || !payload || !byId("workspace-native-target").options.length);
+    setDisabled("workspace-native-prepare", !enabled || pending || busy || (!payload?.binding || !selectionMatchesBinding()));
+    setDisabled("workspace-native-approve", !enabled || pending || (!payload?.pending || !selectionMatchesBinding()));
+    setDisabled("workspace-native-stop", !enabled || (!busy && !pending && !uncertain));
+    setDisabled("workspace-native-target", !enabled || pending || busy);
+    setDisabled("workspace-native-request", !enabled || pending || busy || (!payload?.binding || !selectionMatchesBinding()));
     renderBench();
+    window.HomebodyAssistantModes?.sync();
+  }
+  /** Display-only facts for the Workspace mode card; never fetches or grants anything. */
+  function summary() {
+    const binding = payload?.binding;
+    return {
+      repository: selectedRepository()?.repository || "",
+      session: !enabled ? "unchecked" : uncertain ? "unconfirmed" : !payload ? "checking"
+        : binding && selectionMatchesBinding() ? "bound" : binding ? "other" : "none",
+      label: binding ? `${binding.backend} · ${binding.project_id}` : "",
+      uncertain,
+    };
   }
   function render(next) {
     payload = next;
@@ -137,12 +154,15 @@
     controls();
   }
   async function request(action = "read", fields = {}) {
-    if (!enabled || (pending && action === "read")) return;
+    const poll = ["read", "show"].includes(action);
+    if (!enabled || (poll && (pending || polling))) return;
     if (pending && action !== "cancel") return;
+    // A write or refresh supersedes an in-flight poll; the poll's late answer is fenced out below.
     controller?.abort();
     const abort = new AbortController();
     controller = abort;
-    pending = true;
+    polling = poll;
+    pending = !poll;
     const mine = epoch;
     // Button feedback follows the server's answer to this exact request; stale answers just clear it.
     const feedback = feedbackButtons[action] ? window.HomebodyMotion?.pending(byId(feedbackButtons[action])) : null;
@@ -172,12 +192,15 @@
       byId("workspace-native-timeline").replaceChildren();
       byId("workspace-native-approval").hidden = true;
       byId("workspace-native-scope").textContent = "";
-    byId("workspace-native-request-summary").textContent = "";
+      byId("workspace-native-request-summary").textContent = "";
       byId("workspace-native-receipt").textContent = "";
       byId("workspace-native-verification").hidden = true;
       byId("workspace-native-request").value = "";
       payload = null;
       uncertain = true;
+      // Nothing from the last answer is still confirmed: no session identity or openable target remains.
+      byId("workspace-native-identity").textContent = "Project session unconfirmed. Reconnecting…";
+      renderTargets();
       byId("workspace-native-state").textContent = "Connection unavailable. Native work may still be running; reconnect to reconcile.";
       if (action !== "read") window.HomebodyNotifications?.show(String(error.message || error), {
         id: "native-workspace", title: "Project session", kind: "error",
@@ -186,7 +209,7 @@
       clearTimeout(timer);
       window.HomebodyMotion?.settle(feedback, mine === epoch ? outcome : "cleared");
       if (controller === abort) {
-        controller = null; pending = false; controls();
+        controller = null; pending = false; polling = false; controls();
         if (outcome === "confirmed" && !repositories && ["show", "read"].includes(action)) {
           queueMicrotask(() => { if (mine === epoch && enabled) request("repositories"); });
         }
@@ -202,6 +225,7 @@
   byId("workspace-native-stop").addEventListener("click", () => request("cancel"));
   window.HomebodyNativeWorkspace = {
     reset,
+    summary,
     /** Repaint the bench from current state (owner/display changes); never fetches. */
     sync: renderBench,
     update(displayEnabled) {

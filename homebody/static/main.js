@@ -875,7 +875,6 @@ function updateStatus(payload, sequence = statusSequence) {
   const agent = runtime.agent || {};
   const agentProfile = agent.profile || "conversation";
   agentProfileActive = agentProfile === "agent";
-  $("agent-profile-badge").textContent = agentProfile;
   $("tab-agent").dataset.profileActive = String(agentProfileActive);
   $("agent-capabilities").textContent = (agent.enabled_capabilities || []).join(", ") || "None in Conversation profile";
   $("agent-current-task").textContent = agent.current_task || "—";
@@ -2542,9 +2541,11 @@ async function setAgentProfile(profile) {
     && !window.confirm("Leaving Workspace invalidates this Agent run and every pending approval. Approved native project work keeps running. Continue?")
   ) return;
   agentRequestPending = true;
+  window.HomebodyAssistantModes?.switching(profile === "agent" ? "workspace" : "everyday");
   const message = $("agent-message");
   message.textContent = profile === "agent" ? "Entering Workspace…" : "Switching to Everyday…";
   message.className = "message";
+  let modeWriteAccepted = false;
   try {
     // Leaving Workspace from here keeps approved project work running (hidden, badge only);
     // Kids, privacy and power changes still stop it.
@@ -2555,6 +2556,7 @@ async function setAgentProfile(profile) {
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    modeWriteAccepted = true;
     message.textContent = profile === "agent"
       ? "Workspace active. Reversible owner tools are available; consequential actions pause for exact phone approval."
       : "Everyday active. Any approved project work keeps running; its details stay hidden until you return to Workspace.";
@@ -2566,6 +2568,7 @@ async function setAgentProfile(profile) {
   } finally {
     agentRequestPending = false;
     await refreshStatus();
+    if (!modeWriteAccepted) window.HomebodyAssistantModes?.switching("");
   }
 }
 
