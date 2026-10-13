@@ -429,3 +429,51 @@ def test_successful_switch_waits_for_status_not_an_old_inflight_read(ui):
     page.wait_for_function("document.getElementById('panel-agent').dataset.assistantMode === 'workspace'")
     assert page.locator("#everyday-card").is_hidden()
     assert not errors
+
+
+@pytest.mark.parametrize("failure", [502, 200])
+def test_catalog_failure_cannot_restore_old_binding_actions(picker, failure):
+    page, _voice, _runtime, state, errors = picker
+    page.select_option("#workspace-repository", "Timverhoogt/homebody")
+    page.click("#workspace-native-bind")
+    page.wait_for_function("!document.getElementById('workspace-native-request').disabled")
+    page.select_option("#workspace-repository", "Timverhoogt/private-project")
+    page.route(
+        "**/api/agent/workspace/native/repositories",
+        lambda route: route.fulfill(
+            status=failure, json={"available": False, "repositories": [], "error": "Unavailable"}
+        ),
+    )
+    page.click("#workspace-repositories-reload")
+    page.wait_for_function("!document.getElementById('workspace-repositories-reload').disabled")
+    _poll(page, state, 2)
+    for control in ["bind", "prepare", "request", "approve"]:
+        assert page.locator(f"#workspace-native-{control}").is_disabled(), control
+    assert page.locator("#workspace-native-target option").count() == 0
+    assert page.evaluate("HomebodyNativeWorkspace.summary().session") != "bound"
+    # Even a synthetic click cannot prepare work for the previously bound project.
+    page.evaluate("document.getElementById('workspace-native-prepare').dispatchEvent(new Event('click'))")
+    page.wait_for_timeout(100)
+    assert not any(action in {"prepare", "approve"} for action, _ in state["calls"])
+    state["native"]["run"] = {"status": "running", "run_id": "old-bound-run"}
+    _poll(page, state, 1)
+    assert page.locator("#workspace-native-stop").is_enabled()
+    assert not errors
+
+
+def test_removed_selected_repository_cannot_restore_old_binding_actions(picker):
+    page, _voice, _runtime, state, errors = picker
+    page.select_option("#workspace-repository", "Timverhoogt/homebody")
+    page.click("#workspace-native-bind")
+    page.wait_for_function("!document.getElementById('workspace-native-request').disabled")
+    page.select_option("#workspace-repository", "Timverhoogt/private-project")
+    state["catalog"] = _catalog("homebody")
+    page.click("#workspace-repositories-reload")
+    page.wait_for_function("!document.getElementById('workspace-repositories-reload').disabled")
+    assert page.locator("#workspace-repository").input_value() == ""
+    assert page.locator("#workspace-native-target option").count() == 0
+    assert page.locator("#workspace-native-prepare").is_disabled()
+    assert page.evaluate("HomebodyNativeWorkspace.summary().session") != "bound"
+    page.select_option("#workspace-repository", "Timverhoogt/homebody")
+    assert page.locator("#workspace-native-prepare").is_enabled()
+    assert not errors

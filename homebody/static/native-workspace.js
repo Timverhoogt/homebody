@@ -4,7 +4,7 @@
   // `pending` is a write or catalog refresh and locks the controls; `polling` is a read-only poll and never
   // touches them (disabling an open <select> closes it in Chromium, which made the picker flicker).
   let epoch = 0, enabled = false, pending = false, polling = false, uncertain = false, payload = null, controller = null;
-  let repositories = null;
+  let repositories = null, repositoryChoice = "";
   const active = new Set(["submitting", "running", "stopping", "disconnected", "verifying", "submission_unknown"]);
   const feedbackButtons = { bind: "workspace-native-bind", prepare: "workspace-native-prepare", approve: "workspace-native-approve" };
   // Display-only bench (scene.js). It reads categorical fields of the current payload, never text or ids.
@@ -36,6 +36,7 @@
     uncertain = false;
     payload = null;
     repositories = null;
+    repositoryChoice = "";
     byId("workspace-repository").replaceChildren();
     byId("workspace-repository-state").textContent = "Enable Workspace and tap Show conversation above to load your repositories.";
     byId("workspace-native-identity").textContent = "No native project selected.";
@@ -55,6 +56,7 @@
   }
   function selectionMatchesBinding() {
     const repo = selectedRepository();
+    if (repositories?.available === false || (repositoryChoice && !repo)) return false;
     return !repo || repo.target_ids.includes(payload?.binding?.target_id);
   }
   // Options are replaced only when the list really changed, so polls keep an open picker and its value.
@@ -73,6 +75,8 @@
   function renderRepositories() {
     syncOptions(byId("workspace-repository"), [["", "Choose a repository…"], ...(repositories?.repositories || []).map((repo) => [repo.repository,
       `${repo.repository}${repo.private ? " · Private" : ""}${repo.archived ? " · Archived" : ""}${repo.target_ids.length ? " · Session available" : ""}`])]);
+    if (repositoryChoice && [...byId("workspace-repository").options].some(o => o.value === repositoryChoice)
+        && byId("workspace-repository").value !== repositoryChoice) byId("workspace-repository").value = repositoryChoice;
     const repo = selectedRepository();
     byId("workspace-repository-state").textContent = repo
       ? repo.target_ids.length ? `${repo.repository}: a project session is available. Tap Open project; no work starts until you review and approve a request.`
@@ -83,7 +87,8 @@
   function renderTargets() {
     const repo = selectedRepository();
     syncOptions(byId("workspace-native-target"), (payload?.targets || [])
-      .filter((target) => !repo || repo.target_ids.includes(target.target_id))
+      .filter((target) => repositories?.available !== false && (!repositoryChoice || repo)
+        && (!repo || repo.target_ids.includes(target.target_id)))
       .map((target) => [target.target_id, `${target.title} · ${target.backend}`]));
   }
   function controls() {
@@ -154,6 +159,8 @@
     controls();
   }
   async function request(action = "read", fields = {}) {
+    if (["prepare", "approve"].includes(action) && !selectionMatchesBinding()) return;
+    if (action === "bind" && ![...byId("workspace-native-target").options].some(o => o.value === fields.target_id)) return;
     const poll = ["read", "show"].includes(action);
     if (!enabled || (poll && (pending || polling))) return;
     if (pending && action !== "cancel") return;
@@ -217,7 +224,10 @@
     }
   }
   byId("workspace-enable-mode").addEventListener("click", () => byId("agent-enable-button").click());
-  byId("workspace-repository").addEventListener("change", () => { renderRepositories(); renderTargets(); controls(); });
+  byId("workspace-repository").addEventListener("change", () => {
+    repositoryChoice = byId("workspace-repository").value;
+    renderRepositories(); renderTargets(); controls();
+  });
   byId("workspace-repositories-reload").addEventListener("click", () => request("repositories"));
   byId("workspace-native-bind").addEventListener("click", () => request("bind", {target_id: byId("workspace-native-target").value}));
   byId("workspace-native-prepare").addEventListener("click", () => request("prepare", {text: byId("workspace-native-request").value}));
