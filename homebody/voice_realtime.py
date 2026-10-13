@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from .audio import resample_linear
 from .config import AppConfig
+from .kids_acknowledgements import output_quarantined
 from .realtime_client import RealtimeBridgeError, RealtimeBridgeSession
 from .robot_tools import completed_robot_tool_call
 from .safety_gate import POWER_MODES as _POWER_MODES
@@ -238,6 +239,8 @@ class RealtimeVoiceMixin:
         """Run a persistent speech-to-speech session after the local wake word."""
         if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
             return
+        if output_quarantined(self):
+            return  # direct entry: same common audio-quarantine gate as the dispatcher
         broker_context = self.agent_broker_context(explicit_private_intent=False)
         agent_request_id = ""
         if broker_context.capability_profile == "agent":

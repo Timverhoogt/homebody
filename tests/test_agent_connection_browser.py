@@ -6,6 +6,9 @@ from test_notifications_browser import browser_page as browser_page
 
 
 def status(page, state, label="Hermes", detail="Fixture connection status", fresh=25000):
+    # Initial owner bootstrap may still be refreshing. Do not let its old fixture
+    # response overwrite this explicitly controlled health receipt.
+    page.wait_for_function("!statusRefreshPending", timeout=5000)
     page.route(
         "**/api/status",
         lambda route: route.fulfill(

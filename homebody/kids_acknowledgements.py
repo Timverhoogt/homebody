@@ -1,0 +1,338 @@
+"""Trusted static catalog of short Kids "thinking" acknowledgements played while STT is pending.
+
+Trust boundary: these clips are app-owned categorical filler shipped inside the package, not
+model output. Nothing here accepts caller-supplied text, audio, paths, voices or providers. A
+clip is usable only if ALL of the following hold, otherwise its language simply has no filler
+(there is never a live TTS fallback):
+
+* ``manifest.json`` in this package's ``assets/kids_acknowledgements`` directory has exactly the
+  keys ``schema_version`` (1), ``voice_sha256`` (SHA-256 of the voice the clips were generated
+  with), ``model`` (the Kids Flash model), ``sample_rate`` and ``clips``. The digest is NOT trusted
+  by itself: a turn may use the clips only when the bridge's current health proof of the
+  effective Kids streaming voice equals it (``eligible_clips``);
+* each entry has exactly ``id``, ``language``, ``text``, ``file``, ``sha256``,
+  ``duration_seconds``; the language is ``en``/``nl``, the id is the file stem and starts with the
+  language, and the text is one of the fixed content-free phrases below (no correctness,
+  "heard"/"understood" claims, transcript, nickname or target);
+* each file name is a plain ``[a-z0-9-]+.wav`` basename, the path is a regular non-symlink file
+  inside the directory, at most 256 KiB, and its SHA-256 equals the manifest digest;
+* the WAV is mono 16-bit PCM at the manifest rate, 0.3-2.5 seconds long and within 20 ms of the
+  declared duration.
+
+Every generated answer keeps its existing input+output moderation and exact-text approval; this
+catalog never carries generated text, so it never needs or bypasses those approvals.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import logging
+import os
+import re
+import stat
+import threading
+import wave
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+from .kids_mode import KIDS_TTS_MODEL
+
+_LOGGER = logging.getLogger("homebody.runtime")
+
+ASSET_DIR = Path(__file__).resolve().parent / "assets" / "kids_acknowledgements"
+_PHRASES = {"en": ("Let me think", "Hmm", "Let's see"), "nl": ("Even denken", "Hmm", "Eens kijken")}
+ALLOWED_PHRASES = {
+    language: frozenset(f"{phrase}{end}" for phrase in phrases for end in (".", "…"))
+    for language, phrases in _PHRASES.items()
+}
+_HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def eligible_clips(clips: tuple[AckClip, ...], voice_proof: object, model_proof: object) -> tuple[AckClip, ...]:
+    """Clips usable for this turn: only with the host's current Kids voice proof and Flash model.
+
+    The proof comes from the bridge's health, derived from the same resolver that selects the
+    actual Kids streaming voice. Missing, malformed or mismatching proof => no filler. The
+    packaged default digest is never treated as proof on its own.
+    """
+    if model_proof != KIDS_TTS_MODEL or not isinstance(voice_proof, str) or not _HEX64.match(voice_proof):
+        return ()
+    return tuple(clip for clip in clips if clip.voice_sha256 == voice_proof)
+
+
+_FILE_NAME = re.compile(r"[a-z0-9-]{1,64}\.wav\Z")
+_MAX_FILE_BYTES = 256 * 1024
+_MAX_CLIPS = 12
+_SAMPLE_RATES = frozenset({16000, 22050, 24000, 44100, 48000})
+_MIN_SECONDS, _MAX_SECONDS = 0.3, 2.5
+
+
+@dataclass(frozen=True, slots=True)
+class AckClip:
+    """One verified clip; ``samples`` is mono float32 PCM at ``sample_rate``."""
+
+    language: str
+    name: str
+    samples: np.ndarray
+    sample_rate: int
+    voice_sha256: str = ""  # from the manifest; usable only if the host's current proof matches
+
+    @property
+    def duration(self) -> float:
+        return self.samples.size / float(self.sample_rate)
+
+
+def _decode_wav(data: bytes) -> tuple[np.ndarray, int]:
+    with wave.open(io.BytesIO(data), "rb") as reader:
+        if reader.getnchannels() != 1 or reader.getsampwidth() != 2 or reader.getcomptype() != "NONE":
+            raise ValueError("clip must be mono 16-bit PCM")
+        rate = reader.getframerate()
+        frames = reader.readframes(reader.getnframes())
+    if rate not in _SAMPLE_RATES:
+        raise ValueError("unsupported clip sample rate")
+    samples = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
+    if not _MIN_SECONDS <= samples.size / rate <= _MAX_SECONDS:
+        raise ValueError("clip duration outside bounds")
+    return samples, rate
+
+
+def load_catalog(directory: Path = ASSET_DIR) -> dict[str, tuple[AckClip, ...]]:
+    """Verify the manifest and clips; any problem yields no clips (fail closed, categorical log)."""
+    try:
+        info = os.lstat(directory)
+        if not stat.S_ISDIR(info.st_mode):
+            raise ValueError("asset directory is not a directory")
+        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+        if (
+            not isinstance(manifest, dict)
+            or set(manifest) != {"schema_version", "voice_sha256", "model", "sample_rate", "clips"}
+            or manifest["schema_version"] != 1
+            or not isinstance(manifest["voice_sha256"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", manifest["voice_sha256"])
+            or manifest["model"] != KIDS_TTS_MODEL
+            or manifest["sample_rate"] not in _SAMPLE_RATES
+            or not isinstance(manifest["clips"], list)
+            or not 1 <= len(manifest["clips"]) <= _MAX_CLIPS
+        ):
+            raise ValueError("manifest does not match the Kids voice catalog contract")
+        catalog: dict[str, list[AckClip]] = {"en": [], "nl": []}
+        seen: set[str] = set()
+        for entry in manifest["clips"]:
+            keys = {"id", "language", "text", "file", "sha256", "duration_seconds"}
+            if not isinstance(entry, dict) or set(entry) != keys:
+                raise ValueError("invalid manifest entry")
+            language, text, name, digest, clip_id = (
+                str(entry[key]) for key in ("language", "text", "file", "sha256", "id")
+            )
+            if language not in ALLOWED_PHRASES or text not in ALLOWED_PHRASES[language]:
+                raise ValueError("clip phrase is not in the fixed catalog")
+            if (
+                not _FILE_NAME.fullmatch(name)
+                or name in seen
+                or clip_id != name[:-4]
+                or not clip_id.startswith(f"{language}-")
+                or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            ):
+                raise ValueError("invalid clip file entry")
+            seen.add(name)
+            path = directory / name
+            file_info = os.lstat(path)
+            if not stat.S_ISREG(file_info.st_mode) or file_info.st_size > _MAX_FILE_BYTES:
+                raise ValueError("clip is not a bounded regular file")
+            data = path.read_bytes()
+            if len(data) > _MAX_FILE_BYTES or hashlib.sha256(data).hexdigest() != digest:
+                raise ValueError("clip digest mismatch")
+            samples, rate = _decode_wav(data)
+            declared = entry["duration_seconds"]
+            if (
+                rate != manifest["sample_rate"]
+                or isinstance(declared, bool)
+                or not isinstance(declared, (int, float))
+                or abs(samples.size / rate - float(declared)) > 0.02
+            ):
+                raise ValueError("clip metadata does not match its audio")
+            catalog[language].append(AckClip(language, name, samples, rate, manifest["voice_sha256"]))
+        return {language: tuple(clips) for language, clips in catalog.items()}
+    except FileNotFoundError:
+        _LOGGER.info("Kids acknowledgement clips are not installed; no thinking filler")
+    except Exception as exc:  # categorical only: never log paths, text or bytes
+        _LOGGER.warning("Kids acknowledgement catalog rejected (%s); no thinking filler", type(exc).__name__)
+    return {"en": (), "nl": ()}
+
+
+ACK_DELAY_SECONDS = 1.0  # only when STT is genuinely still pending after a noticeable pause
+ACK_COOLDOWN_SECONDS = 8.0
+_CHUNK_SECONDS = 0.1
+
+
+class AckSelector:
+    """Sparse, bounded variation: never the same clip twice in a row, at most one per cooldown."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._last_name = ""
+        self._last_at = float("-inf")
+
+    def choose(self, clips: tuple[AckClip, ...], now: float) -> AckClip | None:
+        with self._lock:
+            if not clips or now - self._last_at < ACK_COOLDOWN_SECONDS:
+                return None
+            options = [clip for clip in clips if clip.name != self._last_name] or list(clips)
+            clip = options[0]
+            self._last_name, self._last_at = clip.name, now
+            return clip
+
+
+SETTLE_JOIN_SECONDS = 0.5
+
+
+def output_quarantined(owner: object) -> bool:
+    """Common audio-admission gate for every engine: True while an old filler push is blocked.
+
+    Reads producer state only; it never samples or clears stop generations.
+    """
+    producer = getattr(owner, "_kids_ack_producer", None)
+    return producer is not None and bool(producer.inflight)
+
+
+class KidsAckPlayer:
+    """Plays at most one delayed clip for one STT wait; cancellable, with bounded settle.
+
+    ``is_current`` must compare immutable snapshots (exact Kids session, original turn stop
+    generation) and live privacy/power/shutdown state; it is checked before playback, before and
+    after every PCM chunk and while queued audio is still audible. The player never opens the
+    microphone, never touches motors and never resets cancellation state.
+
+    SDK limits, stated honestly: ``push_audio_sample``/``clear_player`` are opaque SDK calls and
+    Python cannot forcibly cancel a thread blocked inside one. Therefore no lock is ever held
+    across them; ``inflight`` is True from just before a push until that push has returned AND any
+    required post-cancel flush has run. ``settle`` returns after a bounded join; if a push is still
+    in flight it returns False and the caller must treat audio output as quarantined (no answer
+    speech, re-listen or new stream/announcement) until ``inflight`` clears. A chunk admitted after
+    cancellation is flushed by the producer before ``inflight`` clears, so the flush can never cut
+    newer approved speech: none may start while the producer is quarantined. Whether audio was
+    admitted is tracked from actual push calls, never inferred only from an estimated deadline.
+    """
+
+    def __init__(self, *, clips, selector, push, clear, is_current, resample, output_rate, clock, delay=None):
+        self._clips = clips
+        self._selector = selector
+        self._push = push
+        self._clear = clear
+        self._is_current = is_current
+        self._resample = resample
+        self._output_rate = output_rate
+        self._clock = clock
+        self._delay = ACK_DELAY_SECONDS if delay is None else delay
+        self._stt_done = threading.Event()
+        self._settled = threading.Event()
+        self._lock = threading.Lock()  # guards state only; never held across SDK calls
+        self._inflight = False
+        self._admitted = False  # at least one push was entered (its audio may be queued)
+        self.queued_until = 0.0  # estimate only, used solely to keep watching for cancellation
+        self.first_enqueue_at: float | None = None
+        self.played: str = ""
+        self._thread = threading.Thread(target=self._run, name="kids-stt-ack", daemon=True)
+
+    @property
+    def inflight(self) -> bool:
+        with self._lock:
+            return self._inflight
+
+    def start(self) -> KidsAckPlayer:
+        self._thread.start()
+        return self
+
+    def _cancelled(self) -> bool:
+        return self._settled.is_set() or not self._is_current()
+
+    def _run(self) -> None:
+        if self._stt_done.wait(self._delay):
+            return  # fast turn: no filler
+        if self._stt_done.is_set() or self._cancelled():
+            return
+        # A callable resolves clips only now (after the delay, off the answer path), e.g. from a
+        # fresh bridge proof of the effective Kids voice; any failure yields no clips.
+        try:
+            clips = self._clips() if callable(self._clips) else self._clips
+        except Exception:
+            clips = ()
+        if not clips or self._stt_done.is_set() or self._cancelled():
+            return
+        clip = self._selector.choose(tuple(clips), self._clock())
+        if clip is None:
+            return
+        pcm = self._resample(clip.samples, clip.sample_rate, self._output_rate)
+        step = max(1, int(self._output_rate * _CHUNK_SECONDS))
+        for offset in range(0, pcm.size, step):
+            chunk = pcm[offset : offset + step]
+            with self._lock:
+                if self._cancelled():
+                    break
+                self._inflight = True
+                self._admitted = True
+                if self.first_enqueue_at is None:
+                    self.first_enqueue_at = self._clock()
+                    self.played = clip.name
+            try:
+                self._push(chunk)  # opaque SDK call: no lock held
+            finally:
+                cancelled_after = self._cancelled()
+                if cancelled_after:
+                    # A chunk admitted after Stop/End/privacy/replacement/expiry/settle is flushed
+                    # while still marked in flight, so nothing newer can be playing yet.
+                    self._clear()
+                with self._lock:
+                    now = self._clock()
+                    self.queued_until = max(self.queued_until, now) + chunk.size / float(self._output_rate)
+                    self._inflight = False
+            if cancelled_after:
+                return
+        # Stop/End/privacy must also preempt audio that is already queued in the player.
+        while not self._settled.is_set():
+            with self._lock:
+                watching = self._admitted and self._clock() < self.queued_until
+            if not watching:
+                return
+            if not self._is_current():
+                self._clear()
+                return
+            self._settled.wait(0.02)
+
+    def stt_finished(self) -> None:
+        """STT returned: never start a clip now; one already queued may finish during the reply request."""
+        self._stt_done.set()
+
+    def settle(self) -> bool:
+        """Before reply speech, a re-listen or exit: stop, bounded join, flush anything admitted.
+
+        Returns True when the producer is quiesced. False means a push is still blocked in the
+        SDK: the caller must keep audio output quarantined (see class docstring).
+        """
+        self._stt_done.set()
+        self._settled.set()
+        if self._thread.is_alive() and self._thread is not threading.current_thread():
+            self._thread.join(timeout=SETTLE_JOIN_SECONDS)
+        with self._lock:
+            admitted, inflight = self._admitted, self._inflight
+        if admitted:
+            # Decided from actual pushes, not from an estimated deadline.
+            self._clear()
+        return not inflight
+
+
+_catalog_lock = threading.Lock()
+_catalog: dict[str, tuple[AckClip, ...]] | None = None
+
+
+def catalog() -> dict[str, tuple[AckClip, ...]]:
+    """Verify the packaged catalog once per process."""
+    global _catalog
+    with _catalog_lock:
+        if _catalog is None:
+            _catalog = load_catalog()
+        return _catalog

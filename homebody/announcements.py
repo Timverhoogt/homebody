@@ -38,6 +38,8 @@ class Announcement:
     pause_seconds: float = 1.0
     cancellation_generation: int = 0
     contextual_offer_token: int = 0
+    # Kids Start only: after a fully played greeting/clue, arm this session's first listening turn.
+    kids_listen_session_id: str = field(default="", repr=False)
     cancel_event: threading.Event = field(default_factory=threading.Event, compare=False, repr=False)
 
 
@@ -64,6 +66,7 @@ class AnnouncementsMixin:
         repeat: int = 1,
         pause_seconds: float = 1.0,
         contextual_offer_token: int = 0,
+        kids_listen_session_id: str = "",
     ) -> dict[str, object]:
         """Queue TTS without exposing provider credentials to Reachy or the browser."""
         clean_text = text.strip()
@@ -98,6 +101,7 @@ class AnnouncementsMixin:
                 pause_seconds=float(pause_seconds),
                 cancellation_generation=generation,
                 contextual_offer_token=contextual_offer_token,
+                kids_listen_session_id=kids_listen_session_id,
             )
             try:
                 self._announcement_queue.put_nowait(item)
@@ -194,6 +198,8 @@ class AnnouncementsMixin:
                 with self._voice_activity_lock:
                     if self._announcement_item_cancelled(item):
                         continue
+                    if self._ack_output_quarantined():
+                        raise RuntimeError("Audio output is busy; announcement not played")
                     mode = self._effective_power_mode()
                     if mode in {"meeting", "sleep"} or self._privacy_requested.is_set():
                         raise RuntimeError("Announcement was blocked by the current privacy mode")
@@ -256,6 +262,13 @@ class AnnouncementsMixin:
                             self._status.announcement_last_text = item.text[:240]
                         if item.contextual_offer_token:
                             self._capture_contextual_offer_response(item, client, config)
+                        if (
+                            item.kids_listen_session_id
+                            and not self._privacy_requested.is_set()
+                            and self._effective_power_mode() not in {"meeting", "sleep"}
+                        ):
+                            # Played to the end while this exact session stayed current.
+                            self._arm_kids_first_listen(item.kids_listen_session_id)
             except Exception as exc:
                 _LOGGER.exception("Announcement failed")
                 if item.contextual_offer_token:

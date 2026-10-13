@@ -37,8 +37,9 @@ def test_typed_guess_enter_sends_once_and_fits_phone(ui, width):
         const b=document.querySelector('#kids-ispy-guess-send').getBoundingClientRect();
         return {gap:b.left-a.right,right:b.right,height:b.height};}""")
     assert geometry["gap"] >= 9 and geometry["right"] <= width and geometry["height"] >= 48
-    Path("/home/timv/.hermes/cache/scratch/hb-ew/screens").mkdir(exist_ok=True)
-    page.screenshot(path=f"/home/timv/.hermes/cache/scratch/hb-ew/screens/ispy-input-{width}.png")
+    shots = Path(__file__).resolve().parents[1] / ".artifacts" / "browser-screens"
+    shots.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(shots / f"ispy-input-{width}.png"))
     assert not errors
 
 

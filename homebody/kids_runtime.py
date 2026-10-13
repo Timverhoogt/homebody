@@ -21,10 +21,14 @@ from .audio import resample_linear
 from .config import AppConfig
 from .hermes_client import HermesBridgeClient, HermesBridgeError
 from .ispy import ISpyTarget
-from .kids_mode import KidsProfile, build_kids_prompt, kids_greeting
+from .kids_acknowledgements import AckSelector
+from .kids_mode import KidsProfile, build_kids_prompt, kids_greeting, kids_message
 
 # Keep the runtime logger name so existing log filters and dashboards still match Kids Mode lines.
 _LOGGER = logging.getLogger("homebody.runtime")
+
+# How long a finished Start greeting may wait for the wake loop to open the first turn.
+_KIDS_FIRST_LISTEN_TTL_SECONDS = 10.0
 
 
 class ISpyInputUnavailable(RuntimeError):
@@ -56,6 +60,66 @@ class KidsModeMixin:
         self._kids_ispy_motion_started = False
         self._kids_last_end_reason = ""
         self._kids_last_fold_succeeded: bool | None = None
+        # Single-use (session_id, kids generation, conversation-stop generation, deadline) ticket,
+        # armed only after the Start greeting/clue finished playing. The stop generation is the
+        # one sampled right after Start, so any later Stop, End, privacy or Standby invalidates it.
+        self._kids_first_listen: tuple[str, int, int, float] | None = None
+        self._kids_ack_selector = AckSelector()
+        self._kids_ack_producer = None  # latest filler producer; quarantines audio while a push is blocked
+        self._kids_start_stop_generation = -1
+
+    def _kids_first_listen_valid(self, ticket: tuple[str, int, int, float], session_id: str) -> bool:
+        """Caller holds _kids_lock. Compare immutable generations, not just the active flag."""
+        ticket_session, ticket_generation, ticket_stop_generation, deadline = ticket
+        with self._conversation_stop_generation_lock:
+            stop_generation = self._conversation_stop_generation
+        return (
+            bool(session_id)
+            and ticket_session == session_id
+            and ticket_generation == self._kids_generation
+            and ticket_stop_generation == stop_generation
+            and time.monotonic() < deadline
+            and self._kids_session_is_current(session_id)
+            and not self.stop_event.is_set()
+            and not self._privacy_requested.is_set()
+            and self._effective_power_mode() not in {"meeting", "sleep"}
+        )
+
+    def _arm_kids_first_listen(self, session_id: str) -> bool:
+        """Arm the first listening turn for exactly the still-current, never-stopped Start session."""
+        with self._kids_lock:
+            ticket = (
+                session_id, self._kids_generation, self._kids_start_stop_generation,
+                time.monotonic() + _KIDS_FIRST_LISTEN_TTL_SECONDS,
+            )
+            if not self._kids_first_listen_valid(ticket, session_id):
+                return False
+            self._kids_first_listen = ticket
+            return True
+
+    def _take_kids_first_listen(self, session_id: str) -> tuple[str, int, int, float] | None:
+        """Consume the ticket; return it only while it still belongs to the active session."""
+        with self._kids_lock:
+            ticket, self._kids_first_listen = self._kids_first_listen, None
+            if ticket is None or not self._kids_first_listen_valid(ticket, session_id):
+                return None
+            return ticket
+
+    def _admit_kids_first_listen(self, ticket: tuple[str, int, int, float]) -> bool:
+        """Caller holds _motor_transition_lock. Revalidate, then accept the turn atomically.
+
+        Runs before any motor admission and before turn cancellation is reset, so a Stop or End
+        that completed after the ticket was consumed wins; a later End folds after this wake.
+        """
+        with self._kids_lock:
+            if not self._kids_first_listen_valid(ticket, ticket[0]):
+                return False
+            with self._conversation_stop_generation_lock:
+                if self._conversation_stop_generation != ticket[2]:
+                    return False
+                self._conversation_stop_requested.clear()
+                self._turn_stop_generation = self._conversation_stop_generation
+            return True
 
     @property
     def kids_controls_locked(self) -> bool:
@@ -87,6 +151,7 @@ class KidsModeMixin:
                 previous_warning.cancel()
             self._kids_generation += 1
             self._kids_input_token = secrets.token_hex(16)
+            self._kids_first_listen = None
             generation = self._kids_generation
             self._kids_ispy_player_motion_index = 0
             self._kids_ispy_motion_started = False
@@ -115,10 +180,14 @@ class KidsModeMixin:
             timer.start()
             warning.start()
             started_session_id = self._kids_session_id
+            # Cancel the previous turn and keep the receipt of exactly that cancellation as this
+            # Start's immutable baseline, inside admission and before any unlocked callback. Any
+            # later Stop/End/Standby/privacy bumps the generation past it; it is never refreshed.
+            receipt = self._request_conversation_stop()
+            self._kids_start_stop_generation = receipt if isinstance(receipt, int) else -1
         if replaced_session_id:
             self._notify_bridge_kids_session_async(replaced_session_id, active=False)
         self._notify_bridge_kids_session_async(started_session_id, active=True)
-        self._request_conversation_stop()
         with self._status_lock:
             self._status.transcript = ""
             self._status.response_preview = ""
@@ -147,6 +216,7 @@ class KidsModeMixin:
                     provider="elevenlabs",
                     model="eleven_flash_v2_5",
                     voice="cgSgspJ2msm6clMCkdW9",
+                    kids_listen_session_id=started_session_id,
                 )
             except Exception:
                 self.stop_kids_mode(
@@ -373,13 +443,14 @@ class KidsModeMixin:
 
     def _warn_kids_mode(self, generation: int) -> None:
         with self._kids_lock:
-            if not self._kids_active or generation != self._kids_generation:
+            if not self._kids_active or generation != self._kids_generation or self._kids_profile is None:
                 return
+            language = self._kids_profile.language
         try:
             self._request_conversation_stop()
             self._clear_streamed_audio()
             self.queue_announcement(
-                text="Five minutes left in Kids Mode. Let's finish this activity soon.",
+                text=kids_message(language, "five_minutes"),
                 repeat=1,
                 pause_seconds=0.0,
                 behavior="voice_only",
@@ -447,6 +518,7 @@ class KidsModeMixin:
                 warning.cancel()
             self._kids_generation += 1
             self._kids_input_token = secrets.token_hex(16)
+            self._kids_first_listen = None
             stopped_generation = self._kids_generation
             self._kids_active = False
             self._kids_camera_active = False
@@ -647,8 +719,8 @@ class KidsModeMixin:
                 or self._effective_power_mode() in {"meeting", "sleep"}
             )
 
-        if cancelled():
-            return False
+        if cancelled() or self._ack_output_quarantined():
+            return False  # never stream over (or let an old flush cut) a still-blocked filler push
         if animate_motion and self._motion is not None:
             self._motion.speaking()
         if self._spotter is not None:

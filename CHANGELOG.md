@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.10] - Candidate (not released or deployed)
+
+### Fixed
+- Localize deterministic Kids introductions, warnings and safety/fallback replies in the selected English or Dutch; open the first listening turn after the introduction without a wake phrase.
+- Bind automatic first-listen admission to an immutable cancellation receipt and the exact child session, checked before motor admission. Stop, End, privacy, expiry and replacement invalidate delayed starts.
+- Retry empty Kids speech up to twice without demanding another wake phrase; preserve bounded inactivity and adult behaviour.
+- Pass the selected Kids language to local Whisper and reuse its cached model through an owner-private, hard-time-bounded local worker. Keep input/output moderation, exact speech approvals and local-only STT; synthetic timings are not physical child-speech acceptance.
+- End I Spy rounds after three meaningful guesses, handle English/Dutch give-up and hint requests, and avoid repeating approved hints.
+- Play one short, cached, language-matched Kids "thinking" clip only when local transcription is still pending after about a second. The clips are a verified static catalog, eligible only when the bridge's current health proves the effective Kids streaming voice matches. There is no live TTS fallback. Stop/End/privacy/replacement cancel the clip, settle is bounded, and audio fails closed (quarantine) while an SDK push is blocked. The clip never overlaps the moderated answer.
+- STT locality provenance follows each transcription's actual provider receipt, so a stale "local" claim is never shown after a cloud, custom or failed transcription.
+- Show "Local transcription" only when the bridge confirms Hermes-host STT; otherwise show a neutral or cloud-accurate "Transcribing", distinct from "Thinking". The child-locked status gains only a categorical STT-locality flag. PWA shell advanced to v89.
+- Align family instructions with first-turn listening and advance the PWA shell to v88. Host bridge/STT source must be updated separately; installing a robot wheel alone does not change a running host bridge.
+
 ## [0.5.9] - 2026-10-13
 
 ### Fixed

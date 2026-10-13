@@ -402,12 +402,22 @@
     ended: ["Session ended", "Thanks for playing together."],
   };
 
+  /**
+   * Speech-to-text step copy. "Local" only when the bridge's server-derived receipt says the
+   * active STT runs on the Hermes host; cloud or unknown stay neutral. No progress or timing.
+   */
+  function transcribingCopy(sttLocality) {
+    if (sttLocality === "local") return ["Local transcription", "Turning speech into text on your Hermes host."];
+    if (sttLocality === "cloud") return ["Transcribing", "Turning speech into text with a cloud speech service."];
+    return ["Transcribing", "Turning speech into text."];
+  }
+
   function sceneKey(value, fallback) {
     return ACTIVITIES.includes(value) ? value : fallback;
   }
 
   /** Kids stage view from allowlisted status only: activity, active, camera_active, state, power mode. */
-  function kidsView({ kids = {}, state = "", powerMode = "", selected = "buddy", offline = false, ending = false } = {}) {
+  function kidsView({ kids = {}, state = "", powerMode = "", selected = "buddy", offline = false, ending = false, sttLocality = "" } = {}) {
     const chosen = sceneKey(selected, "buddy");
     const active = kids.active === true && !ending;
     const scene = active ? sceneKey(kids.profile?.activity, chosen) : chosen;
@@ -426,17 +436,20 @@
     if (phase === "paused") return view("paused", "Paused", ...GENERIC.paused);
     if (phase === "trouble") return view("trouble", "Live", ...GENERIC.trouble);
     if (phase === "waiting") return view("waiting", "Live", ...GENERIC.waiting);
+    // Transcribing keeps the calm thinking visuals but never claims a reply is being written.
+    if (state === "transcribing") return view("thinking", "Live", ...transcribingCopy(sttLocality));
     if (phase) return view(phase, "Live", phase.charAt(0).toUpperCase() + phase.slice(1), info.copy[phase]);
     // Starting, stopping or an unrecognised state: say nothing we cannot back up.
     return view("waiting", "Live", ...GENERIC.unknown);
   }
 
   /** Compact adult companion: runtime state only. */
-  function companionView({ state = "", powerMode = "", offline = false, kidsActive = false } = {}) {
+  function companionView({ state = "", powerMode = "", offline = false, kidsActive = false, sttLocality = "" } = {}) {
     const view = (phase, title, detail) => ({ scene: "companion", phase, chip: "", title, detail });
     if (offline) return view("offline", "Out of reach", "Status unavailable.");
     if (kidsActive) return view("paused", "Kids Mode", "Adult voice is locked.");
     if (["meeting", "sleep"].includes(powerMode)) return view("paused", powerMode === "meeting" ? "In a meeting" : "Asleep", "Voice capture is off.");
+    if (state === "transcribing") return view("thinking", ...transcribingCopy(sttLocality));
     const phase = state === "looking" ? "thinking" : STATE_PHASE[state];
     const copy = {
       listening: ["Listening", "Go ahead, Reachy is listening."],
@@ -450,7 +463,7 @@
   }
 
   /** Home hero: runtime state and power mode only. Unknown or starting states stay neutral. */
-  function presenceView({ state = "", powerMode = "", offline = false, kidsActive = false } = {}) {
+  function presenceView({ state = "", powerMode = "", offline = false, kidsActive = false, sttLocality = "" } = {}) {
     const view = (phase, title, detail) => ({ scene: "presence", phase, chip: "", title, detail });
     if (offline) return view("offline", "Out of reach", "Status unavailable.");
     if (kidsActive) return view("paused", "Kids Mode", "Adult voice is locked.");
@@ -458,6 +471,7 @@
     if (powerMode === "meeting" || state === "meeting") return view("paused", "In a meeting", "Voice capture is off.");
     const phase = state === "looking" ? "thinking" : STATE_PHASE[state];
     if (phase === "listening") return view("listening", "Listening", "Microphone open for this turn.");
+    if (state === "transcribing") return view("thinking", ...transcribingCopy(sttLocality));
     if (phase === "thinking") return view("thinking", state === "looking" ? "Taking a look" : "Thinking", "Working on a reply.");
     if (phase === "speaking") return view("speaking", "Speaking", "Reachy is replying.");
     if (phase === "trouble") return view("trouble", "Needs attention", "See the status details.");

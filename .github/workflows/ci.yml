@@ -18,7 +18,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        include:
+          - {python-version: "3.11", lane: unit}
+          - {python-version: "3.12", lane: unit}
+          - {python-version: "3.11", lane: browser}
+    name: ${{ matrix.lane }} / Python ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -56,12 +60,27 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           for file in homebody/static/*.js; do node --check "$file"; done
-      - name: Test
-        # Override the local --maxfail=1 default so CI reports every failure.
-        run: .venv/bin/pytest --maxfail=1000
+      - name: Build wheel before artifact tests
+        if: matrix.lane == 'unit'
+        run: .venv/bin/python -m build --wheel
+      - name: Install Chromium test runtime
+        if: matrix.lane == 'browser'
+        run: |
+          uv pip install playwright
+          .venv/bin/python -m playwright install --with-deps chromium
+      - name: Unit gate
+        if: matrix.lane == 'unit'
+        run: .venv/bin/python tools/checks.py unit
         env:
           OPENAI_API_KEY: ""
           ELEVENLABS_API_KEY: ""
-      - name: Build distributions
-        if: matrix.python-version == '3.11'
-        run: .venv/bin/python -m build
+      - name: Browser gate (bounded batches, no silent skips)
+        if: matrix.lane == 'browser'
+        run: .venv/bin/python tools/checks.py browser
+      - name: Keep timing and JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-evidence-${{ matrix.lane }}-${{ matrix.python-version }}
+          path: .artifacts/test-runs/
+          retention-days: 7

@@ -1,12 +1,14 @@
 # Release and acceptance snapshot
 
-**Snapshot: 12 October 2026. Homebody remains early alpha.** This separates source availability, packaged releases, one reference deployment and physical acceptance. It is not a compatibility or production-readiness promise. Check [GitHub releases](https://github.com/Timverhoogt/homebody/releases) and [the changelog](../CHANGELOG.md) for later changes.
+**Snapshot: 13 October 2026. Homebody remains early alpha.** This separates source availability, packaged releases, one reference deployment and physical acceptance. It is not a compatibility or production-readiness promise. Check [GitHub releases](https://github.com/Timverhoogt/homebody/releases) and [the changelog](../CHANGELOG.md) for later changes.
 
 ## What is available where?
 
 | Component | Snapshot | What that does—and does not—mean |
 |---|---|---|
-| Published robot/dashboard package | [v0.5.9](https://github.com/Timverhoogt/homebody/releases/tag/v0.5.9) | Adds padded mode-selector cards and separated helper text; retains Everyday/Workspace routing, GPT-Live preview, measured speaker controls and managed updates. Includes current companion source, not automatic host configuration. |
+| Latest verified published robot/dashboard package | [v0.5.8](https://github.com/Timverhoogt/homebody/releases/tag/v0.5.8) | Includes the private GitHub picker and earlier activity/UI motion. Host services are updated separately. |
+| Agent UI release | v0.5.9 draft; source merged in #87 | Confirmed/pending mode cards, stable repository polling and failed-catalog gates. No installation is claimed. |
+| Kids interaction candidate | v0.5.10, not published or deployed | Dutch/English deterministic speech, first-turn listening, bounded local STT reuse/retries, and finite I Spy rounds. Requires final safety review, separate host updates, managed installation and supervised speech/game acceptance. |
 | Source on GitHub `main` and Hugging Face | Includes [Everyday subscription support (#77)](https://github.com/Timverhoogt/homebody/pull/77) and [Kids/I Spy/native Workspace support (#78)](https://github.com/Timverhoogt/homebody/pull/78) | These host changes landed **after** v0.5.2. Mirroring main does not retroactively replace that immutable release wheel. |
 | Reference trusted-host bridge | Separately updated with subscription routing and a dedicated native Hermes Workspace listener | Requires saved supported authentication, explicit model configuration, a registered project/session and host service configuration. Not a universal fresh-install default. |
 | Android companion / APK | Independent of the robot package | A Reachy update changes robot software and served dashboard assets. It does not install or version-check an APK on the phone. |

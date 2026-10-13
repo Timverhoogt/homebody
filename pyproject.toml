@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 # Match the existing registered app ID; pip canonicalizes hyphens/underscores equally.
 name = "reachy_mini_homebody"
-version = "0.5.9"
+version = "0.5.10"
 description = "Homebody: an always-on, privacy-first home companion app for Reachy Mini with pluggable agent backends"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -66,7 +66,7 @@ include-package-data = true
 packages = ["homebody", "homebody.bridge"]
 
 [tool.setuptools.package-data]
-homebody = ["release.json", "assets/*", "assets/gesture_models/*", "static/*", "agent_guides/*.md"]
+homebody = ["release.json", "assets/*", "assets/gesture_models/*", "assets/kids_acknowledgements/*", "static/*", "agent_guides/*.md"]
 "homebody.bridge" = ["*.py", "*.example"]
 
 [tool.pytest.ini_options]

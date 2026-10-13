@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "voice_sha256": "2f2a5e916dff23fe1869185943af889cf45d35a3e57258fcea2b03332a3bd9ab",
+  "model": "eleven_flash_v2_5",
+  "sample_rate": 24000,
+  "clips": [
+    {
+      "id": "nl-think",
+      "language": "nl",
+      "text": "Even denken.",
+      "file": "nl-think.wav",
+      "sha256": "75d8c47464f75489a500f1772e78cdad2c514f582fbc1f68e09ae97138aa6b31",
+      "duration_seconds": 0.882375
+    },
+    {
+      "id": "nl-hmm",
+      "language": "nl",
+      "text": "Hmm.",
+      "file": "nl-hmm.wav",
+      "sha256": "328e19fa4b7e4235dca70582d6951db04d1897aea5c78e28b369df2b96b4e181",
+      "duration_seconds": 0.5108333333333334
+    },
+    {
+      "id": "nl-see",
+      "language": "nl",
+      "text": "Eens kijken.",
+      "file": "nl-see.wav",
+      "sha256": "9e78922559d5f583b6dcee945f6a3eaf79b2c65dd5a763860a22230c2909a19e",
+      "duration_seconds": 0.882375
+    },
+    {
+      "id": "en-think",
+      "language": "en",
+      "text": "Let me think.",
+      "file": "en-think.wav",
+      "sha256": "f55447c164e7bfd483871c020d73b396849c1f7b358adb83c59bc6c15f1afa2e",
+      "duration_seconds": 0.8359166666666666
+    },
+    {
+      "id": "en-hmm",
+      "language": "en",
+      "text": "Hmm.",
+      "file": "en-hmm.wav",
+      "sha256": "26045e104fef838252022e763c7db0e4e684c7b2483a6c0ab320999d5b0f0fa3",
+      "duration_seconds": 0.5572916666666666
+    },
+    {
+      "id": "en-see",
+      "language": "en",
+      "text": "Let's see.",
+      "file": "en-see.wav",
+      "sha256": "e1e609a93db04c88a7b0146c412c70fc1d72d1b7e10c998b2459524fc7e5b8c8",
+      "duration_seconds": 0.882375
+    }
+  ]
+}

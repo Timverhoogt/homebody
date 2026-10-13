@@ -74,6 +74,7 @@ def test_locked_status_route_uses_child_allowlist_and_redacts_runtime_text(monke
     }
     assert set(payload["runtime"]) == {
         "state",
+        "stt_locality",  # categorical local/cloud/unknown only
         "power_mode",
         "motors_enabled",
         "head_safely_folded",

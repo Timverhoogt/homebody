@@ -6,6 +6,7 @@ updater or a provider. Screenshots land in .artifacts/ui-motion/ (untracked) for
 """
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -28,6 +29,8 @@ SHOW = """() => { Object.defineProperty(document, 'hidden', {configurable: true,
 
 
 def _shot(page, name, **kwargs):
+    if os.environ.get("HOMEBODY_TEST_SCREENSHOTS") != "1":
+        return  # Assertions are independent; composed visual artifacts are an explicit review lane.
     # Headless Chromium renders no frame until one is requested; let entrances finish first so a
     # still shows the composed state rather than frame zero of a fade.
     page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
@@ -56,6 +59,7 @@ def _running(page, selector):
 
 
 def _apply(page, state, runtime_state="waiting_for_wake_word", power="awake", **runtime):
+    page.wait_for_function("!statusRefreshPending", timeout=5000)
     state["runtime"].update(state=runtime_state, power_mode=power, kids_mode={}, **runtime)
     page.evaluate("s => updateStatus({config:s.config,runtime:s.runtime})", state)
 
@@ -79,7 +83,7 @@ def test_showcase_renders_every_adult_state_offline(width, scheme):
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.on("request", lambda request: requests.append(request.url))
         page.goto((ROOT / "docs" / "scenes" / "ui-motion-showcase.html").as_uri())
-        page.wait_for_timeout(600)
+        page.wait_for_function("document.querySelectorAll('svg.hb-art-updater').length === 13")
         assert "SIMULATED STATES" in page.inner_text(".simulated")
         counts = page.evaluate("""() => Object.fromEntries(['presence', 'workbench', 'lens', 'updater']
             .map(s => [s, document.querySelectorAll(`svg.hb-art-${s}`).length]))""")
@@ -88,7 +92,8 @@ def test_showcase_renders_every_adult_state_offline(width, scheme):
         for surface in ("presence", "workbench", "lens", "updater", "buttons"):
             section = page.locator(f'[data-surface="{surface}"]')
             section.scroll_into_view_if_needed()
-            page.wait_for_timeout(150)
+            if os.environ.get("HOMEBODY_TEST_SCREENSHOTS") == "1":
+                page.wait_for_timeout(150)
             _shot(page, f"showcase-{surface}-{width}-{scheme}", clip=section.bounding_box())
         assert all(url.startswith("file://") for url in requests)
         assert not errors
@@ -148,6 +153,10 @@ def test_home_presence_pauses_when_hidden_and_drops_to_offline(ui):
     page.wait_for_timeout(250)
     assert _scene(page, "hero-presence")["motion"] == "on"
     page.evaluate(HIDE)
+    page.wait_for_function(
+        "!document.getElementById('hero-presence').getAnimations({subtree:true})"
+        ".some(a => a.playState === 'running')", timeout=5000,
+    )
     assert _scene(page, "hero-presence")["motion"] == "off" and _running(page, "#hero-presence") == 0
     page.evaluate(SHOW)
     page.wait_for_timeout(300)
@@ -598,8 +607,10 @@ def test_update_rail_ignores_late_reads_and_owner_loss_wins(ui):
     page, catalog, control, errors = _updates_page(ui)
     catalog["job"] = {"id": "d" * 32, "state": "installing", "acknowledged": False}
     control["hold"] = True
-    _refresh(page)  # older read, held in flight
-    page.wait_for_timeout(100)
+    page.expose_function("heldUpdateCount", lambda: len(control["held"]))
+    with page.expect_request("**/api/updates"):
+        page.evaluate("() => { void HomebodyUpdates.refresh(); }")
+    page.wait_for_function("async () => (await window.heldUpdateCount()) > 0", timeout=5000)
     control["hold"] = False
     catalog["job"] = {"id": "d" * 32, "state": "verifying", "acknowledged": False}
     _refresh(page)
@@ -619,9 +630,12 @@ def test_update_rail_ignores_late_reads_and_owner_loss_wins(ui):
 def test_stale_success_cannot_replace_failure_after_failed_check(ui):
     page, catalog, control, errors = _updates_page(ui)
     control["hold"] = True
-    _refresh(page)
-    page.wait_for_timeout(100)
-    assert control["held"]
+    # Do not await refresh: its fetch is deliberately held until later in this test.
+    # Wait for the actual interception rather than sleeping and hoping the route ran.
+    page.expose_function("heldUpdateCount", lambda: len(control["held"]))
+    with page.expect_request("**/api/updates"):
+        page.evaluate("() => { void HomebodyUpdates.refresh(); }")
+    page.wait_for_function("async () => (await window.heldUpdateCount()) > 0", timeout=5000)
     control["hold"] = False
     catalog["job"] = {"id": "e" * 32, "state": "rollback_failed", "acknowledged": False}
     _refresh(page)
