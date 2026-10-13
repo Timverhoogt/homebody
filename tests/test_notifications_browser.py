@@ -73,7 +73,8 @@ def test_app_notification_wiring_and_phone_layout(browser_page):
     assert box["y"] >= 0 and box["y"] + box["height"] <= 844 - 80
     for button in page.locator(".notification-dismiss:visible").all():
         bounds = button.bounding_box()
-        assert bounds["width"] >= 44 and bounds["height"] >= 44
+        # DOMRect subtraction can lose sub-millipixel precision during translated entrances.
+        assert bounds["width"] + 0.001 >= 44 and bounds["height"] + 0.001 >= 44
     page.clock.resume()
     page.evaluate("() => new Promise(requestAnimationFrame)")
     page.screenshot(path=".pytest_cache/notification-browser/phone.png", animations="disabled")

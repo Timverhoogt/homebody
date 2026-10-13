@@ -639,6 +639,29 @@ _LOCAL_STT_PROVIDERS = frozenset({"local", "local_command"})
 _CLOUD_STT_PROVIDERS = frozenset({"openai", "groq", "mistral", "elevenlabs", "deepgram", "assemblyai", "azure"})
 
 
+def _configured_voice_providers(profile: str | None) -> dict[str, str]:
+    """Read provider metadata with the active Hermes runtime's safe YAML reader."""
+    try:
+        try:
+            import hermes_yaml as yaml
+        except ImportError:
+            import yaml  # Standalone bridge installations can still use PyYAML.
+    except ImportError:
+        return {}
+    try:
+        payload = yaml.safe_load((_hermes_home(profile) / "config.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, TypeError, ValueError, yaml.YAMLError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    providers: dict[str, str] = {}
+    for section in ("stt", "tts"):
+        value = payload.get(section, {})
+        if isinstance(value, dict) and value.get("provider"):
+            providers[f"{section}_provider"] = str(value["provider"])
+    return providers
+
+
 def _stt_locality(provider: str, hermes_enabled: bool) -> str:
     """Server-derived categorical location of configured STT on this Hermes host.
 
@@ -1328,17 +1351,7 @@ class Bridge(NativeWorkspaceRoutes):
             )
             backends.append({"name": "openclaw", "label": "OpenClaw", **openclaw_health})
         agent_ok = bool(backends) and all(item.get("ok") is True for item in backends)
-        providers: dict[str, str] = {}
-        try:
-            import yaml
-
-            payload = yaml.safe_load((_hermes_home(self.profile) / "config.yaml").read_text(encoding="utf-8")) or {}
-            for section in ("stt", "tts"):
-                value = payload.get(section, {})
-                if isinstance(value, dict) and value.get("provider"):
-                    providers[f"{section}_provider"] = str(value["provider"])
-        except (ImportError, OSError, TypeError, ValueError):
-            pass
+        providers = _configured_voice_providers(self.profile)
         legacy = {"hermes_api": hermes_ok} if self.hermes_enabled else {}
         providers["stt_locality"] = _stt_locality(providers.get("stt_provider", ""), self.hermes_enabled)
         providers.update(_kids_voice_proof(self.profile))
