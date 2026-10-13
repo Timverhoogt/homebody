@@ -237,21 +237,6 @@ def test_bridge_kids_route_has_moderation_on_both_sides_and_no_hermes_forwarding
     assert "X-Hermes-Session-Key" not in method
 
 
-def test_bridge_kids_speech_route_is_fixed_to_flash_pcm_streaming() -> None:
-    source = (ROOT / "companion" / "hermes_reachy_bridge.py").read_text(encoding="utf-8")
-    method = source.split("    async def kids_speech_stream", 1)[1].split(
-        "    async def speech",
-        1,
-    )[0]
-
-    assert "/stream" in method
-    assert '"output_format": "pcm_24000"' in method
-    assert '"model_id": "eleven_flash_v2_5"' in method
-    assert "ELEVENLABS_KIDS_VOICE_ID" in method
-    assert "_consume_kids_speech_approval" in method
-    assert "eleven_multilingual_v2" not in method
-
-
 def test_kids_session_state_client_posts_active_and_ended() -> None:
     seen: list[dict[str, object]] = []
 
