@@ -152,6 +152,7 @@ def test_home_presence_pauses_when_hidden_and_drops_to_offline(ui):
     page.wait_for_timeout(250)
     assert _scene(page, "hero-presence")["motion"] == "on"
     page.evaluate(HIDE)
+    page.wait_for_function("!document.getElementById('hero-presence').getAnimations({subtree:true}).some(a => a.playState === 'running')", timeout=5000)
     assert _scene(page, "hero-presence")["motion"] == "off" and _running(page, "#hero-presence") == 0
     page.evaluate(SHOW)
     page.wait_for_timeout(300)
