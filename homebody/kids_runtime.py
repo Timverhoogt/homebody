@@ -22,6 +22,15 @@ from .config import AppConfig
 from .hermes_client import HermesBridgeClient, HermesBridgeError
 from .ispy import ISpyTarget
 from .kids_acknowledgements import AckSelector
+from .kids_game_master import (
+    MAX_CHOICE_REPROMPTS,
+    ROUND_TURN_LIMITS,
+    available_activities,
+    host_line,
+    lobby_choices,
+    parse_host_command,
+    suggest_other,
+)
 from .kids_mode import KidsProfile, build_kids_prompt, kids_greeting, kids_message
 
 # Keep the runtime logger name so existing log filters and dashboards still match Kids Mode lines.
@@ -67,6 +76,18 @@ class KidsModeMixin:
         self._kids_ack_selector = AckSelector()
         self._kids_ack_producer = None  # latest filler producer; quarantines audio while a push is blocked
         self._kids_start_stop_generation = -1
+        # Game master (host) state: categorical only, reset by every Start and End.
+        self._kids_host_phase = ""
+        self._kids_host_activity = ""
+        self._kids_host_choices: tuple[str, ...] = ()
+        self._kids_host_notice = ""
+        self._kids_host_round_turns = 0
+        self._kids_host_reprompts = 0
+        self._kids_host_offer_index = 0
+        self._kids_host_typed_handled = False
+        # Outer play-session identity: set by each caregiver Start, kept across game switches, so a
+        # child Stop binds to the session (never a stale per-game generation) and never to a later Start.
+        self._kids_play_id = ""
 
     def _kids_first_listen_valid(self, ticket: tuple[str, int, int, float], session_id: str) -> bool:
         """Caller holds _kids_lock. Compare immutable generations, not just the active flag."""
@@ -163,10 +184,15 @@ class KidsModeMixin:
             self._kids_started_at = time.monotonic()
             self._kids_ends_at = self._kids_started_at + profile.duration_minutes * 60.0
             self._kids_session_id = "kids-" + secrets.token_hex(16)
+            self._kids_play_id = secrets.token_hex(16)
             with self._status_lock:
                 self._kids_turns_at_start = self._status.turns_completed
             self._kids_last_end_reason = ""
             self._kids_last_fold_succeeded = None
+            self._reset_kids_host(
+                "lobby" if profile.host else "",
+                lobby_choices(camera_consent=profile.camera_consent) if profile.host else (),
+            )
             timer = threading.Timer(profile.duration_minutes * 60.0, self._expire_kids_mode, args=(generation,))
             timer.daemon = True
             self._kids_timer = timer
@@ -194,7 +220,12 @@ class KidsModeMixin:
         if self._motion is not None:
             self._motion.enabled = profile.motion_enabled
         ispy_target: ISpyTarget | None = None
-        if profile.activity == "ispy":
+        greeting = kids_greeting(profile)
+        if profile.host:
+            # The host opens in the lobby: no game, no camera, two concrete choices.
+            first, second = lobby_choices(camera_consent=profile.camera_consent)
+            greeting = host_line(profile.language, "lobby", a=first, b=second, nickname=profile.nickname)
+        elif profile.activity == "ispy":
             try:
                 ispy_target = self._prepare_ispy_round(generation, profile)
             except Exception as exc:
@@ -208,10 +239,10 @@ class KidsModeMixin:
                 raise
         if greet:
             try:
-                if profile.activity == "ispy" and not self._kids_callback_is_current(generation):
+                if ispy_target is not None and not self._kids_callback_is_current(generation):
                     raise RuntimeError("I Spy start was cancelled before its clue")
                 self.queue_announcement(
-                    ispy_target.clue(profile.language) if ispy_target else kids_greeting(profile),
+                    ispy_target.clue(profile.language) if ispy_target else greeting,
                     behavior="wake_and_stay",
                     provider="elevenlabs",
                     model="eleven_flash_v2_5",
@@ -498,11 +529,18 @@ class KidsModeMixin:
 
     def stop_kids_mode(
         self, *, reason: str = "parent", fold: bool = True, expected_generation: int | None = None,
+        expected_play_id: str | None = None,
     ) -> dict[str, object]:
         """End Kids Mode immediately, cancel its voice/motion, and optionally fold safely."""
         with self._kids_lock:
+            # Admission and invalidation are one atomic step under _kids_lock.
             if expected_generation is not None and self._kids_generation != expected_generation:
                 return dict(self.status()["kids_mode"])
+            if expected_play_id is not None and (
+                not expected_play_id or not self._kids_active or self._kids_play_id != expected_play_id
+            ):
+                return dict(self.status()["kids_mode"])
+            self._kids_play_id = ""
             was_active = self._kids_active
             ended_session_id = self._kids_session_id if was_active else ""
             ispy_session_id = (
@@ -528,6 +566,7 @@ class KidsModeMixin:
             self._kids_session_id = ""
             self._kids_last_end_reason = reason[:40]
             self._kids_last_fold_succeeded = None
+            self._reset_kids_host("", ())
             # This cancellation does not acquire the motor lock; invalidate/cancel
             # before waiting for the scan to release it. New admission waits on both.
             cancel_move = getattr(self.robot, "cancel_move", None)
@@ -592,10 +631,13 @@ class KidsModeMixin:
             self._kids_input_stop_generation = self._conversation_stop_generation
 
     def _ispy_typed_session_is_current(self, session_id: str) -> bool:
+        """Typed input: an I Spy session, or any phase of a hosted play session (same capability)."""
         with self._kids_lock:
             return (
                 self._kids_active and self._kids_session_id == session_id
-                and self._kids_profile is not None and self._kids_profile.activity == "ispy"
+                and self._kids_profile is not None
+                and (self._kids_profile.activity == "ispy" or self._kids_profile.host)
+                and self._kids_host_phase != "transition"
                 and time.monotonic() < self._kids_ends_at
                 and not self._kids_camera_active
             )
@@ -615,12 +657,49 @@ class KidsModeMixin:
                 if self._kids_input_stop_generation != self._conversation_stop_generation:
                     self._kids_input_token = secrets.token_hex(16)
                     self._kids_input_stop_generation = self._conversation_stop_generation
-            return {"available": available, "token": self._kids_input_token if available else ""}
+            # While a hosted game switch or camera search runs, the same one-use token admits only "stop".
+            stop_only = not available and self._hosted_stop_only_open()
+            context: dict[str, object] = {
+                "available": available,
+                "token": self._kids_input_token if available or stop_only else "",
+            }
+            if stop_only:
+                context["stop_only"] = True
+            return context
+
+    def _hosted_stop_only_open(self) -> bool:
+        """Caller holds _kids_lock."""
+        return (
+            self._kids_active and self._kids_profile is not None and self._kids_profile.host
+            and (self._kids_host_phase == "transition" or self._kids_camera_active)
+            and time.monotonic() < self._kids_ends_at
+            and not self.stop_event.is_set() and not self._privacy_requested.is_set()
+        )
+
+    def _submit_hosted_typed_stop(self, text: str, token: str) -> bool:
+        """An explicit typed Stop during a switch/search: needs no voice slot or motor lock, so it wins."""
+        if parse_host_command(text, phase="playing").kind != "stop":
+            return False
+        with self._kids_lock:
+            if (
+                not self._hosted_stop_only_open()
+                or not token or not secrets.compare_digest(token, self._kids_input_token)
+            ):
+                return False
+            self._kids_input_token = secrets.token_hex(16)  # single use; no replay
+            play_id = self._kids_play_id
+        self._request_conversation_stop()
+        threading.Thread(
+            target=self._kids_host_child_stop, args=(play_id,), name="kids-host-stop", daemon=True,
+        ).start()
+        return True
 
     def submit_ispy_guess(self, text: str, token: str) -> dict[str, object]:
         """Serialize typed input with spoken turns; never wake, capture or acquire new authority."""
         if not isinstance(text, str) or not text.strip() or len(text) > 80:
             raise ValueError("Enter an I Spy guess of 1–80 characters")
+        if self._submit_hosted_typed_stop(text, token):
+            return {"accepted": True}
         if not self._voice_activity_lock.acquire(blocking=False):
             raise ISpyInputUnavailable("Wait until Reachy finishes the current turn")
         try:
@@ -648,7 +727,11 @@ class KidsModeMixin:
                     self._typed_stop_generation = admission_stop_generation
                     self._conversation_stop_requested.clear()
                     self._turn_stop_generation = admission_stop_generation
+            self._kids_host_typed_handled = False
             self._run_conversation(config, typed_input=text.strip())
+            if self._kids_host_typed_handled:
+                # The game master answered (switch, help, choice or stop); its own line follows.
+                return {"accepted": True}
             if (
                 not self._ispy_typed_session_is_current(session_id)
                 or self._turn_stop_requested() or self._privacy_requested.is_set()
@@ -660,6 +743,281 @@ class KidsModeMixin:
             with self._conversation_stop_generation_lock:
                 self._typed_stop_generation = None
             self._voice_activity_lock.release()
+
+    # ---- Game master (host) -------------------------------------------------------------------
+    # The host owns one outer session (deadline, Stop, privacy, fold); each game is an adapter run
+    # under its own bridge session id and Kids generation, so a switch invalidates every in-flight
+    # reply, stream, camera capture, first-listen ticket and bridge response of the old game.
+
+    def _reset_kids_host(self, phase: str, choices: tuple[str, ...]) -> None:
+        """Caller holds _kids_lock."""
+        self._kids_host_phase = phase
+        self._kids_host_activity = ""
+        self._kids_host_choices = tuple(choices)
+        self._kids_host_notice = ""
+        self._kids_host_round_turns = 0
+        self._kids_host_reprompts = 0
+        self._kids_host_offer_index = 0
+
+    def _kids_host_public(self) -> dict[str, object]:
+        """Caller holds _kids_lock. Categorical owner-safe host state only."""
+        enabled = bool(self._kids_active and self._kids_profile is not None and self._kids_profile.host)
+        return {
+            "enabled": enabled,
+            "phase": self._kids_host_phase if enabled else "",
+            "activity": self._kids_host_activity if enabled else "",
+            "choices": list(self._kids_host_choices) if enabled else [],
+            "notice": self._kids_host_notice if enabled else "",
+            "available": list(available_activities(camera_consent=self._kids_profile.camera_consent))
+            if enabled and self._kids_profile is not None else [],
+        }
+
+    def _kids_host_current(self, generation: int) -> bool:
+        """Caller holds _kids_lock."""
+        return (
+            self._kids_active and generation == self._kids_generation
+            and self._kids_profile is not None and self._kids_profile.host
+            and time.monotonic() < self._kids_ends_at
+            and not self.stop_event.is_set() and not self._privacy_requested.is_set()
+            and self._effective_power_mode() not in {"meeting", "sleep"}
+        )
+
+    def _rearm_kids_timers(self, generation: int) -> None:
+        """Caller holds _kids_lock. Keep the original monotonic deadline across a game switch."""
+        for timer in (self._kids_timer, self._kids_warning_timer):
+            if timer is not None and timer is not threading.current_thread():
+                timer.cancel()
+        remaining = max(0.0, self._kids_ends_at - time.monotonic())
+        timer = threading.Timer(remaining, self._expire_kids_mode, args=(generation,))
+        timer.daemon = True
+        self._kids_timer = timer
+        timer.start()
+        self._kids_warning_timer = None
+        if remaining > 301.0:  # the five-minute warning has not been due yet
+            warning = threading.Timer(remaining - 300.0, self._warn_kids_mode, args=(generation,))
+            warning.daemon = True
+            self._kids_warning_timer = warning
+            warning.start()
+
+    def _kids_host_speak(self, text: str, generation: int, *, phase: str, listen: bool = True) -> bool:
+        """Queue one fixed host line for exactly this generation; Stop/End/privacy always win.
+
+        Queued under the motor and Kids locks, so a concurrent End either clears it from the queue
+        or makes this generation stale before it is queued. The first-listen ticket is re-based on a
+        fresh stop receipt, so the child can answer without a wake phrase.
+        """
+        with self._motor_transition_lock, self._kids_lock:
+            if not self._kids_host_current(generation):
+                return False
+            self._kids_host_phase = phase
+            self._kids_first_listen = None
+            receipt = self._request_conversation_stop()
+            self._kids_start_stop_generation = receipt if isinstance(receipt, int) else -1
+            self.queue_announcement(
+                text,
+                behavior="wake_and_stay",
+                provider="elevenlabs",
+                model="eleven_flash_v2_5",
+                voice="cgSgspJ2msm6clMCkdW9",
+                kids_listen_session_id=self._kids_session_id if listen else "",
+            )
+            return True
+
+    def kids_host_select(self, activity: str, *, camera_consent: bool = False) -> dict[str, object]:
+        """Caregiver direct selection inside a hosted session (owner route). May grant I Spy consent."""
+        with self._kids_lock:
+            profile = self._kids_profile
+            if not self._kids_active or profile is None or not profile.host:
+                raise RuntimeError("No hosted Kids play session is active")
+            if activity not in available_activities(camera_consent=True):
+                raise ValueError("Unsupported Kids Mode activity")
+            if activity == "ispy" and not (profile.camera_consent or camera_consent):
+                raise ValueError("Camera opt-in is required for I Spy")
+            if activity == "ispy" and camera_consent and not profile.camera_consent:
+                self._kids_profile = profile = replace(profile, camera_consent=True)
+            generation = self._kids_generation
+        self._kids_host_choose(activity, generation)
+        return dict(self.status()["kids_mode"])  # type: ignore[arg-type]
+
+    def _kids_host_choose(self, activity: str, generation: int) -> None:
+        """Start ``activity`` as a fresh round, or explain the caregiver camera step for I Spy."""
+        with self._kids_lock:
+            if not self._kids_host_current(generation) or self._kids_profile is None:
+                return
+            profile = self._kids_profile
+            if activity == "ispy" and not profile.camera_consent:
+                # A child's voice never authorizes the camera; tell them and the caregiver precisely.
+                self._kids_host_notice = "camera_consent_needed"
+                phase = self._kids_host_phase or "lobby"
+                text = host_line(profile.language, "camera_needed")
+            else:
+                text = ""
+                self._kids_host_phase = "transition"
+                self._kids_host_notice = ""
+        if text:
+            self._kids_host_speak(text, generation, phase=phase)
+            return
+        threading.Thread(
+            target=self._kids_host_transition, args=(activity, generation),
+            name="kids-host-transition", daemon=True,
+        ).start()
+
+    def _kids_host_transition(self, activity: str, expected_generation: int) -> None:
+        """Switch games inside the same outer session; never extends the session deadline."""
+        cancel_move = getattr(self.robot, "cancel_move", None)
+        with self._motor_transition_lock, self._kids_lock:
+            if not self._kids_host_current(expected_generation) or self._kids_profile is None:
+                return
+            old_session_id = self._kids_session_id
+            old_ispy = self._kids_profile.activity == "ispy" and bool(self._kids_host_activity)
+            self._kids_generation += 1
+            generation = self._kids_generation
+            self._kids_input_token = secrets.token_hex(16)
+            self._kids_first_listen = None
+            self._kids_camera_active = False
+            self._kids_ispy_player_motion_index = 0
+            self._kids_ispy_motion_started = False
+            self._kids_session_id = new_session_id = "kids-" + secrets.token_hex(16)
+            self._kids_profile = profile = replace(self._kids_profile, activity=activity)
+            self._kids_host_phase = "transition"
+            self._kids_host_activity = activity
+            self._kids_host_choices = ()
+            self._kids_host_round_turns = 0
+            self._kids_host_reprompts = 0
+            self._rearm_kids_timers(generation)
+            receipt = self._request_conversation_stop()
+            self._kids_start_stop_generation = receipt if isinstance(receipt, int) else -1
+            if old_ispy and callable(cancel_move):
+                try:
+                    cancel_move()
+                except Exception:
+                    _LOGGER.warning("Could not cancel the previous I Spy movement", exc_info=True)
+        self._cancel_announcements(clear_queue=True)
+        self._clear_streamed_audio()
+        self._notify_bridge_kids_session_async(old_session_id, active=False)
+        if old_ispy:
+            threading.Thread(
+                target=self._cancel_ispy_bridge_session, args=(old_session_id,),
+                name="kids-ispy-cancel", daemon=True,
+            ).start()
+        self._notify_bridge_kids_session_async(new_session_id, active=True)
+        intro = host_line(profile.language, "start", a=activity)
+        if activity == "ispy":
+            try:
+                target = self._prepare_ispy_round(generation, profile)
+            except Exception as exc:
+                _LOGGER.warning("Hosted I Spy round failed (%s)", type(exc).__name__)
+                if self._kids_callback_is_current(generation):
+                    with self._kids_lock:
+                        motion_started = self._kids_ispy_motion_started
+                    self.stop_kids_mode(reason="ispy_start_failed", fold=motion_started,
+                                        expected_generation=generation)
+                return
+            text = f"{intro} {target.clue(profile.language)}"
+        else:
+            text = f"{intro} {kids_greeting(replace(profile, nickname=''))}"
+        self._kids_host_speak(text, generation, phase="playing")
+
+    def _kids_host_offer(self, generation: int, *, finished_activity: str) -> bool:
+        with self._kids_lock:
+            if not self._kids_host_current(generation) or self._kids_profile is None:
+                return False
+            profile = self._kids_profile
+            other = suggest_other(
+                finished_activity, camera_consent=profile.camera_consent, turn=self._kids_host_offer_index,
+            )
+            self._kids_host_offer_index += 1
+            self._kids_host_choices = ("again", other)
+            self._kids_host_reprompts = 0
+        return self._kids_host_speak(
+            host_line(profile.language, "offer", a=finished_activity, b=other), generation, phase="offer",
+        )
+
+    def _kids_host_handle_transcript(self, session_id: str, transcript: str, *, typed: bool = False) -> bool:
+        """Return True when the host consumed this child input (the game never sees it)."""
+        with self._kids_lock:
+            profile = self._kids_profile
+            if (
+                not self._kids_active or profile is None or not profile.host
+                or session_id != self._kids_session_id
+            ):
+                return False
+            generation = self._kids_generation
+            play_id = self._kids_play_id
+            phase = self._kids_host_phase
+            activity = self._kids_host_activity
+            choices = self._kids_host_choices
+        command = parse_host_command(transcript, phase=phase)
+        if phase == "transition" and command.kind != "stop":
+            if typed:
+                self._kids_host_typed_handled = True
+            return True  # the next game is starting; nothing reaches the old or new game
+        if phase == "playing" and command.kind in {"none", "again", "no"}:
+            return False
+        if phase == "playing" and command.kind == "switch" and command.activity == activity:
+            return False  # e.g. "I spy" inside I Spy is a game move, not a switch
+        if typed:
+            self._kids_host_typed_handled = True
+        if command.kind == "stop" or (phase != "playing" and command.kind == "no"):
+            # Stop is dominant: cancel the turn now and end the outer session without persuasion.
+            self._request_conversation_stop()
+            threading.Thread(
+                target=self._kids_host_child_stop, args=(play_id,), name="kids-host-stop", daemon=True,
+            ).start()
+            return True
+        language = profile.language
+        if command.kind == "switch":
+            self._kids_host_choose(command.activity, generation)
+        elif command.kind == "again" and phase in {"offer", "waiting"} and activity:
+            self._kids_host_choose(activity, generation)
+        elif command.kind == "different":
+            options = [c for c in choices if c not in {"again", activity}] or [
+                suggest_other(activity, camera_consent=profile.camera_consent)
+            ]
+            self._kids_host_choose(options[0], generation)
+        elif command.kind == "help" and phase == "playing":
+            self._kids_host_speak(host_line(language, "help_playing"), generation, phase="playing")
+        else:
+            with self._kids_lock:
+                if not self._kids_host_current(generation):
+                    return True
+                if command.kind != "help":
+                    self._kids_host_reprompts += 1
+                reprompts = self._kids_host_reprompts
+            first, second = choices if len(choices) == 2 else lobby_choices(camera_consent=profile.camera_consent)
+            first_name = activity if first == "again" else first
+            if reprompts > MAX_CHOICE_REPROMPTS:
+                # Bounded: stop asking, wait quietly; a game name, wake word or caregiver can resume.
+                self._kids_host_speak(host_line(language, "waiting"), generation, phase="waiting", listen=False)
+            else:
+                key = "offer_retry" if first == "again" and command.kind != "help" else "help"
+                self._kids_host_speak(host_line(language, key, a=first_name, b=second), generation,
+                                      phase=phase or "lobby")
+        return True
+
+    def _kids_host_child_stop(self, play_id: str) -> None:
+        """Bound to the outer play session, so a concurrent game switch cannot drop it."""
+        try:
+            self.stop_kids_mode(reason="child_stop", fold=True, expected_play_id=play_id)
+        except Exception:
+            _LOGGER.exception("Kids play session stop could not complete the safe fold")
+
+    def _kids_host_after_reply(self, session_id: str, game_state: str) -> bool:
+        """After a spoken game reply: on a real finished outcome or the turn bound, offer choices."""
+        with self._kids_lock:
+            profile = self._kids_profile
+            if (
+                not self._kids_active or profile is None or not profile.host
+                or session_id != self._kids_session_id or self._kids_host_phase != "playing"
+            ):
+                return False
+            generation = self._kids_generation
+            activity = self._kids_host_activity
+            self._kids_host_round_turns += 1
+            finished = game_state == "finished" or self._kids_host_round_turns >= ROUND_TURN_LIMITS[activity]
+        if not finished:
+            return False
+        return self._kids_host_offer(generation, finished_activity=activity)
 
     def _kids_voice_config(self, base: AppConfig) -> AppConfig:
         with self._kids_lock:
@@ -675,6 +1033,7 @@ class KidsModeMixin:
             kids_session_id=self._kids_session_id,
             kids_age_band=profile.age_band,
             kids_activity=profile.activity,
+            kids_host_enabled=profile.host,
             language=profile.language,
             system_prompt=build_kids_prompt(profile),
             continuous_conversation=True,

@@ -62,10 +62,13 @@ class PipelineVoiceMixin:
 
     def _run_conversation(self, initial_config: AppConfig, *, typed_input: str | None = None) -> None:
         if typed_input is not None and not (
-            initial_config.kids_mode_enabled and initial_config.kids_activity == "ispy"
+            initial_config.kids_mode_enabled
+            and (initial_config.kids_activity == "ispy" or initial_config.kids_host_enabled)
         ):
-            raise ValueError("Typed input is limited to an active Kids I Spy game")
-        if initial_config.kids_mode_enabled and initial_config.kids_activity == "ispy":
+            raise ValueError("Typed input is limited to an active Kids I Spy game or play session")
+        if initial_config.kids_mode_enabled and (
+            initial_config.kids_activity == "ispy" or initial_config.kids_host_enabled
+        ):
             self._invalidate_ispy_input()
         config = initial_config
         client = self._new_bridge_client(config)
@@ -229,6 +232,14 @@ class PipelineVoiceMixin:
                     or self._effective_power_mode() in {"meeting", "sleep"}
                 ):
                     break
+                if initial_config.kids_host_enabled and self._kids_host_handle_transcript(
+                    initial_config.kids_session_id, transcript, typed=typed_input is not None,
+                ):
+                    # The game master answers with its own fixed line and re-opens listening.
+                    self._set_status("waiting_for_wake_word", "Game host is responding")
+                    with self._status_lock:
+                        self._status.turns_completed += 1
+                    break
                 self._workspace_event(workspace_generation, "user", transcript)
                 self._workspace_event(workspace_generation, "activity", "Hermes is responding")
                 _LOGGER.info("Transcript accepted (%s characters)", len(transcript))
@@ -382,7 +393,19 @@ class PipelineVoiceMixin:
                     break
                 if (
                     not interrupted
+                    and client.config.kids_host_enabled
+                    and self._kids_host_after_reply(
+                        client.config.kids_session_id, getattr(client, "last_kids_game_state", ""),
+                    )
+                ):
+                    # A real finished outcome: the host offers two choices instead of continuing.
+                    with self._status_lock:
+                        self._status.turns_completed += 1
+                    break
+                if (
+                    not interrupted
                     and client.config.kids_mode_enabled
+                    and not client.config.kids_host_enabled
                     and client.config.kids_activity == "ispy"
                     and client.last_kids_next_action == "prepare_robot_round"
                 ):

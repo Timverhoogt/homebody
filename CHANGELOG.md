@@ -6,7 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.5.10] - Candidate (not released or deployed)
+## [0.5.11] - 2026-10-13
+
+### Added
+- Play together: one supervised Kids session with Dutch/English game selection, mid-game switching, help, explicit round completion and a choice of another round or a different activity. Stop finishes without persuasion; the caregiver deadline stays fixed across switches.
+- A shared typed game-input box, with one-use Stop-only admission during switching/search. Caregiver selection and camera consent remain paired-owner/CSRF protected.
+- Illustrated game-host choosing, switching and completion scenes, with accessible End/input controls, reduced-motion states, hidden-page pause and stale-poll/owner-loss fencing. PWA shell/query v90.
+
+### Fixed
+- Bind child Stop to the outer play session so an activity-generation change cannot discard it; reject late Stop from a replaced caregiver session.
+- Keep hints, give-up and replay phrases with the active game, and distinguish direct switch requests from narration and questions.
+- Preserve hosted I Spy success/reveal outcomes without automatically starting another camera search; fence old game replies, speech, capture and listening tickets.
+
+### Deployment notes
+- This release retains Hermes-host local transcription. Jetson-native recognition is not included.
+- Companion bridge must be updated separately. Unit/Chromium verification does not replace supervised physical gameplay acceptance.
+
+## [0.5.10] - 2026-10-13
 
 ### Fixed
 - Localize deterministic Kids introductions, warnings and safety/fallback replies in the selected English or Dutch; open the first listening turn after the introduction without a wake phrase.

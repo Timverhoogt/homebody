@@ -75,6 +75,7 @@ class HermesBridgeClient:
         self.last_kids_next_action = ""
         self.last_kids_ispy_role = ""
         self.last_kids_ispy_phase = ""
+        self.last_kids_game_state = ""
         self.last_answer_source: dict[str, str] = {}
 
     def close(self) -> None:
@@ -632,21 +633,25 @@ class HermesBridgeClient:
         self.last_kids_next_action = ""
         self.last_kids_ispy_role = ""
         self.last_kids_ispy_phase = ""
+        self.last_kids_game_state = ""
         clean = transcript.strip()
         if not clean:
             raise HermesBridgeError("Kids Mode received an empty transcript")
+        request_body: dict[str, object] = {
+            "input": clean,
+            "session_id": self.config.kids_session_id,
+            "profile": {
+                "age_band": self.config.kids_age_band,
+                "activity": self.config.kids_activity,
+                "language": self.config.language,
+            },
+        }
+        if self.config.kids_host_enabled:
+            request_body["hosted"] = True
         response = self._client.post(
             f"{self.config.bridge_url}/v1/kids/chat",
             headers={"Authorization": f"Bearer {self.config.api_key}"},
-            json={
-                "input": clean,
-                "session_id": self.config.kids_session_id,
-                "profile": {
-                    "age_band": self.config.kids_age_band,
-                    "activity": self.config.kids_activity,
-                    "language": self.config.language,
-                },
-            },
+            json=request_body,
         )
         self._raise_for_error(response, "Kids Mode response")
         payload = response.json()
@@ -678,6 +683,14 @@ class HermesBridgeClient:
             self.last_kids_next_action = action
             self.last_kids_ispy_role = role
             self.last_kids_ispy_phase = phase
+        if self.config.kids_host_enabled:
+            # A hosted round finishes only on this strict categorical outcome, never on prose.
+            game_state = payload.get("game_state") if isinstance(payload, dict) else None
+            if game_state not in {"playing", "finished"}:
+                raise HermesBridgeError("Kids Mode returned an invalid game outcome")
+            if self.last_kids_next_action:
+                raise HermesBridgeError("Hosted Kids rounds cannot start a camera search")
+            self.last_kids_game_state = game_state
         self._kids_speech_approval = approval
         self._kids_fallback_speech_approval = fallback_approval
         return text

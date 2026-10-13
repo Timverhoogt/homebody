@@ -1110,9 +1110,20 @@ function updateStatus(payload, sequence = statusSequence) {
   $("kids-session-detail").textContent = kidsActive
     ? kidsCameraActive
       ? "I Spy camera is active for this bounded five-frame desk search only. End now stops capture and folds Reachy."
-      : `${kidsActivityLabels[kidsProfile.activity] || "Kids activity"} · age ${kidsProfile.age_band} · ${kidsMode.turns_completed || 0} completed turn${kidsMode.turns_completed === 1 ? "" : "s"} · ${kidsMode.tool_policy === "voice-state-motion-only" ? "gentle voice-state motion only" : "no tools"}`
+      : `${kidsMode.host?.enabled ? `Play together · ${kidsMode.host.activity ? kidsActivityLabels[kidsMode.host.activity] || "game" : "choosing a game"}` : kidsActivityLabels[kidsProfile.activity] || "Kids activity"} · age ${kidsProfile.age_band} · ${kidsMode.turns_completed || 0} completed turn${kidsMode.turns_completed === 1 ? "" : "s"} · ${kidsMode.tool_policy === "voice-state-motion-only" ? "gentle voice-state motion only" : "no tools"}`
     : "Camera, personal Hermes memory, smart-home control, messaging, purchases, and power controls are unavailable to the child session.";
   $("kids-start-button").disabled = kidsActive || kidsLocked || kidsRequestPending || ["meeting", "sleep"].includes(powerMode);
+  $("kids-host-start-button").disabled = $("kids-start-button").disabled;
+  $("kids-host-camera-consent").disabled = kidsActive || kidsRequestPending;
+  // A poll that started before End was pressed cannot resurrect caregiver game controls.
+  const kidsStaleAfterEnd = kidsEndPending || (kidsEndFence > 0 && sequence <= kidsEndFence);
+  const kidsHost = kidsActive && !kidsStaleAfterEnd && kidsMode.host?.enabled === true ? kidsMode.host : null;
+  $("kids-host-controls").hidden = !kidsHost;
+  document.querySelectorAll("[data-kids-host-activity]").forEach((button) => {
+    button.disabled = !kidsHost || kidsHost.phase === "transition" || kidsCameraActive;
+  });
+  if (!kidsHost) $("kids-host-message").textContent = "";
+  else if (kidsHost.notice === "camera_consent_needed") $("kids-host-message").textContent = "The child asked for I Spy. Use “Play I Spy (allows camera)” to allow it, or ignore this.";
   $("kids-stop-button").disabled = !kidsActive;
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.hidden = kidsLocked && button.dataset.tab !== "kids";
@@ -1344,6 +1355,9 @@ async function refreshStatus() {
     $("kids-start-button").disabled = true;
     $("kids-stop-button").disabled = true;
     $("kids-status-badge").textContent = "Offline";
+    // Owner loss or an unreachable robot: no stale caregiver game controls remain usable.
+    $("kids-host-controls").hidden = true;
+    document.querySelectorAll("[data-kids-host-activity]").forEach((button) => { button.disabled = true; });
     kidsStageStatus = { ...kidsStageStatus, offline: true, sttLocality: "unknown" };
     renderKidsStage();
     companionStage?.update(window.HomebodyScene.companionView({ offline: true }));
@@ -1848,6 +1862,60 @@ function kidsProfileFromForm() {
     camera_consent: selectedKidsActivity === "ispy" && $("kids-ispy-camera-consent").checked,
   };
 }
+
+// Play together: the same owner-only Start route with host=true; the child chooses games by voice
+// or typing. Camera consent here covers only I Spy rounds in this one session.
+$("kids-host-start-button").addEventListener("click", async () => {
+  const profile = { ...kidsProfileFromForm(), activity: "buddy", host: true, camera_consent: $("kids-host-camera-consent").checked };
+  const message = $("kids-message");
+  kidsRequestPending = true;
+  $("kids-host-start-button").disabled = true;
+  message.textContent = "Starting Play together…";
+  message.className = "message";
+  if (window.ReachyCamera?.isActive()) window.ReachyCamera.stop("Camera stopped before Kids Mode.");
+  try {
+    const response = await fetch("/api/kids/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+    message.textContent = "Play together is on. Reachy is offering two games now.";
+    notifyFeedback(message, "ok");
+  } catch (error) {
+    message.textContent = String(error);
+    notifyFeedback(message, "error");
+  } finally {
+    kidsRequestPending = false;
+    await refreshStatus();
+  }
+});
+
+document.querySelectorAll("[data-kids-host-activity]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const activity = button.dataset.kidsHostActivity;
+    const message = $("kids-host-message");
+    if (activity === "ispy" && !window.confirm("Allow Reachy's camera for I Spy in this play session? Five in-memory frames per round; nothing is stored.")) return;
+    const fence = statusSequence;
+    document.querySelectorAll("[data-kids-host-activity]").forEach((item) => { item.disabled = true; });
+    message.textContent = "Switching game…";
+    try {
+      const response = await fetch("/api/kids/host/select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ activity, camera_consent: activity === "ispy" }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+      if (fence <= statusSequence) message.textContent = "Reachy is starting the chosen game.";
+    } catch (error) {
+      message.textContent = String(error.message || error);
+    } finally {
+      await refreshStatus();
+    }
+  });
+});
 
 $("kids-start-button").addEventListener("click", async () => {
   const profile = kidsProfileFromForm();

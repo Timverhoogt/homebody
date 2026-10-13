@@ -15,13 +15,48 @@ A parent picks an optional nickname, age band (4–6, 7–9, or 10–12), Englis
 
 I Spy is the only activity that uses the camera.
 
+## Play together (game host)
+
+This section describes the implemented candidate in this source tree. It is not yet deployed or physically accepted on Reachy.
+
+**Play together** is the primary Start on the Kids page. Reachy hosts one time-boxed session and the child picks games by voice or by typing in the same box I Spy uses. **Start chosen activity** still starts one activity directly.
+
+How it works for families:
+
+1. Reachy greets in the selected language and offers two games, for example: "Shall we do a story or riddles? You can also say stop." It then listens with no wake phrase.
+2. The child names a game in their own words ("verhaaltje", "let's do riddles", "ik zie ik zie"). Exact names are not needed.
+3. When a round ends, Reachy offers two options: another round or one different game. "Stop" always finishes. Reachy does not try to persuade the child to keep playing.
+4. During a game the child can say "stop", ask "what can I say?", or name a different game. A plain "help", "again", "no", "I don't know", or "ik weet het niet" stays with the game, for example as a hint or an I Spy give-up. The host treats these as help only while the child is choosing a game. Longer sentences and quoted words go to the game too, so a story line like *the bus had to stop* is not a command.
+5. If an answer to a choice isn't recognised, Reachy asks again at most twice. Then it waits quietly. The child can wake Reachy and name a game, or a grown-up can choose one.
+
+Caregiver controls stay on the dashboard: **End now & fold safely**, plus **Choose the next game** buttons while a session runs.
+
+Camera: a hosted session can only offer I Spy if a grown-up allows it. There are two ways: tick **Allow I Spy camera during Play together** before Start, or press **Play I Spy (allows camera)** and confirm. If the child asks for I Spy without that permission, Reachy says a grown-up must allow the camera first. The dashboard shows the same notice. A child's voice never grants camera access. Switching away from I Spy cancels any capture or search still in progress, and late results are discarded. After a finished I Spy round, Reachy offers choices before it looks around again.
+
+Rounds end in one of two ways:
+
+- For chat, story, quiz, riddles, and calm, the bridge returns a strict `game_state` (`playing` or `finished`). There is also a fixed cap on child turns per round.
+- For I Spy, the finished player round is the end.
+
+Moderation is unchanged. A flagged reply is always reported as `playing`.
+
+A child's "stop" is tied to the outer play session. Each caregiver Start creates that session identity, and game switches keep it, so a Stop that races a game switch still ends the session and no new-game greeting plays. A Stop left over from an earlier session never ends a later Start. While a switch or I Spy search is running, the shared typed box accepts only "stop", using the same single-use token; other game input is refused until the next game is ready. In a hosted I Spy round the bridge keeps the real outcome: "Yes! I guessed it!" or "You beat me! Clever object!". It drops the automatic "I'll look around" search line.
+
+Each game runs under its own bridge session ID and Kids generation. Switching games cancels every reply, audio stream, camera search, first-listen ticket, and bridge response still in flight from the old game. Switching does not move the session's time limit. Stop, End, privacy, Meeting/Sleep, and the time limit always win.
+
+Owner-safe status adds a categorical `kids_mode.host` object with these fields: `enabled`, `phase` (`lobby`, `transition`, `playing`, `offer`, `waiting`), `activity`, `choices`, `notice`, and `available`. It never contains answers, transcripts, targets, or scores. The Kids stage has its own authored "game host" scene for the lobby, switching, and round-done phases. It pauses when the page is hidden or offscreen, and shows only a still image with a caption when reduced motion is on.
+
+The host's own lines (greeting, offers, help, camera-needed) are fixed, deterministic text. They are spoken through the same Kids announcement path as the Start greeting, with the same Kids voice. Model replies still go through bridge moderation and the single-use exact-text speech approvals.
+
+Evidence so far: unit tests, real-middleware owner-boundary tests, and Chromium tests using explicit status fixtures. A supervised check on a physical Reachy is still needed. It should cover hearing NL/EN game names, the time from greeting to first listen after a switch, and Stop during a hosted I Spy search.
+
 ## I Spy
 
 I Spy alternates roles between Reachy and the child.
 
-**Reachy's turn:** Reachy turns its rotating base and head through a bounded five-frame desk search at `0° / −60° / −120° / +60° / +120°` with non-capturing 60° transit waypoints and a neutral return. Its strict bridge schema accepts only a stable, child-safe target visible across frames. Local game state controls approved hints and reveals the answer by the sixth incorrect guess.
+**Reachy's turn:** Reachy turns its rotating base and head through a bounded five-frame desk search at `0° / −60° / −120° / +60° / +120°` with non-capturing 60° transit waypoints and a neutral return. Its strict bridge schema accepts only a stable, child-safe target visible across frames. Local game state controls approved hints and reveals the answer after three meaningful incorrect guesses; hint requests do not consume guesses, and giving up reveals immediately.
 
-**Child's turn:** The child chooses a safe household object and supplies one clue at a time. Reachy makes up to six schema-bounded guesses with small base-and-head thinking turns and no camera. A confirmed answer or reveal starts Reachy's next consented search round.
+**Child's turn:** The child chooses a safe household object and supplies one clue at a time. Reachy makes up to three schema-bounded guesses with small base-and-head thinking turns and no camera. In Play together, a confirmed answer or reveal finishes the round and offers choices; a new search requires choosing another round.
 
 Camera access is revoked before the return movement and guessing. Targets use a strict broker schema. Bridge state is deleted on Stop or expiry.
 

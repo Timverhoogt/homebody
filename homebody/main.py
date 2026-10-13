@@ -378,6 +378,14 @@ class KidsModeRequest(BaseModel):
     duration_minutes: int = Field(default=30, ge=15, le=60)
     motion_enabled: bool = True
     camera_consent: bool = False
+    host: bool = False
+
+
+class KidsHostSelectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    activity: str = Field(pattern=r"^(buddy|story|quiz|riddles|calm|ispy)$")
+    camera_consent: bool = False
 
 
 class AgentProfileRequest(BaseModel):
@@ -527,6 +535,7 @@ class Homebody(ReachyMiniApp):
                 "/api/owner/session",
                 "/api/owner/logout",
                 "/api/kids/stop",
+                "/api/kids/host/select",
                 "/api/kids/ispy/input",
                 "/api/kids/ispy/guess",
                 "/api/robot/stop",
@@ -1555,6 +1564,21 @@ class Homebody(ReachyMiniApp):
                     "ok": True,
                     "kids_mode": self._runtime.stop_kids_mode(reason="parent", fold=True),
                 }
+            except RuntimeError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        @self.settings_app.post("/api/kids/host/select")
+        def kids_host_select(request: KidsHostSelectRequest) -> dict[str, object]:
+            # Owner-only caregiver control: choose the next game; only this may grant I Spy camera.
+            if self._runtime is None:
+                raise HTTPException(status_code=409, detail="Voice runtime has not started")
+            try:
+                kids_mode = self._runtime.kids_host_select(
+                    request.activity, camera_consent=request.camera_consent,
+                )
+                return {"ok": True, "kids_mode": kids_mode}
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             except RuntimeError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
 

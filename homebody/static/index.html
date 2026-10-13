@@ -13,8 +13,8 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=89">
-  <link rel="stylesheet" href="/static/scene.css?v=89">
+  <link rel="stylesheet" href="/static/style.css?v=90">
+  <link rel="stylesheet" href="/static/scene.css?v=90">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -481,12 +481,27 @@
           <span><strong>Time limit</strong><small>Ends and folds automatically</small></span>
           <span><strong>Age-aware</strong><small>Short, activity-specific replies</small></span>
         </div>
+        <label id="kids-host-camera-row" class="toggle-row"><span><strong>Allow I Spy camera during Play together</strong><small>Optional. Without it Reachy never offers I Spy and tells the child a grown-up must allow the camera first.</small></span><input id="kids-host-camera-consent" type="checkbox" /></label>
         <div class="actions kids-actions">
-          <button type="button" id="kids-start-button">Start Kids Mode</button>
+          <button type="button" id="kids-host-start-button" class="kids-host-start">Play together</button>
+          <button type="button" id="kids-start-button" class="secondary">Start chosen activity</button>
           <button type="button" id="kids-stop-button" class="danger" disabled>End now &amp; fold safely</button>
         </div>
+        <p class="muted compact-note">Play together: Reachy hosts one time-boxed session, offers two games at a time, and switches when the child asks. Saying “stop” always finishes.</p>
+        <div id="kids-host-controls" class="kids-host-controls" hidden>
+          <p class="label">Choose the next game for the child</p>
+          <div class="kids-host-choices" role="group" aria-label="Choose the next game">
+            <button type="button" class="secondary" data-kids-host-activity="story">Story</button>
+            <button type="button" class="secondary" data-kids-host-activity="riddles">Riddles</button>
+            <button type="button" class="secondary" data-kids-host-activity="quiz">Quiz</button>
+            <button type="button" class="secondary" data-kids-host-activity="buddy">Chat</button>
+            <button type="button" class="secondary" data-kids-host-activity="calm">Calm</button>
+            <button type="button" class="secondary" data-kids-host-activity="ispy">Play I Spy (allows camera)</button>
+          </div>
+          <p id="kids-host-message" class="message" role="status" aria-live="polite"></p>
+        </div>
         <form id="kids-ispy-guess-form" class="ispy-guess-form" autocomplete="off" hidden>
-          <label for="kids-ispy-guess">Your I Spy guess</label>
+          <label id="kids-ispy-guess-label" for="kids-ispy-guess">Your I Spy guess</label>
           <div class="ispy-guess-row">
             <input id="kids-ispy-guess" type="text" maxlength="80" placeholder="Type an object, hint, or yes/no" autocomplete="off" spellcheck="false" disabled>
             <button id="kids-ispy-guess-send" type="submit" disabled>Guess</button>
@@ -1129,19 +1144,19 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=89"></script>
-  <script src="/static/scene.js?v=89"></script>
-  <script src="/static/motion.js?v=89"></script>
-  <script src="/static/owner.js?v=89"></script>
+  <script src="/static/notifications.js?v=90"></script>
+  <script src="/static/scene.js?v=90"></script>
+  <script src="/static/motion.js?v=90"></script>
+  <script src="/static/owner.js?v=90"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=89"></script>
-  <script src="/static/agent-connection.js?v=89"></script>
-  <script src="/static/native-workspace.js?v=89"></script>
-  <script src="/static/workspace.js?v=89"></script>
-  <script src="/static/ispy-input.js?v=89"></script>
-  <script src="/static/main.js?v=89"></script>
-  <script src="/static/updates.js?v=89"></script>
-  <script src="/static/volume.js?v=89"></script>
-  <script src="/static/assistant-modes.js?v=89"></script>
+  <script src="/static/camera.js?v=90"></script>
+  <script src="/static/agent-connection.js?v=90"></script>
+  <script src="/static/native-workspace.js?v=90"></script>
+  <script src="/static/workspace.js?v=90"></script>
+  <script src="/static/ispy-input.js?v=90"></script>
+  <script src="/static/main.js?v=90"></script>
+  <script src="/static/updates.js?v=90"></script>
+  <script src="/static/volume.js?v=90"></script>
+  <script src="/static/assistant-modes.js?v=90"></script>
 </body>
 </html>
