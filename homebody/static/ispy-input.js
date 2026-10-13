@@ -19,7 +19,7 @@
       if (!response.ok) throw new Error("unavailable");
       const body = await response.json();
       if (started !== epoch || !active || pending) return;
-      token = body.available && typeof body.token === "string" ? body.token : "";
+      token = (body.available === true || body.stop_only === true) && typeof body.token === "string" ? body.token : "";
       if (token && body.stop_only === true) message.textContent = "Reachy is getting the next game ready. Only “stop” works right now.";
       else if (!token && !input.value) message.textContent = "Wait until Reachy finishes looking or speaking.";
       else if (token && (message.textContent.startsWith("Wait until") || message.textContent.startsWith("Reachy is getting"))) message.textContent = "";

@@ -85,3 +85,32 @@ def test_failed_guess_has_feedback_and_non_ispy_has_no_input(ui):
     page.evaluate("HomebodyISpyInput.update({active:true,profile:{activity:'story'}})")
     assert page.locator("#kids-ispy-guess-form").is_hidden()
     assert not errors
+
+
+@pytest.mark.parametrize("width", [390, 1280])
+def test_hosted_transition_stop_only_token_reaches_real_submit(ui, width):
+    page, state, posts, errors = ui
+    page.set_viewport_size({"width": width, "height": 1000})
+    page.route("**/api/kids/ispy/input", lambda r: r.fulfill(
+        json={"available": False, "stop_only": True, "token": TOKEN}))
+    sent = []
+
+    def submit(route):
+        sent.append(json.loads(route.request.post_data))
+        route.fulfill(json={"accepted": True})
+
+    page.route("**/api/kids/ispy/guess", submit)
+    state["runtime"]["kids_mode"] = {
+        "active": True, "locked": True, "profile": {"activity": "story", "host": True},
+        "host": {"enabled": True, "phase": "transition", "activity": "story"},
+    }
+    page.evaluate("s => updateStatus({config:s.config,runtime:s.runtime})", state)
+    page.click("#tab-kids")
+    page.wait_for_function("!document.querySelector('#kids-ispy-guess').disabled")
+    assert "Only “stop” works right now" in page.locator("#kids-ispy-guess-message").inner_text()
+    page.fill("#kids-ispy-guess", "stop")
+    assert page.locator("#kids-ispy-guess-send").is_enabled()
+    page.press("#kids-ispy-guess", "Enter")
+    page.wait_for_function("document.querySelector('#kids-ispy-guess').value === ''")
+    assert sent == [{"text": "stop", "token": TOKEN}]
+    assert not errors

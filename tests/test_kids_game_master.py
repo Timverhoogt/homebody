@@ -465,7 +465,8 @@ def test_spoken_transcript_reaches_host_before_model(host, monkeypatch) -> None:
     runtime._accept_wake_turn()
     runtime._run_conversation(runtime._kids_voice_config(AppConfig()))
     assert calls == []
-    wait_for(lambda: host_state(runtime)["activity"] == "riddles")
+    wait_for(lambda: host_state(runtime)["activity"] == "riddles"
+             and bool(host.spoken) and host.spoken[-1][0].startswith("Oké, raadsels!"))
     assert host.spoken[-1][0].startswith("Oké, raadsels!")
 
 
