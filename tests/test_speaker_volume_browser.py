@@ -113,7 +113,7 @@ def test_volume_slider_explicit_apply_and_mute_in_phone_and_desktop(browser_page
     assert calls == [{"volume": 30}, {"muted": True}, {"muted": False}]
     assert page.locator("#speaker-card").bounding_box()["width"] <= width
     page.locator("#speaker-card").screenshot(
-        path=f"/home/timv/.hermes/cache/scratch/homebody-volume-fixture-{width}.png"
+        path=str(Path(__file__).resolve().parents[1] / ".artifacts" / f"homebody-volume-fixture-{width}.png")
     )
 
 

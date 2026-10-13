@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-SHOTS = Path("/home/timv/.hermes/cache/scratch/hb-ew/screens")
+SHOTS = Path(__file__).resolve().parents[1] / ".artifacts" / "browser-screens"
 CAPABILITIES = {
     "available": True, "error": "",
     "text_provider": {"name": "openrouter", "label": "OpenRouter", "region": "global", "model": "openai/gpt-4.1-mini"},
