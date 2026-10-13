@@ -83,6 +83,8 @@ class KidsProfile:
     duration_minutes: int = 30
     motion_enabled: bool = True
     camera_consent: bool = False
+    # A game-master session: camera_consent then covers I Spy rounds for this session only.
+    host: bool = False
 
     def __post_init__(self) -> None:
         nickname = " ".join(self.nickname.strip().split())
@@ -98,8 +100,10 @@ class KidsProfile:
             raise ValueError("Kids Mode duration must be 15, 30, 45, or 60 minutes")
         if self.activity == "ispy" and self.camera_consent is not True:
             raise ValueError("Camera opt-in is required for each I Spy session")
-        if self.activity != "ispy" and self.camera_consent:
+        if self.activity != "ispy" and self.camera_consent and self.host is not True:
             raise ValueError("Camera consent is only valid for I Spy")
+        if not isinstance(self.host, bool) or not isinstance(self.camera_consent, bool):
+            raise ValueError("Kids Mode flags must be booleans")
         object.__setattr__(self, "nickname", nickname)
         object.__setattr__(self, "duration_minutes", int(self.duration_minutes))
 
@@ -111,6 +115,7 @@ class KidsProfile:
             "duration_minutes": self.duration_minutes,
             "motion_enabled": self.motion_enabled,
             "camera_active": False,
+            "host": self.host,
         }
 
 def kids_greeting(profile: KidsProfile) -> str:

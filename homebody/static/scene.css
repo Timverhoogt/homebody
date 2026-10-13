@@ -219,6 +219,31 @@
 .hb-scene[data-phase="thinking"] .hb-art-ispy .hb-bot-head { animation: hbs-glance 4.5s ease-in-out infinite; }
 .hb-scene[data-phase="listening"] .hb-bubble { animation: hbs-bob 3s ease-in-out calc(var(--i) * -1.5s) infinite alternate; }
 
+/* ---------- Game host: toy-shelf carousel (lobby, switching, offer) ---------- */
+.hb-art-host { --hb-fx: #ffe7a8; --hb-rim: #ffd38a; --hb-glow: #ffd38a; --hb-eye-l: #ffd15c; --hb-eye-r: #7be0c0; }
+.hb-host-ring { fill: none; stroke: #ffd38a; stroke-opacity: .3; stroke-width: 1.5; stroke-dasharray: 3 6; }
+.hb-host-chip { fill: #241d42; stroke: currentColor; stroke-width: 2.5; }
+.hb-host-glyph { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.hb-host-bow { fill: #e2615a; }
+.hb-host-cardface { fill: #f4e3c8; stroke: #ffd38a; stroke-width: 2; }
+.hb-host-cardmark { fill: none; stroke: #7a3d52; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.hb-host-confetti { fill: var(--hb-fx); opacity: .8; transform-box: fill-box; transform-origin: center; }
+.hb-host-spin { transition: opacity .5s ease; }
+.hb-host-bob { transform-box: fill-box; transform-origin: center; }
+.hb-scene[data-phase="offer"] .hb-fx-offer,
+.hb-scene[data-phase="switching"] .hb-fx-switching { opacity: 1; }
+.hb-scene[data-phase="offer"] .hb-host-spin { opacity: .45; }
+.hb-scene[data-motion="on"][data-phase="lobby"] .hb-host-bob,
+.hb-scene[data-motion="on"][data-phase="listening"] .hb-art-host .hb-host-bob { animation: hbs-host-bob 3.2s ease-in-out calc(var(--i) * -.53s) infinite; }
+.hb-scene[data-motion="on"][data-phase="switching"] .hb-host-token { animation: hbs-host-hop 1.4s var(--hb-ease, ease-in-out) calc(var(--i) * .12s) infinite; }
+.hb-scene[data-motion="on"][data-phase="switching"] .hb-host-confetti { animation: hbs-host-fall 1.8s ease-in calc(var(--i) * -.36s) infinite; }
+.hb-scene[data-motion="on"][data-phase="offer"] .hb-host-card { animation: hbs-host-card 3s ease-in-out calc(var(--i) * -1.5s) infinite alternate; }
+@keyframes hbs-host-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+/* Tokens and cards are SVG-positioned: their loops change opacity only, never the transform. */
+@keyframes hbs-host-hop { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+@keyframes hbs-host-fall { from { transform: translateY(-10px); opacity: 0; } 30% { opacity: .9; } to { transform: translateY(60px); opacity: 0; } }
+@keyframes hbs-host-card { from { opacity: .8; } to { opacity: 1; } }
+
 /* ---------- Compact companion ---------- */
 .hb-scene[data-variant="compact"] { display: flex; align-items: center; gap: 14px; color: inherit; }
 .hb-scene[data-variant="compact"] .hb-scene-canvas { flex: 0 0 auto; width: 72px; aspect-ratio: 1; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(244, 237, 225, .14), 0 10px 24px -16px #000; }

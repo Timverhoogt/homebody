@@ -37,6 +37,7 @@ def test_pin_routes_schema_and_legacy_config_are_removed(tmp_path: Path) -> None
         "duration_minutes",
         "motion_enabled",
         "camera_consent",
+        "host",
     }
 
 

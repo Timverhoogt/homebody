@@ -371,6 +371,55 @@
         <g class="hb-up-end" transform="translate(278 22)"><circle class="hb-up-ring" r="11"/>
           <path class="hb-up-check" d="M-5 0l3.5 3.5L5.5-4"/><path class="hb-up-back" d="M4-3A5.5 5.5 0 1 0 5 2M5-6v4H1"/><path class="hb-up-bang" d="M0-5v5M0 4v.5"/></g>`,
     },
+
+    /* Game host: Reachy beside a toy-shelf of the six activity tokens under a striped awning. Lobby
+       tokens bob in turn, a switch spins them on the carousel, an offer lights two blank cards (one
+       round-again loop, one sparkle for something new). No targets, scores or story content. */
+    host: {
+      label: "Play together",
+      tagline: "Reachy hosts the games",
+      phases: ["lobby", "switching", "offer", "waiting", "listening", "thinking", "speaking", "paused", "trouble", "offline", "ending", "ended"],
+      live: ["lobby", "switching", "offer", "listening", "thinking", "speaking"],
+      neutral: "waiting",
+      copy: {
+        listening: "Reachy is listening for a game.",
+        thinking: "Reachy is getting the next game ready.",
+        speaking: "Reachy, the game host, is talking.",
+      },
+      art: (p) => `<defs>${botDefs(p)}
+          <linearGradient id="${p}-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b1838"/><stop offset=".62" stop-color="#2f2a5e"/><stop offset="1" stop-color="#4a3a72"/></linearGradient>
+          <radialGradient id="${p}-glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffe7a8" stop-opacity=".75"/><stop offset="1" stop-color="#ffe7a8" stop-opacity="0"/></radialGradient>
+        </defs>
+        <rect width="400" height="260" fill="url(#${p}-sky)"/>
+        <g class="hb-twinkles">${dots([[30, 70], [72, 96, .8], [328, 82, .9], [372, 108, .7], [352, 60, 1.1], [48, 120, .6]], "hb-star")}</g>
+        <g class="hb-awning">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => `<path d="M${i * 40} 0h40v26q-20 14-40 0z" fill="${i % 2 ? "#f4e3c8" : "#e2615a"}"/>`).join("")}</g>
+        <path d="M0 214h400v46H0z" fill="#2a2148"/><path d="M0 214h400" stroke="#ffd38a" stroke-opacity=".45" stroke-width="2"/>
+        <g class="hb-host-carousel" transform="translate(200 130)">
+          <path class="hb-host-ring" d="M-126 34A130 70 0 0 1 126 34"/>
+          <g class="hb-host-spin">${[
+            ["#ffd15c", "M0-7a7 7 0 1 1 0 14a7 7 0 1 1 0-14z"],
+            ["#c9b8ff", "M0-8 2.3-2.3 8-2.3 3.4 1.2 5.2 8 0 3.8-5.2 8-3.4 1.2-8-2.3-2.3-2.3z"],
+            ["#68d8ff", "M-4-3a4 4 0 1 1 5 4v2M1 7v1"],
+            ["#ffb84d", "M0-8 7 0 0 8-7 0z"],
+            ["#9fc3c9", "M-8 0q4-6 8 0t8 0M-8 5q4-6 8 0t8 0"],
+            ["#ffe2a0", "M-8 0q8-8 16 0q-8 8-16 0zM0-3a3 3 0 1 1 0 6a3 3 0 1 1 0-6z"],
+          ].map(([colour, glyph], i) => {
+            // Upper arc only (-165°…-15°): every token stays inside the phone crop and above Reachy.
+            const angle = ((-165 + i * 30) * Math.PI) / 180;
+            const x = (Math.cos(angle) * 130).toFixed(1), y = (Math.sin(angle) * 70).toFixed(1);
+            return `<g class="hb-host-token" style="--i:${i};color:${colour}" transform="translate(${x} ${y})"><g class="hb-host-bob"><circle r="15" class="hb-host-chip"/><path class="hb-host-glyph" d="${glyph}"/></g></g>`;
+          }).join("")}</g>
+        </g>
+        ${bot(p, 200, 152, 0.56, `<path class="hb-host-bow" d="M-14 48l-12-8v16zM14 48l12-8v16z"/>`)}
+        <g class="hb-fx hb-fx-offer">
+          <g class="hb-host-card" style="--i:0" transform="translate(84 168)"><circle r="34" fill="url(#${p}-glow)"/><rect x="-22" y="-28" width="44" height="56" rx="9" class="hb-host-cardface"/><path class="hb-host-cardmark" d="M8-6a10 10 0 1 0 3 9M12-12v7H5"/></g>
+          <g class="hb-host-card" style="--i:1" transform="translate(316 168)"><circle r="34" fill="url(#${p}-glow)"/><rect x="-22" y="-28" width="44" height="56" rx="9" class="hb-host-cardface"/><path class="hb-host-cardmark" d="M0-12 3-3 12 0 3 3 0 12-3 3-12 0-3-3z"/></g>
+        </g>
+        <g class="hb-fx hb-fx-switching">${[0, 1, 2, 3, 4].map((i) => `<circle class="hb-host-confetti" style="--i:${i}" cx="${150 + i * 25}" cy="${70 + (i % 2) * 14}" r="${3 + (i % 3)}"/>`).join("")}</g>
+        <g class="hb-fx hb-fx-listening"><path class="hb-arc hb-arc-in" style="--i:0" d="M150 112q-9 18 0 36"/><path class="hb-arc hb-arc-in" style="--i:1" d="M136 104q-13 26 0 52"/></g>
+        <g class="hb-fx hb-fx-speaking"><path class="hb-arc hb-arc-out" style="--i:0" d="M250 112q9 18 0 36"/><path class="hb-arc hb-arc-out" style="--i:1" d="M264 104q13 26 0 52"/></g>
+        <g class="hb-fx hb-fx-thinking"><circle class="hb-thought" style="--i:0" cx="240" cy="98" r="4"/><circle class="hb-thought" style="--i:1" cx="253" cy="84" r="5.5"/></g>`,
+    },
   };
 
   /* ---------- State adapters (pure; no DOM) ---------- */
@@ -431,6 +480,21 @@
         : view("preview", "Preview", info.label, info.tagline);
     }
     if (["meeting", "sleep"].includes(powerMode)) return view("paused", "Paused", ...GENERIC.paused);
+    const host = kids.host && kids.host.enabled === true ? kids.host : null;
+    if (host && host.phase !== "playing") {
+      // Host phases are categorical; captions name the step, never what was said or chosen.
+      const hostView = (phase, chip, title, detail) => ({ scene: "host", phase, chip, title, detail });
+      const hostPhase = STATE_PHASE[state];
+      if (hostPhase === "trouble") return hostView("trouble", "Live", ...GENERIC.trouble);
+      if (host.phase === "transition") return hostView("switching", "Next game", "Getting the next game ready", "Reachy is setting up the new game.");
+      if (host.phase === "offer") return hostView("offer", "Round done", "That round is finished", "Reachy offers another round or a different game. Saying stop always finishes.");
+      if (host.phase === "waiting") return hostView("waiting", "Waiting", "Reachy is waiting", "Say a game to Reachy, or choose one below.");
+      if (host.notice === "camera_consent_needed") return hostView("lobby", "Grown-up", "I Spy needs the camera", "A grown-up can allow the camera with Play I Spy below.");
+      if (hostPhase === "listening" || hostPhase === "speaking" || hostPhase === "thinking") {
+        return hostView(hostPhase, "Choosing", "Choosing a game", SCENES.host.copy[hostPhase]);
+      }
+      return hostView("lobby", "Choosing", "Choosing a game", "Reachy offers two games. Saying stop always finishes.");
+    }
     if (scene === "ispy" && kids.camera_active === true) return view("searching", "Camera on", "Searching the desk", info.copy.searching);
     const phase = STATE_PHASE[state];
     if (phase === "paused") return view("paused", "Paused", ...GENERIC.paused);

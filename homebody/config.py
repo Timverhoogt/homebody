@@ -132,6 +132,7 @@ class AppConfig:
     kids_session_id: str = ""
     kids_age_band: str = ""
     kids_activity: str = ""
+    kids_host_enabled: bool = False
     live_model: str = "gpt-live-1"
     live_voice: str = "marin"
     live_session_timeout_seconds: float = 300.0
@@ -322,6 +323,7 @@ class AppConfig:
         payload.pop("kids_mode_enabled", None)
         payload.pop("kids_age_band", None)
         payload.pop("kids_activity", None)
+        payload.pop("kids_host_enabled", None)
         return payload
 
 

@@ -187,6 +187,43 @@ _ISPY_MATCH_SCHEMA: dict[str, object] = {
     "properties": {"match": {"type": "boolean"}},
     "required": ["match"],
 }
+# Hosted (game-master) Kids rounds: the model reports an explicit categorical round outcome.
+_KIDS_HOSTED_TURN_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "reply": {"type": "string"},
+        "game_state": {"type": "string", "enum": ["playing", "finished"]},
+    },
+    "required": ["reply", "game_state"],
+}
+_KIDS_HOSTED_INSTRUCTION = (
+    " A separate game host runs this play session. Reply as JSON with 'reply' (the spoken words) and "
+    "'game_state'. Use 'finished' only when this round has reached its natural end: the story reached its "
+    "ending, about five quiz questions or riddles were played, the calm exercise is complete, or the chat "
+    "is winding down. Otherwise use 'playing'. Never ask what to play next or encourage playing longer; "
+    "the host offers choices."
+)
+_ISPY_HOSTED_ROUND_DONE = {
+    "guessed": {"en": "Yes! I guessed it!", "nl": "Ja! Ik heb het geraden!"},
+    "beaten": {"en": "You beat me! Clever object!", "nl": "Je hebt me verslagen! Slim voorwerp!"},
+    "done": {"en": "That was a fun I Spy round!", "nl": "Dat was een leuke ronde ik zie, ik zie!"},
+}
+
+
+def _parse_kids_hosted_turn(content: str) -> tuple[str, str]:
+    """Strictly parse a hosted turn; anything outside the schema is rejected, never guessed."""
+    decision = json.loads(content)
+    if (
+        not isinstance(decision, dict)
+        or set(decision) != {"reply", "game_state"}
+        or not isinstance(decision["reply"], str)
+        or decision["game_state"] not in {"playing", "finished"}
+    ):
+        raise ValueError("invalid hosted Kids turn")
+    return decision["reply"].strip(), decision["game_state"]
+
+
 _ISPY_PLAYER_GUESS_SCHEMA: dict[str, object] = {
     "type": "object",
     "additionalProperties": False,
@@ -1741,6 +1778,9 @@ class Bridge(NativeWorkspaceRoutes):
             or set(profile) - {"age_band", "activity", "language"}
         ):
             raise web.HTTPBadRequest(text="Invalid Kids Mode profile")
+        hosted = payload.get("hosted", False)
+        if not isinstance(hosted, bool):  # caller policy/history keys stay ignored, never trusted
+            raise web.HTTPBadRequest(text="Invalid Kids Mode request")
 
         now = time.monotonic()
         self._kids_sessions = {
@@ -1748,7 +1788,8 @@ class Bridge(NativeWorkspaceRoutes):
             for key, value in self._kids_sessions.items()
             if now - float(value.get("updated_at", 0.0)) <= _KIDS_HISTORY_TTL_SECONDS
         }
-        fingerprint = (age_band, activity, language)
+        # Unhosted sessions keep their original fingerprint; hosted ones cannot be mixed with them.
+        fingerprint = (age_band, activity, language) + ((True,) if hosted else ())
         child_session = self._kids_sessions.get(session_id)
         if child_session is not None and child_session.get("profile") != fingerprint:
             raise web.HTTPConflict(text="Kids Mode profile cannot change during a session")
@@ -1791,9 +1832,13 @@ class Bridge(NativeWorkspaceRoutes):
                     "ispy_phase": safety_phase,
                     "ispy_next_action": "",
                 })
+            if hosted:
+                safety_payload["game_state"] = "playing"
             return web.json_response(safety_payload)
 
         model = self.llm.model("kids")
+        game_state = "playing"
+        hosted_outcome = "done"
         ispy_next_action = ""
         ispy_role = ""
         if activity == "ispy":
@@ -1895,6 +1940,7 @@ class Bridge(NativeWorkspaceRoutes):
                         child_session["ispy_player_phase"] = "complete"
                         ispy_role = "reachy_pending"
                         ispy_next_action = "prepare_robot_round"
+                        hosted_outcome = "guessed"
                         answer = (
                             "Ja! Goed voorwerp. Nu ben ik weer aan de beurt. Ik ga rondkijken."
                             if language == "nl"
@@ -1921,6 +1967,7 @@ class Bridge(NativeWorkspaceRoutes):
                             else "Was my guess right? Please say yes or no."
                         )
                 elif phase == "awaiting_reveal":
+                    hosted_outcome = "beaten"
                     child_session["ispy_role"] = "reachy_pending"
                     child_session["ispy_player_phase"] = "complete"
                     ispy_role = "reachy_pending"
@@ -1944,26 +1991,38 @@ class Bridge(NativeWorkspaceRoutes):
                 answer = "Ik ga nu rondkijken." if language == "nl" else "I'll look around now."
             else:
                 raise web.HTTPConflict(text="I Spy turn state is invalid")
+            if hosted and ispy_role == "reachy_pending":
+                # The game master offers another round or a different game; it never searches on its own.
+                game_state = "finished"
+                # Keep the real outcome; only drop the automatic "I'll look around" search sentence.
+                answer = _ISPY_HOSTED_ROUND_DONE[hosted_outcome]["nl" if language == "nl" else "en"]
+                ispy_next_action = ""
         else:
             system_prompt = _build_bridge_kids_prompt(
                 age_band=age_band,
                 activity=activity,
                 language=language,
             )
+            model_request: dict[str, Any] = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt + (_KIDS_HOSTED_INSTRUCTION if hosted else "")},
+                    *history,
+                    {"role": "user", "content": text},
+                ],
+                "max_completion_tokens": 800,
+                "reasoning_effort": "minimal",
+                "store": False,
+            }
+            if hosted:
+                model_request["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {"name": "kids_hosted_turn", "strict": True, "schema": _KIDS_HOSTED_TURN_SCHEMA},
+                }
             async with self.http.post(
                 self.llm.chat_url,
                 headers=self._llm_headers("Kids Mode model access is not configured"),
-                json=self.llm.request({
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        *history,
-                        {"role": "user", "content": text},
-                    ],
-                    "max_completion_tokens": 800,
-                    "reasoning_effort": "minimal",
-                    "store": False,
-                }),
+                json=self.llm.request(model_request),
             ) as response:
                 result = await response.json(content_type=None)
                 if response.status != 200:
@@ -1971,7 +2030,9 @@ class Bridge(NativeWorkspaceRoutes):
                     raise web.HTTPBadGateway(text="Kids Mode model request failed")
             try:
                 answer = str(result["choices"][0]["message"]["content"]).strip()
-            except (KeyError, IndexError, TypeError) as exc:
+                if hosted:
+                    answer, game_state = _parse_kids_hosted_turn(answer)
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
                 raise web.HTTPBadGateway(text="Kids Mode model returned invalid data") from exc
         answer = _kids_speech_friendly(answer[:_MAX_KIDS_OUTPUT_CHARACTERS])
         if not answer:
@@ -1979,6 +2040,7 @@ class Bridge(NativeWorkspaceRoutes):
         if await self._moderation_flagged(answer, openai_key):
             answer = safety_reply
             ispy_next_action = ""
+            game_state = "playing"
         child_session["history"] = (
             history
             + [
@@ -2007,6 +2069,8 @@ class Bridge(NativeWorkspaceRoutes):
                 "ispy_phase": ispy_phase,
                 "ispy_next_action": ispy_next_action,
             })
+        if hosted:
+            response_payload["game_state"] = game_state
         return web.json_response(response_payload)
 
     async def kids_ispy_select(self, request: web.Request) -> web.Response:

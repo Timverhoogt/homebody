@@ -4,6 +4,7 @@
   const input = document.getElementById("kids-ispy-guess");
   const send = document.getElementById("kids-ispy-guess-send");
   const message = document.getElementById("kids-ispy-guess-message");
+  const label = document.getElementById("kids-ispy-guess-label");
   let active = false, pending = false, refreshing = false, epoch = 0, token = "";
   function controls() {
     input.disabled = !active || !token || pending;
@@ -19,17 +20,23 @@
       const body = await response.json();
       if (started !== epoch || !active || pending) return;
       token = body.available && typeof body.token === "string" ? body.token : "";
-      if (!token && !input.value) message.textContent = "Wait until Reachy finishes looking or speaking.";
-      else if (token && message.textContent.startsWith("Wait until")) message.textContent = "";
+      if (token && body.stop_only === true) message.textContent = "Reachy is getting the next game ready. Only “stop” works right now.";
+      else if (!token && !input.value) message.textContent = "Wait until Reachy finishes looking or speaking.";
+      else if (token && (message.textContent.startsWith("Wait until") || message.textContent.startsWith("Reachy is getting"))) message.textContent = "";
     } catch (_) {
       if (started === epoch) { token = ""; message.textContent = "I Spy input is unavailable. Waiting to reconnect…"; }
     } finally { refreshing = false; controls(); }
   }
   window.HomebodyISpyInput = {
     update(kids) {
-      const next = Boolean(kids.active) && kids.profile?.activity === "ispy";
+      // Same ephemeral capability for I Spy guesses and for Play together (game names, stop, answers).
+      const hosted = kids.host?.enabled === true;
+      const next = Boolean(kids.active) && (kids.profile?.activity === "ispy" || hosted);
       if (next !== active) { epoch++; token = ""; input.value = ""; message.textContent = ""; }
       active = next;
+      label.textContent = hosted ? "Type to Reachy" : "Your I Spy guess";
+      input.placeholder = hosted ? "Type a game, an answer, or stop" : "Type an object, hint, or yes/no";
+      send.textContent = hosted ? "Send" : "Guess";
       form.hidden = !active;
       controls();
       if (active) refresh();
@@ -52,7 +59,7 @@
       if (started !== epoch || !active) return;
       if (!response.ok || body.accepted !== true) throw new Error(body.detail || "This guess could not be completed.");
       input.value = "";
-      message.textContent = "Guess checked. Reachy has replied.";
+      message.textContent = label.textContent === "Type to Reachy" ? "Sent. Reachy is replying aloud." : "Guess checked. Reachy has replied.";
     } catch (error) {
       if (started === epoch && active) message.textContent = String(error.message || "This guess could not be completed.");
     } finally { pending = false; controls(); if (active) refresh(); }

@@ -365,6 +365,7 @@ class HermesVoiceRuntime(
                 ),
                 "camera_enabled": False,
                 "camera_active": self._kids_camera_active,
+                "host": self._kids_host_public(),
             }
             payload["kids_mode"] = kids_payload
             if self._kids_locked:

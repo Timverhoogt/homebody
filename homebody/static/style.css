@@ -733,7 +733,11 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .kids-safety-grid strong { color: var(--text); font-size: .82rem; }
 .kids-safety-grid small { color: var(--muted); font-size: .7rem; line-height: 1.35; }
 .kids-actions { justify-content: flex-start; margin-top: 20px; }
-#kids-start-button { border-color: var(--kids-mint); color: #072b20; background: var(--kids-mint); }
+#kids-host-start-button { border-color: var(--kids-mint); color: #072b20; background: var(--kids-mint); }
+.kids-actions { flex-wrap: wrap; }
+.kids-host-controls { margin-top: 14px; }
+.kids-host-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.kids-host-choices button { min-height: 44px; }
 .kids-guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
 .kids-guide-grid > div { padding: 15px; border-left: 3px solid var(--kids-purple); border-radius: 8px; background: var(--paper-2); }
 .kids-guide-grid > div:nth-child(2) { border-color: var(--kids-sky); }
