@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-10-12
+
+### Added
+- Owner-only GitHub repository picker backed by the host’s saved GitHub login. Private/archive markers and exact registered-session availability; no automatic clone, session creation or tool permission.
+
+### Fixed
+- Replace the obsolete “adult Agent profile” instruction with actual Workspace / Show conversation steps and a nearby Enable Workspace button. Rename the lower view selector Conversation & projects and open that view after confirmed Workspace activation.
+- Clear private repository metadata on display/owner lifecycle loss and reject late catalog responses.
+
 ## [0.5.7] - 2026-10-12
 
 ### App-wide motion language

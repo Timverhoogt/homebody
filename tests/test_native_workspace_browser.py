@@ -107,6 +107,7 @@ def test_native_session_exact_approval_and_verified_receipt(native_browser, widt
 
 def test_native_connection_unknown_keeps_stop_available(native_browser):
     page, _fixture, _runtime, errors = native_browser
+    _runtime["agent"] = {"profile": "agent", "activity": [], "pending_approval": False}
     calls = []
 
     def fail(route):

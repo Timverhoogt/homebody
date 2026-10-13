@@ -2559,6 +2559,7 @@ async function setAgentProfile(profile) {
       ? "Workspace active. Reversible owner tools are available; consequential actions pause for exact phone approval."
       : "Everyday active. Any approved project work keeps running; its details stay hidden until you return to Workspace.";
     notifyFeedback(message, "ok");
+    if (profile === "agent") window.HomebodyWorkspace?.show();
   } catch (error) {
     message.textContent = String(error);
     notifyFeedback(message, "error");

@@ -20,8 +20,11 @@ def install_native_workspace_routes(app, runtime_getter, config_loader, client_f
         runtime = runtime_getter()  # actual paired-owner check, never the legacy adult header
         display_generation = runtime._workspace_lease()
         if display_generation is None:
-            raise HTTPException(status_code=423, detail="Show the conversation before opening a native project")
+            raise HTTPException(
+                status_code=423, detail="Tap Show conversation in Conversation & projects before selecting a project"
+            )
         fields = {
+            "repositories": set(),
             "read": set(),
             "show": set(),
             "bind": {"target_id"},
@@ -36,7 +39,10 @@ def install_native_workspace_routes(app, runtime_getter, config_loader, client_f
             raise HTTPException(status_code=422, detail="Native action fields do not match the exact request")
         context = runtime.agent_broker_context(explicit_private_intent=True)
         if context.capability_profile != "agent" or context.kids_mode_active:
-            raise HTTPException(status_code=423, detail="Select the adult Agent profile to open a native project")
+            raise HTTPException(
+                status_code=423,
+                detail="Tap Workspace beside Everyday at the top of the Agent screen to enable project sessions",
+            )
         try:
             client = client_factory(config_loader())
             try:

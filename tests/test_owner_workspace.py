@@ -71,6 +71,7 @@ def test_owner_workspace_kids_lock_and_revoked_owner(workspace_client):
 @pytest.mark.parametrize(
     "action,body",
     [
+        ("repositories", {}),
         ("read", {}),
         ("show", {}),
         ("bind", {"target_id": "registered"}),

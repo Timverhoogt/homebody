@@ -10,7 +10,7 @@
 
 > **Early alpha.** Reference deployment is not broad hardware or production acceptance. The original Lite + Raspberry Pi 4 reference is retained; the current Lite + Jetson host has app, camera, Home Assistant, power, speaker and managed-update reference deployment. Each installation still needs supervised wake/fold, camera/privacy, speech and acoustic interruption checks. Local GPU vision, accelerated gestures, GPIO and controller support are not blanket verified on Jetson.
 >
-> **Release boundary:** robot release **0.5.7** includes the mode-card spacing fix and current companion source. The PR #77/#78 host support landed after 0.5.2; packaging it does not automatically configure or restart a subscription bridge or native Workspace. The reference bridge was deployed separately. Source, installed robot release and host configuration differ; see [release status](docs/release-status.md).
+> **Release boundary:** robot release **0.5.8** includes the mode-card spacing fix and current companion source. The PR #77/#78 host support landed after 0.5.2; packaging it does not automatically configure or restart a subscription bridge or native Workspace. The reference bridge was deployed separately. Source, installed robot release and host configuration differ; see [release status](docs/release-status.md).
 
 ## Choose the purpose, then the speech engine
 
