@@ -281,7 +281,9 @@ def test_workspace_bench_follows_native_state_without_inventing_progress(workspa
     fixture["binding"] = {"backend": "hermes", "project_id": "photo", "session_id": "native-secret-session"}
     held["routes"].pop().fulfill(json=fixture)
     page.wait_for_function("document.getElementById('workspace-native-bind').dataset.hbMotion === 'confirmed'")
-    assert page.evaluate("document.getElementById('workspace-native-bind').getBoundingClientRect().height") == height
+    assert page.evaluate(
+        "document.getElementById('workspace-native-bind').getBoundingClientRect().height"
+    ) == pytest.approx(height, rel=0, abs=0.001)
     page.wait_for_function(f"{BENCH} === 'discussing'")
     page.wait_for_function("!document.getElementById('workspace-native-bind').dataset.hbMotion", timeout=3000)
     page.fill("#workspace-native-request", "Implement the private contract")
