@@ -272,7 +272,16 @@
     if (!window.confirm(`Install Homebody ${target.version} on Reachy (currently ${catalog.current.version})? This is one direct installation; releases in between are not installed separately. Its app and dashboard will restart. The Android app (APK) will not change. Reachy must be safely folded in Standby. Settings are preserved; failed startup is rolled back.`)) return;
     await action('/install', {confirm:'INSTALL', release_id:target.release_id});
   });
-  window.HomebodyUpdates = {refresh};
+  window.HomebodyUpdates = {
+    refresh,
+    owner(allowed) {
+      if (allowed) return;
+      railSequence = ++readSequence; // retire in-flight pre-revocation catalog replies
+      closeDialog();
+      disable();
+      $('update-notice').hidden = true;
+    },
+  };
   // Owner transport injects CSRF and gates every fetch. A locked/guest response never triggers discovery.
   refresh().then(() => {
     if (catalog && !catalog.checked_at) action('/check', {});

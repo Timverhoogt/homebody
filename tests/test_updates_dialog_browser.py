@@ -33,6 +33,7 @@ class Fixture:
     def __init__(self, page, catalog):
         self.page, self.catalog, self.posts = page, catalog, []
         self.read_status = 200
+        self.status_code = 200
         self.post_status = {}
         page.on("pageerror", lambda error: self.errors.append(str(error)))
         self.errors = []
@@ -50,7 +51,7 @@ class Fixture:
         elif path == "/api/owner/session":
             route.fulfill(json={"owner": True, "name": "Fixture", "csrf": "fixture"})
         elif path == "/api/status":
-            route.fulfill(json={"config": {}, "runtime": {"power_mode": "standby"}})
+            route.fulfill(status=self.status_code, json={"config": {}, "runtime": {"power_mode": "standby"}})
         elif path.startswith("/api/updates") and route.request.method == "POST":
             self.posts.append((path, route.request.post_data_json))
             status = self.post_status.get(path, 200)
@@ -123,6 +124,20 @@ def browser():
         instance = p.chromium.launch()
         yield instance
         instance.close()
+
+
+def test_owner_loss_closes_modal_without_waiting_for_update_poll(browser):
+    ctx, page, fx = boot(browser, catalog(available=offer("0.5.12", 512)), viewport={"width": 390, "height": 844})
+    page.evaluate("document.getElementById('update-open').click()")
+    assert dialog_open(page)
+    page.clock.install()
+    fx.status_code = 401
+    page.evaluate("void fetch('/api/status')")
+    page.wait_for_function("window.HomebodyOwner.isOwner() === false")
+    assert not dialog_open(page)
+    assert page.evaluate("!document.documentElement.classList.contains('update-dialog-scroll-lock')")
+    assert fx.errors == []
+    ctx.close()
 
 
 SCROLL_CASES = [

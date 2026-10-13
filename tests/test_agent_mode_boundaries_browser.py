@@ -409,3 +409,31 @@ def test_late_agent_run_cannot_repaint_after_display_authority_is_lost(agent, bo
     assert "late-private" not in page.text_content("#agent-run-budget")
     assert page.text_content("#agent-run-badge") != "waiting approval"
     assert not errors
+
+
+def test_older_idle_badge_cannot_hide_stop_after_newer_running_badge(agent):
+    page, state, errors = agent
+    state["hold"].add("/api/agent/workspace/native-badge")
+    page.evaluate("HomebodyAssistantModes.owner(false); HomebodyAssistantModes.owner(true); void refreshStatus()")
+    for _ in range(100):
+        if any(path.endswith("native-badge") for path, _ in state["held"]):
+            break
+        page.wait_for_timeout(10)
+    assert any(path.endswith("native-badge") for path, _ in state["held"])
+    older = [route for path, route in state["held"] if path.endswith("native-badge")][0]
+    page.clock.install()
+    page.clock.fast_forward(6000)
+    page.evaluate("void refreshStatus()")
+    for _ in range(100):
+        if len([r for p, r in state["held"] if p.endswith("native-badge")]) >= 2:
+            break
+        page.wait_for_timeout(10)
+    held = [r for p, r in state["held"] if p.endswith("native-badge")]
+    assert len(held) >= 2
+    held[-1].fulfill(json={"status": "running", "running": True})
+    page.wait_for_function("document.getElementById('native-work-badge').textContent === 'Project work running'")
+    older.fulfill(json={"status": "idle", "running": False})
+    page.wait_for_timeout(100)
+    assert page.locator("#agent-stop-button").is_visible()
+    assert page.text_content("#native-work-badge") == "Project work running"
+    assert not errors

@@ -8,7 +8,7 @@
   // Only a status reply names the mode; pending switches, offline and owner loss never claim one.
   let confirmedMode = '', switchingTo = '', kidsHidden = false, unknownReason = 'Waiting for Reachy to confirm.';
   // 'unknown' = no answer yet, 'uncertain' = the status check failed; both keep the global Stop reachable.
-  let badgeState = 'unknown', voiceState = '';
+  let badgeState = 'unknown', voiceState = '', badgeSequence = 0;
   const text = (id, value) => { if ($(id).textContent !== value) $(id).textContent = value; };
   const MODE_LABELS = { everyday: 'Everyday', workspace: 'Workspace' };
 
@@ -158,24 +158,24 @@
   }
 
   async function refreshBadge() {
-    const token = generation;
+    const token = generation, sequence = ++badgeSequence;
     try {
       const body = await getJson('/api/agent/workspace/native-badge', token);
-      if (!body || token !== generation || blocked) return;
+      if (!body || token !== generation || sequence !== badgeSequence || blocked) return;
       $('native-work-badge').hidden = body.running !== true;
       $('native-work-badge').dataset.status = 'running';
       text('native-work-badge', body.status === 'stopping' ? 'Project work stopping' : 'Project work running');
       badgeState = body.running !== true ? 'idle' : body.status === 'stopping' ? 'stopping' : 'running';
     } catch {
       // Preserved work may still be running; say so and keep Stop all Agent work reachable.
-      if (token === generation && !blocked) {
+      if (token === generation && sequence === badgeSequence && !blocked) {
         $('native-work-badge').hidden = false;
         $('native-work-badge').dataset.status = 'waiting_approval';
         text('native-work-badge', 'Project work status unconfirmed');
         badgeState = 'uncertain';
       }
     }
-    if (token === generation) { renderStop(); sync(); }
+    if (token === generation && sequence === badgeSequence) { renderStop(); sync(); }
   }
 
   function update(payload) {
@@ -250,7 +250,11 @@
     workspaceConfirmed: () => currentMode() === 'workspace',
     offline: () => { blocked = true; reset('Reachy is unreachable.'); unconfirmed('Reachy is unreachable, so the mode cannot be confirmed.'); },
     /** A mode change was requested ('everyday'/'workspace') or settled (''); only status confirms it. */
-    switching: (mode) => { switchingTo = MODE_LABELS[mode] ? mode : ''; renderMode(); },
+    switching: (mode) => {
+      switchingTo = MODE_LABELS[mode] ? mode : '';
+      if (switchingTo) { badgeSequence += 1; badgeState = 'unknown'; lastBadgeAt = 0; }
+      renderMode();
+    },
   };
   renderMode();
 })();
