@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.14 — On-robot recognition trial
+## [0.5.14] — On-robot recognition trial
 
 - Add an owner-provisioned Parakeet TDT 0.6b v3 native worker for completed Kids and Pipeline utterances. Reuse the existing microphone owner and RAM samples; recognition stays on Reachy. The generic package remains on configured recognition by default.
 - Offer one explicitly opted-in, confirmed-local Hermes host fallback for decoder infrastructure failures. A misheard word does not itself trigger fallback. Adult Live/Realtime speech engines are unchanged.
