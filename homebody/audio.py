@@ -70,6 +70,8 @@ class EndpointResult:
     speech_detected: bool
     reason: str
     threshold: float
+    # Monotonic time the last voiced frame was read (the actual speech end), not the endpoint.
+    last_voiced_at: float | None = None
 
 
 class NoiseFloor:
@@ -134,7 +136,9 @@ class AdaptiveEndpointRecorder:
             now = time.monotonic()
             if now - started_at >= self.max_duration:
                 reason = "max_duration" if speech_started_at is not None else "initial_timeout"
-                return EndpointResult(self._join(captured), speech_started_at is not None, reason, threshold)
+                return EndpointResult(
+                    self._join(captured), speech_started_at is not None, reason, threshold, last_speech_at
+                )
             if speech_started_at is None and now - started_at >= self.initial_timeout:
                 return EndpointResult(np.empty(0, dtype=np.float32), False, "initial_timeout", threshold)
 
@@ -162,9 +166,11 @@ class AdaptiveEndpointRecorder:
             if is_voice:
                 last_speech_at = now
             elif last_speech_at is not None and now - last_speech_at >= self.end_silence:
-                return EndpointResult(self._join(captured), True, "end_silence", threshold)
+                return EndpointResult(self._join(captured), True, "end_silence", threshold, last_speech_at)
 
-        return EndpointResult(self._join(captured), speech_started_at is not None, "stopped", threshold)
+        return EndpointResult(
+            self._join(captured), speech_started_at is not None, "stopped", threshold, last_speech_at
+        )
 
     @staticmethod
     def _join(frames: list[FloatAudio]) -> FloatAudio:

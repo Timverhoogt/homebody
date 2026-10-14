@@ -48,6 +48,7 @@ from .owner_auth import OwnerStore, default_owner_path, install_owner_auth, owne
 from .owner_media import install_owner_media
 from .platform_info import host
 from .presence import PresenceObservation
+from .robot_stt import RobotSttClient
 from .robot_tools import robot_control_options
 from .runtime import HermesVoiceRuntime
 from .speaker_api import register as register_speaker
@@ -69,6 +70,7 @@ class SettingsUpdate(BaseModel):
     language: str | None = Field(default=None, max_length=12)
     stt_provider: str | None = Field(default=None, max_length=64)
     stt_model: str | None = Field(default=None, max_length=200)
+    stt_robot_fallback: str | None = Field(default=None, max_length=8)
     tts_provider: str | None = Field(default=None, max_length=64)
     tts_model: str | None = Field(default=None, max_length=200)
     tts_voice: str | None = Field(default=None, max_length=200)
@@ -1204,11 +1206,23 @@ class Homebody(ReachyMiniApp):
             try:
                 client = HermesBridgeClient(config)
                 try:
-                    return client.voice_options()
+                    options = client.voice_options()
                 finally:
                     client.close()
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
+            # The on-robot provider is local to Reachy, never a bridge-offered route.
+            stt = [
+                item for item in options.get("stt") or []
+                if not (isinstance(item, dict) and item.get("id") == "robot")
+            ]
+            stt.append({
+                "id": "robot",
+                "label": "On Reachy (on-device)",
+                "models": [],
+                "provisioned": RobotSttClient().provisioned(),
+            })
+            return {**options, "stt": stt}
 
         @self.settings_app.post("/api/camera/test")
         def test_camera(request: ConfirmationRequest) -> dict[str, object]:

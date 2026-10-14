@@ -440,6 +440,8 @@ def test_kids_locked_status_does_not_expose_presence_state() -> None:
     assert set(payload) == {
         "state",
         "stt_locality",  # categorical local/cloud/unknown only
+        "stt_processing_location",  # robot/host/cloud/unknown only
+        "stt_processing_verified",  # boolean only
         "power_mode",
         "motors_enabled",
         "head_safely_folded",

@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const fields = [
-  "bridge_url", "api_key", "model", "conversation_mode", "language", "stt_provider", "stt_model",
+  "bridge_url", "api_key", "model", "conversation_mode", "language", "stt_provider", "stt_model", "stt_robot_fallback",
   "tts_provider", "tts_model", "tts_voice", "continuous_conversation",
   "motion_enabled", "barge_in_enabled", "camera_enabled", "camera_feed_enabled", "camera_controls_enabled", "camera_controls_handedness", "face_tracking_enabled", "face_tracking_weight",
   "doa_enabled", "robot_tools_enabled", "home_assistant_enabled", "home_assistant_controls_enabled",
@@ -812,9 +812,15 @@ const STATE_HEADLINES = {
 function renderStateHeadline(state, sttLocality = "") {
   const headline = $("runtime-state");
   headline.replaceChildren();
-  // "Local" only for a bridge-confirmed Hermes-host STT receipt; otherwise stay neutral.
+  // "Local" only for a bridge-confirmed Hermes-host STT receipt; robot/host name this turn's
+  // routed recognizer (including a host fallback); otherwise stay neutral.
+  const transcribing = {
+    local: ["Local", "transcription…"],
+    robot: ["Transcribing", "on Reachy…"],
+    host: ["Transcribing", "on Hermes host…"],
+  };
   const parts = state === "transcribing"
-    ? (sttLocality === "local" ? ["Local", "transcription…"] : ["Transcribing", "…"])
+    ? (transcribing[sttLocality] || ["Transcribing", "…"])
     : STATE_HEADLINES[state];
   if (!parts) {
     const words = String(state || "unknown").replaceAll("_", " ");
@@ -863,7 +869,10 @@ function updateStatus(payload, sequence = statusSequence) {
   $("local-vision-ask").hidden = !(config.local_vision_enabled && config.camera_enabled);
   const runtime = payload.runtime || {};
   const state = runtime.state || "unknown";
-  const sttLocality = ["local", "cloud"].includes(runtime.stt_locality) ? runtime.stt_locality : "unknown";
+  // Per-turn processing location (robot | host) wins; otherwise the categorical locality.
+  const sttLocation = ["robot", "host"].includes(runtime.stt_processing_location) ? runtime.stt_processing_location : "";
+  const sttLocality = sttLocation
+    || (["local", "cloud"].includes(runtime.stt_locality) ? runtime.stt_locality : "unknown");
   renderStateHeadline(state, sttLocality);
   $("runtime-detail").textContent = runtime.detail || "";
   // The hero face reads this to open, half-close or shut Reachy's eyes.
@@ -1279,6 +1288,13 @@ function refreshSpeechControls() {
   const stt = voiceOptions.stt.find((item) => item.id === sttSelected) || {};
   const tts = voiceOptions.tts.find((item) => item.id === ttsSelected) || {};
   replaceOptions($("stt_model"), stt.models || [], currentConfig?.stt_model || "base");
+  $("stt_robot_fallback").closest("label").hidden = sttSelected !== "robot";
+  $("stt_model").closest("label").hidden = sttSelected === "robot";  // pinned by provisioning
+  // Selection is not success: only a turn's own receipt shows where recognition actually ran.
+  $("robot-stt-note").hidden = sttSelected !== "robot";
+  $("robot-stt-note").textContent = sttSelected !== "robot" ? "" : stt.provisioned
+    ? "Kids and Pipeline speech recognition is set to run on Reachy from in-memory audio; no recording is uploaded unless the host fallback is chosen. Live/Realtime adult speech is unchanged."
+    : "On-device recognition is not provisioned on Reachy yet; Kids and Pipeline turns stop with a notice until it is.";
   replaceOptions($("tts_model"), tts.models || [], currentConfig?.tts_model || "eleven_flash_v2_5");
   replaceOptions(
     $("tts_voice"),
