@@ -13,12 +13,14 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=93">
-  <link rel="stylesheet" href="/static/scene.css?v=93">
+  <link rel="stylesheet" href="/static/style.css?v=94">
+  <link rel="stylesheet" href="/static/scene.css?v=94">
+  <link rel="stylesheet" href="/static/onboarding.css?v=94">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
     <h1 id="owner-pair-title">Pair this device as Owner</h1>
+    <p>Found Homebody in Reachy Mini Control? It is already installed. Pair an owner device to continue setup; you do not need a second installer.</p>
     <p>Private household controls. Generate a one-time code on the robot with
       <code>python -m homebody.owner_auth pair --origin https://YOUR-ROBOT.ts.net</code>.</p>
     <form id="owner-pair-form">
@@ -63,6 +65,41 @@
       <button type="button" id="update-open" class="secondary">Review update</button>
       <button type="button" id="update-later" class="secondary">Later</button>
     </aside>
+
+    <section id="setup-intro" class="setup-intro" hidden aria-labelledby="setup-intro-title">
+      <div><h2 id="setup-intro-title">Finish setting up Homebody</h2><p>Confirm this host, connect a voice backend and review privacy before listening.</p></div>
+      <button id="setup-open" type="button">Continue setup</button>
+    </section>
+
+    <dialog id="setup-dialog" aria-labelledby="setup-title">
+      <header><h2 id="setup-title">Set up Homebody</h2><button id="setup-close" type="button" class="secondary">Close</button></header>
+      <section id="setup-welcome">
+        <p>Reachy Mini Control → Applications → Discover Apps → Homebody → Install → Start. You are now in Homebody, not the app listing.</p>
+        <h3>This is the computer running Homebody</h3><p id="setup-host"></p><p id="setup-platform-note"></p>
+        <p>Your phone or Control app may be on a different computer. Local models and a separate AI host are optional.</p>
+        <label>How did you install Homebody?<select id="setup-entry"><option value="unknown">Not sure</option><option value="marketplace">Reachy Mini Control marketplace</option><option value="manual">Manual / community host</option></select></label>
+        <p>Checks do not start the microphone, camera or movement. Existing installations keep their selected permissions.</p>
+      </section>
+      <section id="setup-connection" hidden>
+        <h3>Language and voice backend</h3><p id="setup-route-note"></p>
+        <label>Conversation language<select id="setup-language"><option value="en">English</option><option value="nl">Dutch</option></select></label>
+        <button id="setup-save-language" type="button" class="secondary">Save language</button>
+        <p>Configure your backend in existing Settings. Connect an existing Hermes/OpenClaw agent, or use the manual bridge guide. A no-agent provider installer is a later step in this roadmap.</p>
+        <p>Speech APIs may charge separately from an agent subscription. Local speech recognition alone does not make the whole conversation offline.</p>
+        <p id="setup-connection-state" role="status"></p>
+        <button id="setup-settings" type="button" class="secondary">Configure backend in Settings</button>
+        <button id="setup-check" type="button">Check saved connection silently</button>
+      </section>
+      <section id="setup-review" hidden>
+        <h3>Review before enabling listening</h3>
+        <p>Backend connectivity and authentication have been checked. Provider model access and microphone/speaker behavior still need separate acceptance. <strong>Speech has not been tested.</strong></p>
+        <p>Camera, movement, Kids, home controls, Workspace and local AI packs are separate opt-ins. Finishing does not grant new permissions.</p>
+        <label class="setup-consent"><input id="setup-restart-consent" type="checkbox"> I understand that Stop then Start in Reachy Mini Control enables wake-word listening after setup is saved. I will supervise the first speech test.</label>
+        <button id="setup-finish" type="button" disabled>Save setup for next Start</button>
+      </section>
+      <p id="setup-message" class="message" role="status" aria-live="polite"></p>
+      <footer><button id="setup-back" type="button" class="secondary" hidden>Back</button><button id="setup-next" type="button">Continue</button><button id="setup-refresh" type="button" class="secondary">Refresh checks</button></footer>
+    </dialog>
 
     <section id="global-robot-status" class="global-robot-status" aria-label="Reachy status" hidden>
       <!-- Mode and telemetry come only from live status; a requested change shows on its button until confirmed. -->
@@ -937,6 +974,7 @@
 
     <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" hidden>
       <header class="page-heading"><h1>Settings</h1><p>Configure voice, behaviour and connections.</p></header>
+      <section class="setup-review-entry"><button id="setup-review-open" type="button" class="secondary">Review setup / repair connection</button><p>Resume setup without reinstalling Homebody or resetting owner devices.</p></section>
       <section class="card" id="speaker-card" aria-labelledby="speaker-title">
         <p class="label">Sound</p><h2 id="speaker-title">Speaker volume</h2>
         <p id="speaker-confirmed" role="status" aria-live="polite">Speaker · unknown</p>
@@ -1183,19 +1221,20 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=93"></script>
-  <script src="/static/scene.js?v=93"></script>
-  <script src="/static/motion.js?v=93"></script>
-  <script src="/static/owner.js?v=93"></script>
+  <script src="/static/notifications.js?v=94"></script>
+  <script src="/static/scene.js?v=94"></script>
+  <script src="/static/motion.js?v=94"></script>
+  <script src="/static/onboarding.js?v=94"></script>
+  <script src="/static/owner.js?v=94"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=93"></script>
-  <script src="/static/agent-connection.js?v=93"></script>
-  <script src="/static/native-workspace.js?v=93"></script>
-  <script src="/static/workspace.js?v=93"></script>
-  <script src="/static/ispy-input.js?v=93"></script>
-  <script src="/static/main.js?v=93"></script>
-  <script src="/static/updates.js?v=93"></script>
-  <script src="/static/volume.js?v=93"></script>
-  <script src="/static/assistant-modes.js?v=93"></script>
+  <script src="/static/camera.js?v=94"></script>
+  <script src="/static/agent-connection.js?v=94"></script>
+  <script src="/static/native-workspace.js?v=94"></script>
+  <script src="/static/workspace.js?v=94"></script>
+  <script src="/static/ispy-input.js?v=94"></script>
+  <script src="/static/main.js?v=94"></script>
+  <script src="/static/updates.js?v=94"></script>
+  <script src="/static/volume.js?v=94"></script>
+  <script src="/static/assistant-modes.js?v=94"></script>
 </body>
 </html>

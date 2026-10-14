@@ -44,6 +44,7 @@ from .mcp_oauth import OAuthError, OAuthServer
 from .mcp_public import PublicAgentListener, build_public_app
 from .mcp_server import PROTOCOL_VERSIONS, McpServer, new_token, token_digest, token_matches
 from .native_workspace_api import install_native_workspace_routes
+from .onboarding import register as register_onboarding
 from .owner_auth import OwnerStore, default_owner_path, install_owner_auth, owner_authenticated
 from .owner_media import install_owner_media
 from .platform_info import host
@@ -439,6 +440,10 @@ class Homebody(ReachyMiniApp):
         self._agent_listener = PublicAgentListener(self._build_public_app)
         self._register_settings_routes()
         if self.settings_app is not None:
+            register_onboarding(
+                self.settings_app, load=lambda: load_config(), save=lambda config: save_config(config),
+                bridge_factory=lambda config, **kwargs: HermesBridgeClient(config, **kwargs),
+            )
             register_updates(self.settings_app, lambda: self._runtime, default_config_path().parent / "updates")
             register_speaker(self.settings_app, lambda: self._runtime)
         if self.settings_app is not None:
@@ -1950,10 +1955,11 @@ class Homebody(ReachyMiniApp):
         )
         try:
             startup_config = load_config()
-            if startup_config.gamepad_enabled:
+            if startup_config.gamepad_enabled and not startup_config.setup_pending:
                 self._bluetooth.set_gamepad_enabled(True)
-            self._start_gpio_buttons(startup_config)
-            self._agent_listener.sync(startup_config)
+            if not startup_config.setup_pending:
+                self._start_gpio_buttons(startup_config)
+                self._agent_listener.sync(startup_config)
             self._runtime.run()
         finally:
             self._agent_listener.close()

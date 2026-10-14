@@ -505,6 +505,15 @@ class HermesVoiceRuntime(
                     setattr(self._status, key, value)
 
     def run(self) -> None:
+        if self.config_loader().setup_pending:
+            # No model downloads, actions workers or media admission during first run.
+            # Finishing setup only saves readiness; Control Stop/Start is the explicit
+            # listening admission. A late setup response can never start this run.
+            self._set_status(
+                "setup_required", "Continue Homebody setup, then Stop and Start the app to enable listening"
+            )
+            self.stop_event.wait()
+            return
         try:
             self._runtime_started = True
             self._control_ready.clear()
