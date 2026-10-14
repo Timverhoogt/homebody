@@ -56,6 +56,8 @@ I Spy alternates roles between Reachy and the child.
 
 **Reachy's turn:** Reachy turns its rotating base and head through a bounded five-frame desk search at `0° / −60° / −120° / +60° / +120°` with non-capturing 60° transit waypoints and a neutral return. Its strict bridge schema accepts only a stable, child-safe target visible across frames. Local game state controls approved hints and reveals the answer after three meaningful incorrect guesses; hint requests do not consume guesses, and giving up reveals immediately.
 
+**Target variety:** vision proposes up to four candidates. The bridge validates each one against the same target policy, drops unsafe, malformed or low-confidence entries, and merges repeats and aliases, including same-frame overlapping boxes. It then shuffles the remaining safe objects with a system random source and moderates them in that order. The first approved object becomes the round's only target and stays fixed until the round ends. Objects already used this session go last; that short in-memory list is deleted on End, cancel or expiry. One safe candidate is used as is. If none are safe, selection fails without inventing a target. A result that arrives after Stop, cancel, expiry or a newer search is discarded.
+
 **Child's turn:** The child chooses a safe household object and supplies one clue at a time. Reachy makes up to three schema-bounded guesses with small base-and-head thinking turns and no camera. In Play together, a confirmed answer or reveal finishes the round and offers choices; a new search requires choosing another round.
 
 Camera access is revoked before the return movement and guessing. Targets use a strict broker schema. Bridge state is deleted on Stop or expiry.

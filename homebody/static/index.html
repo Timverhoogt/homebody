@@ -13,8 +13,8 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=91">
-  <link rel="stylesheet" href="/static/scene.css?v=91">
+  <link rel="stylesheet" href="/static/style.css?v=92">
+  <link rel="stylesheet" href="/static/scene.css?v=92">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -65,23 +65,31 @@
     </aside>
 
     <section id="global-robot-status" class="global-robot-status" aria-label="Reachy status" hidden>
-      <div class="compact-status-line">
-        <span class="compact-mode">Reachy · <strong id="compact-power-mode">Unknown</strong></span>
-        <span>Mic · <strong id="compact-mic">Unknown</strong></span>
-        <span>Camera · <strong id="compact-camera">Unknown</strong></span>
-        <span>Motors · <strong id="compact-motors">Unknown</strong></span>
+      <!-- Mode and telemetry come only from live status; a requested change shows on its button until confirmed. -->
+      <div class="power-now">
+        <span class="label">Reachy is</span>
+        <strong id="compact-power-mode" class="power-now-mode">Unknown</strong>
+        <span id="compact-power-detail" class="power-now-detail">Waiting for live status</span>
       </div>
+      <dl class="compact-status-line" aria-label="Measured status">
+        <div><dt>Mic</dt><dd id="compact-mic">Unknown</dd></div>
+        <div><dt>Camera</dt><dd id="compact-camera">Unknown</dd></div>
+        <div><dt>Motors</dt><dd id="compact-motors">Unknown</dd></div>
+      </dl>
       <div id="global-adult-controls" class="global-adult-controls">
+        <div class="global-power-primary" role="group" aria-label="Reachy power">
+          <button type="button" id="global-power-awake" class="secondary" data-power="awake" data-power-message="global-power-message">Wake up</button>
+          <button type="button" id="global-power-standby" class="secondary" data-power="standby" data-power-message="global-power-message">Standby</button>
+          <button type="button" id="global-robot-stop" class="secondary" disabled>Stop movement</button>
+        </div>
         <details id="global-power-controls">
-          <summary>Power controls</summary>
-          <div class="actions" role="group" aria-label="Reachy power">
-            <button type="button" data-power="standby" data-power-message="global-power-message">Standby</button>
-            <button type="button" data-power="awake" data-power-message="global-power-message">Awake</button>
-            <button type="button" data-power="meeting" data-minutes="60" data-power-message="global-power-message">Meeting · 60 min</button>
-            <button type="button" data-power="sleep" data-power-message="global-power-message">Sleep</button>
+          <summary>Meeting, Sleep · what each mode does</summary>
+          <p class="power-hint">Wake up turns the motors on and listens. Standby folds Reachy and releases torque but still hears the wake word. Stop movement cancels motion only. Meeting (60 minutes) and Sleep turn the microphone and camera off.</p>
+          <div class="actions" role="group" aria-label="Quiet power modes">
+            <button type="button" class="secondary" data-power="meeting" data-minutes="60" data-power-message="global-power-message">Meeting · 60 min</button>
+            <button type="button" class="secondary" data-power="sleep" data-power-message="global-power-message">Sleep</button>
           </div>
         </details>
-        <button type="button" id="global-robot-stop" class="secondary" disabled>Stop movement</button>
       </div>
       <p id="global-power-message" class="message" role="status"></p>
       <p id="global-stop-message" class="message" role="status"></p>
@@ -444,12 +452,16 @@
       <header class="page-heading"><h1>Kids</h1><p>Supervised activities and child-safe controls.</p></header>
       <section class="card kids-hero display">
         <div class="kids-hero-copy">
-          <p class="label">Supervised play</p>
-          <h2>Kids Mode</h2>
-          <p class="kids-lead">A time-boxed, age-aware voice space for stories, learning, riddles, calm moments, friendly chat, and caregiver-enabled I Spy.</p>
+          <p class="label">Kids Mode · Supervised play</p>
+          <h2>Play together</h2>
+          <div id="kids-hero-actions" class="kids-hero-actions">
+            <button type="button" id="kids-host-setup-link" class="kids-host-start" aria-controls="kids-setup">Set up Play together</button>
+            <button type="button" id="kids-single-link" class="secondary" aria-controls="kids-activity-picker">Or one activity</button>
+          </div>
+          <p class="kids-lead">Reachy is the game master for one session you set up: it offers two games, switches when your child asks, and finishes on time or when anyone says “stop”.</p>
           <div class="kids-status-line">
             <span id="kids-status-badge" class="badge">Off</span>
-            <strong id="kids-timer">Choose an activity below</strong>
+            <strong id="kids-timer">Not started · a grown-up checks the setup first</strong>
           </div>
           <div class="kids-progress" role="progressbar" aria-label="Kids Mode time remaining" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="kids-progress-bar"></span></div>
           <p id="kids-session-detail" class="muted compact-note">Camera, personal Hermes memory, smart-home control, messaging, purchases, and power controls are unavailable to the child session.</p>
@@ -457,53 +469,39 @@
         <div id="kids-stage" class="kids-stage"></div>
       </section>
 
-      <section class="card kids-activity-card">
+      <section id="kids-setup" class="card kids-setup-card">
         <div class="section-heading">
-          <div><p class="label">1 · Pick an activity</p><h2>What should Reachy do?</h2></div>
-          <span id="kids-activity-badge" class="badge">Buddy chat</span>
-        </div>
-        <div class="kids-activities" role="radiogroup" aria-label="Kids Mode activity">
-          <button type="button" class="kids-activity selected" role="radio" aria-checked="true" data-kids-activity="buddy"><span class="kids-activity-icon" aria-hidden="true">☀</span><strong>Buddy chat</strong><small>Talk, wonder, and laugh</small></button>
-          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="story"><span class="kids-activity-icon" aria-hidden="true">✦</span><strong>Story maker</strong><small>Choose what happens next</small></button>
-          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="quiz"><span class="kids-activity-icon" aria-hidden="true">?</span><strong>Quiz quest</strong><small>Learn with kind hints</small></button>
-          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="riddles"><span class="kids-activity-icon" aria-hidden="true">◇</span><strong>Riddle box</strong><small>Guess, hint, reveal</small></button>
-          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="calm"><span class="kids-activity-icon" aria-hidden="true">≈</span><strong>Calm corner</strong><small>Breathe and slow down</small></button>
-          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="ispy"><span class="kids-activity-icon" aria-hidden="true">◉</span><strong>I Spy</strong><small>Wide desk search, then swap guesses</small></button>
-        </div>
-      </section>
-
-      <section class="card kids-setup-card">
-        <div class="section-heading">
-          <div><p class="label">2 · Parent setup</p><h2>Shape this session</h2></div>
+          <div><p id="kids-setup-label" class="label">Grown-up check · Play together</p><h2 id="kids-setup-title">Review, then start</h2></div>
           <span class="badge parent-badge">Grown-up</span>
         </div>
-        <div class="grid-two kids-profile-grid">
-          <label>Nickname <input id="kids-nickname" maxlength="32" autocomplete="off" placeholder="Optional first name or nickname" /></label>
-          <label>Age range
-            <select id="kids-age-band"><option value="4-6">4–6 years</option><option value="7-9" selected>7–9 years</option><option value="10-12">10–12 years</option></select>
-          </label>
-          <label>Session length
-            <select id="kids-duration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select>
-          </label>
-          <label>Speaking language
-            <select id="kids-language"><option value="en">English</option><option value="nl">Nederlands</option></select>
-          </label>
+        <div class="kids-review">
+          <div class="grid-two kids-profile-grid">
+            <label>Nickname <input id="kids-nickname" maxlength="32" autocomplete="off" placeholder="Optional first name or nickname" /></label>
+            <label>Age range
+              <select id="kids-age-band"><option value="4-6">4–6 years</option><option value="7-9" selected>7–9 years</option><option value="10-12">10–12 years</option></select>
+            </label>
+            <label>Session length
+              <select id="kids-duration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select>
+            </label>
+            <label>Speaking language
+              <select id="kids-language"><option value="en">English</option><option value="nl">Nederlands</option></select>
+            </label>
+          </div>
+          <label class="toggle-row kids-motion-toggle"><span><strong>Gentle robot motion</strong><small>Allow occasional bounded head and antenna gestures; no camera and no wide dance</small></span><input id="kids-motion-enabled" type="checkbox" checked /></label>
+          <label id="kids-host-camera-row" class="toggle-row"><span><strong>Allow I Spy camera during Play together</strong><small>Optional. Without it Reachy never offers I Spy and tells the child a grown-up must allow the camera first.</small></span><input id="kids-host-camera-consent" type="checkbox" /></label>
+          <div class="kids-safety-grid" aria-label="Kids Mode safeguards">
+            <span><strong>Camera off after search</strong><small>I Spy uses only five transient frames after caregiver opt-in</small></span>
+            <span><strong>No private tools</strong><small>No files, memory, messages, or devices</small></span>
+            <span><strong>Time limit</strong><small>Ends and folds automatically</small></span>
+            <span><strong>Age-aware</strong><small>Short, activity-specific replies</small></span>
+          </div>
         </div>
-        <label class="toggle-row kids-motion-toggle"><span><strong>Gentle robot motion</strong><small>Allow occasional bounded head and antenna gestures; no camera and no wide dance</small></span><input id="kids-motion-enabled" type="checkbox" checked /></label>
-        <label id="kids-ispy-consent-row" class="toggle-row" hidden><span><strong>Allow camera for this I Spy start only</strong><small>Five in-memory frames across one bounded ±120° desk search; no recording, storage, target selection involving people, or camera during guessing.</small></span><input id="kids-ispy-camera-consent" type="checkbox" /></label>
-        <div class="kids-safety-grid" aria-label="Kids Mode safeguards">
-          <span><strong>Camera off after search</strong><small>I Spy uses only five transient frames after caregiver opt-in</small></span>
-          <span><strong>No private tools</strong><small>No files, memory, messages, or devices</small></span>
-          <span><strong>Time limit</strong><small>Ends and folds automatically</small></span>
-          <span><strong>Age-aware</strong><small>Short, activity-specific replies</small></span>
-        </div>
-        <label id="kids-host-camera-row" class="toggle-row"><span><strong>Allow I Spy camera during Play together</strong><small>Optional. Without it Reachy never offers I Spy and tells the child a grown-up must allow the camera first.</small></span><input id="kids-host-camera-consent" type="checkbox" /></label>
+        <p id="kids-live-summary" class="kids-live-summary"></p>
         <div class="actions kids-actions">
           <button type="button" id="kids-host-start-button" class="kids-host-start">Play together</button>
-          <button type="button" id="kids-start-button" class="secondary">Start chosen activity</button>
           <button type="button" id="kids-stop-button" class="danger" disabled>End now &amp; fold safely</button>
         </div>
-        <p class="muted compact-note">Play together: Reachy hosts one time-boxed session, offers two games at a time, and switches when the child asks. Saying “stop” always finishes.</p>
+        <p class="muted compact-note kids-host-note">Starts one session with the settings above. Reachy offers two games at a time and switches when the child asks; the time limit stays the same. Saying “stop” always finishes.</p>
         <div id="kids-host-controls" class="kids-host-controls" hidden>
           <p class="label">Choose the next game for the child</p>
           <div class="kids-host-choices" role="group" aria-label="Choose the next game">
@@ -526,6 +524,25 @@
           <p id="kids-ispy-guess-message" class="message" role="status" aria-live="polite"></p>
         </form>
         <p id="kids-message" class="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="kids-activity-picker" class="card kids-activity-card">
+        <div class="section-heading">
+          <div><p class="label">Or · One activity</p><h2>Pick a single game instead</h2><p class="muted compact-note">Uses the age, length and language above. Reachy stays in this one game; End works the same.</p></div>
+          <span id="kids-activity-badge" class="badge">Buddy chat</span>
+        </div>
+        <div class="kids-activities" role="radiogroup" aria-label="Kids Mode activity">
+          <button type="button" class="kids-activity selected" role="radio" aria-checked="true" data-kids-activity="buddy"><span class="kids-activity-icon" aria-hidden="true">☀</span><strong>Buddy chat</strong><small>Talk, wonder, and laugh</small></button>
+          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="story"><span class="kids-activity-icon" aria-hidden="true">✦</span><strong>Story maker</strong><small>Choose what happens next</small></button>
+          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="quiz"><span class="kids-activity-icon" aria-hidden="true">?</span><strong>Quiz quest</strong><small>Learn with kind hints</small></button>
+          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="riddles"><span class="kids-activity-icon" aria-hidden="true">◇</span><strong>Riddle box</strong><small>Guess, hint, reveal</small></button>
+          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="calm"><span class="kids-activity-icon" aria-hidden="true">≈</span><strong>Calm corner</strong><small>Breathe and slow down</small></button>
+          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="ispy"><span class="kids-activity-icon" aria-hidden="true">◉</span><strong>I Spy</strong><small>Wide desk search, then swap guesses</small></button>
+        </div>
+        <label id="kids-ispy-consent-row" class="toggle-row" hidden><span><strong>Allow camera for this I Spy start only</strong><small>Five in-memory frames across one bounded ±120° desk search; no recording, storage, target selection involving people, or camera during guessing.</small></span><input id="kids-ispy-camera-consent" type="checkbox" /></label>
+        <div class="actions kids-single-actions">
+          <button type="button" id="kids-start-button" class="secondary">Start chosen activity</button>
+        </div>
       </section>
 
       <section class="card kids-guide-card">
@@ -1162,19 +1179,19 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=91"></script>
-  <script src="/static/scene.js?v=91"></script>
-  <script src="/static/motion.js?v=91"></script>
-  <script src="/static/owner.js?v=91"></script>
+  <script src="/static/notifications.js?v=92"></script>
+  <script src="/static/scene.js?v=92"></script>
+  <script src="/static/motion.js?v=92"></script>
+  <script src="/static/owner.js?v=92"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=91"></script>
-  <script src="/static/agent-connection.js?v=91"></script>
-  <script src="/static/native-workspace.js?v=91"></script>
-  <script src="/static/workspace.js?v=91"></script>
-  <script src="/static/ispy-input.js?v=91"></script>
-  <script src="/static/main.js?v=91"></script>
-  <script src="/static/updates.js?v=91"></script>
-  <script src="/static/volume.js?v=91"></script>
-  <script src="/static/assistant-modes.js?v=91"></script>
+  <script src="/static/camera.js?v=92"></script>
+  <script src="/static/agent-connection.js?v=92"></script>
+  <script src="/static/native-workspace.js?v=92"></script>
+  <script src="/static/workspace.js?v=92"></script>
+  <script src="/static/ispy-input.js?v=92"></script>
+  <script src="/static/main.js?v=92"></script>
+  <script src="/static/updates.js?v=92"></script>
+  <script src="/static/volume.js?v=92"></script>
+  <script src="/static/assistant-modes.js?v=92"></script>
 </body>
 </html>

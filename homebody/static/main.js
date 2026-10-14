@@ -28,6 +28,8 @@ let announcementRequestPending = false;
 let lastAnnouncementLiveText = "";
 let kidsRequestPending = false;
 let selectedKidsActivity = "buddy";
+// The idle stage previews Play together until a grown-up picks a single activity in this visit.
+let kidsPreviewSingle = false;
 let bluetoothRefreshPending = false;
 let bluetoothState = null;
 let agentRequestPending = false;
@@ -206,7 +208,7 @@ function renderKidsStage(sequence = statusSequence) {
   const staleActive = kids.active === true && kidsEndFence > 0 && sequence <= kidsEndFence;
   kidsStage.update(window.HomebodyScene.kidsView({
     ...kidsStageStatus,
-    selected: selectedKidsActivity,
+    selected: kidsPreviewSingle ? selectedKidsActivity : "host",
     ending: kidsEndPending || staleActive,
   }));
 }
@@ -596,7 +598,9 @@ function activateTab(name, focus = false, recordHistory = false) {
   const globalStatus = document.getElementById("global-robot-status");
   if (globalStatus) {
     globalStatus.hidden = target.dataset.tab === "dashboard";
-    document.querySelector(`[data-panel="${target.dataset.tab}"] .page-heading`)?.insertAdjacentElement("afterend", globalStatus);
+    // On Kids the shared card follows the Play together hero so shared play leads the first screen.
+    const panel = document.querySelector(`[data-panel="${target.dataset.tab}"]`);
+    (panel?.querySelector(":scope > .kids-hero") || panel?.querySelector(".page-heading"))?.insertAdjacentElement("afterend", globalStatus);
   }
   document.title = `${target.textContent.trim()} · Homebody`;
   target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
@@ -832,6 +836,27 @@ function renderTelemetry(entries) {
   });
 }
 
+// The shared card names only the mode the runtime reports; a requested change is not a new mode.
+function renderPowerNow(powerMode, runtime) {
+  const labels = { awake: "Awake", standby: "Standby", meeting: "Meeting", sleep: "Sleep" };
+  const folded = runtime.motors_enabled === false && runtime.head_safely_folded === true;
+  const details = {
+    awake: runtime.motors_enabled === true ? "Motor torque enabled" : "Motors not confirmed on",
+    standby: folded ? "Folded, torque released · still hears the wake word" : "Still hears the wake word · fold not confirmed",
+    meeting: "Microphone and camera off",
+    sleep: "Resting · microphone and camera off",
+  };
+  const label = labels[powerMode] || "Unknown";
+  const element = $("compact-power-mode");
+  const changed = element.textContent !== label && element.textContent !== "Unknown" && label !== "Unknown";
+  element.textContent = label;
+  element.dataset.mode = labels[powerMode] ? powerMode : "unknown";
+  $("compact-power-detail").textContent = powerTransitionPending
+    ? "Change requested · waiting for Reachy to confirm"
+    : details[powerMode] || "Mode not reported";
+  if (changed) window.HomebodyMotion?.enter(element);
+}
+
 function updateStatus(payload, sequence = statusSequence) {
   renderHost(payload.host);
   const config = payload.config || {};
@@ -996,7 +1021,7 @@ function updateStatus(payload, sequence = statusSequence) {
     || kidsActive || robotBusy || manualActionPending || powerTransitionPending;
   $("camera-wake-control").disabled = kidsActive || kidsLocked || powerTransitionPending || manualActionPending;
   $("power-mode-badge").textContent = powerMode;
-  $("compact-power-mode").textContent = powerMode;
+  renderPowerNow(powerMode, runtime);
   $("global-adult-controls").hidden = kidsActive || kidsLocked;
   if (kidsActive || kidsLocked) {
     $("global-power-controls").open = false;
@@ -1063,11 +1088,14 @@ function updateStatus(payload, sequence = statusSequence) {
         : powerMode === "awake"
           ? ["on", ["listening", "thinking", "speaking"].includes(state) ? "Open" : "Listening"]
           : ["warn", "Wake word only"],
+    // Permission is not a stream: only this page's open viewer or a Kids search counts as running.
     camera: kidsCameraActive
       ? ["on", "I Spy search"]
-      : config.camera_enabled || config.camera_feed_enabled
-        ? ["warn", config.camera_feed_enabled ? "Local viewer allowed" : "On demand only"]
-        : ["off", "Off"],
+      : window.ReachyCamera?.isActive()
+        ? ["on", "Viewer open"]
+        : config.camera_enabled || config.camera_feed_enabled
+          ? ["warn", config.camera_feed_enabled ? "Allowed · viewer not open" : "On demand only"]
+          : ["off", "Off"],
     motors: robotBusy
       ? ["on", "Moving"]
       : motorsEnabled === true
@@ -1106,7 +1134,7 @@ function updateStatus(payload, sequence = statusSequence) {
       ? "Time is up · safe fold verified"
       : String(kidsMode.last_end_reason || "").includes("fold_failed")
         ? "Session ended · safe fold needs parent attention"
-        : "Choose an activity below";
+        : "Not started · a grown-up checks the setup first";
   $("kids-progress-bar").style.width = `${remainingPercent}%`;
   const progress = document.querySelector(".kids-progress");
   progress.setAttribute("aria-valuenow", String(Math.round(remainingPercent)));
@@ -1127,12 +1155,24 @@ function updateStatus(payload, sequence = statusSequence) {
   });
   if (!kidsHost) $("kids-host-message").textContent = "";
   else if (kidsHost.notice === "camera_consent_needed") $("kids-host-message").textContent = "The child asked for I Spy. Use “Play I Spy (allows camera)” to allow it, or ignore this.";
+  const kidsJustStarted = kidsActive && $("panel-kids").dataset.kidsSession !== "active";
   $("kids-stop-button").disabled = !kidsActive;
+  renderKidsSession(kidsActive, kidsMode, kidsHost, kidsCameraActive, remainingMinutes, remainingRemainder);
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.hidden = kidsLocked && button.dataset.tab !== "kids";
   });
   if (kidsLocked && document.querySelector('[data-tab="kids"]')?.getAttribute("aria-selected") !== "true") {
     activateTab("kids");
+  }
+  if (kidsJustStarted && !kidsStaleAfterEnd) {
+    // One confirmed inactive→active transition, never ordinary polls or a rejected Start.
+    requestAnimationFrame(() => {
+      if (window.HomebodyOwner?.isOwner() !== true || document.hidden || $("panel-kids").hidden
+          || $("panel-kids").dataset.kidsSession !== "active" || kidsEndPending
+          || kidsStageStatus.offline || (kidsEndFence > 0 && sequence <= kidsEndFence)) return;
+      const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({top: 0, behavior: still ? "instant" : "smooth"});
+    });
   }
   document.querySelectorAll("[data-kids-activity], #kids-nickname, #kids-age-band, #kids-duration, #kids-language, #kids-motion-enabled").forEach((control) => {
     control.disabled = kidsActive || kidsRequestPending;
@@ -1342,6 +1382,8 @@ async function refreshStatus() {
     $("status-dot").className = "status-dot error";
     $("robot-mode-badge").textContent = "offline";
     $("compact-power-mode").textContent = "Unknown · offline";
+    $("compact-power-mode").dataset.mode = "unknown";
+    $("compact-power-detail").textContent = "Live status unavailable · power controls paused";
     $("motor-state").textContent = "Motor state unavailable";
     $("motor-state-dot").className = "motor-state-dot error";
     $("robot-readiness").textContent = "Remote controls disabled until live status returns";
@@ -1356,6 +1398,7 @@ async function refreshStatus() {
     $("announcement-stop").disabled = true;
     $("announcement-badge").textContent = "Offline";
     $("kids-start-button").disabled = true;
+    $("kids-host-start-button").disabled = true;
     $("kids-stop-button").disabled = true;
     $("kids-status-badge").textContent = "Offline";
     // Owner loss or an unreachable robot: no stale caregiver game controls remain usable.
@@ -1853,6 +1896,7 @@ $("test-button").addEventListener("click", async () => {
 document.querySelectorAll("[data-kids-activity]").forEach((button) => {
   button.addEventListener("click", () => {
     selectedKidsActivity = button.dataset.kidsActivity;
+    kidsPreviewSingle = true;
     document.querySelectorAll("[data-kids-activity]").forEach((candidate) => {
       const selected = candidate === button;
       candidate.classList.toggle("selected", selected);
@@ -1873,6 +1917,51 @@ document.querySelectorAll("[data-kids-activity]").forEach((button) => {
   });
 });
 
+// Idle: the setup review leads. Active: the review steps aside so phase, time and End sit together.
+function renderKidsSession(kidsActive, kidsMode, kidsHost, kidsCameraActive, minutes, seconds) {
+  const panel = $("panel-kids");
+  const wasActive = panel.dataset.kidsSession === "active";
+  panel.dataset.kidsSession = kidsActive ? "active" : "idle";
+  const hosted = kidsMode.host?.enabled === true;
+  $("kids-setup-label").textContent = !kidsActive ? "Grown-up check · Play together" : hosted ? "Play together · live" : "Single activity · live";
+  $("kids-setup-title").textContent = kidsActive ? "Session in progress" : "Review, then start";
+  const summary = $("kids-live-summary");
+  if (!kidsActive) {
+    summary.textContent = "";
+    return;
+  }
+  const game = kidsActivityLabels[kidsHost?.activity] || "the next game";
+  const phases = {
+    lobby: "Choosing a game · Reachy offers two",
+    offer: "Choosing the next game",
+    waiting: "Waiting for the child",
+    transition: `Switching to ${game}…`,
+    playing: `Playing ${game}`,
+  };
+  const now = kidsCameraActive
+    ? "I Spy camera search"
+    : !hosted
+      ? kidsActivityLabels[kidsMode.profile?.activity] || "Kids activity"
+      : kidsHost ? phases[kidsHost.phase] || "Play together" : "Ending…";
+  const text = `${now} · ${minutes}:${String(seconds).padStart(2, "0")} left`;
+  const phaseChanged = summary.dataset.now !== now;
+  summary.textContent = text;
+  summary.dataset.now = now;
+  if (wasActive && phaseChanged) window.HomebodyMotion?.enter(summary);
+}
+
+function revealKidsSection(section, focusTarget) {
+  const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  section.scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" });
+  focusTarget?.focus({ preventScroll: true });
+}
+
+// Routes only: neither button starts anything, so the grown-up still reviews the setup first.
+$("kids-host-setup-link").addEventListener("click", () => revealKidsSection($("kids-setup"), $("kids-age-band")));
+$("kids-single-link").addEventListener("click", () => {
+  revealKidsSection($("kids-activity-picker"), document.querySelector("[data-kids-activity].selected"));
+});
+
 function kidsProfileFromForm() {
   return {
     nickname: $("kids-nickname").value.trim(),
@@ -1888,10 +1977,13 @@ function kidsProfileFromForm() {
 // Play together: the same owner-only Start route with host=true; the child chooses games by voice
 // or typing. Camera consent here covers only I Spy rounds in this one session.
 $("kids-host-start-button").addEventListener("click", async () => {
+  if (kidsRequestPending) return;
   const profile = { ...kidsProfileFromForm(), activity: "buddy", host: true, camera_consent: $("kids-host-camera-consent").checked };
   const message = $("kids-message");
   kidsRequestPending = true;
+  // One start at a time: the single-activity Start shares the same in-flight request.
   $("kids-host-start-button").disabled = true;
+  $("kids-start-button").disabled = true;
   message.textContent = "Starting Play together…";
   message.className = "message";
   if (window.ReachyCamera?.isActive()) window.ReachyCamera.stop("Camera stopped before Kids Mode.");
@@ -1940,6 +2032,7 @@ document.querySelectorAll("[data-kids-host-activity]").forEach((button) => {
 });
 
 $("kids-start-button").addEventListener("click", async () => {
+  if (kidsRequestPending) return;
   const profile = kidsProfileFromForm();
   const message = $("kids-message");
   if (profile.activity === "ispy" && !profile.camera_consent) {
@@ -1949,6 +2042,8 @@ $("kids-start-button").addEventListener("click", async () => {
     return;
   }
   kidsRequestPending = true;
+  $("kids-host-start-button").disabled = true;
+  $("kids-start-button").disabled = true;
   const savedProfile = { ...profile };
   delete savedProfile.camera_consent;
   window.localStorage.setItem("homebody-kids-profile", JSON.stringify(savedProfile));
@@ -2780,6 +2875,7 @@ async function setPowerMode(mode, durationMinutes = 60, message = $("power-messa
     button.setAttribute("aria-busy", "true");
   });
   showPowerToast(labels[mode] || "Switching power mode…");
+  $("compact-power-detail").textContent = "Change requested · waiting for Reachy to confirm";
   document.querySelectorAll("[data-power], .manual-control").forEach((button) => { button.disabled = true; });
   $("emotion-select").disabled = true;
   $("robot-stop-button").disabled = false;

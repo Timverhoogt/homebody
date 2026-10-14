@@ -378,7 +378,7 @@
     host: {
       label: "Play together",
       tagline: "Reachy hosts the games",
-      phases: ["lobby", "switching", "offer", "waiting", "listening", "thinking", "speaking", "paused", "trouble", "offline", "ending", "ended"],
+      phases: ["preview", "lobby", "switching", "offer", "waiting", "listening", "thinking", "speaking", "paused", "trouble", "offline", "ending", "ended"],
       live: ["lobby", "switching", "offer", "listening", "thinking", "speaking"],
       neutral: "waiting",
       copy: {
@@ -467,9 +467,10 @@
 
   /** Kids stage view from allowlisted status only: activity, active, camera_active, state, power mode. */
   function kidsView({ kids = {}, state = "", powerMode = "", selected = "buddy", offline = false, ending = false, sttLocality = "" } = {}) {
-    const chosen = sceneKey(selected, "buddy");
+    // Idle may preview the Play together host world; a live session's scene always comes from status.
+    const chosen = selected === "host" ? "host" : sceneKey(selected, "buddy");
     const active = kids.active === true && !ending;
-    const scene = active ? sceneKey(kids.profile?.activity, chosen) : chosen;
+    const scene = active ? sceneKey(kids.profile?.activity, sceneKey(selected, "buddy")) : chosen;
     const info = SCENES[scene];
     const view = (phase, chip, title, detail) => ({ scene, phase, chip, title, detail });
     if (offline) return view("offline", "Offline", ...GENERIC.offline);
