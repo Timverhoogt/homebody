@@ -238,11 +238,13 @@ def test_end_and_typed_guess_stay_hit_testable_beside_the_stage(ui, width):
     _apply(page, state, "listening", _kids("ispy"))
     page.click("#tab-kids")
     page.wait_for_function("!document.querySelector('#kids-ispy-guess').disabled")
-    for selector in ("#kids-stop-button", "#kids-ispy-guess", "#kids-ispy-guess-send", "#kids-start-button"):
+    for selector in ("#kids-stop-button", "#kids-ispy-guess", "#kids-ispy-guess-send"):
         page.locator(selector).scroll_into_view_if_needed()
         hit = page.evaluate(HIT_TEST, selector)
         assert hit["ok"], selector
         assert hit["right"] <= width
+    # While a session runs, the disabled single-activity Start steps aside with its picker.
+    assert page.locator("#kids-start-button").is_hidden()
     assert not page.evaluate("document.querySelector('#kids-stop-button').disabled")
     page.fill("#kids-ispy-guess", "red ball")
     page.press("#kids-ispy-guess", "Enter")
@@ -355,7 +357,7 @@ def test_everyday_companion_reuses_the_component(ui):
     mounts = page.evaluate("""() => [...document.querySelectorAll('.hb-scene')]
         .map(s => `${s.parentElement.id}:${s.dataset.variant}:${s.dataset.scene}`).sort()""")
     assert mounts == sorted([
-        "kids-stage:stage:buddy", "everyday-companion:compact:companion", "hero-presence:figure:presence",
+        "kids-stage:stage:host", "everyday-companion:compact:companion", "hero-presence:figure:presence",
         "camera-lens:glyph:lens", "workspace-native-scene:strip:workbench", "update-rail:rail:updater",
     ])
     assert page.evaluate("HomebodyScene.liveCount()") == len(mounts)

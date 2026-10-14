@@ -46,10 +46,11 @@ def test_compact_status_and_kids_lock_are_authoritative(browser_page):
     page, errors = browser_page
     page.locator("#tab-settings").click()
     page.evaluate("updateStatus({config:{camera_feed_enabled:true},runtime:{power_mode:'awake',motors_enabled:true,state:'listening'}})")
-    assert page.locator("#compact-power-mode").inner_text() == "awake"
+    assert page.locator("#compact-power-mode").inner_text() == "Awake"
     for name in ["mic", "camera", "motors"]:
         assert page.locator(f"#compact-{name}").inner_text() == page.locator(f"#tele-{name}").inner_text()
     page.locator("#global-power-controls summary").click()
+    assert page.locator('#global-power-controls [data-power="sleep"]').is_visible()
     page.evaluate("updateStatus({runtime:{kids_mode:{locked:true,active:true}}})")
     assert page.locator(".page-heading h1:visible").inner_text() == "Kids"
     assert page.locator("#global-adult-controls").is_hidden()
@@ -66,7 +67,6 @@ def test_shared_power_and_stop_use_visible_feedback(browser_page, outcome):
     page.locator("#tab-settings").click()
     # Suppress toast cards to exercise the actual inline fallback.
     page.evaluate("HomebodyNotifications.show = () => false")
-    page.locator("#global-power-controls summary").click()
     if outcome == "network":
         page.route("**/api/power", lambda route: route.abort())
     else:
@@ -75,7 +75,7 @@ def test_shared_power_and_stop_use_visible_feedback(browser_page, outcome):
             if outcome == "success" else {"power_mode": "standby"}
         )
         page.route("**/api/power", lambda route: route.fulfill(json={"runtime": runtime}))
-    page.locator('#global-power-controls [data-power="awake"]').click()
+    page.locator('#global-power-awake').click()
     page.wait_for_function("!powerTransitionPending")
     message = page.locator("#global-power-message")
     assert message.is_visible()
