@@ -130,6 +130,8 @@ def test_late_private_setup_reply_is_discarded_on_owner_loss(setup_ui):
     page, state, posts, errors = setup_ui
     page.wait_for_selector("#setup-open")
     page.click("#setup-open")
+    # Opening fetches readiness first; admit the held refresh only after it settles.
+    page.wait_for_selector("#setup-dialog[open]")
     held = []
     page.route("**/api/onboarding", lambda route: held.append(route))
     with page.expect_request("**/api/onboarding"):
