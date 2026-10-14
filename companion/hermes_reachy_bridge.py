@@ -17,6 +17,7 @@ import json
 import logging
 import mimetypes
 import os
+import random
 import re
 import secrets
 import sys
@@ -175,11 +176,18 @@ _ISPY_TARGET_SCHEMA: dict[str, object] = {
         "stable", "visible_frame_count", "hints_en", "hints_nl",
     ],
 }
+# Vision proposes a small pool; the bridge validates each entry and picks one in code for variety.
+_ISPY_MAX_CANDIDATES = 4
+_ISPY_RECENT_LIMIT = 3
 _ISPY_RESPONSE_SCHEMA: dict[str, object] = {
     "type": "object",
     "additionalProperties": False,
-    "properties": {"target": _ISPY_TARGET_SCHEMA},
-    "required": ["target"],
+    "properties": {
+        "candidates": {
+            "type": "array", "items": _ISPY_TARGET_SCHEMA, "minItems": 1, "maxItems": _ISPY_MAX_CANDIDATES,
+        },
+    },
+    "required": ["candidates"],
 }
 _ISPY_MATCH_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -477,6 +485,71 @@ def _kids_speech_friendly(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+_ISPY_DISALLOWED_PHRASES = tuple(
+    re.compile(r"\b" + r"[\W_]+".join(map(re.escape, term.split())) + r"(?:s|es|en)?\b")
+    for term in sorted(_ISPY_DISALLOWED_TERMS)
+    if " " in term
+)
+
+
+def _ispy_disallowed(text: str) -> bool:
+    """Match forbidden words, simple plurals, and multi-word phrases such as 'credit card'."""
+    folded = text.casefold()
+    words = set(re.findall(r"[\wÀ-ÿ]+", folded))
+    stems = {word[: -len(end)] for word in words for end in ("s", "es", "en") if word.endswith(end)}
+    return bool((words | stems) & _ISPY_DISALLOWED_TERMS) or any(
+        phrase.search(folded) for phrase in _ISPY_DISALLOWED_PHRASES
+    )
+
+
+def _ispy_object_key(name: str) -> str:
+    """Collapse spacing, articles, and a plural ending so aliases count as one candidate."""
+    articles = {"a", "an", "the", "de", "het", "een"}
+    key = "".join(word for word in re.findall(r"[\wÀ-ÿ]+", name.casefold()) if word not in articles)
+    if key.endswith("ves") and len(key) > 5:
+        return key[:-3] + "f"
+    if key.endswith("s") and not key.endswith("ss") and len(key) > 3:
+        return key[:-1]
+    return key
+
+
+def _ispy_same_spot(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """Two candidates in one frame whose boxes mostly overlap are the same physical object."""
+    if first["frame_index"] != second["frame_index"]:
+        return False
+    ax, ay, aw, ah = first["bbox"]
+    bx, by, bw, bh = second["bbox"]
+    overlap = max(0.0, min(ax + aw, bx + bw) - max(ax, bx)) * max(0.0, min(ay + ah, by + bh) - max(ay, by))
+    return overlap >= 0.5 * (aw * ah + bw * bh - overlap)
+
+
+def _ispy_candidate_pool(payload: object, *, frame_count: int) -> list[dict[str, Any]]:
+    """Return the distinct candidates that each pass the full target policy; the pool shape is strict."""
+    if not isinstance(payload, dict) or set(payload) != {"candidates"}:
+        raise ValueError("invalid candidate pool")
+    raw = payload["candidates"]
+    if not isinstance(raw, list) or not 1 <= len(raw) <= _ISPY_MAX_CANDIDATES:
+        raise ValueError("invalid candidate pool size")
+    required = set(_ISPY_TARGET_SCHEMA["required"])  # type: ignore[arg-type]
+    pool: list[dict[str, Any]] = []
+    keys: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict) or set(item) != required:
+            continue
+        try:
+            target = _validate_bridge_ispy_target(item, frame_count=frame_count)
+        except (TypeError, ValueError):
+            continue
+        key = _ispy_object_key(str(target["object_name"]))
+        if key in keys or any(_ispy_same_spot(target, kept) for kept in pool):
+            continue
+        keys.add(key)
+        pool.append(target)
+    if not pool:
+        raise ValueError("no safe candidate")
+    return pool
+
+
 def _validate_bridge_ispy_target(payload: object, *, frame_count: int) -> dict[str, Any]:
     """Mirror the standalone target policy before retaining only target metadata."""
     if not isinstance(payload, dict) or payload.get("stable") is not True:
@@ -502,8 +575,7 @@ def _validate_bridge_ispy_target(payload: object, *, frame_count: int) -> dict[s
         colour = "grey"
     if colour not in _ISPY_COLOURS:
         raise ValueError("invalid target colour")
-    words = set(re.findall(r"[\wÀ-ÿ]+", " ".join((object_name, category, location)).casefold()))
-    if words & _ISPY_DISALLOWED_TERMS:
+    if _ispy_disallowed(" ".join((object_name, category, location))):
         raise ValueError("disallowed target")
     confidence = float(payload.get("confidence", 0.0))
     if not 0.78 <= confidence <= 1.0:
@@ -530,8 +602,7 @@ def _validate_bridge_ispy_target(payload: object, *, frame_count: int) -> dict[s
             if not isinstance(item, str):
                 raise ValueError("invalid target hint")
             item = " ".join(item.strip().split())
-            hint_words = set(re.findall(r"[\wÀ-ÿ]+", item.casefold()))
-            if not item or len(item) > 100 or hint_words & _ISPY_DISALLOWED_TERMS:
+            if not item or len(item) > 100 or _ispy_disallowed(item):
                 raise ValueError("unsafe target hint")
             result.append(item)
         return result
@@ -715,8 +786,7 @@ def _stt_locality(provider: str, hermes_enabled: bool) -> str:
 
 
 def _ispy_text_unsafe(text: str) -> bool:
-    words = set(re.findall(r"[\wÀ-ÿ]+", text.casefold()))
-    return bool(words & _ISPY_DISALLOWED_TERMS)
+    return _ispy_disallowed(text)
 
 
 def _ispy_confirmation(text: str) -> str:
@@ -1069,6 +1139,9 @@ class Bridge(NativeWorkspaceRoutes):
         self._kids_speech_approvals: dict[str, dict[str, Any]] = {}
         self._kids_live: dict[str, float] = {}
         self._kids_ended: dict[str, None] = {}
+        # One in-flight I Spy selection per session; Stop, cancel or a newer selection makes it stale.
+        self._ispy_selections: dict[str, object] = {}
+        self._ispy_rng: random.Random = random.SystemRandom()
         self.agent_broker = ReachyAgentBroker()
         self.agent_runs = AgentRunManager()
         # Everyday: narrow home/weather/time tools on a fast text model, never the Hermes agent.
@@ -1323,6 +1396,7 @@ class Bridge(NativeWorkspaceRoutes):
         else:
             self._end_kids_live(session_id)
             self._kids_sessions.pop(session_id, None)
+            self._ispy_selections.pop(session_id, None)
             self._kids_speech_approvals = {
                 token: approval
                 for token, approval in self._kids_speech_approvals.items()
@@ -2101,18 +2175,49 @@ class Bridge(NativeWorkspaceRoutes):
         except Exception as exc:
             raise web.HTTPBadRequest(text="Invalid bounded I Spy request") from exc
         self._mark_kids_live(session_id)
+        token = object()
+        self._ispy_selections[session_id] = token
+        try:
+            return await self._choose_ispy_target(session_id, token, age_band, language, frames, openai_key)
+        finally:
+            frames.clear()
+            if self._ispy_selections.get(session_id) is token:
+                del self._ispy_selections[session_id]
+
+    def _require_current_ispy_selection(self, session_id: str, token: object) -> None:
+        """Drop a selection whose session was stopped, cancelled, expired, or replaced while it waited."""
+        self.kids_session_live()  # prunes sessions past the hard cap
+        if self._ispy_selections.get(session_id) is not token or session_id not in self._kids_live:
+            raise web.HTTPConflict(text="I Spy selection is no longer current")
+
+    async def _choose_ispy_target(
+        self,
+        session_id: str,
+        token: object,
+        age_band: str,
+        language: str,
+        frames: list[bytes],
+        openai_key: str,
+    ) -> web.Response:
+        """Validate a bounded vision pool, then pick one approved target in code and fix it for the round."""
+        assert self.http is not None
+        self._require_current_ispy_selection(session_id, token)
+        frame_count = len(frames)
         forbidden = ", ".join(sorted(_ISPY_DISALLOWED_TERMS))
         content: list[dict[str, object]] = [{
             "type": "text",
             "text": (
-                "Select exactly one fixed child-safe household object visible clearly and consistently in at least "
-                "two supplied frames. Never select a person, face, body, clothing, screen, document, medicine, "
-                "weapon, private/sensitive, reflective, tiny, or unstable item. Return the exact strict target "
-                "schema. Colour must be one of red, orange, yellow, green, blue, purple, pink, brown, black, white, "
-                "grey. Set stable true, visible_frame_count between 2 and the supplied frame count, and confidence "
-                "from 0.78 to 1.0. bbox is normalized [x,y,width,height], fully inside the image, width and height at "
-                "least 0.12, with area from 0.025 to 0.65. Provide 1-3 short child-safe hints in English and "
-                "Dutch. Do not use any forbidden word in any target string, even as nearby context: "
+                f"List up to {_ISPY_MAX_CANDIDATES} different child-safe household objects, each visible clearly "
+                "and consistently in at least two supplied frames. Each candidate must be a different physical "
+                "object: never list the same object twice under another name. Mix kinds, sizes and colours where "
+                "the room allows, but only list objects that truly qualify; fewer candidates is fine. Never list "
+                "a person, face, body, clothing, screen, document, medicine, weapon, private/sensitive, "
+                "reflective, tiny, or unstable item. Return the exact strict candidates schema. Colour must be "
+                "one of red, orange, yellow, green, blue, purple, pink, brown, black, white, grey. Set stable "
+                "true, visible_frame_count between 2 and the supplied frame count, and confidence from 0.78 to "
+                "1.0. bbox is normalized [x,y,width,height], fully inside the image, width and height at least "
+                "0.12, with area from 0.025 to 0.65. Provide 1-2 short child-safe hints in English and Dutch. "
+                "Do not use any forbidden word in any candidate string, even as nearby context: "
                 f"{forbidden}. Use a generic safe location instead. Age band {age_band}; language {language}."
             ),
         }]
@@ -2129,7 +2234,7 @@ class Bridge(NativeWorkspaceRoutes):
                 "messages": [{"role": "user", "content": content}],
                 "response_format": {
                     "type": "json_schema",
-                    "json_schema": {"name": "kids_ispy_target", "strict": True, "schema": _ISPY_RESPONSE_SCHEMA},
+                    "json_schema": {"name": "kids_ispy_candidates", "strict": True, "schema": _ISPY_RESPONSE_SCHEMA},
                 },
             },
         ) as response:
@@ -2138,29 +2243,55 @@ class Bridge(NativeWorkspaceRoutes):
                 raise web.HTTPBadGateway(text="I Spy vision request failed")
         frames.clear()
         content.clear()
+        self._require_current_ispy_selection(session_id, token)
         try:
-            raw_target = json.loads(result["choices"][0]["message"]["content"])["target"]
-            target = _validate_bridge_ispy_target(raw_target, frame_count=len(encoded_frames))
+            raw_pool = json.loads(result["choices"][0]["message"]["content"])
+            pool = _ispy_candidate_pool(raw_pool, frame_count=frame_count)
         except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            _LOGGER.warning("I Spy target rejected (%s): %s", type(exc).__name__, exc)
+            _LOGGER.warning("I Spy candidates rejected (%s): %s", type(exc).__name__, exc)
             raise web.HTTPBadGateway(text="I Spy vision returned unsafe or invalid data") from exc
-        moderation_text = " ".join((
-            str(target["object_name"]),
-            str(target["category"]),
-            str(target["location"]),
-            *(str(item) for item in target["hints_en"]),
-            *(str(item) for item in target["hints_nl"]),
-        ))
-        if await self._moderation_flagged(moderation_text, openai_key):
-            raise web.HTTPBadGateway(text="I Spy target was not approved")
         fingerprint = (age_band, "ispy", language)
+        child_session = self._kids_sessions.get(session_id)
+        if child_session is not None and (
+            time.monotonic() - float(child_session.get("updated_at", 0.0)) > _KIDS_HISTORY_TTL_SECONDS
+        ):
+            self._kids_sessions.pop(session_id, None)
+            child_session = None
+        if child_session is not None and child_session.get("profile") != fingerprint:
+            raise web.HTTPConflict(text="Kids Mode profile cannot change during a session")
+        # Uniform code-side choice among validated distinct objects, preferring ones not used this session.
+        recent = list(child_session.get("ispy_recent") or []) if child_session is not None else []
+        fresh = [item for item in pool if _ispy_object_key(str(item["object_name"])) not in recent]
+        repeat = [item for item in pool if _ispy_object_key(str(item["object_name"])) in recent]
+        for group in (fresh, repeat):
+            if group:
+                self._ispy_rng.shuffle(group)
+        target: dict[str, Any] | None = None
+        for option in fresh + repeat:
+            moderation_text = " ".join((
+                str(option["object_name"]),
+                str(option["category"]),
+                str(option["location"]),
+                *(str(item) for item in option["hints_en"]),
+                *(str(item) for item in option["hints_nl"]),
+            ))
+            flagged = await self._moderation_flagged(moderation_text, openai_key)
+            self._require_current_ispy_selection(session_id, token)
+            if not flagged:
+                target = option
+                break
+        if target is None:
+            raise web.HTTPBadGateway(text="I Spy target was not approved")
         child_session = self._kids_sessions.get(session_id)
         if child_session is not None and child_session.get("profile") != fingerprint:
             raise web.HTTPConflict(text="Kids Mode profile cannot change during a session")
         if child_session is None:
             child_session = {"profile": fingerprint, "history": [], "updated_at": time.monotonic()}
             self._kids_sessions[session_id] = child_session
+        key = _ispy_object_key(str(target["object_name"]))
+        prior = [item for item in child_session.get("ispy_recent") or [] if item != key]
         child_session.update({
+            "ispy_recent": [key, *prior][:_ISPY_RECENT_LIMIT],
             "ispy_target": target,
             "ispy_role": "reachy_picker",
             "ispy_guess_count": 0,
@@ -2234,6 +2365,7 @@ class Bridge(NativeWorkspaceRoutes):
         except Exception as exc:
             raise web.HTTPBadRequest(text="Invalid I Spy cancellation") from exc
         self._kids_sessions.pop(session_id, None)
+        self._ispy_selections.pop(session_id, None)
         self._kids_speech_approvals = {
             token: approval
             for token, approval in self._kids_speech_approvals.items()

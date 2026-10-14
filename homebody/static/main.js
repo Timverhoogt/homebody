@@ -1155,6 +1155,7 @@ function updateStatus(payload, sequence = statusSequence) {
   });
   if (!kidsHost) $("kids-host-message").textContent = "";
   else if (kidsHost.notice === "camera_consent_needed") $("kids-host-message").textContent = "The child asked for I Spy. Use “Play I Spy (allows camera)” to allow it, or ignore this.";
+  const kidsJustStarted = kidsActive && $("panel-kids").dataset.kidsSession !== "active";
   $("kids-stop-button").disabled = !kidsActive;
   renderKidsSession(kidsActive, kidsMode, kidsHost, kidsCameraActive, remainingMinutes, remainingRemainder);
   document.querySelectorAll("[data-tab]").forEach((button) => {
@@ -1162,6 +1163,16 @@ function updateStatus(payload, sequence = statusSequence) {
   });
   if (kidsLocked && document.querySelector('[data-tab="kids"]')?.getAttribute("aria-selected") !== "true") {
     activateTab("kids");
+  }
+  if (kidsJustStarted && !kidsStaleAfterEnd) {
+    // One confirmed inactive→active transition, never ordinary polls or a rejected Start.
+    requestAnimationFrame(() => {
+      if (window.HomebodyOwner?.isOwner() !== true || document.hidden || $("panel-kids").hidden
+          || $("panel-kids").dataset.kidsSession !== "active" || kidsEndPending
+          || kidsStageStatus.offline || (kidsEndFence > 0 && sequence <= kidsEndFence)) return;
+      const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({top: 0, behavior: still ? "instant" : "smooth"});
+    });
   }
   document.querySelectorAll("[data-kids-activity], #kids-nickname, #kids-age-band, #kids-duration, #kids-language, #kids-motion-enabled").forEach((control) => {
     control.disabled = kidsActive || kidsRequestPending;
@@ -1387,6 +1398,7 @@ async function refreshStatus() {
     $("announcement-stop").disabled = true;
     $("announcement-badge").textContent = "Offline";
     $("kids-start-button").disabled = true;
+    $("kids-host-start-button").disabled = true;
     $("kids-stop-button").disabled = true;
     $("kids-status-badge").textContent = "Offline";
     // Owner loss or an unreachable robot: no stale caregiver game controls remain usable.

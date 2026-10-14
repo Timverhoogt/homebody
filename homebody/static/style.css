@@ -150,7 +150,7 @@ main { width: min(1180px, calc(100% - 48px)); margin: 0 auto; padding: calc(16px
 .compact-status-line dd { margin: 3px 0 0; color: var(--ink); font-size: .84rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
 .global-adult-controls { display: grid; gap: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
 .global-power-primary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.global-adult-controls button { min-height: 48px; padding: 8px 10px; font-size: .86rem; line-height: 1.2; }
+.global-adult-controls button { min-width: 0; min-height: 48px; padding: 8px 10px; font-size: .86rem; line-height: 1.2; white-space: normal; overflow-wrap: anywhere; }
 .global-power-primary button[aria-pressed="true"], #global-power-controls button[aria-pressed="true"] { border-color: var(--orange); color: var(--orange-ink); background: var(--orange); box-shadow: none; }
 .power-hint { margin: 0; color: var(--ink-2); font-size: .8rem; line-height: 1.45; }
 #global-power-controls { min-width: 0; border: 0; padding: 0; }
