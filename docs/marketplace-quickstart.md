@@ -1,6 +1,6 @@
 # Homebody: marketplace quick start and first-run status
 
-> Development candidate 0.5.15. This guide describes the first onboarding slice, not a published or fully accepted marketplace release.
+> Version 0.5.15 delivers the first onboarding slice. It is not complete terminal-free onboarding or a claim of native marketplace/platform acceptance.
 
 ## If you found Homebody in Reachy Mini Control
 
