@@ -726,21 +726,28 @@ def _ispy_reply(
 _KIDS_STREAM_MODEL = "eleven_flash_v2_5"
 
 
-def _kids_stream_voice(profile: str | None) -> str:
-    """The single resolver for the effective Kids streaming voice ('' if invalid)."""
-    voice = (_resolve_secret("ELEVENLABS_KIDS_VOICE_ID", profile) or "cgSgspJ2msm6clMCkdW9").strip()
+def _kids_stream_voice(profile: str | None, language: str | None = None) -> str:
+    """Resolve a server-approved language; Dutch override never changes English/adult speech."""
+    override = _resolve_secret("ELEVENLABS_KIDS_NL_VOICE_ID", profile) if language == "nl" else ""
+    voice = (override or _resolve_secret("ELEVENLABS_KIDS_VOICE_ID", profile) or "cgSgspJ2msm6clMCkdW9").strip()
     return voice if voice and all(character.isalnum() or character in "_-" for character in voice) else ""
 
 
-def _kids_voice_proof(profile: str | None) -> dict[str, str]:
+def _kids_voice_proof(profile: str | None, language: str | None = None) -> dict[str, str]:
     """Health proof of the effective Kids streaming voice: a digest and the model, never the raw id."""
-    voice = _kids_stream_voice(profile)
+    voice = _kids_stream_voice(profile, language)
     if not voice:
         return {}
     return {
         "kids_voice_sha256": hashlib.sha256(voice.encode("utf-8")).hexdigest(),
         "kids_tts_model": _KIDS_STREAM_MODEL,
     }
+
+
+def _kids_legacy_voice_proof(profile: str | None) -> dict[str, str]:
+    """A legacy language-agnostic proof is valid only when EN and NL resolve identically."""
+    english, dutch = (_kids_voice_proof(profile, language) for language in ("en", "nl"))
+    return english if english == dutch else {}
 
 
 _LOCAL_STT_PROVIDERS = frozenset({"local", "local_command"})
@@ -1210,10 +1217,18 @@ class Bridge(NativeWorkspaceRoutes):
             "session_id": session_id,
             "text_digest": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "expires_at": now + _KIDS_SPEECH_APPROVAL_TTL_SECONDS,
+            # Snapshot validated server profile, not caller-supplied speech/voice fields.
+            "language": self._kids_approved_language(session_id),
         }
         return token
 
-    def _consume_kids_speech_approval(self, token: str, session_id: str, text: str) -> None:
+    def _kids_approved_language(self, session_id: str) -> str:
+        profile = getattr(self, "_kids_sessions", {}).get(session_id, {}).get("profile", ())
+        if isinstance(profile, (tuple, list)) and len(profile) >= 3 and profile[2] in _KIDS_LANGUAGES:
+            return profile[2]
+        return "en"  # legacy synthetic/internal approvals retain the default voice, never Dutch override
+
+    def _consume_kids_speech_approval(self, token: str, session_id: str, text: str) -> str:
         """Fail closed unless this exact moderated reply owns a live capability."""
         approval = self._kids_speech_approvals.pop(token, None)
         if approval is None or float(approval.get("expires_at", 0.0)) <= time.monotonic():
@@ -1222,6 +1237,10 @@ class Bridge(NativeWorkspaceRoutes):
         actual_digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
         if approval.get("session_id") != session_id or not hmac.compare_digest(expected_digest, actual_digest):
             raise web.HTTPForbidden(text="Kids Mode speech approval does not match this response")
+        language = approval.get("language", "en")
+        if language not in _KIDS_LANGUAGES:
+            raise web.HTTPForbidden(text="Kids Mode speech language is invalid")
+        return language
 
     async def start(self, app: web.Application) -> None:
         self.http = ClientSession(timeout=ClientTimeout(total=180, connect=10))
@@ -1462,10 +1481,14 @@ class Bridge(NativeWorkspaceRoutes):
             )
             backends.append({"name": "openclaw", "label": "OpenClaw", **openclaw_health})
         agent_ok = bool(backends) and all(item.get("ok") is True for item in backends)
-        providers = _configured_voice_providers(self.profile)
+        provider_names = _configured_voice_providers(self.profile)
+        providers: dict[str, object] = dict(provider_names)
         legacy = {"hermes_api": hermes_ok} if self.hermes_enabled else {}
-        providers["stt_locality"] = _stt_locality(providers.get("stt_provider", ""), self.hermes_enabled)
-        providers.update(_kids_voice_proof(self.profile))
+        providers["stt_locality"] = _stt_locality(provider_names.get("stt_provider", ""), self.hermes_enabled)
+        providers.update(_kids_legacy_voice_proof(self.profile))
+        providers["kids_voice_proofs"] = {
+            language: _kids_voice_proof(self.profile, language) for language in ("en", "nl")
+        }
         return web.json_response(
             {
                 "status": "ok" if agent_ok else "degraded",
@@ -2352,7 +2375,15 @@ class Bridge(NativeWorkspaceRoutes):
     async def kids_voice_proof(self, request: web.Request) -> web.Response:
         """Current digest+model of the effective Kids streaming voice (same resolver); no raw id."""
         self.require_auth(request)
-        return web.json_response(_kids_voice_proof(self.profile), headers={"Cache-Control": "no-store"})
+        query = getattr(request, "query", {})
+        language = query.get("language")
+        if set(query) - {"language"} or (language is not None and language not in _KIDS_LANGUAGES):
+            raise web.HTTPBadRequest(text="Invalid Kids voice-proof language")
+        proof = (
+            _kids_voice_proof(self.profile, language)
+            if language is not None else _kids_legacy_voice_proof(self.profile)
+        )
+        return web.json_response(proof, headers={"Cache-Control": "no-store"})
 
     async def kids_ispy_cancel(self, request: web.Request) -> web.Response:
         """Delete bridge-side target, guess state, history, and speech approvals."""
@@ -3889,12 +3920,11 @@ class Bridge(NativeWorkspaceRoutes):
         eleven_key = _resolve_secret("ELEVENLABS_API_KEY", self.profile)
         if not eleven_key:
             raise web.HTTPServiceUnavailable(text="ElevenLabs is not configured on the Hermes host")
-        # ELEVENLABS_KIDS_VOICE_ID or the default, via the one resolver health also proves.
-        voice = _kids_stream_voice(self.profile)
+        # Language is bound to the exact single-use moderated-text approval, never speech payload.
+        language = self._consume_kids_speech_approval(approval_token, session_id, text)
+        voice = _kids_stream_voice(self.profile, language)
         if not voice:
             raise web.HTTPServiceUnavailable(text="The Kids Mode ElevenLabs voice ID is invalid")
-        self._consume_kids_speech_approval(approval_token, session_id, text)
-
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}/stream"
         async with self.http.post(
             url,

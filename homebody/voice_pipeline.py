@@ -41,6 +41,17 @@ _KIDS_EMPTY_TURN_RETRIES = 2
 _STT_LOCALITIES = frozenset({"local", "cloud"})
 
 
+def kids_ack_voice_proof(health: dict[str, object], language: str) -> tuple[object, object]:
+    """Choose the immutable turn language's private proof; malformed/missing entries fail closed."""
+    if "kids_voice_proofs" in health:
+        proofs = health["kids_voice_proofs"]
+        proof = proofs.get(language) if isinstance(proofs, dict) else None
+        proof = proof if isinstance(proof, dict) else {}
+    else:
+        proof = health  # legacy bridges have one voice for both languages
+    return proof.get("kids_voice_sha256"), proof.get("kids_tts_model")
+
+
 def stt_locality(config: AppConfig, health: dict[str, object]) -> str:
     """Categorical STT location for this turn: 'local', 'cloud' or 'unknown'.
 
@@ -133,7 +144,7 @@ class PipelineVoiceMixin:
             if not isinstance(health, dict):
                 health = {}
             # Per-conversation proofs; RAM only. The voice digest never enters public status.
-            voice_proof = (health.get("kids_voice_sha256"), health.get("kids_tts_model"))
+            voice_proof = kids_ack_voice_proof(health, initial_config.language)
             locality = stt_locality(config, health)
             locality_provider = config.stt_provider
             stt_turns = 0

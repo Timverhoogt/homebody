@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "voice_sha256": "15918b1fda975dfcbd15470cf7353d8051ad074b1649bb895f33781985a76373",
+  "model": "eleven_flash_v2_5",
+  "sample_rate": 24000,
+  "clips": [
+    {
+      "id": "nl-ruth-think",
+      "language": "nl",
+      "text": "Even denken.",
+      "file": "nl-ruth-think.wav",
+      "sha256": "494032d677dcef5850d69f180e69a96a00e665acd27192b72ac45a3424a0e676",
+      "duration_seconds": 0.9287916666666667
+    },
+    {
+      "id": "nl-ruth-hmm",
+      "language": "nl",
+      "text": "Hmm.",
+      "file": "nl-ruth-hmm.wav",
+      "sha256": "be4e054a1e518bd8c2b10ebb3f5275a8a9a29a745259c5b540b2fb0fa78ab587",
+      "duration_seconds": 0.6037083333333333
+    },
+    {
+      "id": "nl-ruth-see",
+      "language": "nl",
+      "text": "Eens kijken.",
+      "file": "nl-ruth-see.wav",
+      "sha256": "87dbc9f4495aefd695eb1b4ac058de01eeced4568264bcc5c7877bfb3cccda28",
+      "duration_seconds": 0.8359166666666666
+    }
+  ]
+}

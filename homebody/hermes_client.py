@@ -238,6 +238,7 @@ class HermesBridgeClient:
         response = self._client.get(
             f"{self.config.bridge_url}/v1/kids/voice-proof",
             headers={"Authorization": f"Bearer {self.config.api_key}"},
+            params={"language": self.config.language},
             timeout=timeout,
         )
         self._raise_for_error(response, "Kids voice proof")
