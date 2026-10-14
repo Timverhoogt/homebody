@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.16] — Dutch Kids voice and latency visibility
+
+- Add a host-configured Dutch-only Kids voice override, resolved from the validated language bound to each single-use moderated-text approval. English Kids voice and adult speech engines are unchanged; the package does not activate Ruth on other installations implicitly.
+- Package three short Netherlands-Dutch Ruth waiting clips as a separate fixed, integrity-checked voice bundle. Keep existing Jessica clips for compatibility; use only a current per-language bridge voice/model proof, with silent refusal on missing, malformed or mismatched evidence. No per-turn live filler synthesis.
+- Remove the blocking processing cue before Kids recognition, leaving adult Pipeline behaviour unchanged. The previous real story-time cue cost about half a second; this does not claim the remaining live recognition/reasoning delay is solved.
+- Add numeric, text-free native/client recognition timings, first provider PCM and SDK enqueue marks while preserving currentness, privacy, Stop/End and output quarantine. Enqueue is not an audible-output measurement.
+- Preserve on-robot Parakeet and explicitly local host fallback. Nemotron is not activated by this release; synthetic inference and streaming/full-conversation acceptance remain distinct.
+- Synchronize PWA shell/query v95. Reference deployment and caregiver-supervised Dutch speech acceptance are separate milestones.
+
 ## [0.5.15] — Marketplace-first onboarding foundations
 
 - Add a resumable Owner/CSRF-protected setup flow for marketplace and manual arrivals: confirm the actual host, save language, use existing backend settings, check connectivity/authentication silently and review privacy before next-Start listening. Initial owner provisioning and a standalone no-agent backend installer are not included yet.

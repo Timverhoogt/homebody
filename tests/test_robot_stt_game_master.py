@@ -275,7 +275,8 @@ def test_robot_adapter_owns_no_media_sdk_or_network_client() -> None:
         "robot_stt.py": {"__future__", "itertools", "json", "os", "socket", "struct", "subprocess", "sys",
                          "tempfile", "threading", "time", "collections", "dataclasses", "pathlib", "numpy",
                          ".", ".asr_worker", ".config"},
-        "stt_routing.py": {"__future__", "collections", "dataclasses", "numpy", ".audio", ".config",
+        # Timing/diagnostic stdlib imports do not add a media or network owner.
+        "stt_routing.py": {"__future__", "collections", "dataclasses", "logging", "time", "numpy", ".audio", ".config",
                            ".robot_stt"},
     }
     for name, modules in allowed.items():

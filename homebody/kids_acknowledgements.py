@@ -330,9 +330,12 @@ _catalog: dict[str, tuple[AckClip, ...]] | None = None
 
 
 def catalog() -> dict[str, tuple[AckClip, ...]]:
-    """Verify the packaged catalog once per process."""
+    """Verify fixed packaged voice bundles once; every clip still requires a matching turn proof."""
     global _catalog
     with _catalog_lock:
         if _catalog is None:
             _catalog = load_catalog()
+            # Fixed app-owned bundle only: no caller paths, live synthesis or weakened manifests.
+            dutch = load_catalog(ASSET_DIR / "ruth-nl")
+            _catalog = {language: clips + dutch[language] for language, clips in _catalog.items()}
         return _catalog

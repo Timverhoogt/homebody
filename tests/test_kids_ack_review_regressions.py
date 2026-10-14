@@ -129,7 +129,10 @@ def bare_bridge(monkeypatch, tmp_path, voice: dict[str, str]):
     monkeypatch.setattr(
         module,
         "_resolve_secret",
-        lambda key, _profile: voice.get("id") if key == "ELEVENLABS_KIDS_VOICE_ID" else "synthetic-key",
+        lambda key, _profile: (
+            voice.get("id") if key == "ELEVENLABS_KIDS_VOICE_ID"
+            else "" if key == "ELEVENLABS_KIDS_NL_VOICE_ID" else "synthetic-key"
+        ),
     )
     return module, bridge
 
@@ -176,7 +179,13 @@ def test_host_voice_override_changes_health_proof_and_disables_filler(monkeypatc
         (before, True),  # the clips' voice is the effective voice
         (after, False),  # override after packaging: mismatch
         ({}, False),  # old bridge without proof
-        ({**before, "kids_tts_model": "eleven_multilingual_v2"}, False),
+        ({
+            **before, "kids_tts_model": "eleven_multilingual_v2",
+            "kids_voice_proofs": {
+                language: {**entry, "kids_tts_model": "eleven_multilingual_v2"}
+                for language, entry in before["kids_voice_proofs"].items()
+            },
+        }, False),
     ]:
         harness = Harness(
             monkeypatch, tmp_path / f"h{len(proof)}{expected}{proof.get('kids_tts_model', '')}", stt_seconds=0.5
@@ -358,7 +367,9 @@ def bridge_transport(module, bridge, *, proof_route=True, stt_seconds=0.5):
         if path.endswith("/v1/kids/voice-proof"):
             if not proof_route:
                 return httpx.Response(404, text="old bridge")
-            return httpx.Response(200, text=asyncio.run(bridge.kids_voice_proof(None)).text)
+            return httpx.Response(200, text=asyncio.run(
+                bridge.kids_voice_proof(SimpleNamespace(query=request.url.params))
+            ).text)
         if path.endswith("/v1/audio/transcriptions"):
             time.sleep(stt_seconds)  # slow STT: the filler delay elapses
             return httpx.Response(200, json={"text": "synthetic", "provider": "local_command"})

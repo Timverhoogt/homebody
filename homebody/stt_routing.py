@@ -9,6 +9,8 @@ existing host path unchanged. Infrastructure failure is reported separately from
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -21,6 +23,7 @@ from .robot_stt import RobotSttCancelled, RobotSttUnavailable
 _LOCAL_STT_RECEIPTS = frozenset({"local", "local_command"})
 _CLOUD_STT_RECEIPTS = frozenset({"openai", "groq", "mistral", "elevenlabs", "deepgram", "assemblyai", "azure"})
 PROCESSING_LOCATIONS = frozenset({"robot", "host", "cloud"})
+_LOGGER = logging.getLogger(__name__)
 
 
 def receipt_locality(provider: object) -> str:
@@ -96,6 +99,7 @@ def transcribe_endpoint(
     robot = runtime._robot_stt_client()  # type: ignore[attr-defined]
     try:
         submitted()
+        started = time.monotonic()
         receipt = robot.transcribe(
             samples,
             session=session_id,
@@ -103,6 +107,7 @@ def transcribe_endpoint(
             language=robot_language(config),
             cancelled=lambda: not is_current(),
         )
+        round_trip_ms = (time.monotonic() - started) * 1000
     except RobotSttCancelled:
         raise SttTurnCancelled("cancelled") from None
     except RobotSttUnavailable as exc:
@@ -110,6 +115,10 @@ def transcribe_endpoint(
     else:
         if not is_current():
             raise SttTurnCancelled("late final")  # a late final never reaches the turn
+        decode_ms = getattr(receipt, "decode_ms", None)
+        if type(decode_ms) is not int or decode_ms < 0:
+            decode_ms = "unknown"
+        _LOGGER.info("Robot STT final: worker_decode_ms=%s round_trip_ms=%.1f", decode_ms, round_trip_ms)
         return SttResult(receipt.text, "robot", "local", "robot")
 
     if not is_current():
