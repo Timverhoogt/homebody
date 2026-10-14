@@ -18,7 +18,7 @@ def test_power_feedback_and_panel_independent_click():
 let powerTransitionPending = false;
 const home = element('home-awake', 'awake');
 const robot = element('robot-awake', 'awake');
-for (const id of ['power-message','robot-message','emotion-select','robot-stop-button']) element(id);
+for (const id of ['power-message','robot-message','emotion-select','robot-stop-button','compact-power-detail']) element(id);
 async function refreshStatus(){home.disabled=false;robot.disabled=false;}
 let resolveRequest;
 let calls=0;
