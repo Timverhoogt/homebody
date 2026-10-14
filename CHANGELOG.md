@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.13] - 2026-10-14
+
+### Fixed
+- Kids leads with Play together and Reachy’s game-master role, with an explicit setup route before the unchanged supervised Start. Single activities are secondary; the idle host illustration is a still preview, not a live session.
+- Active Kids play groups the confirmed host phase/current activity and original remaining time with reachable End/input controls; the review and single-game picker step aside. Both Start paths suppress duplicate in-flight requests.
+- Shared power card shows the reported mode first, groups microphone/camera/motor status, exposes Wake up, Standby and Stop movement, and labels Meeting/Sleep and their effects. Camera permission is distinguished from this page’s viewer; unknown/offline status and unconfirmed requests do not claim power success or active listening.
+- The setup entry remains uncovered on short phones with enlarged text, and bottom navigation labels wrap rather than overlap. Meaningful phase/power feedback respects reduced motion. PWA shell/query v92.
+
+### Deployment notes
+- UI-only: existing backend admission, caregiver deadline, camera consent, Stop/privacy/moderation, installer and settings remain unchanged. Retains the 0.5.12 Agent/updater fixes and host transcription; no Jetson STT activation.
+- Fixture/Chromium evidence does not replace supervised physical games/movement or acceptance on the phone’s Android WebView.
+
 ## [0.5.12] - 2026-10-13
 
 ### Fixed
