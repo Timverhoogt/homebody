@@ -197,7 +197,10 @@ class PipelineVoiceMixin:
                             self._signal_error()
                         break
 
-                    self._play_asset("processing.wav")
+                    # Kids already have thinking motion and delayed cached acknowledgement.
+                    # Do not wait for the full processing cue before submitting their audio.
+                    if not config.kids_mode_enabled:
+                        self._play_asset("processing.wav")
                     if self._motion is not None:
                         self._motion.thinking()
                     self._workspace_event(workspace_generation, "activity", "Transcribing your voice")
