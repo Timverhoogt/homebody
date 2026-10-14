@@ -1,0 +1,21 @@
+.setup-intro { display: flex; gap: 20px; align-items: center; justify-content: space-between; margin: 16px 0; padding: 20px; border: 1px solid currentColor; border-radius: 18px; }
+.setup-intro h2, .setup-intro p { margin: 0 0 8px; }
+.setup-intro button { flex-shrink: 0; }
+.setup-review-entry { grid-column: 1 / -1; }
+#setup-dialog { color: inherit; background: var(--paper, #f1ebe0); border: 1px solid currentColor; border-radius: 20px; width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 24px; overflow: auto; overscroll-behavior: contain; box-sizing: border-box; }
+#setup-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+#setup-dialog header, #setup-dialog footer { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+#setup-dialog header { justify-content: space-between; }
+#setup-dialog header h2 { margin: 0; }
+#setup-dialog section { padding: 12px 0; }
+#setup-dialog h3 { margin: 16px 0 8px; }
+#setup-dialog p { line-height: 1.6; overflow-wrap: anywhere; }
+#setup-dialog label { display: grid; gap: 8px; margin: 16px 0; }
+#setup-dialog select { width: 100%; max-width: 100%; min-width: 0; }
+#setup-dialog button { min-height: 48px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+#setup-dialog section > button { margin: 4px 0; }
+#setup-dialog .setup-consent { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: start; }
+#setup-dialog .setup-consent input { margin-top: 5px; }
+#setup-dialog .message:empty { display: none; }
+@media (max-width: 600px) { .setup-intro { flex-direction: column; align-items: stretch; } #setup-dialog { padding: 18px; } #setup-dialog footer button { flex: 1 1 110px; } }
+@media (prefers-color-scheme: dark) { #setup-dialog { background: #17161b; color: #f1ebe0; } }

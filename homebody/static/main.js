@@ -864,6 +864,7 @@ function renderPowerNow(powerMode, runtime) {
 }
 
 function updateStatus(payload, sequence = statusSequence) {
+  window.HomebodyOnboarding?.observe(payload);
   renderHost(payload.host);
   const config = payload.config || {};
   $("local-vision-ask").hidden = !(config.local_vision_enabled && config.camera_enabled);
@@ -1090,7 +1091,9 @@ function updateStatus(payload, sequence = statusSequence) {
     lastMotorAnnouncement = motorAnnouncement;
   }
   renderTelemetry({
-    mic: kidsActive
+    mic: state === "setup_required"
+      ? ["off", "Off · setup"]
+      : kidsActive
       ? ["on", "Kids session"]
       : ["meeting", "sleep"].includes(powerMode)
         ? ["off", "Off"]

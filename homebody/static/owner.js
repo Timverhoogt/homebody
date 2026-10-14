@@ -8,6 +8,7 @@
     window.HomebodyNotifications?.setSuppressed("owner", !session.owner);
     window.HomebodyVolume?.owner(session.owner);
     window.HomebodyAssistantModes?.owner(session.owner);
+    window.HomebodyOnboarding?.owner(session.owner);
     window.HomebodyUpdates?.owner(session.owner);
     byId('owner-pair-panel').hidden = session.owner;
     byId('owner-device-controls').hidden = !session.owner;

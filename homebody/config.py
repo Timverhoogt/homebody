@@ -143,6 +143,14 @@ class AppConfig:
     realtime_voice: str = "marin"
     realtime_reasoning_effort: str = "low"
     instance_id: str = ""
+    # Existing saved installations retain their startup behavior. Only a missing config
+    # opts into quiet first run; onboarding never silently resets an established robot.
+    setup_pending: bool = False
+    setup_step: str = "welcome"
+    setup_entry_route: str = "unknown"
+    setup_connection_sha256: str = ""
+    setup_connection_checked_at: float = 0.0
+    setup_check_id: str = ""
 
     def __post_init__(self) -> None:
         self.bridge_url = self.bridge_url.strip().rstrip("/")
@@ -320,6 +328,9 @@ class AppConfig:
 
     def redacted_dict(self) -> dict[str, object]:
         payload = asdict(self)
+        payload.pop("setup_connection_sha256", None)
+        payload.pop("setup_connection_checked_at", None)
+        payload.pop("setup_check_id", None)
         payload["api_key"] = "********" if self.api_key else ""
         payload["api_key_configured"] = bool(self.api_key)
         payload.pop("mcp_token_sha256", None)
@@ -344,7 +355,7 @@ def load_config(path: Path | None = None) -> AppConfig:
     config_path = path or default_config_path()
     with _CONFIG_LOCK:
         if not config_path.exists():
-            return AppConfig()
+            return AppConfig(setup_pending=True, motion_enabled=False, robot_tools_enabled=False)
         try:
             payload = json.loads(config_path.read_text(encoding="utf-8"))
             if not isinstance(payload, dict):

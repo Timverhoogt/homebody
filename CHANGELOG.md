@@ -1,5 +1,20 @@
 # Changelog
 
+All notable changes to this project are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project currently remains in early alpha and has not published a stable compatibility promise.
+
+## [Unreleased]
+
+## [0.5.15] — Marketplace-first onboarding foundations
+
+- Add a resumable Owner/CSRF-protected setup flow for marketplace and manual arrivals: confirm the actual host, save language, use existing backend settings, check connectivity/authentication silently and review privacy before next-Start listening. Initial owner provisioning and a standalone no-agent backend installer are not included yet.
+- Only genuinely fresh configurations enter quiet setup; no app-owned microphone/playback, wake-model download or actions/GPIO/hosted-agent startup is admitted. Fresh motion/tools default off; established settings/startup are preserved.
+- Bind short-lived connection evidence to saved speech/backend settings and a check generation; reject late checks after configuration drift or newer attempts. Connection success never claims provider-model or physical speech acceptance.
+- Fence private browser setup responses on owner loss and Kids locks; render setup microphone status as Off. Finishing saves setup only; explicit Control Stop/Start admits listening.
+- Remove unconditional Unix-locking imports from the desktop app import path while refusing unsupported managed-update writes before filesystem changes. This is not native Windows certification.
+- Package setup JS/CSS, synchronize PWA shell/query v94 and document marketplace lifecycle boundaries and remaining acceptance work. Native marketplace and physical acceptance remain separate from package publication and reference deployment.
+
 ## [0.5.14] — On-robot recognition trial
 
 - Add an owner-provisioned Parakeet TDT 0.6b v3 native worker for completed Kids and Pipeline utterances. Reuse the existing microphone owner and RAM samples; recognition stays on Reachy. The generic package remains on configured recognition by default.
@@ -7,14 +22,6 @@
 - Fence robot finals, fallback and acknowledgement work across Stop, End, privacy, power and actual game-master switches. Preserve the outer caregiver play deadline and all 0.5.13 game, I Spy and phone/power behavior.
 - Show actual per-turn recognition location separately from the selected provider; clear transient provenance on teardown.
 - This is completed-utterance recognition, not streaming partials. Synthetic native tests confirm fast GPU decoding but expose short-Dutch accuracy gaps; supervised microphone/adult/child testing remains required.
-
-
-All notable changes to this project are documented here.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project currently remains in early alpha and has not published a stable compatibility promise.
-
-## [Unreleased]
-
 ## [0.5.13] - 2026-10-14
 
 ### Fixed

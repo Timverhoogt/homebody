@@ -10,7 +10,7 @@
 
 > **Early alpha.** Reference deployment is not broad hardware or production acceptance. The original Lite + Raspberry Pi 4 reference is retained; the current Lite + Jetson host has app, camera, Home Assistant, power, speaker and managed-update reference deployment. Each installation still needs supervised wake/fold, camera/privacy, speech and acoustic interruption checks. Local GPU vision, accelerated gestures, GPIO and controller support are not blanket verified on Jetson.
 >
-> **Release boundary:** robot release **0.5.9** includes the mode-card spacing fix and current companion source. The PR #77/#78 host support landed after 0.5.2; packaging it does not automatically configure or restart a subscription bridge or native Workspace. The reference bridge was deployed separately. Source, installed robot release and host configuration differ; see [release status](docs/release-status.md).
+> **Release boundary:** published releases, source and installed robot/bridge versions are distinct; see [release status](docs/release-status.md) and the installed identity. Version 0.5.15 adds the first marketplace-aware onboarding slice, not complete terminal-free installation or broad platform acceptance. Packaging companion source does not configure or restart a subscription bridge or native Workspace.
 
 ## Choose the purpose, then the speech engine
 
@@ -33,9 +33,9 @@ Native Workspace preserves the selected Hermes session's identity and history. T
 Start with the local robot, then add connected capabilities deliberately.
 
 1. Set up [Reachy Mini Wireless](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini/get_started), or a [wall-powered Lite with USB data](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini_lite/get_started). For community hosts, read the [hardware guide](docs/hardware-setups.md) and [Lite + Pi 4 guide](docs/lite-raspberry-pi-4.md).
-2. Install Homebody through the Reachy app dashboard. Use Reachy SDK **1.9.0+** and Python **3.11+**; managed updates have additional interpreter requirements in the [update guide](docs/managed-updates.md).
+2. In Reachy Mini Control, choose **Applications → Discover Apps → Homebody → Install → Start**. Use Reachy SDK **1.9.0+** and Python **3.11+**; managed updates have additional interpreter requirements in the [update guide](docs/managed-updates.md). See the [marketplace quick start and first-run limits](docs/marketplace-quickstart.md).
 3. Open `http://REACHY_HOST:8042` on your trusted management network. Pair an owner browser using the documented pairing flow; use private trusted HTTPS for the phone PWA.
-4. With clear movement space, confirm folded Standby and released torque. Try guarded Wake, one bounded look, Stop, then Standby and fold-before-torque-off. Follow [operations and acceptance](OPERATIONS.md) before enabling voice or camera paths one at a time.
+4. On a fresh 0.5.15 install, choose **Continue setup**: confirm the host, configure the backend, check its connection silently and review next-Start listening. The app stays quiet until setup is saved and you explicitly Stop/Start it. Initial secure owner provisioning and standalone backend installation remain separate setup work. Existing saved installations retain their startup behavior. Follow [operations and acceptance](OPERATIONS.md) for supervised speech, guarded movement, camera/privacy and fold/torque checks one at a time.
 
 The local dashboard works without an agent. Meeting and Sleep stop app microphone capture and wake detection. Camera viewing is opt-in and starts only after **Start**; the private HTTPS frame fallback has a lower frame rate than WebRTC. Newer camera lifecycle/startup repairs and safe movement controls do not replace supervised acceptance. See [robot controls](docs/robot-controls.md).
 

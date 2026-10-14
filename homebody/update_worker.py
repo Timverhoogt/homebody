@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import fcntl
 import json
 import os
 import re
@@ -19,7 +18,7 @@ from pathlib import Path
 
 import httpx
 
-from .updates import ACTIVE, REPOSITORY, Store, compatible_host, get, validate_manifest, verify_wheel
+from .updates import ACTIVE, REPOSITORY, Store, compatible_host, fcntl, get, validate_manifest, verify_wheel
 
 UNIT = "homebody-app.service"
 HEARTBEAT_INTERVAL = 2

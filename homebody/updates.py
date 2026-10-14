@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -16,6 +15,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+
+try:
+    import fcntl
+except ImportError:  # Windows can launch the app, but not the Linux managed updater.
+    fcntl = None
 
 REPOSITORY = "Timverhoogt/homebody"
 API = f"https://api.github.com/repos/{REPOSITORY}/releases"
@@ -158,6 +162,8 @@ class Store:
 
     @contextlib.contextmanager
     def transaction(self):
+        if fcntl is None:
+            raise OSError("Managed updates require supported file locking")
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         with (self.root / "journal.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
@@ -172,6 +178,8 @@ class Store:
             return {"job": None, "history": []}
 
     def read(self) -> dict:
+        if fcntl is None:
+            raise OSError("Managed updates require supported file locking")
         # Observation must not enter the write transaction: a privileged
         # maintenance read used to atomically replace the journal as root.
         # Reuse an existing lock read-only, but never create a directory/lock.

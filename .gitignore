@@ -18,6 +18,7 @@ settings.json
 .idea/
 .vscode/
 .release/
+.artifacts/
 test-results/
 .verify-kids-ispy-dist/
 GATE_1R_ACCEPTANCE_REPORT.md
