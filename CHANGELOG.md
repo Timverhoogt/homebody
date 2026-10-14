@@ -13,9 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Active Kids play groups the confirmed host phase/current activity and original remaining time with reachable End/input controls; the review and single-game picker step aside. Both Start paths suppress duplicate in-flight requests.
 - Shared power card shows the reported mode first, groups microphone/camera/motor status, exposes Wake up, Standby and Stop movement, and labels Meeting/Sleep and their effects. Camera permission is distinguished from this page’s viewer; unknown/offline status and unconfirmed requests do not claim power success or active listening.
 - The setup entry remains uncovered on short phones with enlarged text, and bottom navigation labels wrap rather than overlap. Meaningful phase/power feedback respects reduced motion. PWA shell/query v92.
+- Confirmed Kids Start brings the phone back to the animation once, respecting reduced motion and owner/End/offline fences; normal active polls do not reset the user’s scroll position. Shared Start is disabled alongside single-activity Start while offline.
+- I Spy vision proposes up to four distinct candidates. Code validates and de-duplicates them before a randomized, moderated choice, preferring unused objects within the current session when possible. The chosen target stays fixed for the round; an empty valid pool fails closed. End, expiry, cancellation and superseded searches fence late selection replies.
 
 ### Deployment notes
-- UI-only: existing backend admission, caregiver deadline, camera consent, Stop/privacy/moderation, installer and settings remain unchanged. Retains the 0.5.12 Agent/updater fixes and host transcription; no Jetson STT activation.
+- Dashboard and bounded I Spy target-selection update: caregiver deadline, camera consent, Stop/privacy/moderation authority, installer and settings remain unchanged. Update the companion host bridge as well as the canonical robot wheel; session-scoped recent objects are RAM-only and never exposed/persisted. Retains the 0.5.12 Agent/updater fixes and host transcription; no Jetson STT activation.
 - Fixture/Chromium evidence does not replace supervised physical games/movement or acceptance on the phone’s Android WebView.
 
 ## [0.5.12] - 2026-10-13
