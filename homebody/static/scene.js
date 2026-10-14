@@ -456,6 +456,8 @@
    * active STT runs on the Hermes host; cloud or unknown stay neutral. No progress or timing.
    */
   function transcribingCopy(sttLocality) {
+    if (sttLocality === "robot") return ["Transcribing on Reachy", "Turning speech into text on Reachy itself."];
+    if (sttLocality === "host") return ["Transcribing on Hermes host", "Turning speech into text on your Hermes host."];
     if (sttLocality === "local") return ["Local transcription", "Turning speech into text on your Hermes host."];
     if (sttLocality === "cloud") return ["Transcribing", "Turning speech into text with a cloud speech service."];
     return ["Transcribing", "Turning speech into text."];

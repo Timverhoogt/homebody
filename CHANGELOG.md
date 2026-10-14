@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.14 — On-robot recognition trial
+
+- Add an owner-provisioned Parakeet TDT 0.6b v3 native worker for completed Kids and Pipeline utterances. Reuse the existing microphone owner and RAM samples; recognition stays on Reachy. The generic package remains on configured recognition by default.
+- Offer one explicitly opted-in, confirmed-local Hermes host fallback for decoder infrastructure failures. A misheard word does not itself trigger fallback. Adult Live/Realtime speech engines are unchanged.
+- Fence robot finals, fallback and acknowledgement work across Stop, End, privacy, power and actual game-master switches. Preserve the outer caregiver play deadline and all 0.5.13 game, I Spy and phone/power behavior.
+- Show actual per-turn recognition location separately from the selected provider; clear transient provenance on teardown.
+- This is completed-utterance recognition, not streaming partials. Synthetic native tests confirm fast GPU decoding but expose short-Dutch accuracy gaps; supervised microphone/adult/child testing remains required.
+
+
 All notable changes to this project are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project currently remains in early alpha and has not published a stable compatibility promise.

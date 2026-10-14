@@ -15,11 +15,21 @@ from pathlib import Path
 
 import httpx
 
-from .audio import AdaptiveEndpointRecorder, EndpointResult, encode_wav, resample_linear
+from .audio import AdaptiveEndpointRecorder, EndpointResult, resample_linear
 from .config import AppConfig
 from .hermes_client import HermesBridgeError, SpeechAudio
 from .kids_acknowledgements import KidsAckPlayer, eligible_clips, output_quarantined
 from .kids_acknowledgements import catalog as kids_ack_catalog
+from .robot_stt import RobotSttClient
+from .stt_routing import (
+    SttInfrastructureError,
+    SttResult,
+    SttTurnCancelled,
+    receipt_locality,
+    transcribe_endpoint,
+)
+
+__all__ = ["PipelineVoiceMixin", "receipt_locality", "stt_locality"]
 
 # Keep the runtime logger name so existing log filters still match these lines.
 _LOGGER = logging.getLogger("homebody.runtime")
@@ -29,30 +39,21 @@ _MARKDOWN = re.compile(r"[`*_#>|]+")
 # Consecutive silent/empty Kids turns that re-open the microphone before returning to wake.
 _KIDS_EMPTY_TURN_RETRIES = 2
 _STT_LOCALITIES = frozenset({"local", "cloud"})
-_LOCAL_STT_RECEIPTS = frozenset({"local", "local_command"})
-_CLOUD_STT_RECEIPTS = frozenset({"openai", "groq", "mistral", "elevenlabs", "deepgram", "assemblyai", "azure"})
-
-
-def receipt_locality(provider: object) -> str:
-    """Categorical locality of one actual transcription receipt; anything else is 'unknown'."""
-    value = str(provider or "").strip().casefold()
-    if value in _LOCAL_STT_RECEIPTS:
-        return "local"
-    if value in _CLOUD_STT_RECEIPTS:
-        return "cloud"
-    return "unknown"
 
 
 def stt_locality(config: AppConfig, health: dict[str, object]) -> str:
     """Categorical STT location for this turn: 'local', 'cloud' or 'unknown'.
 
-    ElevenLabs is always a cloud transcription. Otherwise the bridge uses Hermes' configured
-    provider, so only the bridge's own server-derived health receipt can confirm 'local'.
+    ElevenLabs is always a cloud transcription. The robot route never borrows the host bridge's
+    health claim; only its own per-turn receipt sets a location. Otherwise the bridge uses
+    Hermes' configured provider, so only the bridge's server-derived health can confirm 'local'.
     """
     if config.conversation_mode != "pipeline" and not config.kids_mode_enabled:
         return "unknown"
     if config.stt_provider == "elevenlabs":
         return "cloud"
+    if config.stt_provider == "robot":
+        return "unknown"
     value = health.get("stt_locality") if isinstance(health, dict) else None
     return value if value in _STT_LOCALITIES else "unknown"
 
@@ -122,6 +123,11 @@ class PipelineVoiceMixin:
             with self._status_lock:
                 self._status.stt_locality = value
 
+        def set_processing(location: str, verified: bool) -> None:
+            with self._status_lock:
+                self._status.stt_processing_location = location
+                self._status.stt_processing_verified = verified
+
         try:
             health = client.health()
             if not isinstance(health, dict):
@@ -153,6 +159,7 @@ class PipelineVoiceMixin:
                     self._set_status("listening", "Waiting for a follow-up")
                 first_turn = False
 
+                stt_result: SttResult | None = None
                 if typed_input is not None:
                     transcript = typed_input
                     workspace_generation = None
@@ -175,7 +182,13 @@ class PipelineVoiceMixin:
                     self._voice_timings.begin("pipeline", timing_mode, warm=turns_started > 0)
                     turns_started += 1
                     endpoint = self._record_utterance(config)
+                    # local_speech_end keeps its historical meaning (endpoint returned);
+                    # speech_last_voiced is the actual last voiced frame, endpoint_final the decision.
                     self._voice_timings.mark("local_speech_end")
+                    self._voice_timings.mark("endpoint_final")
+                    last_voiced_at = getattr(endpoint, "last_voiced_at", None)
+                    if last_voiced_at is not None:
+                        self._voice_timings.mark("speech_last_voiced", at=last_voiced_at)
                     if not endpoint.speech_detected or endpoint.samples.size == 0:
                         if kids_retry_allowed():
                             continue
@@ -192,6 +205,9 @@ class PipelineVoiceMixin:
                         # Provider selection changed: drop any older local claim until a receipt.
                         locality = "cloud" if config.stt_provider == "elevenlabs" else "unknown"
                         locality_provider = config.stt_provider
+                    if config.stt_provider == "robot":
+                        locality = "unknown"  # never a previous turn's or the host's claim
+                    set_processing("unknown", False)
                     self._set_status("transcribing", "Command received; transcribing", stt_locality=locality)
                     # A cached Kids clip may play only if STT is still pending after a pause.
                     # Turn 1 uses the proof sampled with this conversation's health; every later
@@ -204,18 +220,54 @@ class PipelineVoiceMixin:
                             self._start_kids_ack(initial_config, refresh=refresh) if callable(refresh) else None
                         )
                     stt_turns += 1
+                    stt_generation, stt_is_current = self._stt_turn_fence(initial_config.kids_session_id)
+
+                    def show_location(location: str, verified: bool) -> None:
+                        set_processing(location, verified)
+                        if not verified:
+                            where = "on Reachy" if location == "robot" else "on the Hermes host"
+                            self._set_status("transcribing", f"Transcribing {where}")
+
                     try:
-                        transcript = client.transcribe(encode_wav(endpoint.samples, 16000))
+                        stt_result = transcribe_endpoint(
+                            self, client, config, endpoint.samples,
+                            is_current=lambda fence=stt_is_current: fence() and conversation_is_current(),
+                            session_id=initial_config.kids_session_id if initial_config.kids_mode_enabled else "",
+                            generation=stt_generation,
+                            on_location=show_location,
+                            on_submitted=lambda: self._voice_timings.mark("stt_submitted"),
+                        )
+                    except (SttTurnCancelled, SttInfrastructureError) as exc:
+                        locality = "unknown"
+                        set_locality(locality)
+                        set_processing("unknown", False)
+                        if not settle_ack():
+                            break
+                        if isinstance(exc, SttInfrastructureError):
+                            # Infrastructure failure is not silence: no retry loop, no reload.
+                            _LOGGER.warning("Speech recognition unavailable (%s)", exc.category)
+                            notice = (
+                                "On-device speech recognition is not set up on Reachy yet"
+                                if exc.category == "unprovisioned"
+                                else "Speech recognition on Reachy is unavailable"
+                            )
+                            self._set_status("waiting_for_wake_word", notice, last_error=notice)
+                            self._signal_error()
+                        break
                     except BaseException:
                         locality = "unknown"
                         set_locality(locality)
+                        set_processing("unknown", False)
                         raise
                     finally:
                         if ack_player is not None:
                             ack_player.stt_finished()
+                    self._voice_timings.mark("stt_final")
+                    transcript = stt_result.text
                     # The latest actual receipt wins over the conversation-start health snapshot;
                     # a missing receipt never keeps an older "local" claim.
-                    locality = receipt_locality(getattr(client, "last_stt_receipt", ""))
+                    locality = stt_result.locality
+                    set_processing(stt_result.processing_location, stt_result.processing_location != "unknown")
                     if not transcript:
                         if not settle_ack():  # never re-open the microphone over the filler
                             break
@@ -253,7 +305,10 @@ class PipelineVoiceMixin:
                     "thinking",
                     "Homebody is working",
                     transcript=transcript,
-                    stt_provider=client.last_stt_provider,
+                    stt_provider=(
+                        "robot" if stt_result is not None and stt_result.processing_location == "robot"
+                        else client.last_stt_provider
+                    ),
                 )
 
                 if agent_profile_active:
@@ -442,9 +497,43 @@ class PipelineVoiceMixin:
         finally:
             settle_ack()
             set_locality("unknown")  # provenance is per conversation; never left stale
+            set_processing("unknown", False)
             self._voice_timings.end()
             self._workspace_event(workspace_generation, "activity", "Voice session ended")
             client.close()
+
+    def _robot_stt_client(self) -> RobotSttClient:
+        """The one owned on-robot ASR client; created on first robot-routed turn."""
+        with self._status_lock:
+            client = getattr(self, "_robot_stt", None)
+            if client is None:
+                client = self._robot_stt = RobotSttClient()
+            return client
+
+    def _stt_turn_fence(self, session_id: str) -> tuple[int, Callable[[], bool]]:
+        """Immutable turn snapshot for recognition: (generation, is_current), never resampled.
+
+        A game-master switch rotates the Kids session id and advances the stop generation, so
+        either check fences a decode that began in the previous game.
+        """
+        with self._conversation_stop_generation_lock:
+            turn_generation = self._turn_stop_generation
+
+        def is_current() -> bool:
+            with self._conversation_stop_generation_lock:
+                stopped = (
+                    self._conversation_stop_requested.is_set()
+                    or self._conversation_stop_generation != turn_generation
+                )
+            return (
+                not stopped
+                and (not session_id or self._kids_session_is_current(session_id))
+                and not self.stop_event.is_set()
+                and not self._privacy_requested.is_set()
+                and self._effective_power_mode() not in {"meeting", "sleep"}
+            )
+
+        return turn_generation, is_current
 
     def _ack_output_quarantined(self) -> bool:
         """True while an old filler push is still blocked inside the SDK (fail closed)."""

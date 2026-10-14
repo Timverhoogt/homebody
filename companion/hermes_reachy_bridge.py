@@ -3833,9 +3833,22 @@ class Bridge(NativeWorkspaceRoutes):
 
             self._require_hermes_speech()
             _ensure_hermes_imports()
-            from tools.transcription_tools import transcribe_audio
+            if provider == "local":
+                # A robot fallback is request-bound local-only, not a mutable configured-provider
+                # selection. Never invoke transcribe_audio here, even if host config changes.
+                try:
+                    from tools.transcription_tools import transcribe_audio_local_fallback
+                except ImportError:
+                    raise web.HTTPServiceUnavailable(text="Local-only transcription is unavailable") from None
+                result = await asyncio.to_thread(transcribe_audio_local_fallback, temp_path)
+                if not isinstance(result, dict) or not result.get("success") or result.get("provider") not in {
+                    "local", "local_command",
+                }:
+                    raise web.HTTPServiceUnavailable(text="Local-only transcription failed")
+            else:
+                from tools.transcription_tools import transcribe_audio
 
-            result = await asyncio.to_thread(transcribe_audio, temp_path)
+                result = await asyncio.to_thread(transcribe_audio, temp_path)
             if not result.get("success"):
                 raise web.HTTPBadRequest(text=str(result.get("error") or "Transcription failed"))
             return web.json_response(

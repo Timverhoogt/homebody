@@ -208,10 +208,11 @@ class HermesBridgeClient:
             raise HermesBridgeError("Hermes returned invalid voice options")
         return payload
 
-    def transcribe(self, wav_data: bytes) -> str:
+    def transcribe(self, wav_data: bytes, *, provider: str | None = None) -> str:
+        """``provider`` overrides the configured route (robot fallback requests only "local")."""
         fields = {
             "language": self.config.language,
-            "provider": self.config.stt_provider,
+            "provider": provider or self.config.stt_provider,
             "model": self.config.stt_model,
         }
         if self.config.kids_mode_enabled:

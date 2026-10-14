@@ -87,6 +87,9 @@ class RuntimeStatus:
     stt_provider: str = ""
     # Categorical, server-derived: "local" only when the bridge confirmed Hermes-host STT.
     stt_locality: str = "unknown"
+    # Categorical robot|host|cloud|unknown; verified only by this turn's actual receipt.
+    stt_processing_location: str = "unknown"
+    stt_processing_verified: bool = False
     tts_provider: str = ""
     audio_rms: float = 0.0
     audio_peak: float = 0.0
@@ -235,6 +238,7 @@ class HermesVoiceRuntime(
         # later "awake" transition that clears the event can never resume a stopped turn.
         self._conversation_stop_generation = 0
         self._turn_stop_generation = 0
+        self._robot_stt = None  # owned on-robot ASR client, created on the first robot-routed turn
         self._conversation_stop_generation_lock = threading.Lock()
         self._init_vision_state()
         self._init_manual_control_state()
@@ -374,6 +378,11 @@ class HermesVoiceRuntime(
                     "state": payload.get("state", "waiting_for_wake_word"),
                     # Only a safe categorical enum; never a provider, model, path or error.
                     "stt_locality": locality if locality in {"local", "cloud"} else "unknown",
+                    "stt_processing_location": (
+                        location if (location := payload.get("stt_processing_location"))
+                        in {"robot", "host", "cloud"} else "unknown"
+                    ),
+                    "stt_processing_verified": payload.get("stt_processing_verified") is True,
                     "power_mode": payload.get("power_mode", "standby"),
                     "motors_enabled": self._motors_enabled,
                     "head_safely_folded": self._head_safely_folded,
@@ -582,6 +591,9 @@ class HermesVoiceRuntime(
     def _teardown_runtime(self) -> None:
         """Stop every runtime worker and media stream; safe after a partial start."""
         self._voice_workspace.clear()
+        robot_stt, self._robot_stt = getattr(self, "_robot_stt", None), None
+        if robot_stt is not None:
+            robot_stt.close()  # kills the owned worker; reaping never blocks teardown
         bridge, self._home_assistant_bridge = self._home_assistant_bridge, None
         if bridge is not None:
             try:

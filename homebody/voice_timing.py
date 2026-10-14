@@ -5,6 +5,11 @@ whether it was the first turn of a session (cold) or a later one (warm). No tran
 tool argument or device name is ever stored. ``player_enqueued`` is when audio was handed to
 the robot's player (an SDK enqueue), not proof that it was heard; ``playback_estimated`` is the
 queue's own estimate of when that audio starts playing.
+
+Recognition marks: ``speech_last_voiced`` is the last frame the endpointer judged voiced (the
+actual end of speech), ``local_speech_end`` and ``endpoint_final`` are when the endpoint returned
+(``local_speech_end`` keeps its historical meaning), ``stt_submitted`` is when samples were sent
+to the selected recognizer and ``stt_final`` is when its final transcript was accepted.
 """
 
 from __future__ import annotations
@@ -16,7 +21,11 @@ from collections import deque
 MARKS = (
     "wake",
     "session_ready",
+    "speech_last_voiced",
     "local_speech_end",
+    "endpoint_final",
+    "stt_submitted",
+    "stt_final",
     "provider_speech_end",
     "tool_requested",
     "tool_result",

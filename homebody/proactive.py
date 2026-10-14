@@ -16,7 +16,6 @@ from typing import cast
 
 from .adaptation import PreferenceLedger
 from .announcements import Announcement
-from .audio import encode_wav
 from .config import AppConfig
 from .contextual_offers import ContextualOffer, ContextualOfferState, parse_offer_response
 from .hermes_client import HermesBridgeClient
@@ -30,6 +29,7 @@ from .safety_gate import (
     READINESS_POLICY,
     VOICE_ACTIVITY_BUSY,
 )
+from .stt_routing import SttInfrastructureError, SttTurnCancelled, transcribe_endpoint
 
 # Keep the runtime logger name so existing log filters still match these lines.
 _LOGGER = logging.getLogger("homebody.runtime")
@@ -565,7 +565,29 @@ class ProactiveMixin:
         ):
             self._contextual_offers.cancel(token, "cancelled")
             return
-        transcript = client.transcribe(encode_wav(endpoint.samples, 16000))
+        with self._conversation_stop_generation_lock:
+            generation = self._conversation_stop_generation  # immutable; a later Stop cancels
+
+        def offer_is_current() -> bool:
+            with self._conversation_stop_generation_lock:
+                stopped = self._conversation_stop_generation != generation
+            return (
+                not stopped
+                and not self.stop_event.is_set()
+                and not self._privacy_requested.is_set()
+                and not self._announcement_item_cancelled(item)
+                and self._effective_power_mode() == "awake"
+            )
+
+        try:
+            # Same routing helper as Pipeline turns: robot, robot->local host once, or host.
+            transcript = transcribe_endpoint(
+                self, client, config, endpoint.samples,
+                is_current=offer_is_current, session_id="", generation=generation,
+            ).text
+        except (SttTurnCancelled, SttInfrastructureError):
+            self._contextual_offers.cancel(token, "cancelled")
+            return
         response = parse_offer_response(transcript)
         if response == "unknown":
             self._contextual_offers.cancel(token, "unrecognized_response")

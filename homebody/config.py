@@ -53,6 +53,8 @@ class AppConfig:
     language: str = "en"
     stt_provider: str = "configured"
     stt_model: str = "base"
+    # Only for stt_provider "robot": what to do when the on-robot worker is unavailable.
+    stt_robot_fallback: str = "none"
     tts_provider: str = "configured"
     tts_model: str = "eleven_flash_v2_5"
     tts_voice: str = "pNInz6obpgDQGcFmaJgB"
@@ -154,6 +156,7 @@ class AppConfig:
         self.language = self.language.strip() or "en"
         self.stt_provider = self.stt_provider.strip().lower() or "configured"
         self.stt_model = self.stt_model.strip() or "base"
+        self.stt_robot_fallback = str(self.stt_robot_fallback).strip().lower() or "none"
         self.tts_provider = self.tts_provider.strip().lower() or "configured"
         self.tts_model = self.tts_model.strip() or "eleven_flash_v2_5"
         self.tts_voice = self.tts_voice.strip() or "pNInz6obpgDQGcFmaJgB"
@@ -219,8 +222,10 @@ class AppConfig:
             raise ValueError("Contextual offer response window must be between 5 and 30 seconds")
         if not 5.0 <= float(self.presentation_window_seconds) <= 30.0:
             raise ValueError("Presentation window must be between 5 and 30 seconds")
-        if self.stt_provider not in {"configured", "local", "elevenlabs"}:
+        if self.stt_provider not in {"configured", "local", "elevenlabs", "robot"}:
             raise ValueError("Unsupported STT provider")
+        if self.stt_robot_fallback not in {"none", "host"}:
+            raise ValueError("Unsupported robot STT fallback")
         if self.tts_provider not in {"configured", "elevenlabs"}:
             raise ValueError("Unsupported TTS provider")
         if self.conversation_mode not in {"pipeline", "realtime", "live"}:
