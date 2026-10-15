@@ -80,7 +80,9 @@ def test_motor_ui_serializes_power_transitions_and_reports_confirmed_state() -> 
 
     assert "let powerTransitionPending = false" in main
     assert "let statusRefreshPending = false" in main
-    assert "if (statusRefreshPending) return" in main
+    # Same-owner polls serialize; an old-owner request must not block a fresh authorized poll.
+    assert "if (statusRefreshPending && statusRefreshGeneration === ownerGeneration) return" in main
+    assert "if (statusRefreshGeneration === generation) statusRefreshPending = false" in main
     assert "statusRefreshPending = false" in main
     assert 'document.querySelectorAll(".manual-control, [data-power]")' in main
     assert "Awake was not confirmed by the robot runtime" in main
