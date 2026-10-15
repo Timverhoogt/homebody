@@ -182,7 +182,7 @@ For safe no-motion acceptance, keep Reachy folded in Standby and submit a valid 
 
 ### Agent 0.6 Shared Physical Context
 
-Goal 4 is disabled by default and never runs in the background. The trusted phone must explicitly start `POST /api/presentation/start`; each window lasts 5–30 seconds and requires Agent profile, safely Awake torque, camera access, Goal 2 Initiative Policy, Goal 3 Contextual Offers, idle voice/announcement/camera-control/face-tracking/action ownership, and no Kids or privacy mode. `POST /api/presentation/stop` cancels immediately.
+Goal 4 is disabled by default and never runs in the background. The trusted phone must explicitly start `POST /api/presentation/start`; each window lasts 5–30 seconds and requires Agent profile, safely Awake torque, camera access, Goal 2 Initiative Policy, Goal 3 Contextual Offers, idle voice/announcement/camera-control/face-tracking/action ownership, and no Kids or privacy mode. `POST /api/presentation/stop` cancels immediately. While Start is unavailable, the card lists each unmet requirement it can see (shared context, On-demand camera, initiative policy, contextual offers, Workspace, Awake with motors, face following, Kids). Each has a navigation-only button to the existing control. The Hermes backend connection is not a presentation requirement. Server checks on Start remain authoritative.
 
 The gate decodes each bounded JPEG in memory, retains only small central grayscale feature arrays for the active window, requires three stable changed samples, and clears all features on detection, Stop, expiry, power/profile/privacy change, settings disable, or failure. It performs no OCR, object classification, face recognition, identity inference, child monitoring, or background recording. Polled status exposes only state, reason, time remaining, sample/detection counts, and the fixed facts `semantic_analysis: false` and `frames_retained: 0`.
 
@@ -260,6 +260,8 @@ Check:
 - motor mode matches the requested app power state;
 - control-loop error count remains zero;
 - restart count does not increase unexpectedly.
+
+If daemon logs show `Face tracker crashed.` after face following was requested (for example an HTTP 401 for the pinned YuNet model), follow [face-tracking-model.md](docs/face-tracking-model.md): run the offline `python -m homebody.face_model check` against the daemon user's Hugging Face cache, then the anonymous pinned `provision` if needed. App status reports face following as `requested` (not confirmed running) or `command_failed`, never as running.
 
 ### Logs
 

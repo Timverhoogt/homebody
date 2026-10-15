@@ -107,8 +107,10 @@ class LiveVoiceMixin:
                     if state == "started":
                         timings.mark("tool_requested")
                         self._set_status("thinking", "Checking that for you")
-                    elif state == "answered":
-                        timings.mark("tool_result")
+                    elif state in {"answered", "not_ready", "failed"}:
+                        timings.mark("tool_result")  # backend returned; only "answered" is a verified reply
+                        if state == "not_ready":
+                            self._set_status("thinking", "Project session not open")
                 elif kind == "session.output_audio.delta":
                     audio = session.audio_samples(event)
                     if not audio.size:

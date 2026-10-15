@@ -13,9 +13,9 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=95">
-  <link rel="stylesheet" href="/static/scene.css?v=95">
-  <link rel="stylesheet" href="/static/onboarding.css?v=95">
+  <link rel="stylesheet" href="/static/style.css?v=96">
+  <link rel="stylesheet" href="/static/scene.css?v=96">
+  <link rel="stylesheet" href="/static/onboarding.css?v=96">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -241,6 +241,7 @@
           <div><dt>GitHub repository</dt><dd id="workspace-mode-repository">None selected</dd></div>
           <div><dt>Project connection</dt><dd id="workspace-mode-session">Not checked</dd></div>
           <div><dt>Voice</dt><dd id="workspace-mode-voice">Not listening · say “Hey Homebody” to Reachy to talk</dd></div>
+          <div><dt>Spoken requests go to</dt><dd id="workspace-mode-route">Not checked yet</dd></div>
         </dl>
         <p id="workspace-mode-work" class="muted compact-note">Review planned coding work before approving it.</p>
         <button type="button" id="workspace-mode-open" class="secondary">Open Conversation &amp; projects</button>
@@ -363,8 +364,13 @@
           <div><span class="label">Latest result</span><strong id="presentation-reason">Disabled</strong></div>
         </div>
         <div class="presentation-actions">
-          <button type="button" id="presentation-start">Start presentation window</button>
-          <button type="button" id="presentation-stop" class="secondary" disabled>Stop presentation window</button>
+          <button type="button" id="presentation-start" aria-describedby="presentation-readiness" disabled>Start presentation window</button>
+          <button type="button" id="presentation-stop" class="secondary" aria-describedby="presentation-stop-help" disabled>Stop presentation window</button>
+        </div>
+        <div class="presentation-readiness" aria-live="polite">
+          <p id="presentation-readiness" class="presentation-readiness-summary">Readiness not checked yet · Start stays off.</p>
+          <ul id="presentation-requirements" class="presentation-requirements" aria-label="What Start still needs"></ul>
+          <p id="presentation-stop-help" class="muted compact-note">Stop is available only while a window is running.</p>
         </div>
         <p class="presence-boundary"><span aria-hidden="true">●</span> Visible and ephemeral · zero frames retained · no cloud vision during this window</p>
         <p class="muted presentation-help">If Reachy notices a stable presented change, it may ask one bounded offer. Saying Yes only tells you to wake Reachy and explicitly ask it to look; that later request uses the existing one-frame cloud-vision path.</p>
@@ -1107,6 +1113,7 @@
               <label class="toggle-row"><span><strong>Voice-state motion</strong><small>Listening, thinking, and speaking poses</small></span><input id="motion_enabled" name="motion_enabled" type="checkbox" checked /></label>
               <label class="toggle-row"><span><strong>Reachy action tools</strong><small>Realtime may look, express emotions, and dance. Manual controls remain local.</small></span><input id="robot_tools_enabled" name="robot_tools_enabled" type="checkbox" checked /></label>
               <label class="toggle-row"><span><strong>Local face following</strong><small>Follow a face locally during the active conversation only</small></span><input id="face_tracking_enabled" name="face_tracking_enabled" type="checkbox" /></label>
+              <p id="face-tracking-status" class="muted compact-note" role="status">Off.</p>
               <label>Face-following weight<input id="face_tracking_weight" name="face_tracking_weight" type="range" min="0" max="1" step="0.05" value="0.65" /><small>Blend local face tracking with Reachy's voice and action motion.</small></label>
               <label class="toggle-row"><span><strong>Turn toward wake phrase</strong><small>Use one local microphone-array direction estimate after wake</small></span><input id="doa_enabled" name="doa_enabled" type="checkbox" /></label>
               <label class="toggle-row"><span><strong>Interruption</strong><small>Pipeline wake-phrase interruption or natural Realtime barge-in</small></span><input id="barge_in_enabled" name="barge_in_enabled" type="checkbox" checked /></label>
@@ -1221,20 +1228,20 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=95"></script>
-  <script src="/static/scene.js?v=95"></script>
-  <script src="/static/motion.js?v=95"></script>
-  <script src="/static/onboarding.js?v=95"></script>
-  <script src="/static/owner.js?v=95"></script>
+  <script src="/static/notifications.js?v=96"></script>
+  <script src="/static/scene.js?v=96"></script>
+  <script src="/static/motion.js?v=96"></script>
+  <script src="/static/onboarding.js?v=96"></script>
+  <script src="/static/owner.js?v=96"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=95"></script>
-  <script src="/static/agent-connection.js?v=95"></script>
-  <script src="/static/native-workspace.js?v=95"></script>
-  <script src="/static/workspace.js?v=95"></script>
-  <script src="/static/ispy-input.js?v=95"></script>
-  <script src="/static/main.js?v=95"></script>
-  <script src="/static/updates.js?v=95"></script>
-  <script src="/static/volume.js?v=95"></script>
-  <script src="/static/assistant-modes.js?v=95"></script>
+  <script src="/static/camera.js?v=96"></script>
+  <script src="/static/agent-connection.js?v=96"></script>
+  <script src="/static/native-workspace.js?v=96"></script>
+  <script src="/static/workspace.js?v=96"></script>
+  <script src="/static/ispy-input.js?v=96"></script>
+  <script src="/static/main.js?v=96"></script>
+  <script src="/static/updates.js?v=96"></script>
+  <script src="/static/volume.js?v=96"></script>
+  <script src="/static/assistant-modes.js?v=96"></script>
 </body>
 </html>

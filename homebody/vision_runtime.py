@@ -12,6 +12,7 @@ import threading
 import time
 from collections.abc import Callable
 
+from . import face_model
 from .config import AppConfig
 from .gesture_detection import GestureDetector, GestureReactionGate
 from .local_vision import LocalVisionClient, LocalVisionError
@@ -284,6 +285,7 @@ class VisionMixin:
         """Control daemon-local face tracking and mirror the real state in status."""
         if enabled == self._face_tracking_active and (weight is None or weight == self._face_tracking_weight):
             return
+        cache = face_model.check() if enabled else None  # offline hash; no camera or model load
         try:
             if enabled:
                 self._face_tracking_weight = float(weight if weight is not None else self._face_tracking_weight)
@@ -294,12 +296,20 @@ class VisionMixin:
             self._face_tracking_active = enabled
             with self._status_lock:
                 self._status.face_tracking_active = enabled
-            _LOGGER.info("Local face tracking %s", "enabled" if enabled else "disabled")
+                self._status.face_tracking_state = "requested" if enabled else "off"
+                if cache is not None:
+                    self._status.face_model_app_cache = cache
+            # The daemon runs the tracker; returning here proves only that the command was sent.
+            _LOGGER.info("Local face tracking %s", "requested (daemon-side, unconfirmed)" if enabled else "disabled")
+            if cache is not None and cache != "verified":
+                _LOGGER.warning("Pinned face model not verified in this app's cache (%s); see face-tracking docs",
+                                cache)
         except Exception as exc:
             self._face_tracking_active = False
             with self._status_lock:
                 self._status.face_tracking_active = False
-            _LOGGER.warning("Could not change local face tracking: %s", exc)
+                self._status.face_tracking_state = "command_failed" if enabled else "off"
+            _LOGGER.warning("Could not change local face tracking (%s)", type(exc).__name__)
 
     def _sample_doa(self, *, force: bool = False) -> float | None:
         """Cache a recent valid local microphone-array direction estimate."""

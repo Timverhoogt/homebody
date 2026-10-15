@@ -43,7 +43,7 @@ try:
     )
     from companion.kids_fixed_copy import MAX_SEGMENTS as _KIDS_FIXED_MAX_SEGMENTS
     from companion.kids_fixed_copy import render_segment as _render_kids_fixed_segment
-    from companion.live_transport import serve_live
+    from companion.live_transport import DelegationFailure, DelegationResult, serve_live
     from companion.llm_providers import LLMProviderConfigError, TextModelProvider, everyday_provider_from_env
     from companion.native_workspace import WorkspaceError
     from companion.native_workspace_routes import NativeWorkspaceRoutes
@@ -86,7 +86,7 @@ except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.pa
     )
     from kids_fixed_copy import MAX_SEGMENTS as _KIDS_FIXED_MAX_SEGMENTS  # type: ignore[no-redef]
     from kids_fixed_copy import render_segment as _render_kids_fixed_segment  # type: ignore[no-redef]
-    from live_transport import serve_live  # type: ignore[no-redef]
+    from live_transport import DelegationFailure, DelegationResult, serve_live  # type: ignore[no-redef]
     from llm_providers import (  # type: ignore[no-redef]
         LLMProviderConfigError,
         TextModelProvider,
@@ -333,6 +333,49 @@ _PROJECT_EXECUTION_CLAIM = re.compile(
     r"(?:(?:the|your|this|that)\s+)?(?:code|coding|project|work(?:ing)?|implementation|artifact)\b"
     r"|^\s*(?:(?:it is|it\x27s|we are|we\x27re)\s+)?ready to test[?!.]?\s*$"
 )
+# Fixed spoken setup outcomes when a Workspace turn cannot reach the bound native Hermes session.
+_NATIVE_NOT_READY = {
+    "not_configured": (
+        "No Hermes project session is set up on the agent host, so this conversation isn't connected to one. "
+        "Nothing was sent. The host owner can add one; you can still ask about a project roadmap, status, "
+        "timers or other named home actions."
+    ),
+    "unbound": (
+        "Your Hermes project session isn't open, so I can't discuss this there. Nothing was sent. "
+        "On the phone, open Workspace, tap Show conversation, choose the repository and tap Open project, "
+        "then ask me again."
+    ),
+    "parked": (
+        "This project is paused because Homebody was switched to Everyday. Nothing was sent. "
+        "Switch to Workspace on the phone to continue it."
+    ),
+    "discussion_disabled": (
+        "Voice discussion is not enabled on the agent host for this project, so I can't pass this to your "
+        "Hermes session. Nothing was sent. Ask about the project roadmap for its recorded status."
+    ),
+}
+# Explicitly named non-private broker capabilities (status, information, timers, media, home actions,
+# plans). Together with _PRIVATE_INTENT_PATTERNS this decides which turns still reach the restricted
+# broker when no native session is reachable; anything else is ordinary conversation.
+_BROKER_REQUEST_INTENT = re.compile(
+    r"(?i)\b(status|capabilit(?:y|ies)|what can you do|search|look up|news|latest|weather|web ?page|website|"
+    r"https?://|timers?|remind(?:er|ers)?|alarm|play|pause|music|media|volume|louder|quieter|undo|"
+    r"turn (?:on|off)|switch (?:on|off)|lights?|lamp|plan|weer|wekker|herinner\w*|speel|muziek|licht|lamp)\b"
+)
+# Fixed broker validation messages -> text-free log categories. Unknown messages log "validation".
+_BROKER_FAILURE_CATEGORIES = {
+    "Agent Mode returned an invalid structured answer": "answer_not_structured",
+    "Agent Mode answer failed read-only provenance validation": "answer_unverified",
+    "Agent Mode answer failed DLP validation": "answer_dlp",
+    "Agent Mode requested an invalid tool batch": "invalid_tool_call",
+    "Agent Mode requested an invalid broker call": "invalid_tool_call",
+    "Agent Mode requested invalid broker arguments": "invalid_tool_call",
+    "project conversation refused a tool outside its read-only scope": "project_scope_refused",
+    "project follow-up permits only the selected project roadmap": "project_scope_refused",
+    "project roadmap conversation requires one read at a time": "project_scope_refused",
+    "Agent Mode refused an adaptive hidden step; request an Agent 0.5 plan preview": "adaptive_step_refused",
+    "Agent run plan requires explicit private-data intent": "private_intent_required",
+}
 _PROHIBITED_SUCCESS_CLAIM = re.compile(
     r"(?i)(?:\b(?:i|we|hermes|reachy)\s+(?:have\s+)?(?:sent|changed|deleted|created|scheduled|"
     r"purchased|ordered|installed|restarted|updated|turned\s+(?:on|off))\b|^\s*done[.!,:])"
@@ -2966,7 +3009,9 @@ class Bridge(NativeWorkspaceRoutes):
         """Workspace turn: bound native Hermes discussion when enabled, else the restricted broker.
 
         Provenance is recorded per device so a broker answer is never labelled as the native
-        Hermes session.
+        Hermes session. Without a reachable native session (none configured, unbound, parked or
+        discussion off), ordinary chat gets a fixed setup outcome; only explicitly named
+        roadmap/capability requests reach the restricted broker.
         """
         parsed = BrokerContext.parse(context)
         self._answer_sources[device_id] = {"kind": "workspace_status"}
@@ -2974,28 +3019,34 @@ class Bridge(NativeWorkspaceRoutes):
         if proposal is not None:
             return proposal
         manager = self.native_workspace
-        binding = manager.bindings.get(device_id) if manager is not None else None
-        if binding and not binding.get("detached") and not binding.get("parked"):
-            if manager._target(binding).discussion_enabled:
-                self.agent_broker.authorize_context(parsed)
-                try:
-                    result = await manager.discuss(device_id, text)
-                except WorkspaceError as exc:
-                    self._answer_sources[device_id] = {"kind": "native_unavailable"}
-                    return f"{exc}. No answer came from your Hermes session."
-                await self.agent_broker.assert_current(device_id, parsed.session_generation)
-                self._answer_sources[device_id] = dict(result["source"])
-                return str(result["text"])
-        self._answer_sources[device_id] = {
-            "kind": "restricted_broker",
-            "label": "Restricted roadmap reader — not your Hermes session",
-        }
+        readiness = self.native_readiness(device_id)
+        if readiness == "ready":
+            self.agent_broker.authorize_context(parsed)
+            try:
+                result = await manager.discuss(device_id, text)
+            except WorkspaceError as exc:
+                self._answer_sources[device_id] = {"kind": "native_unavailable"}
+                return f"{exc}. No answer came from your Hermes session."
+            await self.agent_broker.assert_current(device_id, parsed.session_generation)
+            self._answer_sources[device_id] = dict(result["source"])
+            return str(result["text"])
         async with self.agent_broker.project_conversation(device_id, parsed) as lease:
             explicit = _has_explicit_private_intent(text, "read_project_roadmap")
             followup = bool(lease.selected_project_id) and re.fullmatch(
                 r"(?i)\s*(?:what(?:'s| is)? next|which (?:item|part) (?:is )?next|"
                 r"what (?:did we finish|is finished)|wat is (?:de volgende stap|af))\??\s*", text
             ) is not None
+            if not followup and not _BROKER_REQUEST_INTENT.search(text) and not any(
+                pattern.search(text) for pattern in _PRIVATE_INTENT_PATTERNS.values()
+            ):
+                # Never relabel or silently reroute ordinary chat: the native session is not reachable.
+                self.agent_broker.authorize_context(parsed)
+                self._answer_sources[device_id] = {"kind": "native_not_ready", "state": readiness}
+                return _NATIVE_NOT_READY[readiness]
+            self._answer_sources[device_id] = {
+                "kind": "restricted_broker",
+                "label": "Restricted roadmap reader — not your Hermes session",
+            }
             project_intent = explicit or followup
             answer = await self._agent_answer_turn(
                 text, context=context, device_id=device_id,
@@ -3718,18 +3769,44 @@ class Bridge(NativeWorkspaceRoutes):
                 )
                 return str(result["text"])
 
-            async def workspace(text: str, earlier: str) -> str:
+            async def workspace(text: str, earlier: str) -> DelegationResult:
                 assert context is not None
                 request_id = new_request_id()
-                parsed = await self.agent_broker.register_request(device_id, context, request_id)
+                try:
+                    parsed = await self.agent_broker.register_request(device_id, context, request_id)
+                except BrokerValidationError as exc:
+                    raise PermissionError("stale Workspace session") from exc
                 try:
                     self.agent_broker.authorize_context(parsed)
-                    return await asyncio.wait_for(
+                    answer = await asyncio.wait_for(
                         self._agent_answer(text, context=context, device_id=device_id),
                         timeout=self._agent_ask_timeout_seconds,
                     )
+                    await self.agent_broker.assert_current(device_id, parsed.session_generation)
+                except BrokerValidationError as exc:
+                    reason = str(exc)
+                    if reason in {"stale_session", "session_context_changed_without_generation"}:
+                        raise PermissionError("stale Workspace session") from exc  # ends silently
+                    category = _BROKER_FAILURE_CATEGORIES.get(reason) or (
+                        reason if re.fullmatch(r"[a-z_]{1,48}", reason) else "validation")
+                    raise DelegationFailure(category, (
+                        "The restricted roadmap reader could not verify an answer. Nothing is confirmed and "
+                        "nothing was done. Your Hermes project session was not asked."
+                    )) from exc
+                except BrokerUnavailableError as exc:
+                    raise DelegationFailure("provider_unavailable", (
+                        "Agent reasoning on the Hermes host is unavailable right now. Nothing was done."
+                    )) from exc
+                except TimeoutError as exc:
+                    raise DelegationFailure("timeout", (
+                        "The agent host did not answer in time. Nothing is confirmed."
+                    )) from exc
                 finally:
+                    source = self._answer_sources.pop(device_id, {})
                     await self.agent_broker.unregister_request(device_id, parsed.session_generation, request_id)
+                state = {"native_not_ready": "not_ready", "native_unavailable": "failed"}.get(
+                    str(source.get("kind")), "answered")
+                return DelegationResult(answer, state)
 
             return everyday if context is None else workspace
 

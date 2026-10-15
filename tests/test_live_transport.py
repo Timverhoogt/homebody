@@ -227,6 +227,28 @@ def test_stop_during_delegation_discards_late_result():
     assert fake.received[-1]["type"] == "session.close"
 
 
+def test_unexpected_backend_error_is_failed_not_answered_and_logs_no_text(caplog):
+    async def broken(text, context):
+        raise RuntimeError(f"provider echoed {text}")
+
+    async def script(ws, received):
+        await ws.send_json(delta("user", 0, 500, "private plan for Marieke"))
+        await ws.send_json({"type": "session.delegation.created", "offset_ms": 500,
+                            "delegation": {"id": "d1", "target": "client"}})
+
+    async def steps(ws, events):
+        await collect(ws, events, lambda p: p.get("type") == "bridge.delegation" and p["state"] != "started")
+        await ws.send_json({"type": "session.close"})
+        await collect(ws, events, lambda p: p["type"] == "session.closed")
+
+    caplog.set_level("INFO")
+    fake, events, _ = run_relay(script, steps, answer=broken)
+    assert [e["state"] for e in events if e.get("type") == "bridge.delegation"] == ["started", "failed"]
+    commentary = [e["content"] for e in fake.received if e["type"] == "session.commentary.append"]
+    assert commentary == ["The backend could not safely verify a result. Nothing is confirmed."]
+    assert "category=unexpected RuntimeError" in caplog.text and "Marieke" not in caplog.text
+
+
 def test_boundary_loss_ends_session_and_unstarted_session_fails_without_secrets():
     state = {"allowed": True}
 

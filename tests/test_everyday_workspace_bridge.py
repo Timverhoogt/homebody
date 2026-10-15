@@ -197,10 +197,16 @@ def test_without_host_discussion_the_broker_answer_is_labelled_not_native(tmp_pa
         await session(client, ctx(1))
         await bridge.native_workspace.bind("reachy-1", "photo")
         response = await client.post("/v1/agent/ask", headers=HEADERS, json={
-            "request_id": "agent-0123456789", "request": "Tell me about it", "context": ctx(1)})
+            "request_id": "agent-0123456789", "request": "Tell me about the project roadmap", "context": ctx(1)})
         body = await response.json()
         assert body["text"] == "Restricted roadmap summary."
         assert body["source"]["kind"] == "restricted_broker" and "not your Hermes" in body["source"]["label"]
+        # Ordinary chat is not silently rerouted to the restricted reader: an actionable setup outcome.
+        response = await client.post("/v1/agent/ask", headers=HEADERS, json={
+            "request_id": "agent-0123456790", "request": "Tell me about it", "context": ctx(1)})
+        body = await response.json()
+        assert body["source"] == {"kind": "native_not_ready", "state": "discussion_disabled"}
+        assert "Nothing was sent" in body["text"]
         assert adapter.calls == []
 
     run_bridge(tmp_path, test, discussion=False)

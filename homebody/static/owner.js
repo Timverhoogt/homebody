@@ -8,6 +8,7 @@
     window.HomebodyNotifications?.setSuppressed("owner", !session.owner);
     window.HomebodyVolume?.owner(session.owner);
     window.HomebodyAssistantModes?.owner(session.owner);
+    window.HomebodyStatusLifecycle?.owner(session.owner);  // owner loss: invalidate admitted status replies
     window.HomebodyOnboarding?.owner(session.owner);
     window.HomebodyUpdates?.owner(session.owner);
     byId('owner-pair-panel').hidden = session.owner;

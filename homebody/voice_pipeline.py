@@ -373,6 +373,11 @@ class PipelineVoiceMixin:
                         workspace_generation, "activity",
                         "Answered by the restricted roadmap reader — not your Hermes session",
                     )
+                elif source.get("kind") == "native_not_ready":
+                    self._workspace_event(
+                        workspace_generation, "activity",
+                        "Not sent: your Hermes project session is not open for voice",
+                    )
                 self._workspace_event(workspace_generation, "activity", "Preparing the spoken reply")
                 if not settle_ack():  # the moderated answer never overlaps a cached clip
                     break

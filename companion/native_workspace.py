@@ -651,6 +651,8 @@ class NativeWorkspace:
             "project_id": target.project_id,
             "session_id": target.session_id,
             "backend": target.backend,
+            # Whether spoken Workspace turns reach this session; categorical host setting only.
+            "voice_discussion": target.discussion_enabled,
         }
         payload["run"] = dict(binding.get("run", {}))
         epoch = binding["epoch"]

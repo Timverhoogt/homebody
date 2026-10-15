@@ -171,19 +171,23 @@ def test_project_history_is_device_scoped_and_not_used_for_unrelated_questions(t
         [
             call("read_project_roadmap", {"project_id": "photo"}),
             answer("Photo roadmap next: colour pipeline", ["read_project_roadmap"]),
-            answer("No project is selected here.", status="insufficient"),
             answer("I could not verify the weather.", status="insufficient"),
         ],
     )
 
     async def scenario():
         await ask(bridge, "Read the photo project roadmap")
-        await ask(bridge, "What's next?", device="reachy-b")
-        await ask(bridge, "Weather today?")
+        # Another device has no selected project: ordinary chat, no native session -> setup, no model call.
+        other = await ask(bridge, "What's next?", device="reachy-b")
+        source = bridge._answer_sources.get("reachy-b")
+        await ask(bridge, "Weather today?")  # explicitly named capability still uses the broker
+        return other, source
 
-    asyncio.run(scenario())
+    other, source = asyncio.run(scenario())
+    assert source == {"kind": "native_not_ready", "state": "not_configured"} and "Nothing was sent" in other
     provider = bridge.http
     assert isinstance(provider, FixtureHttp)
+    assert len(provider.payloads) == 3
     for payload in provider.payloads[2:]:
         assert not any(item.get("content") == "Photo roadmap next: colour pipeline" for item in payload["messages"])
         assert "Selected project ID" not in payload["messages"][0]["content"]
