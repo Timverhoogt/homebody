@@ -47,8 +47,10 @@ def kids_ack_voice_proof(health: dict[str, object], language: str) -> tuple[obje
         proofs = health["kids_voice_proofs"]
         proof = proofs.get(language) if isinstance(proofs, dict) else None
         proof = proof if isinstance(proof, dict) else {}
-    else:
+    elif language in {"en", "nl"}:
         proof = health  # legacy bridges have one voice for both languages
+    else:
+        proof = {}  # a legacy language-agnostic proof never covers ES/DE/FR/IT/PT
     return proof.get("kids_voice_sha256"), proof.get("kids_tts_model")
 
 

@@ -31,13 +31,30 @@ from .kids_game_master import (
     parse_host_command,
     suggest_other,
 )
-from .kids_mode import KidsProfile, build_kids_prompt, kids_greeting, kids_message
+from .kids_mode import (
+    KIDS_TTS_MODEL,
+    LANGUAGE_NAMES,
+    SESSION_VOICE_LANGUAGES,
+    KidsProfile,
+    build_kids_prompt,
+    kids_greeting,
+    kids_message,
+)
 
 # Keep the runtime logger name so existing log filters and dashboards still match Kids Mode lines.
 _LOGGER = logging.getLogger("homebody.runtime")
 
 # How long a finished Start greeting may wait for the wake loop to open the first turn.
 _KIDS_FIRST_LISTEN_TTL_SECONDS = 10.0
+_KIDS_VOICE_ADMISSION_TIMEOUT_SECONDS = 3.0
+
+
+def valid_kids_voice_proof(proof: object) -> bool:
+    """A well-formed private digest+model proof of one language's Kids voice (never the raw id)."""
+    if not isinstance(proof, dict) or proof.get("kids_tts_model") != KIDS_TTS_MODEL:
+        return False
+    digest = proof.get("kids_voice_sha256")
+    return isinstance(digest, str) and len(digest) == 64 and all(c in "0123456789abcdef" for c in digest)
 
 
 def _host_selector(key: str, **slots: str) -> tuple[dict[str, str], ...]:
@@ -93,6 +110,29 @@ class KidsModeMixin:
         # Outer play-session identity: set by each caregiver Start, kept across game switches, so a
         # child Stop binds to the session (never a stale per-game generation) and never to a later Start.
         self._kids_play_id = ""
+
+    def _kids_admission_fence(self) -> tuple[int, int]:
+        """(Kids generation, conversation stop generation): any Stop/End/privacy/power bump changes it."""
+        with self._kids_lock:
+            kids_generation = self._kids_generation
+        with self._conversation_stop_generation_lock:
+            return kids_generation, self._conversation_stop_generation
+
+    def _admit_kids_session_voice(self, language: str) -> None:
+        """Refuse an ES/DE/FR/IT/PT session unless the bridge proves that language's own Kids voice."""
+        name = LANGUAGE_NAMES[language]
+        client: HermesBridgeClient | None = None
+        try:
+            client = self._new_bridge_client(self.config_loader())
+            proof = client.kids_voice_proof(language=language, timeout=_KIDS_VOICE_ADMISSION_TIMEOUT_SECONDS)
+        except Exception as exc:
+            _LOGGER.warning("Kids %s voice admission failed (%s)", name, type(exc).__name__)
+            raise RuntimeError(f"Kids Mode could not confirm the {name} voice on the Hermes host") from None
+        finally:
+            if client is not None:
+                client.close()
+        if not valid_kids_voice_proof(proof):
+            raise RuntimeError(f"Kids Mode {name} voice is not configured on the Hermes host")
 
     def _kids_first_listen_valid(self, ticket: tuple[str, int, int, float], session_id: str) -> bool:
         """Caller holds _kids_lock. Compare immutable generations, not just the active flag."""
@@ -158,6 +198,13 @@ class KidsModeMixin:
 
     def start_kids_mode(self, profile: KidsProfile, *, greet: bool = True) -> dict[str, object]:
         """Start one time-bounded, camera-free, private-tool-free Realtime session."""
+        admission_fence: tuple[int, int] | None = None
+        if profile.language in SESSION_VOICE_LANGUAGES:
+            # Snapshot the cancellation fence before the unlocked network proof; a Stop/End that
+            # completes meanwhile makes this Start stale. Never refreshed after the proof returns.
+            admission_fence = self._kids_admission_fence()
+            # Admission precedes every side effect: no presentation, camera, session, motion or audio.
+            self._admit_kids_session_voice(profile.language)
         self.stop_presentation_window("kids_mode")
         if self._effective_power_mode() in {"meeting", "sleep"} or self._privacy_requested.is_set():
             raise RuntimeError("Kids Mode is blocked in Meeting and Sleep")
@@ -165,6 +212,8 @@ class KidsModeMixin:
             raise RuntimeError("Kids Mode audio is not ready")
         self.revoke_camera_control()
         with self._motor_transition_lock, self._kids_lock:
+            if admission_fence is not None and self._kids_admission_fence() != admission_fence:
+                raise RuntimeError("Kids Mode start was cancelled before it began")
             # Keep the Kids guard while invalidating Agent work and forcing the
             # conversation profile, matching set_capability_profile's lock order.
             self.cancel_agent_work("kids_mode")
@@ -690,7 +739,9 @@ class KidsModeMixin:
 
     def _submit_hosted_typed_stop(self, text: str, token: str) -> bool:
         """An explicit typed Stop during a switch/search: needs no voice slot or motor lock, so it wins."""
-        if parse_host_command(text, phase="playing").kind != "stop":
+        with self._kids_lock:
+            language = self._kids_profile.language if self._kids_profile is not None else ""
+        if parse_host_command(text, phase="playing", language=language).kind != "stop":
             return False
         with self._kids_lock:
             if (
@@ -964,7 +1015,7 @@ class KidsModeMixin:
             phase = self._kids_host_phase
             activity = self._kids_host_activity
             choices = self._kids_host_choices
-        command = parse_host_command(transcript, phase=phase)
+        command = parse_host_command(transcript, phase=phase, language=profile.language)
         if phase == "transition" and command.kind != "stop":
             if typed:
                 self._kids_host_typed_handled = True

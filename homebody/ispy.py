@@ -11,18 +11,38 @@ import re
 from dataclasses import dataclass
 
 COLOURS = {
-    "red": {"en": "red", "nl": "rood"},
-    "orange": {"en": "orange", "nl": "oranje"},
-    "yellow": {"en": "yellow", "nl": "geel"},
-    "green": {"en": "green", "nl": "groen"},
-    "blue": {"en": "blue", "nl": "blauw"},
-    "purple": {"en": "purple", "nl": "paars"},
-    "pink": {"en": "pink", "nl": "roze"},
-    "brown": {"en": "brown", "nl": "bruin"},
-    "black": {"en": "black", "nl": "zwart"},
-    "white": {"en": "white", "nl": "wit"},
-    "grey": {"en": "grey", "nl": "grijs"},
+    "red": {"en": "red", "nl": "rood", "es": "rojo", "de": "rot", "fr": "rouge", "it": "rosso",
+            "pt": "vermelha"},
+    "orange": {"en": "orange", "nl": "oranje", "es": "naranja", "de": "orange", "fr": "orange",
+               "it": "arancione", "pt": "laranja"},
+    "yellow": {"en": "yellow", "nl": "geel", "es": "amarillo", "de": "gelb", "fr": "jaune", "it": "giallo",
+               "pt": "amarela"},
+    "green": {"en": "green", "nl": "groen", "es": "verde", "de": "grün", "fr": "vert", "it": "verde",
+              "pt": "verde"},
+    "blue": {"en": "blue", "nl": "blauw", "es": "azul", "de": "blau", "fr": "bleu", "it": "blu", "pt": "azul"},
+    "purple": {"en": "purple", "nl": "paars", "es": "morado", "de": "lila", "fr": "violet", "it": "viola",
+               "pt": "roxa"},
+    "pink": {"en": "pink", "nl": "roze", "es": "rosa", "de": "rosa", "fr": "rose", "it": "rosa", "pt": "cor-de-rosa"},
+    "brown": {"en": "brown", "nl": "bruin", "es": "marrón", "de": "braun", "fr": "marron", "it": "marrone",
+              "pt": "castanha"},
+    "black": {"en": "black", "nl": "zwart", "es": "negro", "de": "schwarz", "fr": "noir", "it": "nero",
+              "pt": "preta"},
+    "white": {"en": "white", "nl": "wit", "es": "blanco", "de": "weiß", "fr": "blanc", "it": "bianco",
+              "pt": "branca"},
+    "grey": {"en": "grey", "nl": "grijs", "es": "gris", "de": "grau", "fr": "gris", "it": "grigio",
+             "pt": "cinzenta"},
 }
+_CLUES = {
+    "en": "I spy with my little eye, something that is {colour}.",
+    "nl": "Ik zie, ik zie wat jij niet ziet, en de kleur is {colour}.",
+    "es": "Veo, veo, una cosita de color {colour}.",
+    "de": "Ich sehe was, was du nicht siehst, und das ist {colour}.",
+    "fr": "Je vois, je vois quelque chose de {colour}.",
+    "it": "Vedo, vedo una cosa di colore {colour}.",
+    "pt": "Eu vejo, eu vejo uma coisa de cor {colour}.",
+}
+# Languages whose session requires its own bounded, screened hints alongside the EN/NL ones.
+SESSION_HINT_LANGUAGES = ("es", "de", "fr", "it", "pt")
 DISALLOWED_TERMS = {
     "face", "person", "people", "child", "body", "skin", "hair", "eye", "hand",
     "shirt", "dress", "clothing", "screen", "monitor", "television", "phone", "tablet",
@@ -30,6 +50,16 @@ DISALLOWED_TERMS = {
     "knife", "private", "underwear", "passport", "credit card", "password", "address",
     "gezicht", "persoon", "mensen", "kind", "lichaam", "kleding", "scherm", "medicijn",
     "wapen", "mes", "privé", "telefoon",
+    "cara", "persona", "gente", "niño", "niña", "cuerpo", "ropa", "pantalla", "medicina",
+    "pastilla", "arma", "cuchillo", "privado", "teléfono", "móvil",
+    "gesicht", "mensch", "menschen", "körper", "kleidung", "bildschirm", "medizin", "medikament",
+    "tablette", "waffe", "messer", "privat", "telefon",
+    "visage", "personne", "enfant", "corps", "peau", "cheveux", "vêtement", "vêtements", "écran",
+    "téléphone", "médicament", "arme", "couteau", "papiers",
+    "viso", "faccia", "bambino", "bambina", "corpo", "pelle", "capelli", "mano", "vestiti", "schermo",
+    "telefono", "cellulare", "pillola", "coltello", "privato",
+    "rosto", "pessoa", "pessoas", "criança", "roupa", "ecrã", "tela", "telemóvel", "celular",
+    "remédio", "comprimido", "faca", "documento",
 }
 
 
@@ -45,15 +75,20 @@ class ISpyTarget:
     visible_frame_count: int
     hints_en: tuple[str, ...]
     hints_nl: tuple[str, ...]
+    hints_es: tuple[str, ...] = ()
+    hints_de: tuple[str, ...] = ()
+    hints_fr: tuple[str, ...] = ()
+    hints_it: tuple[str, ...] = ()
+    hints_pt: tuple[str, ...] = ()
 
     def clue(self, language: str) -> str:
-        colour = COLOURS[self.colour][language]
-        if language == "nl":
-            return f"Ik zie, ik zie wat jij niet ziet, en de kleur is {colour}."
-        return f"I spy with my little eye, something that is {colour}."
+        return _CLUES[language].format(colour=COLOURS[self.colour][language])
 
     def hints(self, language: str) -> tuple[str, ...]:
-        return self.hints_nl if language == "nl" else self.hints_en
+        # A session language reads only its own hints; ES/DE/FR/IT/PT never fall back to English.
+        if language == "nl" or language in SESSION_HINT_LANGUAGES:
+            return getattr(self, f"hints_{language}")
+        return self.hints_en
 
 
 
@@ -72,8 +107,12 @@ def _unsafe(text: str) -> bool:
 
 
 
-def validate_ispy_target(payload: object, *, frame_count: int = 3) -> ISpyTarget:
-    """Accept only stable, visible, unambiguously safe household targets."""
+def validate_ispy_target(payload: object, *, frame_count: int = 3, language: str = "") -> ISpyTarget:
+    """Accept only stable, visible, unambiguously safe household targets.
+
+    A Spanish/German/French/Italian/Portuguese session additionally requires bounded, safe hints in
+    that language.
+    """
     if not isinstance(payload, dict) or payload.get("stable") is not True:
         raise ValueError("I Spy target is not stable")
     if not 2 <= frame_count <= 5:
@@ -128,4 +167,5 @@ def validate_ispy_target(payload: object, *, frame_count: int = 3) -> ISpyTarget
         visible_frame_count,
         hints("en"),
         hints("nl"),
+        *(hints(code) if language == code else () for code in SESSION_HINT_LANGUAGES),
     )

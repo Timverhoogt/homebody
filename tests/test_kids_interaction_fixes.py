@@ -464,8 +464,11 @@ def test_kids_language_hint_skips_detection_and_other_inputs_keep_autodetect(tmp
     model = _FakeModel()
     assert local_stt_command.transcribe(model, str(tmp_path / "homebody-stt-nl-abc.wav")) == "De gele bal."
     assert local_stt_command.transcribe(model, str(tmp_path / "homebody-stt-abc.wav")) == "De gele bal."
-    assert local_stt_command.transcribe(model, str(tmp_path / "homebody-stt-de-abc.wav")) == "De gele bal."
-    assert [call["language"] for call in model.calls] == ["nl", None, None]
+    assert local_stt_command.transcribe(model, str(tmp_path / "homebody-stt-sv-abc.wav")) == "De gele bal."
+    for language in ("de", "es", "fr", "it", "pt"):
+        hinted = str(tmp_path / f"homebody-stt-{language}-abc.wav")
+        assert local_stt_command.transcribe(model, hinted) == "De gele bal."
+    assert [call["language"] for call in model.calls] == ["nl", None, None, "de", "es", "fr", "it", "pt"]
     for call in model.calls:
         assert call["vad_filter"] is True and call["condition_on_previous_text"] is False
 

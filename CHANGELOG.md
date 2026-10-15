@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Add Spanish, German, French, Italian and Portuguese Kids sessions on the strict server-rendered catalog.
+  - Selector-only fixed speech, session-pinned language, per-language bridge and robot copy, retry and safety copy.
+  - I Spy requires session-language hints in the strict native schema.
+  - Language-scoped host commands, and recognition-language transport.
+- Each new language speaks only with its own `ELEVENLABS_KIDS_<LANG>_VOICE_ID`. There is no default, Dutch or configured-speech fallback.
+  - Start is refused before any side effect without that language's voice proof, and a Stop/End during the proof wins.
+  - EN/NL and Dutch Ruth are unchanged.
+- Add the source-only `tools/kids_language_readiness.py`. It reports source, config and manual acceptance separately.
+- No voices, regions or waiting clips are selected or shipped; Portuguese copy is provisional European Portuguese. Not native-reviewed, deployed or accepted (see `docs/kids-language-deployment-readiness.md`).
+- Synchronize PWA shell/query v98.
+
 ## [0.5.16] — Dutch Kids voice and latency visibility
 
 - Add a host-configured Dutch-only Kids voice override, resolved from the validated language bound to each single-use moderated-text approval. English Kids voice and adult speech engines are unchanged; the package does not activate Ruth on other installations implicitly.

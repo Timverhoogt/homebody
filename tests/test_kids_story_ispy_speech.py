@@ -306,7 +306,7 @@ def test_pinned_profile_cannot_change_later_in_the_session(monkeypatch: pytest.M
          "lines": [{"kind": "greeting"}]},
         {"session_id": SESSION, "age_band": "7-9", "activity": "chess", "language": "nl",
          "lines": [{"kind": "greeting"}]},
-        {"session_id": SESSION, "age_band": "7-9", "activity": "story", "language": "fr",
+        {"session_id": SESSION, "age_band": "7-9", "activity": "story", "language": "sv",
          "lines": [{"kind": "greeting"}]},
         {"session_id": "kids-bad", "age_band": "7-9", "activity": "story", "language": "nl",
          "lines": [{"kind": "greeting"}]},

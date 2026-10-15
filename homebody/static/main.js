@@ -187,7 +187,7 @@ try {
   if (typeof savedKidsProfile.nickname === "string") $("kids-nickname").value = savedKidsProfile.nickname.slice(0, 32);
   if (["4-6", "7-9", "10-12"].includes(savedKidsProfile.age_band)) $("kids-age-band").value = savedKidsProfile.age_band;
   if ([15, 30, 45, 60].includes(Number(savedKidsProfile.duration_minutes))) $("kids-duration").value = String(savedKidsProfile.duration_minutes);
-  if (["en", "nl"].includes(savedKidsProfile.language)) $("kids-language").value = savedKidsProfile.language;
+  if (["en", "nl", "es", "de", "fr", "it", "pt"].includes(savedKidsProfile.language)) $("kids-language").value = savedKidsProfile.language;
   if (typeof savedKidsProfile.motion_enabled === "boolean") $("kids-motion-enabled").checked = savedKidsProfile.motion_enabled;
 } catch (error) {
   window.localStorage.removeItem("homebody-kids-profile");

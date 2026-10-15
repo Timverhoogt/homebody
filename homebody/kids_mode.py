@@ -9,7 +9,14 @@ AGE_BANDS = frozenset({"4-6", "7-9", "10-12"})
 KIDS_VOICE_ID = "cgSgspJ2msm6clMCkdW9"
 KIDS_TTS_MODEL = "eleven_flash_v2_5"
 ACTIVITIES = frozenset({"buddy", "story", "quiz", "riddles", "calm", "ispy"})
-LANGUAGES = frozenset({"en", "nl"})
+LANGUAGES = frozenset({"en", "nl", "es", "de", "fr", "it", "pt"})
+# Spanish, German, French, Italian and Portuguese never borrow the English Kids voice: each needs
+# its own owner-configured voice, proven by the bridge before a session may start.
+SESSION_VOICE_LANGUAGES = frozenset({"es", "de", "fr", "it", "pt"})
+LANGUAGE_NAMES = {
+    "en": "English", "nl": "Dutch", "es": "Spanish", "de": "German", "fr": "French", "it": "Italian",
+    "pt": "Portuguese",
+}
 
 _ACTIVITY_INSTRUCTIONS = {
     "buddy": (
@@ -60,14 +67,88 @@ _ACTIVITY_GREETINGS = {
             "daarna gaat de camera uit."
         ),
     },
+    # ES/DE/FR/IT/PT (Portuguese in provisional European forms) await native-speaker review.
+    "es": {
+        "buddy": "El modo infantil está listo. ¿De qué te gustaría hablar?",
+        "story": "Es la hora del cuento. ¿De quién será nuestro cuento?",
+        "quiz": "Es la hora del concurso. ¿Cuál es tu asignatura favorita?",
+        "riddles": "Es la hora de las adivinanzas. ¿Te digo la primera adivinanza?",
+        "calm": "Es la hora de la calma. Siéntate cómodo. ¿Estás listo para empezar?",
+        "ispy": (
+            "Veo, veo está listo. Voy a mirar un momento solo un objeto seguro de la casa, "
+            "y luego la cámara se apaga."
+        ),
+    },
+    "de": {
+        "buddy": "Der Kindermodus ist bereit. Worüber möchtest du reden?",
+        "story": "Geschichtenzeit ist bereit. Um wen soll unsere Geschichte gehen?",
+        "quiz": "Quizzeit ist bereit. Was ist dein Lieblingsfach?",
+        "riddles": "Rätselzeit ist bereit. Soll ich dir das erste Rätsel erzählen?",
+        "calm": "Ruhezeit ist bereit. Setz dich gemütlich hin. Bist du bereit anzufangen?",
+        "ispy": (
+            "Ich sehe was, was du nicht siehst ist bereit. Ich schaue kurz nur nach einem sicheren "
+            "Gegenstand im Haus, dann geht die Kamera aus."
+        ),
+    },
+    "fr": {
+        "buddy": "Le mode enfant est prêt. De quoi veux-tu parler ?",
+        "story": "C'est l'heure de l'histoire. De qui parlera notre histoire ?",
+        "quiz": "C'est l'heure du quiz. Quelle est ta matière préférée ?",
+        "riddles": "C'est l'heure des devinettes. Je te dis la première devinette ?",
+        "calm": "C'est l'heure du calme. Installe-toi bien. Tu es prêt à commencer ?",
+        "ispy": (
+            "Je vois, je vois est prêt. Je vais regarder un petit moment un seul objet sûr de la maison, "
+            "puis la caméra s'éteint."
+        ),
+    },
+    "it": {
+        "buddy": "La modalità bambini è pronta. Di cosa vuoi parlare?",
+        "story": "È l'ora della storia. Di chi parlerà la nostra storia?",
+        "quiz": "È l'ora del quiz. Qual è la tua materia preferita?",
+        "riddles": "È l'ora degli indovinelli. Ti dico il primo indovinello?",
+        "calm": "È l'ora della calma. Mettiti comodo. Sei pronto per cominciare?",
+        "ispy": (
+            "Vedo, vedo è pronto. Guarderò un momento solo un oggetto sicuro della casa, "
+            "poi la telecamera si spegne."
+        ),
+    },
+    "pt": {
+        "buddy": "O modo infantil está pronto. Sobre o que queres conversar?",
+        "story": "É a hora da história. Sobre quem vai ser a nossa história?",
+        "quiz": "É a hora do quiz. Qual é a tua disciplina favorita?",
+        "riddles": "É a hora das adivinhas. Posso dizer a primeira adivinha?",
+        "calm": "É a hora da calma. Senta-te confortavelmente. Estás pronto para começar?",
+        "ispy": (
+            "Eu vejo, eu vejo está pronto. Vou olhar um momento só para um objeto seguro da casa, "
+            "e depois a câmara desliga-se."
+        ),
+    },
 }
-_GREETING_PREFIX = {"en": "Hi {name}. ", "nl": "Hoi {name}. "}
+_GREETING_PREFIX = {
+    "en": "Hi {name}. ", "nl": "Hoi {name}. ", "es": "Hola, {name}. ", "de": "Hallo {name}. ",
+    "fr": "Salut {name}. ", "it": "Ciao {name}. ", "pt": "Olá, {name}. ",
+}
 _FIXED_MESSAGES = {
     "en": {
         "five_minutes": "Five minutes left in Kids Mode. Let's finish this activity soon.",
     },
     "nl": {
         "five_minutes": "Nog vijf minuten in de kindermodus. Laten we deze activiteit bijna afronden.",
+    },
+    "es": {
+        "five_minutes": "Quedan cinco minutos en el modo infantil. Vamos a terminar pronto esta actividad.",
+    },
+    "de": {
+        "five_minutes": "Noch fünf Minuten im Kindermodus. Lass uns diese Aktivität bald beenden.",
+    },
+    "fr": {
+        "five_minutes": "Plus que cinq minutes en mode enfant. Finissons bientôt cette activité.",
+    },
+    "it": {
+        "five_minutes": "Restano cinque minuti nella modalità bambini. Finiamo presto questa attività.",
+    },
+    "pt": {
+        "five_minutes": "Faltam cinco minutos no modo infantil. Vamos terminar esta atividade em breve.",
     },
 }
 
@@ -128,13 +209,13 @@ def kids_greeting(profile: KidsProfile) -> str:
 
 def kids_message(language: str, key: str) -> str:
     """Return short fixed Kids copy in the selected language without a model call."""
-    return _FIXED_MESSAGES["nl" if language == "nl" else "en"][key]
+    return _FIXED_MESSAGES[language][key]  # an unsupported language raises; never English copy
 
 
 def build_kids_prompt(profile: KidsProfile) -> str:
     """Build the defense-in-depth child interaction policy for a tool-free session."""
     child_reference = f"The child's nickname is {profile.nickname}. " if profile.nickname else ""
-    language = "Dutch" if profile.language == "nl" else "English"
+    language = LANGUAGE_NAMES[profile.language]
     return (
         "You are Hermes speaking through a Reachy Mini robot in Kids Mode. "
         f"Speak in {language} for a child aged {profile.age_band}. {child_reference}"

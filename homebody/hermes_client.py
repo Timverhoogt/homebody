@@ -148,7 +148,7 @@ class HermesBridgeClient:
         self._raise_for_error(response, "I Spy target selection")
         payload = response.json()
         try:
-            return validate_ispy_target(payload["target"], frame_count=len(frames))
+            return validate_ispy_target(payload["target"], frame_count=len(frames), language=language)
         except (KeyError, TypeError, ValueError) as exc:
             raise HermesBridgeError("Hermes returned an unsafe or invalid I Spy target") from exc
 
@@ -270,12 +270,12 @@ class HermesBridgeClient:
         # Silence or unintelligible audio is a normal no-speech turn, not a bridge failure.
         return transcript
 
-    def kids_voice_proof(self, *, timeout: float = 1.5) -> dict[str, str]:
+    def kids_voice_proof(self, *, timeout: float = 1.5, language: str | None = None) -> dict[str, str]:
         """Fresh bridge proof (digest + model) of the effective Kids streaming voice; bounded."""
         response = self._client.get(
             f"{self.config.bridge_url}/v1/kids/voice-proof",
             headers={"Authorization": f"Bearer {self.config.api_key}"},
-            params={"language": self.config.language},
+            params={"language": language or self.config.language},
             timeout=timeout,
         )
         self._raise_for_error(response, "Kids voice proof")

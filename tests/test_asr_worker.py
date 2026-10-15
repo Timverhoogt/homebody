@@ -342,7 +342,7 @@ def test_malformed_and_oversized_requests_get_categorical_errors(short_dir):
         assert raw_request(sock, json.dumps(extra).encode() + b"\n")["error"] == "malformed"
         wrong_rate = {**header, "samples": 4, "rate": 44100}
         assert raw_request(sock, json.dumps(wrong_rate).encode() + b"\n")["error"] == "malformed"
-        bad_language = {**header, "samples": 4, "language": "fr"}
+        bad_language = {**header, "samples": 4, "language": "sv"}
         assert raw_request(sock, json.dumps(bad_language).encode() + b"\n")["error"] == "malformed"
         # The worker survives malformed input and still serves the owner.
         assert client.transcribe(speech(), session="", generation=1, language="en", cancelled=never).text
