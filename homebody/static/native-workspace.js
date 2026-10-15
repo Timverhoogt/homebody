@@ -126,7 +126,9 @@
               ? "Setup needed: no project session is configured on the agent host (REACHY_NATIVE_TARGETS_JSON). "
                 + "Open project stays off until one is added."
               : payload.binding && selectionMatchesBinding()
-                ? `Open: ${payload.binding.backend} · ${payload.binding.project_id}. Opening a project does not submit work.`
+                ? `Open: ${payload.binding.backend} · ${payload.binding.project_id}. Opening a project does not submit work. `
+                  + (payload.binding.voice_discussion === true ? "Spoken Workspace requests go to this session."
+                    : "Voice discussion is off for this session on the agent host; spoken requests are not sent to it.")
                 : "Open project connects this page to the selected session; opening it does not submit work.";
     if (byId("workspace-native-bind-help").textContent !== help) byId("workspace-native-bind-help").textContent = help;
   }
@@ -138,6 +140,8 @@
       session: !enabled ? "unchecked" : uncertain ? "unconfirmed" : !payload ? "checking"
         : binding && selectionMatchesBinding() ? "bound" : binding ? "other" : "none",
       label: binding ? `${binding.backend} · ${binding.project_id}` : "",
+      // Host-reported: does a spoken Workspace turn reach this session? Never inferred from display or Awake.
+      voice: binding && selectionMatchesBinding() ? (binding.voice_discussion === true ? "native" : "off") : "none",
       uncertain,
     };
   }

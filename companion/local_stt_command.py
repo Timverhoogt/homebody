@@ -40,7 +40,7 @@ DECODE_OPTIONS = {
 # Auto-detection costs an extra 30-second encoder pass (~2.2 s of a ~4.6 s short turn on two
 # threads). The bridge names a Kids temp file homebody-stt-<lang>-* for the parent-selected
 # profile language; every other input keeps auto-detection.
-_LANGUAGE_HINT = re.compile(r"^homebody-stt-(en|nl)-")
+_LANGUAGE_HINT = re.compile(r"^homebody-stt-(en|nl|es|de|fr|it|pt)-")
 IDLE_SECONDS = 300.0
 _REQUEST_LIMIT = 4096
 _LOAD_TIMEOUT_SECONDS = 60.0

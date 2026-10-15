@@ -74,6 +74,205 @@ _DIFFERENT_PHRASES = frozenset({
 _NO_PHRASES = frozenset({
     "no", "no thanks", "no thank you", "nope", "nee", "nee dank je", "nee bedankt", "liever niet",
 })
+# ES/DE/FR/IT/PT sessions add their own phrases to the shared set; other sessions never see them.
+# Entries are already accent-folded like _normalise output ("aufhören" -> "aufhoren").
+_EXTRA_PHRASES: dict[str, dict[str, frozenset[str]]] = {
+    "es": {
+        "stop": frozenset({
+            "para", "parar", "para ya", "para por favor", "basta", "ya basta", "quiero parar", "he terminado",
+            "ya termine", "termine", "terminado", "se acabo", "fin", "el fin", "no mas", "adios",
+            "hasta luego", "chao", "deja de jugar", "terminar el juego",
+        }),
+        "help": frozenset({
+            "que puedo decir", "que digo", "como funciona", "como se juega", "a que podemos jugar",
+            "que juegos hay",
+        }),
+        "lobby_help": frozenset({"ayuda", "ayudame", "no se", "no lo se", "que"}),
+        "again": frozenset({
+            "otra vez", "otra", "otra ronda", "de nuevo", "una vez mas", "mas", "otra mas", "otra vez por favor",
+        }),
+        "different": frozenset({
+            "otra cosa", "algo diferente", "otro juego", "un juego diferente", "el otro", "otro",
+        }),
+        "no": frozenset({"no gracias", "mejor no"}),
+        "switch_cues": frozenset({
+            "vamos a", "quiero", "juguemos", "jugar", "podemos", "cambiar", "mejor", "ahora", "prefiero",
+        }),
+        "interrogatives": frozenset({
+            "te gusta", "te gustan", "sabes", "conoces", "que", "cual", "por que", "quien", "como", "donde",
+            "cuando", "hay",
+        }),
+    },
+    "de": {
+        "stop": frozenset({
+            "stopp", "stopp bitte", "bitte stopp", "aufhoren", "hor auf", "ich will aufhoren", "ich bin fertig",
+            "wir sind fertig", "fertig", "ende", "das ende", "schluss", "nicht mehr", "tschuss",
+            "auf wiedersehen", "spiel beenden", "bitte aufhoren",
+        }),
+        "help": frozenset({
+            "was kann ich sagen", "was soll ich sagen", "wie geht das", "wie funktioniert das",
+            "wie spielt man das", "was konnen wir spielen", "welche spiele gibt es",
+        }),
+        "lobby_help": frozenset({"hilfe", "hilf mir", "weiss nicht", "ich weiss nicht", "ich weiss es nicht", "was"}),
+        "again": frozenset({
+            "nochmal", "noch mal", "noch einmal", "nochmal bitte", "noch eine runde", "noch eins", "wieder",
+        }),
+        "different": frozenset({
+            "etwas anderes", "was anderes", "ein anderes spiel", "anderes spiel", "das andere", "andere",
+        }),
+        "no": frozenset({"nein", "nein danke", "lieber nicht"}),
+        "switch_cues": frozenset({
+            "lass uns", "lasst uns", "konnen wir", "ich will", "ich mochte", "spielen", "machen", "lieber",
+            "wechseln", "jetzt", "stattdessen",
+        }),
+        "interrogatives": frozenset({
+            "magst du", "kennst du", "weisst du", "hast du", "bist du", "gibt es", "was", "welche", "welcher",
+            "warum", "wer", "wie", "wo", "wann",
+        }),
+    },
+    # French/Italian elisions are split into words first ("j'arrête" -> "j arrete").
+    "fr": {
+        "stop": frozenset({
+            "arrete", "arrete toi", "arreter", "j arrete", "on arrete", "je veux arreter", "arrete le jeu",
+            "c est fini", "c est termine", "fini", "termine", "j ai fini", "on a fini", "fin", "la fin",
+            "ca suffit", "assez", "au revoir", "arrete s il te plait",
+        }),
+        "help": frozenset({
+            "qu est ce que je peux dire", "qu est ce que je dis", "je dis quoi", "comment ca marche",
+            "comment on joue", "a quoi on peut jouer", "on peut jouer a quoi", "quels jeux il y a",
+        }),
+        "lobby_help": frozenset({"aide", "aide moi", "je sais pas", "je ne sais pas", "sais pas", "quoi"}),
+        "again": frozenset({
+            "encore", "encore une fois", "encore une", "encore un", "une autre fois", "on recommence",
+            "recommencer", "rejouer", "encore s il te plait",
+        }),
+        "different": frozenset({
+            "autre chose", "quelque chose d autre", "un autre jeu", "autre jeu", "l autre", "l autre jeu",
+            "un jeu different", "autre",
+        }),
+        "no": frozenset({"non", "non merci", "plutot pas"}),
+        "switch_cues": frozenset({
+            "on fait", "on joue", "je veux", "je voudrais", "jouons", "jouer", "faisons", "on peut", "changer",
+            "plutot", "maintenant",
+        }),
+        "interrogatives": frozenset({
+            "tu aimes", "tu connais", "tu sais", "tu as", "est ce que", "est ce qu", "qu est ce", "c est quoi",
+            "pourquoi", "qui", "comment", "ou", "quand", "quel", "quelle", "quels", "quelles", "il y a",
+        }),
+    },
+    "it": {
+        "stop": frozenset({
+            "basta", "basta cosi", "basta giocare", "ferma", "fermati", "smetti", "smettila", "voglio smettere",
+            "ho finito", "abbiamo finito", "finito", "fine", "la fine", "ciao ciao", "arrivederci", "non piu",
+        }),
+        "help": frozenset({
+            "cosa posso dire", "che cosa posso dire", "cosa dico", "che dico", "come funziona", "come si gioca",
+            "a cosa possiamo giocare", "che giochi ci sono", "quali giochi ci sono",
+        }),
+        "lobby_help": frozenset({"aiuto", "aiutami", "non lo so", "non so", "cosa", "che"}),
+        "again": frozenset({
+            "ancora", "ancora una volta", "di nuovo", "un altra volta", "un altra", "un altro giro",
+            "ancora per favore",
+        }),
+        "different": frozenset({
+            "qualcos altro", "qualcosa di diverso", "un altro gioco", "altro gioco", "l altro", "un gioco diverso",
+            "altro",
+        }),
+        "no": frozenset({"no grazie", "meglio di no"}),
+        "switch_cues": frozenset({
+            "facciamo", "giochiamo", "voglio", "vorrei", "possiamo", "cambiamo", "cambiare", "adesso", "ora",
+            "invece", "preferisco", "giocare",
+        }),
+        "interrogatives": frozenset({
+            "ti piace", "ti piacciono", "conosci", "sai", "hai", "cosa", "che cosa", "perche", "chi", "come",
+            "dove", "quando", "quale", "quali", "c e",
+        }),
+    },
+    "pt": {
+        "stop": frozenset({
+            "para", "pare", "parar", "chega", "basta", "quero parar", "acabei", "ja acabei", "terminei",
+            "ja terminei", "acabou", "fim", "o fim", "nao quero mais", "tchau", "adeus", "ate logo",
+            "para de jogar",
+        }),
+        "help": frozenset({
+            "o que posso dizer", "o que eu posso dizer", "o que eu digo", "o que digo", "como funciona",
+            "como se joga", "o que podemos jogar", "a que podemos jogar", "que jogos ha", "que jogos tem",
+        }),
+        "lobby_help": frozenset({"ajuda", "ajuda me", "me ajuda", "nao sei", "eu nao sei", "o que", "que"}),
+        "again": frozenset({
+            "outra vez", "de novo", "mais uma vez", "mais uma", "outra ronda", "outra rodada",
+            "outra vez por favor", "mais",
+        }),
+        "different": frozenset({"outra coisa", "outro jogo", "um jogo diferente", "o outro", "outro"}),
+        "no": frozenset({"nao", "nao obrigado", "nao obrigada", "melhor nao"}),
+        "switch_cues": frozenset({
+            "vamos", "quero", "queria", "podemos", "jogar", "brincar", "mudar", "trocar", "agora", "prefiro",
+            "em vez disso",
+        }),
+        "interrogatives": frozenset({
+            "voce gosta", "tu gostas", "gostas", "voce conhece", "conheces", "voce sabe", "sabes", "o que",
+            "qual", "quais", "por que", "porque", "quem", "como", "onde", "quando", "tem", "ha",
+        }),
+    },
+}
+_EXTRA_ACTIVITY_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
+    "es": {
+        "ispy": ("veo veo",),
+        "story": ("cuento", "cuentos", "historia", "historias"),
+        "riddles": ("adivinanza", "adivinanzas", "acertijo", "acertijos"),
+        "quiz": ("concurso", "preguntas"),
+        "calm": ("calma", "respirar", "relajarse", "tranquilo", "tranquila"),
+        "buddy": ("charlar", "hablar", "conversar"),
+    },
+    "de": {
+        "ispy": ("ich sehe was", "ich sehe was was du nicht siehst"),
+        "story": ("geschichte", "geschichten", "marchen"),
+        "riddles": ("ratsel", "ratseln"),
+        "quiz": ("fragen",),
+        "calm": ("ruhig", "ruhe", "atmen", "entspannen", "entspannung"),
+        "buddy": ("reden", "plaudern", "quatschen"),
+    },
+    "fr": {
+        "ispy": ("je vois je vois", "devine ce que je vois"),
+        "story": ("histoire", "histoires", "conte", "contes"),
+        "riddles": ("devinette", "devinettes", "enigme", "enigmes"),
+        "quiz": ("questions",),
+        "calm": ("calme", "respirer", "respiration", "se detendre", "detente"),
+        "buddy": ("discuter", "parler", "bavarder"),
+    },
+    "it": {
+        "ispy": ("vedo vedo", "io vedo"),
+        "story": ("storia", "storie", "favola", "favole", "racconto"),
+        "riddles": ("indovinello", "indovinelli"),
+        "quiz": ("domande",),
+        "calm": ("calma", "respirare", "rilassarsi"),
+        "buddy": ("chiacchierare", "parlare", "chiacchiere"),
+    },
+    "pt": {
+        "ispy": ("eu vejo eu vejo", "vejo vejo", "adivinha o que eu vejo"),
+        "story": ("historia", "historias", "conto", "contos"),
+        "riddles": ("adivinhas", "adivinhacao", "adivinhacoes", "charada", "charadas"),
+        "quiz": ("perguntas",),
+        "calm": ("calma", "respirar", "relaxar"),
+        "buddy": ("conversar", "falar", "conversa"),
+    },
+}
+# NFKD has no decomposition for these letters; ASCII folding would drop them ("weiß" -> "wei").
+_LETTER_FOLDS: dict[str, tuple[tuple[str, str], ...]] = {
+    "de": (("ß", "ss"), ("ẞ", "SS")),
+    "fr": (("œ", "oe"), ("Œ", "OE"), ("æ", "ae"), ("Æ", "AE")),
+}
+# Elided words ("l'histoire", "un'altra") are separate words; splitting only ever adds words.
+_ELISION_LANGUAGES = frozenset({"fr", "it"})
+
+
+def _phrases(base: frozenset[str], language: str, kind: str) -> frozenset[str]:
+    return base | _EXTRA_PHRASES.get(language, {}).get(kind, frozenset())
+
+
+def _activity_words(language: str) -> dict[str, tuple[str, ...]]:
+    extra = _EXTRA_ACTIVITY_WORDS.get(language, {})
+    return {activity: words + extra.get(activity, ()) for activity, words in _ACTIVITY_WORDS.items()}
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,45 +294,59 @@ def _mentions(text: str, phrase: str) -> bool:
     return re.search(rf"(?:^| ){re.escape(phrase)}(?: |$)", text) is not None
 
 
-def mentioned_activity(text: str) -> str:
+def mentioned_activity(text: str, language: str = "") -> str:
     """Return the single activity a short utterance names, or '' when none/ambiguous."""
-    found = {activity for activity, words in _ACTIVITY_WORDS.items() if any(_mentions(text, w) for w in words)}
+    found = {
+        activity for activity, words in _activity_words(language).items() if any(_mentions(text, w) for w in words)
+    }
     return next(iter(found)) if len(found) == 1 else ""
 
 
-def parse_host_command(text: str, *, phase: str) -> HostCommand:
-    """Recognise only direct, short child commands; quoted or long speech stays with the game."""
+def parse_host_command(text: str, *, phase: str, language: str = "") -> HostCommand:
+    """Recognise only direct, short child commands; quoted or long speech stays with the game.
+
+    ``language`` is the immutable session language; ES/DE/FR/IT/PT add their own phrases.
+    """
     if not isinstance(text, str) or any(mark in text for mark in "\"“”«»"):
         return HostCommand("none")
+    for letter, folded in _LETTER_FOLDS.get(language, ()):
+        text = text.replace(letter, folded)
+    if language in _ELISION_LANGUAGES:
+        text = re.sub(r"['’]", " ", text)
     clean = _normalise(text).strip(" '")
     if not clean or len(clean.split()) > _MAX_COMMAND_WORDS:
         return HostCommand("none")
-    if clean in _STOP_PHRASES:
+    if clean in _phrases(_STOP_PHRASES, language, "stop"):
         return HostCommand("stop")
-    if clean in _HELP_PHRASES:
+    if clean in _phrases(_HELP_PHRASES, language, "help"):
         return HostCommand("help")
     choosing = phase in {"lobby", "offer", "waiting"}
-    activity = mentioned_activity(clean)
+    activity = mentioned_activity(clean, language)
+    different = _phrases(_DIFFERENT_PHRASES, language, "different")
     if choosing:
-        if clean in _LOBBY_HELP_WORDS:
+        if clean in _phrases(_LOBBY_HELP_WORDS, language, "lobby_help"):
             return HostCommand("help")
-        if clean in _AGAIN_PHRASES:
+        if clean in _phrases(_AGAIN_PHRASES, language, "again"):
             return HostCommand("again")
-        if clean in _DIFFERENT_PHRASES:
+        if clean in different:
             return HostCommand("different")
-        if clean in _NO_PHRASES:
+        if clean in _phrases(_NO_PHRASES, language, "no"):
             return HostCommand("no")
         if activity:
             return HostCommand("switch", activity)
         return HostCommand("none")
     # Mid-game: switching needs a named activity plus an explicit switch cue, or just the name.
     # Questions about a game ("do you like stories?") are conversation, never a switch.
-    if activity and not clean.startswith(_INTERROGATIVE_STARTS) and (
-        any(clean == cue or clean.startswith(cue + " ") for cue in _SWITCH_CUES)
-        or clean in _ACTIVITY_WORDS[activity]
+    interrogatives = _INTERROGATIVE_STARTS + tuple(
+        f"{opener} " for opener in sorted(_EXTRA_PHRASES.get(language, {}).get("interrogatives", ()))
+    )
+    cues = _SWITCH_CUES + tuple(sorted(_EXTRA_PHRASES.get(language, {}).get("switch_cues", ())))
+    if activity and not clean.startswith(interrogatives) and (
+        any(clean == cue or clean.startswith(cue + " ") for cue in cues)
+        or clean in _activity_words(language)[activity]
     ):
         return HostCommand("switch", activity)
-    if clean in _DIFFERENT_PHRASES:
+    if clean in different:
         return HostCommand("different")
     return HostCommand("none")
 
@@ -160,6 +373,26 @@ _NAMES = {
     "nl": {
         "buddy": "kletsen", "story": "een verhaal", "quiz": "een quiz", "riddles": "raadsels",
         "calm": "rustig ademen", "ispy": "ik zie, ik zie",
+    },
+    "es": {
+        "buddy": "charlar", "story": "un cuento", "quiz": "un concurso", "riddles": "adivinanzas",
+        "calm": "respirar con calma", "ispy": "veo, veo",
+    },
+    "de": {
+        "buddy": "plaudern", "story": "eine Geschichte", "quiz": "ein Quiz", "riddles": "Rätsel",
+        "calm": "ruhig atmen", "ispy": "ich sehe was, was du nicht siehst",
+    },
+    "fr": {
+        "buddy": "discuter", "story": "une histoire", "quiz": "un quiz", "riddles": "des devinettes",
+        "calm": "respirer calmement", "ispy": "je vois, je vois",
+    },
+    "it": {
+        "buddy": "chiacchierare", "story": "una storia", "quiz": "un quiz", "riddles": "gli indovinelli",
+        "calm": "respirare con calma", "ispy": "vedo, vedo",
+    },
+    "pt": {
+        "buddy": "conversar", "story": "uma história", "quiz": "um quiz", "riddles": "adivinhas",
+        "calm": "respirar com calma", "ispy": "eu vejo, eu vejo",
     },
 }
 _COPY = {
@@ -191,16 +424,88 @@ _COPY = {
         "waiting": "Ik wacht hier. Je mag een spel noemen, of een volwassene kiest er een.",
         "unavailable": "Dat spel kan nu even niet. Zullen we {a} doen of {b}?",
     },
+    "es": {
+        "lobby": "¡Hola{name}! Soy tu presentador de juegos. ¿Hacemos {a} o {b}? También puedes decir basta.",
+        "offer": "Esa ronda terminó. ¿Otra ronda de {a}, o {b}? O di basta para terminar.",
+        "offer_retry": "Di otra vez para {a}, o di {b}. O di basta.",
+        "help": "Puedes decir {a} o {b}, o nombrar otro juego. Di basta para terminar.",
+        "help_playing": "Contéstame para seguir jugando. Puedes nombrar otro juego, o decir basta.",
+        "start": "¡Vale, {a}!",
+        "camera_needed": (
+            "Para veo, veo, una persona adulta tiene que permitir primero la cámara. Puede hacerlo en la "
+            "página de Kids. ¿Seguimos jugando?"
+        ),
+        "waiting": "Te espero aquí. Puedes decir un juego, o una persona adulta puede elegir uno.",
+        "unavailable": "Ese juego no está listo ahora. ¿Hacemos {a} o {b}?",
+    },
+    "de": {
+        "lobby": "Hallo{name}! Ich bin dein Spielleiter. Wollen wir {a} machen oder {b}? Du kannst auch stopp sagen.",
+        "offer": "Diese Runde ist vorbei. Noch eine Runde {a}, oder {b}? Oder sag stopp zum Aufhören.",
+        "offer_retry": "Sag nochmal für {a}, oder sag {b}. Oder sag stopp.",
+        "help": "Du kannst {a} oder {b} sagen, oder ein anderes Spiel nennen. Sag stopp zum Aufhören.",
+        "help_playing": (
+            "Antworte mir einfach, dann spielen wir weiter. Du kannst ein anderes Spiel nennen oder stopp sagen."
+        ),
+        "start": "Okay, {a}!",
+        "camera_needed": (
+            "Für ich sehe was, was du nicht siehst muss ein Erwachsener zuerst die Kamera erlauben. Das geht "
+            "auf der Kids-Seite. Wollen wir weiterspielen?"
+        ),
+        "waiting": "Ich warte hier. Du kannst ein Spiel nennen, oder ein Erwachsener wählt eins aus.",
+        "unavailable": "Das Spiel geht gerade nicht. Wollen wir {a} machen oder {b}?",
+    },
+    "fr": {
+        "lobby": "Salut{name} ! Je suis ton animateur de jeux. On fait {a} ou {b} ? Tu peux aussi dire stop.",
+        "offer": "Cette partie est finie. Encore une partie de {a}, ou {b} ? Ou dis stop pour finir.",
+        "offer_retry": "Dis encore pour {a}, ou dis {b}. Ou dis stop.",
+        "help": "Tu peux dire {a} ou {b}, ou nommer un autre jeu. Dis stop pour finir.",
+        "help_playing": "Réponds-moi pour continuer à jouer. Tu peux nommer un autre jeu, ou dire stop.",
+        "start": "D'accord, {a} !",
+        "camera_needed": (
+            "Pour je vois, je vois, un adulte doit d'abord autoriser la caméra. Il peut le faire sur la "
+            "page Kids. On continue à jouer ?"
+        ),
+        "waiting": "Je t'attends ici. Tu peux dire un jeu, ou un adulte peut en choisir un.",
+        "unavailable": "Ce jeu n'est pas prêt pour l'instant. On fait {a} ou {b} ?",
+    },
+    "it": {
+        "lobby": "Ciao{name}! Sono il tuo presentatore di giochi. Facciamo {a} o {b}? Puoi anche dire basta.",
+        "offer": "Questo turno è finito. Ancora un turno di {a}, o {b}? Oppure di' basta per finire.",
+        "offer_retry": "Di' ancora per {a}, oppure di' {b}. Oppure di' basta.",
+        "help": "Puoi dire {a} o {b}, oppure nominare un altro gioco. Di' basta per finire.",
+        "help_playing": "Rispondimi per continuare a giocare. Puoi nominare un altro gioco, oppure dire basta.",
+        "start": "Va bene, {a}!",
+        "camera_needed": (
+            "Per vedo, vedo, un adulto deve prima permettere la telecamera. Può farlo nella pagina Kids. "
+            "Continuiamo a giocare?"
+        ),
+        "waiting": "Ti aspetto qui. Puoi dire un gioco, oppure un adulto può sceglierne uno.",
+        "unavailable": "Questo gioco non è pronto adesso. Facciamo {a} o {b}?",
+    },
+    "pt": {
+        "lobby": "Olá{name}! Sou o teu apresentador de jogos. Fazemos {a} ou {b}? Também podes dizer chega.",
+        "offer": "Esta ronda terminou. Mais uma ronda de {a}, ou {b}? Ou diz chega para terminar.",
+        "offer_retry": "Diz outra vez para {a}, ou diz {b}. Ou diz chega.",
+        "help": "Podes dizer {a} ou {b}, ou dizer outro jogo. Diz chega para terminar.",
+        "help_playing": "Responde-me para continuar a jogar. Podes dizer outro jogo, ou dizer chega.",
+        "start": "Está bem, {a}!",
+        "camera_needed": (
+            "Para eu vejo, eu vejo, um adulto tem de autorizar primeiro a câmara. Pode fazê-lo na página "
+            "Kids. Continuamos a jogar?"
+        ),
+        "waiting": "Fico à espera aqui. Podes dizer um jogo, ou um adulto pode escolher um.",
+        "unavailable": "Esse jogo não está pronto agora. Fazemos {a} ou {b}?",
+    },
 }
 
 
 def activity_name(language: str, activity: str) -> str:
-    return _NAMES["nl" if language == "nl" else "en"].get(activity, activity)
+    return _NAMES[language].get(activity, activity)  # an unsupported language raises; never English
 
 
 def host_line(language: str, key: str, *, a: str = "", b: str = "", nickname: str = "") -> str:
     """Return short fixed host copy in the selected language; activity ids become child names."""
-    lang = "nl" if language == "nl" else "en"
+    lang = language
     return _COPY[lang][key].format(
         a=activity_name(lang, a) if a in ACTIVITIES else a,
         b=activity_name(lang, b) if b in ACTIVITIES else b,

@@ -92,7 +92,7 @@ def test_fresh_proof_endpoint_proves_requested_language(monkeypatch, tmp_path, l
     assert json.loads(asyncio.run(bridge.kids_voice_proof(SimpleNamespace(query={}))).text) == {}
 
 
-@pytest.mark.parametrize("query", [{"language": "fr"}, {"language": "nl", "voice": RUTH}])
+@pytest.mark.parametrize("query", [{"language": "sv"}, {"language": "nl", "voice": RUTH}])
 def test_invalid_proof_request_is_rejected(monkeypatch, tmp_path, query):
     _module, bridge = configured_bridge(monkeypatch, tmp_path)
     with pytest.raises(web.HTTPBadRequest):

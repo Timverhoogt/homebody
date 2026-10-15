@@ -118,7 +118,10 @@ def test_english_profile_language_is_passed_per_turn(monkeypatch, tmp_path):
 def test_adult_turns_autodetect_language():
     assert stt_routing.robot_language(AppConfig(stt_provider="robot", language="nl")) == "auto"
     assert stt_routing.robot_language(SimpleNamespace(kids_mode_enabled=True, language="nl")) == "nl"
-    assert stt_routing.robot_language(SimpleNamespace(kids_mode_enabled=True, language="de")) == "auto"
+    assert stt_routing.robot_language(SimpleNamespace(kids_mode_enabled=True, language="sv")) == "auto"
+    for language in ("es", "de", "fr", "it", "pt"):
+        assert stt_routing.robot_language(SimpleNamespace(kids_mode_enabled=True, language=language)) == language
+        assert stt_routing.robot_language(AppConfig(stt_provider="robot", language=language)) == "auto"
 
 
 def test_infrastructure_failure_is_not_silence_and_does_not_retry(monkeypatch, tmp_path):

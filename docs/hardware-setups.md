@@ -120,7 +120,18 @@ The app and Reachy SDK have now run on the Jetson reference host. App/camera/HA/
 
 Linux with a Bluetooth radio is required; controls are hidden on Mac/Windows. Install BlueZ and joystick support, give the **app service account** access to input devices, and verify its BlueZ D-Bus/polkit permissions. Do not grant blanket passwordless sudo to the dashboard.
 
-Only DualShock 4 / DualSense identities with implemented mappings are accepted; other controllers need separate validation. Use Share + PS (DS4) or Create + PS (DualSense), then Robot → Scan → Pair & connect → Enable controller movement. Input remains opt-in and bounded through the existing action queue; Kids/privacy/power gates remain authoritative. Real mapping acceptance is still pending, including Jetson. DS4 gyro/touchpad/rumble extensions are experimental. See [operations](../OPERATIONS.md) for deployment checks.
+Only DualShock 4 / DualSense identities with implemented mappings are accepted; other controllers need separate validation. Use Share + PS (DS4) or Create + PS (DualSense), then Robot → Scan → Pair & connect → Enable controller movement. Input remains opt-in and bounded through the existing action queue; Kids/privacy/power gates remain authoritative. Real mapping acceptance is still pending, including Jetson. DS4 gyro/touchpad/rumble extensions are experimental.
+
+Pairing uses `dbus-next` to register a bounded BlueZ `Agent1` (NoInputNoOutput) as the default agent before discovery and pairing, and keeps it registered until input is ready.
+
+- The agent authorizes a service only when BlueZ's callback names the selected device's exact object path, the UUID is HID (`00001124-…`) and a bounded read at callback time shows that device `Paired` and `Bonded`.
+- It rejects every other device, service, PIN or passkey request.
+- A BlueZ `Cancel` or `Release`, or the end of the pairing attempt, permanently deactivates the agent: pending work is cancelled and later callbacks are rejected.
+- Discovery runs on the same D-Bus client until the selected MAC appears.
+- Trust is set only after `Paired: yes` and `Bonded: yes` are confirmed, and it is removed again if pairing does not reach a connected controller with a joystick node whose HID `uniq` matches the MAC.
+- A ready input node does not enable movement; the reader still needs **Enable controller movement**.
+
+First-pair behaviour on BlueZ 5.72 under the app account still needs physical acceptance. See [operations](../OPERATIONS.md) for deployment checks.
 
 ## Reachy Mini Wireless
 

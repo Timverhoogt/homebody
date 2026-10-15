@@ -162,7 +162,27 @@ class AudioCarry:
         return data[:cut]
 
 
-Answer = Callable[[str, str], Awaitable[str]]
+@dataclass(frozen=True, slots=True)
+class DelegationResult:
+    """A backend reply with its truthful delegation state: ``answered``, ``not_ready`` (setup needed) or
+    ``failed`` (fixed text says nothing is confirmed)."""
+
+    text: str
+    state: str = "answered"
+
+
+class DelegationFailure(Exception):
+    """A categorical, text-free failure: ``category`` is logged, ``spoken`` is fixed bridge text."""
+
+    def __init__(self, category: str, spoken: str) -> None:
+        super().__init__(category)
+        self.category, self.spoken = category, spoken
+
+
+_CATEGORY = frozenset("abcdefghijklmnopqrstuvwxyz_")
+_UNVERIFIED = "The backend could not safely verify a result. Nothing is confirmed."
+
+Answer = Callable[[str, str], Awaitable["str | DelegationResult"]]
 
 
 async def serve_live(
@@ -266,20 +286,31 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                         await client.send_json({"type": "bridge.delegation", "state": "clarify"})
                         return
                     await client.send_json({"type": "bridge.delegation", "state": "started"})
+                    outcome = "answered"
                     try:
                         if not await allowed(config):
                             raise PermissionError("not allowed")
-                        result = await backend(text, context)
+                        reply = await backend(text, context)
                         if not await allowed(config):
                             raise PermissionError("not allowed")
+                        if isinstance(reply, DelegationResult):
+                            result = reply.text
+                            outcome = reply.state if reply.state in {"answered", "not_ready", "failed"} else "failed"
+                        else:
+                            result = str(reply)
                     except asyncio.CancelledError:
                         raise
                     except PermissionError:
                         state.closed.set()
                         return
+                    except DelegationFailure as exc:
+                        category = exc.category if set(exc.category) <= _CATEGORY else "unknown"
+                        _LOGGER.warning("Live delegation failed (category=%s)", category[:48])
+                        result, outcome = exc.spoken, "failed"
                     except Exception as exc:
-                        _LOGGER.warning("Live delegation failed (%s)", type(exc).__name__)
-                        result = "The backend could not safely verify a result. Nothing is confirmed."
+                        # Class name only: exception text may quote the request or provider output.
+                        _LOGGER.warning("Live delegation failed (category=unexpected %s)", type(exc).__name__)
+                        result, outcome = _UNVERIFIED, "failed"
                     if state.closed.is_set():
                         return  # late result after Stop/privacy: never revive speech
                     if revision != state.revision:
@@ -288,7 +319,8 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                         await client.send_json({"type": "bridge.delegation", "state": "superseded"})
                         return
                     await append("session.commentary.append", identifier, result)
-                    await client.send_json({"type": "bridge.delegation", "state": "answered"})
+                    # Only a verified backend reply is "answered"; setup and failure are reported as such.
+                    await client.send_json({"type": "bridge.delegation", "state": outcome})
 
             async def receive_provider() -> None:
                 async for message in upstream:

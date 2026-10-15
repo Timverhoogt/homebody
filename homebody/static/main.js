@@ -32,6 +32,8 @@ let selectedKidsActivity = "buddy";
 let kidsPreviewSingle = false;
 let bluetoothRefreshPending = false;
 let bluetoothState = null;
+let bluetoothSelectedAddress = "";
+let bluetoothCommandPending = false;
 let agentRequestPending = false;
 let agentProfileActive = false;
 // Bumped on every mode request or reported profile change; older Agent poll replies are dropped.
@@ -185,7 +187,7 @@ try {
   if (typeof savedKidsProfile.nickname === "string") $("kids-nickname").value = savedKidsProfile.nickname.slice(0, 32);
   if (["4-6", "7-9", "10-12"].includes(savedKidsProfile.age_band)) $("kids-age-band").value = savedKidsProfile.age_band;
   if ([15, 30, 45, 60].includes(Number(savedKidsProfile.duration_minutes))) $("kids-duration").value = String(savedKidsProfile.duration_minutes);
-  if (["en", "nl"].includes(savedKidsProfile.language)) $("kids-language").value = savedKidsProfile.language;
+  if (["en", "nl", "es", "de", "fr", "it", "pt"].includes(savedKidsProfile.language)) $("kids-language").value = savedKidsProfile.language;
   if (typeof savedKidsProfile.motion_enabled === "boolean") $("kids-motion-enabled").checked = savedKidsProfile.motion_enabled;
 } catch (error) {
   window.localStorage.removeItem("homebody-kids-profile");
@@ -896,6 +898,19 @@ function updateStatus(payload, sequence = statusSequence) {
             : "Bridge disabled";
     homeAssistantStatus.className = `muted${homeAssistant.error ? " error" : homeAssistant.connected ? " ok" : ""}`;
   }
+  const faceStatus = $("face-tracking-status");
+  if (faceStatus) {
+    // The daemon runs tracking; a sent command is "requested", never shown as running.
+    const cache = { verified: "Face model verified in this app's cache.",
+      missing: "Face model not in this app's cache; the daemon may fail to download it (see Operations).",
+      mismatch: "Cached face model does not match the pinned checksum (see Operations).",
+      unreadable: "Face model cache unreadable (see Operations)." }[runtime.face_model_app_cache] || "";
+    faceStatus.textContent = runtime.face_tracking_state === "requested"
+      ? `Requested from the robot daemon · not confirmed running. No face in view is not a failure. ${cache}`.trim()
+      : runtime.face_tracking_state === "command_failed" ? "Could not reach the robot daemon to start face following."
+        : "Off.";
+    faceStatus.className = `muted compact-note${runtime.face_tracking_state === "command_failed" ? " error" : ""}`;
+  }
   const kidsMode = runtime.kids_mode || {};
   const kidsActive = Boolean(kidsMode.active);
   const kidsCameraActive = Boolean(kidsMode.camera_active);
@@ -1004,15 +1019,22 @@ function updateStatus(payload, sequence = statusSequence) {
   const presentationBlocked = kidsActive || kidsLocked || presentationRequestPending;
   $("shared-physical-context-enabled").disabled = presentationBlocked;
   $("presentation-window-seconds").disabled = !presentationEnabled || presentationBlocked;
-  $("presentation-start").disabled = !presentationEnabled
-    || !Boolean(payload.config?.camera_enabled)
-    || !initiativeEnabled
-    || !Boolean(payload.config?.contextual_offers_enabled)
-    || agentProfile !== "agent"
-    || powerMode !== "awake"
-    || presentationActive
-    || presentationBlocked;
-  $("presentation-stop").disabled = !presentationActive || presentationRequestPending;
+  // Client-side mirror of the server's presentation gates; the server still re-checks on Start.
+  const presentationNeeds = [
+    !presentationEnabled && "shared",
+    !payload.config?.camera_enabled && "camera",
+    !initiativeEnabled && "initiative",
+    !payload.config?.contextual_offers_enabled && "offers",
+    agentProfile !== "agent" && "workspace",
+    (powerMode !== "awake" || runtime.motors_enabled !== true) && "awake",
+    runtime.face_tracking_active === true && !presentationActive && "face",
+    (kidsActive || kidsLocked) && "kids",
+  ].filter(Boolean);
+  // Unknown configuration (no presentation keys reported) never implies readiness.
+  const presentationKnown = typeof payload.config?.shared_physical_context_enabled === "boolean"
+    && window.HomebodyOwner?.isOwner() === true;
+  renderPresentationReadiness(presentationKnown
+    ? { needs: presentationNeeds, active: presentationActive, pending: presentationRequestPending } : null);
   runtimeAgentActivity = agent.recent_activity || [];
   renderAgentActivity();
   document.querySelector(".agent-card").hidden = kidsActive || kidsLocked;
@@ -1374,14 +1396,32 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
   }
 }
 
+// Advanced on every owner loss (owner.js render). A status reply admitted under an older generation
+// is discarded even if it arrives after pairing again; only a current-generation reply repaints.
+let ownerGeneration = 0;
+let statusRefreshGeneration = -1;
+window.HomebodyStatusLifecycle = {
+  owner(isOwner) {
+    if (isOwner) return;
+    ownerGeneration += 1;
+    renderPresentationReadiness(null);
+  },
+};
+
 async function refreshStatus() {
-  if (statusRefreshPending) return statusRefreshHealthy;
+  // A poll still in flight from before an owner loss must not block a fresh, authorized poll.
+  if (statusRefreshPending && statusRefreshGeneration === ownerGeneration) return statusRefreshHealthy;
   statusRefreshPending = true;
+  const generation = ownerGeneration;
+  statusRefreshGeneration = generation;
   const sequence = ++statusSequence;
   try {
     const response = await fetchWithTimeout("/api/status", { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const body = await response.json();
+    if (generation !== ownerGeneration || window.HomebodyOwner?.isOwner() !== true) {
+      return false;  // admitted before an owner loss: never revive readiness or controls
+    }
     updateStatus(body, sequence);
     window.HomebodyAgentConnection?.update(body.agent_connection);
     statusRefreshHealthy = true;
@@ -1413,6 +1453,7 @@ async function refreshStatus() {
     }
     document.querySelectorAll(".manual-control, [data-power]").forEach((button) => { button.disabled = true; });
     $("emotion-select").disabled = true;
+    renderPresentationReadiness(null);
     $("announcement-send").disabled = true;
     $("announcement-stop").disabled = true;
     $("announcement-badge").textContent = "Offline";
@@ -1435,7 +1476,7 @@ async function refreshStatus() {
     });
     $("initiative-badge").textContent = "Offline";
   } finally {
-    statusRefreshPending = false;
+    if (statusRefreshGeneration === generation) statusRefreshPending = false;
   }
   return statusRefreshHealthy;
 }
@@ -1787,6 +1828,80 @@ $("initiative-preferences-reset").addEventListener("click", () => {
     "Reachy forgot all learned initiative preferences.",
   );
 });
+
+// What Start still needs, each with navigation to the existing control. Navigation only: these
+// buttons never change a setting, wake or move Reachy, or touch the camera.
+const PRESENTATION_NEEDS = {
+  shared: ["Turn on Shared physical context in this card.", "Go to switch",
+    { tab: "agent", companion: true, id: "shared-physical-context-enabled" }],
+  camera: ["Turn on On-demand camera in Settings › Embodiment and privacy.", "Go to setting",
+    { tab: "settings", id: "camera_enabled" }],
+  initiative: ["Turn on Use initiative policy in Initiative & Offers.", "Go to switch",
+    { tab: "agent", companion: true, id: "initiative-policy-enabled" }],
+  offers: ["Turn on Contextual offers in Initiative & Offers (after the initiative policy).", "Go to switch",
+    { tab: "agent", companion: true, id: "contextual-offers-enabled" }],
+  workspace: ["Choose Workspace at the top of the Agent screen.", "Go to Workspace",
+    { tab: "agent", id: "agent-enable-button" }],
+  awake: ["Reachy must be Awake with motors on: use Wake up in the status bar.", "Go to Wake up",
+    { tab: "agent", id: "global-power-awake" }],
+  face: ["Turn off Local face following in Settings › Embodiment and privacy.", "Go to setting",
+    { tab: "settings", id: "face_tracking_enabled" }],
+  kids: ["Kids Mode is active or locked; presenting is unavailable.", "", null],
+};
+
+function goToControl({ tab, companion, id }) {
+  activateTab(tab, false, true);
+  if (companion && $("agent-companion-view").hidden) $("agent-view-companion").click();
+  const control = $(id);
+  if (!control) return;
+  const details = control.closest("details");
+  if (details && !details.open) details.open = true;
+  control.scrollIntoView({ block: "center" });
+  control.focus({ preventScroll: true });
+}
+
+/** ``state`` is null when live status is unknown (offline or owner loss): nothing is claimed ready. */
+function renderPresentationReadiness(state) {
+  const list = $("presentation-requirements");
+  const summary = $("presentation-readiness");
+  const items = [];
+  if (state === null) {
+    summary.textContent = "Readiness unknown · live status unavailable. Start stays off until it returns.";
+  } else if (state.active) {
+    summary.textContent = "A presentation window is running.";
+  } else if (state.pending) {
+    summary.textContent = "Waiting for Reachy to confirm the last change…";
+  } else if (state.needs.length) {
+    summary.textContent = `Start needs ${state.needs.length === 1 ? "one more thing" : `${state.needs.length} more things`}. `
+      + "This runs locally on Reachy; a connected Hermes backend does not make it ready.";
+    for (const key of state.needs) {
+      const [text, label, target] = PRESENTATION_NEEDS[key];
+      const row = document.createElement("li");
+      row.dataset.need = key;
+      const span = document.createElement("span");
+      span.textContent = text;
+      row.append(span);
+      if (target) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "secondary";
+        button.textContent = label;
+        button.addEventListener("click", () => goToControl(target));
+        row.append(button);
+      }
+      items.push(row);
+    }
+  } else {
+    summary.textContent = "Ready to start. Reachy re-checks voice, camera-control and robot activity when you press Start.";
+  }
+  list.replaceChildren(...items);
+  const active = state?.active === true;
+  $("presentation-start").disabled = state === null || active || state.pending || state.needs.length > 0;
+  $("presentation-stop").disabled = !active || state?.pending === true;
+  $("presentation-stop-help").textContent = state === null ? "Stop is unavailable while live status is unknown."
+    : active ? "Stop ends the window now and clears its local features."
+      : "Stop is available only while a window is running.";
+}
 
 async function updatePresentationSettings() {
   if (presentationRequestPending) return;
@@ -2256,7 +2371,10 @@ function renderBluetooth(state) {
   bluetoothState = state;
   const devices = Array.isArray(state.devices) ? state.devices : [];
   const select = $("bluetooth-device-select");
-  const previous = select.value;
+  // Selection is bound to the MAC the owner chose, never to list position.
+  if (bluetoothSelectedAddress && !devices.some((device) => device.address === bluetoothSelectedAddress)) {
+    bluetoothSelectedAddress = "";
+  }
   select.replaceChildren();
   if (!devices.length) {
     const option = document.createElement("option");
@@ -2264,6 +2382,10 @@ function renderBluetooth(state) {
     option.textContent = "No controller found";
     select.appendChild(option);
   } else {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Choose a device…";
+    select.appendChild(placeholder);
     devices.forEach((device) => {
       const option = document.createElement("option");
       option.value = device.address;
@@ -2275,9 +2397,9 @@ function renderBluetooth(state) {
       option.textContent = `${device.name} · ${device.address}${flags ? ` · ${flags}` : ""}`;
       select.appendChild(option);
     });
-    if (devices.some((device) => device.address === previous)) select.value = previous;
   }
-  const selected = devices.find((device) => device.address === select.value);
+  select.value = bluetoothSelectedAddress;
+  const selected = devices.find((device) => device.address === bluetoothSelectedAddress);
   $("bluetooth-adapter-state").textContent = !state.adapter_available
     ? "BlueZ unavailable"
     : state.adapter_powered ? "Powered on" : "Powered off";
@@ -2301,7 +2423,12 @@ function renderBluetooth(state) {
   $("bluetooth-badge").textContent = state.gamepad_connected
     ? "Controller ready" : connected ? "Bluetooth connected" : state.adapter_available ? "Ready" : "Unavailable";
   const message = $("bluetooth-message");
-  if (state.last_error) {
+  const operation = state.operation || {};
+  if (operation.error) {
+    // An explicit operation's failure stays visible until the next operation.
+    message.textContent = operation.error;
+    message.className = "message error";
+  } else if (state.last_error) {
     message.textContent = state.last_error;
     message.className = "message error";
   } else if (state.feature_error) {
@@ -2313,8 +2440,19 @@ function renderBluetooth(state) {
   }
 }
 
+function bluetoothOperationSummary(operation) {
+  if (operation.name === "pair" && operation.phase === "input_ready") {
+    return `Paired, bonded, and connected; input device ${operation.input_path} is present. `
+      + "Enable controller movement separately.";
+  }
+  if (operation.name === "pair" && operation.phase === "connected") {
+    return "Paired, bonded, and connected. This device exposed no controller input.";
+  }
+  return "Bluetooth controller settings updated.";
+}
+
 async function refreshBluetooth() {
-  if (bluetoothRefreshPending || $("panel-robot").hidden) return;
+  if (bluetoothRefreshPending || bluetoothCommandPending || $("panel-robot").hidden) return;
   bluetoothRefreshPending = true;
   try {
     const response = await fetch("/api/bluetooth/status", { cache: "no-store" });
@@ -2344,6 +2482,8 @@ async function bluetoothCommand(path, payload, pendingText) {
     "bluetooth-scan-button", "bluetooth-pair-button", "bluetooth-connect-button",
     "bluetooth-disconnect-button", "bluetooth-remove-button", "gamepad-enabled",
   ].forEach((id) => { $(id).disabled = true; });
+  bluetoothCommandPending = true;
+  let failure = null;
   try {
     const response = await fetch(path, {
       method: "POST",
@@ -2354,16 +2494,23 @@ async function bluetoothCommand(path, payload, pendingText) {
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     renderBluetooth(body);
     if (body.last_error) throw new Error(body.last_error);
-    message.textContent = "Bluetooth controller settings updated.";
+    if (body.operation && body.operation.error) throw new Error(body.operation.error);
+    message.textContent = bluetoothOperationSummary(body.operation || {});
     notifyFeedback(message, "ok");
   } catch (error) {
+    failure = error;
+  } finally {
+    bluetoothCommandPending = false;
+  }
+  if (failure) {
     await refreshBluetooth();
-    message.textContent = String(error);
+    message.textContent = String(failure);
     notifyFeedback(message, "error");
   }
 }
 
 $("bluetooth-device-select").addEventListener("change", () => {
+  bluetoothSelectedAddress = $("bluetooth-device-select").value;
   if (bluetoothState) renderBluetooth(bluetoothState);
 });
 $("bluetooth-scan-button").addEventListener("click", () => {

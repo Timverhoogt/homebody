@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.18] — Speech safety, five Kids languages and enforced Workspace discussion
+
+- Correct Python 3.11 Bluetooth-agent teardown so cancellation cannot cancel its own cleanup supervisor. The 0.5.17 draft failed the hosted compatibility gate and was not publicly released or deployed.
+
+- Integrate strict server-rendered Kids speech selectors, exact moderated-text capabilities, bounded turn deadlines and Stop/End fences across recognition, game transitions and synthesis.
+- Negotiate tool-free same-session native Hermes discussion with enforced dispatch, plugin and auxiliary-work isolation. Requires a compatible separately deployed native listener; unavailable enforcement fails closed. Lost admission responses can leave tool-free transcript context, never work authorization.
+- Repair owner-loss and stale native display/readiness responses, preserve existing consents, and keep Bluetooth controller pairing explicit and movement disabled by default.
+- Report daemon face following as requested rather than confirmed; provide pinned, checksum-verified model-cache provisioning without camera activation.
+- Add Spanish, German, French, Italian and Portuguese Kids sessions on the strict server-rendered catalog.
+  - Selector-only fixed speech, session-pinned language, per-language bridge and robot copy, retry and safety copy.
+  - I Spy requires session-language hints in the strict native schema.
+  - Language-scoped host commands, and recognition-language transport.
+- Each new language speaks only with its own `ELEVENLABS_KIDS_<LANG>_VOICE_ID`. There is no default, Dutch or configured-speech fallback.
+  - Start is refused before any side effect without that language's voice proof, and a Stop/End during the proof wins.
+  - EN/NL and Dutch Ruth are unchanged.
+- Add the source-only `tools/kids_language_readiness.py`. It reports source, config and manual acceptance separately.
+- Voice IDs remain host-configured, not shipped defaults; new-language waiting clips are optional and absent. Portuguese copy targets European Portuguese. Owner-selected reference-host voices do not establish native-language or supervised gameplay acceptance (see `docs/kids-language-deployment-readiness.md`).
+- Synchronize PWA shell/query v98.
+
 ## [0.5.16] — Dutch Kids voice and latency visibility
 
 - Add a host-configured Dutch-only Kids voice override, resolved from the validated language bound to each single-use moderated-text approval. English Kids voice and adult speech engines are unchanged; the package does not activate Ruth on other installations implicitly.

@@ -329,7 +329,7 @@ def test_locked_child_status_exposes_only_readiness_and_clears_private_runtime_t
     [
         ({"age_band": "13-15"}, "age band"),
         ({"activity": "internet"}, "activity"),
-        ({"language": "de"}, "language"),
+        ({"language": "sv"}, "language"),
         ({"duration_minutes": 10}, "duration"),
         ({"duration_minutes": 90}, "duration"),
         ({"nickname": "x" * 33}, "nickname"),
@@ -629,8 +629,8 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     worker = (STATIC / "service-worker.js").read_text(encoding="utf-8")
     assert "homebody-shell-v" in worker
     for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=95" in html
-        assert f'"/static/{asset}?v=95"' in worker
+        assert f"/static/{asset}?v=98" in html
+        assert f'"/static/{asset}?v=98"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

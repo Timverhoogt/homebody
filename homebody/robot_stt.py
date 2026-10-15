@@ -271,7 +271,7 @@ class RobotSttClient:
         cancelled: Callable[[], bool],
     ) -> RobotReceipt:
         """Recognize one in-RAM utterance for an immutable turn snapshot; raise on any failure."""
-        if language not in {"en", "nl", "auto"}:
+        if language not in {"en", "nl", "es", "de", "fr", "it", "pt", "auto"}:
             raise ValueError("Unsupported robot STT language")
         pcm = np.nan_to_num(np.asarray(samples, dtype=np.float32).ravel(), nan=0.0, posinf=1.0, neginf=-1.0)
         if pcm.size > MAX_SAMPLES:

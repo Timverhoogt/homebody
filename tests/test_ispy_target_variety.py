@@ -253,7 +253,9 @@ def test_unsafe_malformed_and_low_confidence_candidates_are_dropped(
         {"target": CHAIR},
         {"candidates": []},
         {"candidates": CHAIR},
-        {"candidates": [CHAIR, LAMP, CUSHION, candidate("mug"), candidate("ball")]},
+        # Both slightly oversized and runaway lists violate the native1..4 contract.
+        {"candidates": [CHAIR] * 5},
+        {"candidates": [CHAIR] * 17},
         {"candidates": [CHAIR], "target": CHAIR},
         "not json",
         [CHAIR],

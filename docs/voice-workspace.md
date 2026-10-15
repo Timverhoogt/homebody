@@ -13,6 +13,14 @@ The Agent page defaults to Companion (presence, timing and shared context). Work
 
 Since 0.5.12 the conversation/projects view exists only in a status-confirmed Workspace. In Everyday, while a switch is pending, offline, after owner loss or in Kids Mode it is hidden and cannot be opened; any preserved project work shows a badge with **Stop all Agent work**. Showing the conversation is display consent only: it is not a project connection and does not start listening. Reachy listens after “Hey Homebody”.
 
+## Where spoken Workspace requests go
+
+The Workspace card shows **Spoken requests go to** separately from display, project connection and listening.
+
+- **Open project with host voice discussion enabled:** each spoken turn (Pipeline, Realtime and GPT-Live) goes to that bound Hermes session and is labelled with its session/run.
+- **No project session configured on the host, no open project, project paused by Everyday, or voice discussion off on the host:** ordinary chat is **not** sent anywhere. Reachy says what to do (ask the host owner to add a session, Open project, switch to Workspace, or that the host has discussion off) and reports a `not_ready` outcome rather than a success. Only explicitly named roadmap or capability requests still use the restricted broker, labelled “not your Hermes session”. Examples are a project roadmap, status, timers, reminders, media, home devices, calendar, notes, messages, search and weather.
+- GPT-Live reports `answered` only for a verified reply. Failures report `failed` with fixed text, and only a text-free category is logged (for example `answer_unverified` or `provider_unavailable`). A Clear, profile change or other new generation during a turn discards the late answer and ends the Live session silently.
+
 ## Retention and privacy
 
 - Default off; explicit owner opt-in. No transcript persistence to disk, audit log, localStorage, sessionStorage or service-worker cache.

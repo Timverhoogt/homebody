@@ -7,15 +7,19 @@ and status, so announcement ordering against conversations is unchanged.
 
 from __future__ import annotations
 
+import io
 import logging
 import queue
 import tempfile
 import threading
 import time
+import wave
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from .hermes_client import HermesBridgeClient, SpeechAudio
+import httpx
+
+from .hermes_client import HermesBridgeClient, HermesBridgeError, SpeechAudio
 from .wakeword import WAKE_PROMPT
 
 # Keep the runtime logger name so existing log filters still match announcement lines.
@@ -23,6 +27,8 @@ _LOGGER = logging.getLogger("homebody.runtime")
 
 _ANNOUNCEMENT_BEHAVIORS = frozenset({"voice_only", "wake_and_return", "wake_and_stay"})
 _ANNOUNCEMENT_QUEUE_LIMIT = 20
+_KIDS_PCM_RATE = 24_000
+_KIDS_FIXED_SPEECH_MAX_PCM_BYTES = _KIDS_PCM_RATE * 2 * 120  # 16-bit mono, two minutes
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +46,11 @@ class Announcement:
     contextual_offer_token: int = 0
     # Kids Start only: after a fully played greeting/clue, arm this session's first listening turn.
     kids_listen_session_id: str = field(default="", repr=False)
+    # Fixed Kids lines: catalog selectors the bridge renders and approves for this session, then the
+    # Kids voice route only. ``text`` is the robot's local preview; the bridge's text is what is spoken.
+    kids_voice_session_id: str = field(default="", repr=False)
+    kids_speech_lines: tuple[tuple[tuple[str, str], ...], ...] = field(default=(), repr=False)
+    kids_generation: int = field(default=-1, repr=False)
     cancel_event: threading.Event = field(default_factory=threading.Event, compare=False, repr=False)
 
 
@@ -67,6 +78,9 @@ class AnnouncementsMixin:
         pause_seconds: float = 1.0,
         contextual_offer_token: int = 0,
         kids_listen_session_id: str = "",
+        kids_voice_session_id: str = "",
+        kids_speech_lines: tuple[dict[str, str], ...] = (),
+        kids_generation: int = -1,
     ) -> dict[str, object]:
         """Queue TTS without exposing provider credentials to Reachy or the browser."""
         clean_text = text.strip()
@@ -74,6 +88,11 @@ class AnnouncementsMixin:
             raise ValueError("Announcement text is required")
         if len(clean_text) > 15_000:
             raise ValueError("Announcement text cannot exceed 15,000 characters")
+        if bool(kids_voice_session_id) != bool(kids_speech_lines) or (
+            kids_voice_session_id and (provider or model or voice or kids_generation < 0)
+        ):
+            raise ValueError("Kids voice announcements need catalog lines, a generation and no voice settings")
+        frozen_lines = tuple(tuple(sorted((str(k), str(v)) for k, v in line.items())) for line in kids_speech_lines)
         provider = provider.strip().lower()
         if provider not in {"", "configured", "elevenlabs"}:
             raise ValueError("Unsupported announcement TTS provider")
@@ -102,6 +121,9 @@ class AnnouncementsMixin:
                 cancellation_generation=generation,
                 contextual_offer_token=contextual_offer_token,
                 kids_listen_session_id=kids_listen_session_id,
+                kids_voice_session_id=kids_voice_session_id,
+                kids_speech_lines=frozen_lines,
+                kids_generation=kids_generation,
             )
             try:
                 self._announcement_queue.put_nowait(item)
@@ -232,19 +254,36 @@ class AnnouncementsMixin:
                         woke_for_announcement = True
                     if self._announcement_item_cancelled(item):
                         continue
-                    speech_config = replace(
-                        config,
-                        tts_provider=item.provider or config.tts_provider,
-                        tts_model=item.model or config.tts_model,
-                        tts_voice=item.voice or config.tts_voice,
-                    )
-                    client = self._new_bridge_client(speech_config)
+                    if item.kids_voice_session_id:
+                        kids_config = self._kids_voice_config(config)
+                        if (
+                            not kids_config.kids_mode_enabled
+                            or kids_config.kids_session_id != item.kids_voice_session_id
+                            or not self._kids_session_is_current(item.kids_voice_session_id)
+                            or not self._kids_callback_is_current(item.kids_generation)
+                        ):
+                            continue  # the child session ended or was replaced while this line waited
+                        client = self._new_bridge_client(kids_config)
+                    else:
+                        speech_config = replace(
+                            config,
+                            tts_provider=item.provider or config.tts_provider,
+                            tts_model=item.model or config.tts_model,
+                            tts_voice=item.voice or config.tts_voice,
+                        )
+                        client = self._new_bridge_client(speech_config)
                     self._set_status(
                         "announcement_synthesizing",
                         "Generating announcement speech",
                         announcement_current_preview=item.text[:240],
                     )
-                    speech = client.synthesize(item.text)
+                    speech = (
+                        self._synthesize_kids_fixed_speech(client, item)
+                        if item.kids_voice_session_id
+                        else client.synthesize(item.text)
+                    )
+                    if speech is None:
+                        continue
                     for index in range(item.repeat):
                         if self._announcement_item_cancelled(item):
                             break
@@ -267,10 +306,17 @@ class AnnouncementsMixin:
                             and not self._privacy_requested.is_set()
                             and self._effective_power_mode() not in {"meeting", "sleep"}
                         ):
-                            # Played to the end while this exact session stayed current.
-                            self._arm_kids_first_listen(item.kids_listen_session_id)
+                            # Played to the end while this exact session and generation stayed current.
+                            self._arm_kids_first_listen(
+                                item.kids_listen_session_id,
+                                generation=item.kids_generation if item.kids_voice_session_id else None,
+                            )
             except Exception as exc:
                 _LOGGER.exception("Announcement failed")
+                if item.kids_listen_session_id and item.kids_voice_session_id:
+                    # A Kids line that should hand over to listening failed: never leave a live,
+                    # silent session that will not listen. End exactly that generation (no-op if stale).
+                    self._end_kids_after_failed_line(item)
                 if item.contextual_offer_token:
                     self._contextual_offers.cancel(item.contextual_offer_token, "speech_failed")
                 with self._status_lock:
@@ -314,6 +360,51 @@ class AnnouncementsMixin:
                     and self._effective_power_mode() == "awake"
                 ):
                     self._set_status("waiting_for_wake_word", WAKE_PROMPT)
+
+    def _end_kids_after_failed_line(self, item: Announcement) -> None:
+        if self._announcement_item_cancelled(item) or not self._kids_callback_is_current(item.kids_generation):
+            return  # Stop/End/replacement already won; never touch a newer session
+
+        def end() -> None:
+            try:
+                self.stop_kids_mode(reason="speech_failed", fold=True, expected_generation=item.kids_generation)
+            except Exception:
+                _LOGGER.exception("Kids Mode could not complete the safe fold after a failed spoken line")
+
+        threading.Thread(target=end, name="kids-speech-failed", daemon=True).start()
+
+    def _synthesize_kids_fixed_speech(self, client: HermesBridgeClient, item: Announcement) -> SpeechAudio | None:
+        """Bridge-rendered approved line via the Kids stream or its child-only fallback; None if cancelled."""
+        text = client.approve_kids_fixed_speech(tuple(dict(line) for line in item.kids_speech_lines))
+        if self._announcement_item_cancelled(item) or not self._kids_callback_is_current(item.kids_generation):
+            return None
+        pcm = bytearray()
+
+        def cancelled() -> bool:
+            return self._announcement_item_cancelled(item)
+
+        try:
+            for chunk in client.iter_kids_speech(text, should_stop=cancelled):
+                pcm.extend(chunk)
+                if len(pcm) > _KIDS_FIXED_SPEECH_MAX_PCM_BYTES:
+                    raise HermesBridgeError("Kids announcement speech exceeded the playback limit")
+        except (HermesBridgeError, httpx.HTTPError):
+            _LOGGER.warning("Kids announcement stream failed; using the child-only fallback route", exc_info=True)
+            if self._announcement_item_cancelled(item):
+                return None
+            return client.synthesize(text)  # Kids Mode client: /v1/kids/speech/fallback only
+        if self._announcement_item_cancelled(item):
+            return None
+        if len(pcm) < 2:
+            raise HermesBridgeError("Kids announcement speech returned no audio")
+        output = io.BytesIO()
+        with wave.open(output, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(_KIDS_PCM_RATE)
+            wav.writeframes(bytes(pcm[: len(pcm) - len(pcm) % 2]))
+        provider = client.last_tts_provider or "elevenlabs-flash-stream"
+        return SpeechAudio(output.getvalue(), "audio/wav", ".wav", provider)
 
     def _play_announcement_audio(self, item: Announcement, speech: SpeechAudio, text: str) -> None:
         suffix = speech.extension if speech.extension.startswith(".") else ".audio"

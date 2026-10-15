@@ -11,8 +11,10 @@ clip is usable only if ALL of the following hold, otherwise its language simply 
   by itself: a turn may use the clips only when the bridge's current health proof of the
   effective Kids streaming voice equals it (``eligible_clips``);
 * each entry has exactly ``id``, ``language``, ``text``, ``file``, ``sha256``,
-  ``duration_seconds``; the language is ``en``/``nl``, the id is the file stem and starts with the
-  language, and the text is one of the fixed content-free phrases below (no correctness,
+  ``duration_seconds``; the language is one the bundle may hold (``en``/``nl`` for the original
+  and Ruth bundles; only its own language for an optional ``es``/``de``/``fr``/``it``/``pt``
+  bundle), the id is the file stem and starts with the language, and the text is one of the
+  fixed content-free phrases below (no correctness,
   "heard"/"understood" claims, transcript, nickname or target);
 * each file name is a plain ``[a-z0-9-]+.wav`` basename, the path is a regular non-symlink file
   inside the directory, at most 256 KiB, and its SHA-256 equals the manifest digest;
@@ -44,7 +46,18 @@ from .kids_mode import KIDS_TTS_MODEL
 _LOGGER = logging.getLogger("homebody.runtime")
 
 ASSET_DIR = Path(__file__).resolve().parent / "assets" / "kids_acknowledgements"
-_PHRASES = {"en": ("Let me think", "Hmm", "Let's see"), "nl": ("Even denken", "Hmm", "Eens kijken")}
+_PHRASES = {
+    "en": ("Let me think", "Hmm", "Let's see"),
+    "nl": ("Even denken", "Hmm", "Eens kijken"),
+    "es": ("Un momento", "Mmm", "A ver"),
+    "de": ("Lass mich überlegen", "Hmm", "Mal sehen"),
+    "fr": ("Laisse-moi réfléchir", "Hmm", "Voyons voir"),
+    "it": ("Fammi pensare", "Mmm", "Vediamo"),
+    "pt": ("Deixa-me pensar", "Hmm", "Vamos ver"),
+}
+# ES/DE/FR/IT/PT clips may only come from their own fixed optional bundle directory; none is
+# shipped until the owner selects a voice and generates/verifies clips, so those turns are silent.
+SESSION_BUNDLE_LANGUAGES = ("es", "de", "fr", "it", "pt")
 ALLOWED_PHRASES = {
     language: frozenset(f"{phrase}{end}" for phrase in phrases for end in (".", "…"))
     for language, phrases in _PHRASES.items()
@@ -100,8 +113,13 @@ def _decode_wav(data: bytes) -> tuple[np.ndarray, int]:
     return samples, rate
 
 
-def load_catalog(directory: Path = ASSET_DIR) -> dict[str, tuple[AckClip, ...]]:
-    """Verify the manifest and clips; any problem yields no clips (fail closed, categorical log)."""
+def load_catalog(
+    directory: Path = ASSET_DIR, languages: tuple[str, ...] = ("en", "nl"),
+) -> dict[str, tuple[AckClip, ...]]:
+    """Verify the manifest and clips; any problem yields no clips (fail closed, categorical log).
+
+    ``languages`` are the only clip languages this bundle may contain.
+    """
     try:
         info = os.lstat(directory)
         if not stat.S_ISDIR(info.st_mode):
@@ -119,7 +137,7 @@ def load_catalog(directory: Path = ASSET_DIR) -> dict[str, tuple[AckClip, ...]]:
             or not 1 <= len(manifest["clips"]) <= _MAX_CLIPS
         ):
             raise ValueError("manifest does not match the Kids voice catalog contract")
-        catalog: dict[str, list[AckClip]] = {"en": [], "nl": []}
+        catalog: dict[str, list[AckClip]] = {language: [] for language in languages}
         seen: set[str] = set()
         for entry in manifest["clips"]:
             keys = {"id", "language", "text", "file", "sha256", "duration_seconds"}
@@ -128,7 +146,7 @@ def load_catalog(directory: Path = ASSET_DIR) -> dict[str, tuple[AckClip, ...]]:
             language, text, name, digest, clip_id = (
                 str(entry[key]) for key in ("language", "text", "file", "sha256", "id")
             )
-            if language not in ALLOWED_PHRASES or text not in ALLOWED_PHRASES[language]:
+            if language not in catalog or text not in ALLOWED_PHRASES[language]:
                 raise ValueError("clip phrase is not in the fixed catalog")
             if (
                 not _FILE_NAME.fullmatch(name)
@@ -161,7 +179,7 @@ def load_catalog(directory: Path = ASSET_DIR) -> dict[str, tuple[AckClip, ...]]:
         _LOGGER.info("Kids acknowledgement clips are not installed; no thinking filler")
     except Exception as exc:  # categorical only: never log paths, text or bytes
         _LOGGER.warning("Kids acknowledgement catalog rejected (%s); no thinking filler", type(exc).__name__)
-    return {"en": (), "nl": ()}
+    return {language: () for language in languages}
 
 
 ACK_DELAY_SECONDS = 1.0  # only when STT is genuinely still pending after a noticeable pause
@@ -338,4 +356,6 @@ def catalog() -> dict[str, tuple[AckClip, ...]]:
             # Fixed app-owned bundle only: no caller paths, live synthesis or weakened manifests.
             dutch = load_catalog(ASSET_DIR / "ruth-nl")
             _catalog = {language: clips + dutch[language] for language, clips in _catalog.items()}
+            for language in SESSION_BUNDLE_LANGUAGES:
+                _catalog.update(load_catalog(ASSET_DIR / language, (language,)))
         return _catalog

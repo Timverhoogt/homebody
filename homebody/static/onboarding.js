@@ -26,7 +26,7 @@
     el('setup-connection-state').textContent = state.connection_checked
       ? 'Backend connection checked. This is not a provider access or speech test.'
       : state.connection_configured ? 'Connection settings saved. Check them before continuing.' : 'Voice backend not configured yet. The local dashboard is available without one.';
-    el('setup-language').value = state.language === 'nl' ? 'nl' : 'en';
+    el('setup-language').value = ['nl', 'es', 'de', 'fr', 'it', 'pt'].includes(state.language) ? state.language : 'en';
     buttons.forEach(id => { el(id).disabled = pending; });
     el('setup-back').hidden = step === 'welcome';
     el('setup-next').hidden = step !== 'welcome';

@@ -17,9 +17,11 @@ from typing import Protocol
 
 from .controller_features import ControllerFeatureInterpreter, PlayStationEvdevFeatures
 
-_DEVICE_RE = re.compile(r"^Device\s+([0-9A-Fa-f:]{17})\s+(.+)$")
+_DEVICE_RE = re.compile(r"^(?:\[NEW\]\s+)?Device\s+([0-9A-Fa-f:]{17})\s+(.+)$")
 _MAC_RE = re.compile(r"^[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}$")
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|[\x01\x02]")
+_HID_UUID = "00001124-0000-1000-8000-00805f9b34fb"
+_UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _JS_EVENT = struct.Struct("IhBB")
 _JS_EVENT_BUTTON = 0x01
 _JS_EVENT_AXIS = 0x02
@@ -115,6 +117,71 @@ def _validate_address(address: str) -> str:
     return address
 
 
+@dataclass(frozen=True, slots=True)
+class InputNode:
+    path: str
+    name: str
+    vendor: str
+    uniq: str
+
+
+@dataclass(frozen=True, slots=True)
+class PairTimeouts:
+    start: float = 8.0
+    discover: float = 20.0
+    pair: float = 35.0
+    connect: float = 15.0
+    input_node: float = 10.0
+    poll_interval: float = 0.5
+
+
+def _default_input_nodes() -> list[InputNode]:
+    nodes: list[InputNode] = []
+    for path in sorted(glob.glob("/dev/input/js*")):
+        device = Path("/sys/class/input") / Path(path).name / "device"
+
+        def read(name: str, device: Path = device) -> str:
+            try:
+                return (device / name).read_text(encoding="utf-8", errors="replace").strip()
+            except OSError:
+                return ""
+
+        nodes.append(InputNode(path=path, name=read("name"), vendor=read("id/vendor").lower(), uniq=read("uniq")))
+    return nodes
+
+
+class PairingAgent(Protocol):
+    """Bounded exact-target BlueZ agent; see ``homebody.bluetooth_agent.BluezPairingAgent``."""
+
+    @property
+    def inactive_reason(self) -> str:
+        """Empty while active; otherwise why the lifecycle ended (cancelled, released, closed)."""
+        ...
+
+    def start(self, timeout: float) -> None: ...
+
+    def discover(self, timeout: float) -> str: ...
+
+    def pair(self, timeout: float) -> None: ...
+
+    def wait(self, seconds: float) -> None: ...
+
+    def close(self, timeout: float = 3.0) -> None: ...
+
+
+PairingAgentFactory = Callable[[str], PairingAgent]
+
+
+def _default_agent_factory(target: str) -> PairingAgent:
+    try:
+        from .bluetooth_agent import BluezPairingAgent
+    except ImportError as exc:
+        raise RuntimeError(
+            "Bluetooth pairing needs the dbus-next package to register an exact-target BlueZ agent"
+        ) from exc
+    return BluezPairingAgent(target)
+
+
 class BluetoothGamepadService:
     """Manage BlueZ devices and translate one local joystick into allow-listed actions."""
 
@@ -126,9 +193,17 @@ class BluetoothGamepadService:
         joystick_glob: Callable[[], list[str]] | None = None,
         feature_factory: FeatureFactory = _default_feature_factory,
         adapter_available: bool | None = None,
+        agent_factory: PairingAgentFactory = _default_agent_factory,
+        input_nodes: Callable[[], list[InputNode]] = _default_input_nodes,
+        pair_timeouts: PairTimeouts | None = None,
     ) -> None:
         self._action_callback = action_callback
         self._command_runner = command_runner
+        self._agent_factory = agent_factory
+        self._input_nodes = input_nodes
+        self._pair_timeouts = pair_timeouts or PairTimeouts()
+        self._discovered: dict[str, str] = {}
+        self._operation: dict[str, object] = {"name": "", "address": "", "phase": "", "error": "", "input_path": ""}
         self._joystick_glob = joystick_glob or (lambda: sorted(glob.glob("/dev/input/js*")))
         self._feature_factory = feature_factory
         self._lock = threading.RLock()
@@ -210,6 +285,10 @@ class BluetoothGamepadService:
                 for address, name in known.items()
             }
             with self._lock:
+                # Keep the latest bounded scan's unpaired discoveries visible so
+                # an explicit selection does not vanish when BlueZ drops them.
+                for address, name in self._discovered.items():
+                    devices.setdefault(address, BluetoothDevice(address=address, name=name))
                 self._adapter_available = True
                 self._adapter_powered = "Powered: yes" in show
                 self._devices = devices
@@ -252,21 +331,41 @@ class BluetoothGamepadService:
             # then preserve this operation's bounded discovery results for the UI.
             self._refresh_locked(strict=True)
             with self._lock:
+                self._discovered = dict(discovered)
                 for address, name in discovered.items():
                     if address not in self._devices:
                         self._devices[address] = BluetoothDevice(address=address, name=name)
             return self.status()
 
-    def _device_properties(self, address: str) -> dict[str, str]:
+    def _device_info(self, address: str) -> tuple[dict[str, str], set[str]]:
         output = self._run(["info", address], timeout=8.0)
         properties: dict[str, str] = {}
+        uuids: set[str] = set()
         for raw_line in _strip_ansi(output).splitlines():
             line = raw_line.strip()
             if ":" not in line:
                 continue
             key, value = line.split(":", 1)
-            properties[key.strip().lower()] = value.strip().lower()
-        return properties
+            key = key.strip().lower()
+            if key == "uuid":
+                uuids.update(_UUID_RE.findall(value.lower()))
+                continue
+            properties[key] = value.strip().lower()
+        return properties, uuids
+
+    def _device_properties(self, address: str) -> dict[str, str]:
+        return self._device_info(address)[0]
+
+    def _set_operation(self, **values: object) -> None:
+        with self._lock:
+            self._operation.update(values)
+
+    def _exact_input_node(self, address: str) -> InputNode | None:
+        """Return the joystick node whose HIDP uniq is exactly this Bluetooth address."""
+        for node in self._input_nodes():
+            if node.uniq.strip().upper() == address:
+                return node
+        return None
 
     def pair(self, address: str) -> dict[str, object]:
         with self._controller_transition_lock:
@@ -275,49 +374,183 @@ class BluetoothGamepadService:
     def _pair_serialized(self, address: str) -> dict[str, object]:
         address = _validate_address(address)
         with self._bluez_lock:
-            existing = self._device_properties(address)
-            if existing.get("paired") == "yes" and existing.get("bonded") != "yes":
-                # BlueZ can retain Paired=yes without a link key. The resulting
-                # ACL connection is rejected by the input profile as !bonded.
-                self._run(["remove", address], timeout=10.0)
-            pair_error: Exception | None = None
+            with self._lock:
+                self._operation = {
+                    "name": "pair", "address": address, "phase": "starting", "error": "", "input_path": "",
+                }
             try:
-                # Register an explicit headless agent for this bounded pairing
-                # process; BlueZ requires an agent before first-time pairing.
-                self._run(
-                    ["--timeout", "35", "--agent", "NoInputNoOutput", "pair", address],
-                    timeout=40.0,
-                )
-            except Exception as exc:
-                pair_error = exc
-            try:
-                properties = self._device_properties(address)
-                if properties.get("paired") != "yes":
-                    raise RuntimeError(f"BlueZ did not confirm pairing for {address}") from pair_error
-                if properties.get("bonded") != "yes":
-                    raise RuntimeError(
-                        f"BlueZ did not create a bond for {address}; put the controller in pairing mode and try again"
-                    ) from pair_error
-                self._run(["trust", address], timeout=8.0)
-                properties = self._device_properties(address)
-                if properties.get("trusted") != "yes":
-                    raise RuntimeError(f"BlueZ did not confirm trust for {address}")
-                self._run(["connect", address], timeout=15.0)
-                properties = self._device_properties(address)
-                if properties.get("connected") != "yes":
-                    raise RuntimeError(f"BlueZ did not confirm connection for {address}")
+                self._pair_lifecycle(address)
+                # A pair never enables controller movement; it only restores
+                # dispatch when the owner had already consented to it.
                 self._resume_controller_dispatch_if_enabled()
-                with self._lock:
-                    self._last_error = ""
                 return self._refresh_locked(strict=True)
             except Exception as exc:
+                message = "; ".join([str(exc) or type(exc).__name__, *getattr(exc, "__notes__", [])])
                 with self._lock:
-                    self._last_error = str(exc)
+                    self._last_error = message
+                    self._operation["error"] = message
+                    self._operation["phase"] = "failed"
                 raise
+
+    def _pair_cleanup(self, agent: PairingAgent, address: str, trusted_here: bool, completed: bool) -> list[str]:
+        """Run every cleanup step; one failure never skips the next.
+
+        Trust added by this pairing is rolled back unless the whole lifecycle,
+        including agent cleanup, succeeded.
+        """
+        errors: list[str] = []
+        try:
+            agent.close()
+        except Exception as exc:
+            errors.append(f"agent cleanup failed: {exc}")
+        if trusted_here and (not completed or errors):
+            try:
+                self._run(["untrust", address], timeout=8.0)
+                if self._device_properties(address).get("trusted") == "yes":
+                    errors.append(f"BlueZ still reports {address} as trusted after rollback")
+            except Exception as exc:
+                errors.append(f"trust rollback failed: {exc}")
+        return errors
+
+    def _pair_lifecycle(self, address: str) -> None:
+        timeouts = self._pair_timeouts
+        self._run(["power", "on"], timeout=8.0)
+        self._refresh_locked(strict=True)
+        try:
+            existing = self._device_properties(address)
+        except RuntimeError:
+            existing = {}
+        stale = existing.get("paired") == "yes" and existing.get("bonded") != "yes"
+        already_bonded = existing.get("paired") == "yes" and existing.get("bonded") == "yes"
+        originally_trusted = existing.get("trusted") == "yes" and not stale
+        trusted_here = False
+        completed = False
+        failure: BaseException | None = None
+        if stale:
+            # BlueZ can retain Paired=yes without a link key. The resulting
+            # ACL connection is rejected by the input profile as !bonded.
+            self._run(["remove", address], timeout=10.0)
+        agent = self._agent_factory(address)
+        try:
+            # The agent is registered and default before pairing, and stays
+            # registered until HID authorization and the input node are verified.
+            agent.start(timeouts.start)
+            self._set_operation(phase="agent_ready")
+            self._set_operation(phase="discovering")
+            # Discovery stays alive on the agent's bus client so BlueZ keeps
+            # (or recreates) the transient target object until pairing ends.
+            agent.discover(timeouts.discover)
+            if not already_bonded:
+                self._set_operation(phase="pairing")
+                agent.pair(timeouts.pair)
+            properties, uuids = self._device_info(address)
+            # Positive, explicit evidence only: an absent property is not "yes".
+            if properties.get("paired") != "yes":
+                raise RuntimeError(f"BlueZ did not confirm pairing for {address}")
+            if properties.get("bonded") != "yes":
+                raise RuntimeError(
+                    f"BlueZ did not create a bond for {address}; put the controller in pairing mode and try again"
+                )
+            self._set_operation(phase="bonded")
+            if properties.get("trusted") != "yes":
+                # Mark before invoking: the command can change BlueZ and still
+                # fail, or its readback can fail. Owner-set trust is never ours.
+                trusted_here = not originally_trusted
+                self._run(["trust", address], timeout=8.0)
+                properties, uuids = self._device_info(address)
+                if properties.get("trusted") != "yes":
+                    raise RuntimeError(f"BlueZ did not confirm trust for {address}")
+            properties, uuids = self._await_connection(agent, address, properties, uuids)
+            self._set_operation(phase="connected")
+            if _HID_UUID in uuids:
+                # Node presence only; mapping/readability is the reader's job after consent.
+                node = self._await_input_node(agent, address)
+                self._set_operation(phase="input_ready", input_path=node.path)
+            self._require_agent_active(agent, "pairing completed")
+            completed = True
+        except BaseException as exc:
+            failure = exc
+            raise
+        finally:
+            cleanup_errors = self._pair_cleanup(agent, address, trusted_here, completed)
+            if cleanup_errors:
+                if failure is None:
+                    raise RuntimeError("Pairing cleanup failed: " + "; ".join(cleanup_errors))
+                for error in cleanup_errors:
+                    failure.add_note(error)
+
+    @staticmethod
+    def _require_agent_active(agent: PairingAgent, stage: str) -> None:
+        reason = agent.inactive_reason
+        if reason:
+            raise RuntimeError(f"BlueZ pairing agent was {reason} before {stage}")
+
+    def _await_connection(
+        self, agent: PairingAgent, address: str, properties: dict[str, str], uuids: set[str]
+    ) -> tuple[dict[str, str], set[str]]:
+        timeouts = self._pair_timeouts
+        deadline = time.monotonic() + timeouts.connect
+        connect_requested = False
+        connect_error = ""
+        self._require_agent_active(agent, "the controller connected")
+        while properties.get("connected") != "yes":
+            if time.monotonic() >= deadline:
+                detail = f": {connect_error}" if connect_error else ""
+                raise RuntimeError(f"BlueZ did not confirm connection for {address}{detail}")
+            self._require_agent_active(agent, "the controller connected")
+            if not connect_requested and time.monotonic() >= deadline - timeouts.connect / 2:
+                connect_requested = True
+                try:
+                    self._run(["connect", address], timeout=timeouts.connect / 2)
+                except RuntimeError as exc:
+                    connect_error = str(exc)
+            else:
+                agent.wait(timeouts.poll_interval)
+                self._require_agent_active(agent, "the controller connected")
+            properties, uuids = self._device_info(address)
+        if properties.get("bonded") != "yes":
+            raise RuntimeError(f"BlueZ connected {address} without a bond")
+        return properties, uuids
+
+    def _await_input_node(self, agent: PairingAgent, address: str) -> InputNode:
+        deadline = time.monotonic() + self._pair_timeouts.input_node
+        while True:
+            self._require_agent_active(agent, "HID input was ready")
+            node = self._exact_input_node(address)
+            if node is not None:
+                self._require_agent_active(agent, "HID input was ready")
+                return node
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"{address} connected but no input device appeared; BlueZ may have rejected HID authorization"
+                )
+            self._require_agent_active(agent, "HID input was ready")
+            agent.wait(self._pair_timeouts.poll_interval)
+            self._require_agent_active(agent, "HID input was ready")
+            if self._device_properties(address).get("connected") != "yes":
+                raise RuntimeError(
+                    f"{address} disconnected before its input device appeared; HID authorization was not completed"
+                )
+
+    def _tracked(self, name: str, address: str, operation: Callable[[str], dict[str, object]]) -> dict[str, object]:
+        """Retain the outcome of an explicit operation; ordinary refreshes cannot clear it."""
+        address = _validate_address(address)
+        with self._lock:
+            self._operation = {"name": name, "address": address, "phase": "running", "error": "", "input_path": ""}
+        try:
+            status = operation(address)
+        except Exception as exc:
+            with self._lock:
+                self._operation.update(phase="failed", error=str(exc))
+            raise
+        with self._lock:
+            self._operation["phase"] = "done"
+            status["operation"] = dict(self._operation)
+        return status
 
     def connect(self, address: str) -> dict[str, object]:
         with self._controller_transition_lock:
-            return self._connect_serialized(address)
+            return self._tracked("connect", address, self._connect_serialized)
 
     def _connect_serialized(self, address: str) -> dict[str, object]:
         address = _validate_address(address)
@@ -336,7 +569,7 @@ class BluetoothGamepadService:
 
     def disconnect(self, address: str) -> dict[str, object]:
         with self._controller_transition_lock:
-            return self._disconnect_serialized(address)
+            return self._tracked("disconnect", address, self._disconnect_serialized)
 
     def _disconnect_serialized(self, address: str) -> dict[str, object]:
         address = _validate_address(address)
@@ -354,7 +587,7 @@ class BluetoothGamepadService:
 
     def remove(self, address: str) -> dict[str, object]:
         with self._controller_transition_lock:
-            return self._remove_serialized(address)
+            return self._tracked("remove", address, self._remove_serialized)
 
     def _remove_serialized(self, address: str) -> dict[str, object]:
         address = _validate_address(address)
@@ -371,6 +604,8 @@ class BluetoothGamepadService:
                     properties = {}
                 if any(properties.get(key) == "yes" for key in ("paired", "bonded", "trusted", "connected")):
                     raise RuntimeError(f"BlueZ still reports {address} as paired, bonded, trusted, or connected")
+                with self._lock:
+                    self._discovered.pop(address, None)
                 status = self._refresh_locked(strict=True)
                 devices = status.get("devices", [])
                 if isinstance(devices, list) and any(
@@ -424,6 +659,7 @@ class BluetoothGamepadService:
                 "last_gamepad_action": self._last_gamepad_action,
                 "feature_error": feature_error,
                 **feature_status,
+                "operation": dict(self._operation),
                 "last_error": self._last_error,
             }
 

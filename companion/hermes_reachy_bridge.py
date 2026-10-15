@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
 
-from aiohttp import ClientSession, ClientTimeout, FormData, web
+from aiohttp import ClientError, ClientSession, ClientTimeout, FormData, web
 
 try:
     from companion.agent_backends import OpenClawBackend, OpenClawConfig, OpenClawConfigError
@@ -41,7 +41,9 @@ try:
         realtime_tool_specs,
         session_generation,
     )
-    from companion.live_transport import serve_live
+    from companion.kids_fixed_copy import MAX_SEGMENTS as _KIDS_FIXED_MAX_SEGMENTS
+    from companion.kids_fixed_copy import render_segment as _render_kids_fixed_segment
+    from companion.live_transport import DelegationFailure, DelegationResult, serve_live
     from companion.llm_providers import LLMProviderConfigError, TextModelProvider, everyday_provider_from_env
     from companion.native_workspace import WorkspaceError
     from companion.native_workspace_routes import NativeWorkspaceRoutes
@@ -82,7 +84,9 @@ except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.pa
         realtime_tool_specs,
         session_generation,
     )
-    from live_transport import serve_live  # type: ignore[no-redef]
+    from kids_fixed_copy import MAX_SEGMENTS as _KIDS_FIXED_MAX_SEGMENTS  # type: ignore[no-redef]
+    from kids_fixed_copy import render_segment as _render_kids_fixed_segment  # type: ignore[no-redef]
+    from live_transport import DelegationFailure, DelegationResult, serve_live  # type: ignore[no-redef]
     from llm_providers import (  # type: ignore[no-redef]
         LLMProviderConfigError,
         TextModelProvider,
@@ -121,9 +125,38 @@ _MAX_KIDS_INPUT_CHARACTERS = 2_000
 _MAX_KIDS_OUTPUT_CHARACTERS = 1_200
 _KIDS_AGE_BANDS = frozenset({"4-6", "7-9", "10-12"})
 _KIDS_ACTIVITIES = frozenset({"buddy", "story", "quiz", "riddles", "calm", "ispy"})
-_KIDS_LANGUAGES = frozenset({"en", "nl"})
+_KIDS_LANGUAGES = frozenset({"en", "nl", "es", "de", "fr", "it", "pt"})
+# ES/DE/FR/IT/PT speak only with their own host-configured voice: no default, English, other-language
+# or configured speech fallback. EN/NL keep the original default Kids voice and the Dutch-only Ruth override.
+_KIDS_SESSION_VOICE_LANGUAGES = frozenset({"es", "de", "fr", "it", "pt"})
+_KIDS_SESSION_VOICE_ENV = {
+    "es": "ELEVENLABS_KIDS_ES_VOICE_ID", "de": "ELEVENLABS_KIDS_DE_VOICE_ID", "fr": "ELEVENLABS_KIDS_FR_VOICE_ID",
+    "it": "ELEVENLABS_KIDS_IT_VOICE_ID", "pt": "ELEVENLABS_KIDS_PT_VOICE_ID",
+}
+_KIDS_LANGUAGE_NAMES = {
+    "en": "English", "nl": "Dutch", "es": "Spanish", "de": "German", "fr": "French", "it": "Italian",
+    "pt": "Portuguese",
+}
 _KIDS_HISTORY_TTL_SECONDS = 2 * 60 * 60
 _KIDS_HISTORY_LIMIT = 64
+# Kids chat deadlines. Each network stage has its own ceiling and the whole bridge turn has one
+# overall budget, so a stall can never surface as aiohttp's bare 504 (an unhandled TimeoutError)
+# that ended the child's turn silently. Speech synthesis and playback are separate and not covered.
+_KIDS_MODERATION_TIMEOUT_SECONDS = 6.0
+_KIDS_MODEL_TIMEOUT_SECONDS = 15.0
+_KIDS_ISPY_MODEL_TIMEOUT_SECONDS = 8.0
+_KIDS_TURN_BUDGET_SECONDS = 25.0  # Reachy's Kids chat client waits slightly longer (homebody/hermes_client.py)
+# Fixed bridge-authored copy for a transient failure: nothing from the model, no history change.
+_KIDS_MODEL_RETRY_REPLY = {
+    "en": "Sorry, that didn't work just now. Can you say it again?",
+    "nl": "Sorry, dat lukte even niet. Wil je het nog een keer zeggen?",
+    # ES/DE/FR/IT/PT (Portuguese in provisional European forms) await native-speaker review.
+    "es": "Perdona, eso no ha funcionado ahora. ¿Puedes repetirlo?",
+    "de": "Entschuldigung, das hat gerade nicht geklappt. Kannst du es noch einmal sagen?",
+    "fr": "Pardon, ça n'a pas marché. Tu peux le redire ?",
+    "it": "Scusa, non ha funzionato. Puoi ripeterlo?",
+    "pt": "Desculpa, isso não funcionou agora. Podes repetir?",
+}
 _KIDS_SESSION_ID_RE = re.compile(r"kids-[0-9a-f]{32}\Z")
 _WARM_SESSION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9:._-]{0,159}\Z")
 _KIDS_SPEECH_APPROVAL_TTL_SECONDS = 5 * 60
@@ -154,6 +187,16 @@ _ISPY_DISALLOWED_TERMS = frozenset({
     "knife", "private", "underwear", "passport", "credit card", "password", "address",
     "gezicht", "persoon", "mensen", "kind", "lichaam", "kleding", "scherm", "medicijn",
     "wapen", "mes", "privé", "telefoon",
+    "cara", "persona", "gente", "niño", "niña", "cuerpo", "ropa", "pantalla", "medicina",
+    "pastilla", "arma", "cuchillo", "privado", "teléfono", "móvil",
+    "gesicht", "mensch", "menschen", "körper", "kleidung", "bildschirm", "medizin", "medikament",
+    "tablette", "waffe", "messer", "privat", "telefon",
+    "visage", "personne", "enfant", "corps", "peau", "cheveux", "vêtement", "vêtements", "écran",
+    "téléphone", "médicament", "arme", "couteau", "papiers",
+    "viso", "faccia", "bambino", "bambina", "corpo", "pelle", "capelli", "mano", "vestiti", "schermo",
+    "telefono", "cellulare", "pillola", "coltello", "privato",
+    "rosto", "pessoa", "pessoas", "criança", "roupa", "ecrã", "tela", "telemóvel", "celular",
+    "remédio", "comprimido", "faca", "documento",
 })
 _ISPY_TARGET_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -213,10 +256,260 @@ _KIDS_HOSTED_INSTRUCTION = (
     "the host offers choices."
 )
 _ISPY_HOSTED_ROUND_DONE = {
-    "guessed": {"en": "Yes! I guessed it!", "nl": "Ja! Ik heb het geraden!"},
-    "beaten": {"en": "You beat me! Clever object!", "nl": "Je hebt me verslagen! Slim voorwerp!"},
-    "done": {"en": "That was a fun I Spy round!", "nl": "Dat was een leuke ronde ik zie, ik zie!"},
+    "guessed": {
+        "en": "Yes! I guessed it!", "nl": "Ja! Ik heb het geraden!", "es": "¡Sí! ¡Lo he adivinado!",
+        "de": "Ja! Ich hab's erraten!", "fr": "Oui ! J'ai deviné !", "it": "Sì! L'ho indovinato!",
+        "pt": "Sim! Adivinhei!",
+    },
+    "beaten": {
+        "en": "You beat me! Clever object!", "nl": "Je hebt me verslagen! Slim voorwerp!",
+        "es": "¡Me has ganado! ¡Qué objeto tan listo!", "de": "Du hast mich besiegt! Schlauer Gegenstand!",
+        "fr": "Tu m'as battu ! Quel objet malin !", "it": "Mi hai battuto! Che oggetto furbo!",
+        "pt": "Ganhaste-me! Que objeto esperto!",
+    },
+    "done": {
+        "en": "That was a fun I Spy round!", "nl": "Dat was een leuke ronde ik zie, ik zie!",
+        "es": "¡Qué divertida ha sido esta ronda de veo, veo!",
+        "de": "Das war eine lustige Runde ich sehe was, was du nicht siehst!",
+        "fr": "C'était une partie amusante de je vois, je vois !",
+        "it": "Che bel turno di vedo, vedo!",
+        "pt": "Foi uma ronda divertida de eu vejo, eu vejo!",
+    },
 }
+# Fixed child-facing bridge copy per session language. EN/NL strings are the original ones; the
+# ES/DE/FR/IT/PT strings (Portuguese in provisional European forms) await native-speaker review.
+_KIDS_COPY: dict[str, dict[str, str]] = {
+    "en": {
+        "safety": (
+            "I can't help with that. Please tell a trusted grown-up nearby now. "
+            "If someone is in immediate danger, contact your local emergency services."
+        ),
+        "no_answer": "I don't have a spoken answer for that.",
+        "ispy_your_turn": " Now it's your turn. Choose a safe household object and give me one clue.",
+        "ispy_round_over": "That's okay, this round is finished. Say 'play again' when I may look for something.",
+        "ispy_clue_help": "Tell me something about your object, like its colour or where it is.",
+        "ispy_choose_safe": "Please choose a different safe household object and give me a new clue.",
+        "ispy_unsure": "I'm not sure yet. Please give me a different clue.",
+        "ispy_guess": "Is it a {guess}?",
+        "ispy_right": "Yes! Good object. Now it's my turn again. I'll look around.",
+        "ispy_beaten": "You beat me! What object did you choose?",
+        "ispy_more_clue": "Good choice. Give me one more clue.",
+        "ispy_yes_no": "Was my guess right? Please say yes or no.",
+        "ispy_clever": "That was a clever object. Now it's my turn again. I'll look around.",
+        "ispy_no_problem": "No problem. Say 'play again' when I may look for something.",
+        "ispy_look": "I'll look around now.",
+        "give_up": "That's okay! It was the {name}.",
+        "right": "Yes! It was the {name}.",
+        "good_try": "Good try! It was the {name}.",
+        "tries_many": "You have {left} guesses left.",
+        "tries_one": "You have one guess left.",
+        "hints_done": "Those were all my hints. It was the {name}.",
+        "not_quite": "Not quite. {tries}",
+        "hint_prefix": "Here is a hint:",
+        "guess_prefix": "Nice guess, but not yet. New hint:",
+        "colour_hint": "Look for something {colour}.",
+        "colour_clue": "I spy with my little eye, something that is {colour}.",
+    },
+    "nl": {
+        "safety": (
+            "Daar kan ik niet mee helpen. Vertel het nu aan een volwassene die je vertrouwt. "
+            "Is iemand in direct gevaar, bel dan de hulpdiensten."
+        ),
+        "no_answer": "Daar heb ik geen antwoord op.",
+        "ispy_your_turn": " Nu ben jij aan de beurt. Kies een veilig voorwerp in huis en geef me één hint.",
+        "ispy_round_over": "Dat geeft niet, deze ronde is klaar. Zeg 'nog een keer' als ik weer iets mag zoeken.",
+        "ispy_clue_help": "Vertel me iets over jouw voorwerp, bijvoorbeeld de kleur of waar het staat.",
+        "ispy_choose_safe": "Kies alsjeblieft een ander, veilig voorwerp in huis en geef me een nieuwe hint.",
+        "ispy_unsure": "Ik weet het nog niet. Geef me alsjeblieft een andere hint.",
+        "ispy_guess": "Is het een {guess}?",
+        "ispy_right": "Ja! Goed voorwerp. Nu ben ik weer aan de beurt. Ik ga rondkijken.",
+        "ispy_beaten": "Je hebt me verslagen! Welk voorwerp had je gekozen?",
+        "ispy_more_clue": "Goede keuze. Geef me nog één hint.",
+        "ispy_yes_no": "Was mijn gok goed? Zeg ja of nee.",
+        "ispy_clever": "Dat was een slim voorwerp. Nu ben ik weer aan de beurt. Ik ga rondkijken.",
+        "ispy_no_problem": "Geen probleem. Zeg 'nog een keer' als ik weer iets mag zoeken.",
+        "ispy_look": "Ik ga nu rondkijken.",
+        "give_up": "Dat geeft niet! Het was de {name}.",
+        "right": "Ja! Het was de {name}.",
+        "good_try": "Goed geprobeerd! Het was de {name}.",
+        "tries_many": "Je mag nog {left} keer raden.",
+        "tries_one": "Je mag nog één keer raden.",
+        "hints_done": "Dat waren al mijn hints. Het was de {name}.",
+        "not_quite": "Nog niet. {tries}",
+        "hint_prefix": "Hier is een hint:",
+        "guess_prefix": "Goede gok, maar nog niet. Nieuwe hint:",
+        "colour_hint": "Zoek iets dat {colour} is.",
+        "colour_clue": "Ik zie, ik zie wat jij niet ziet, en de kleur is {colour}.",
+    },
+    "es": {
+        "safety": (
+            "No puedo ayudarte con eso. Cuéntaselo ahora a una persona adulta de confianza que esté cerca. "
+            "Si alguien está en peligro, llamad a los servicios de emergencia."
+        ),
+        "no_answer": "No tengo una respuesta para eso.",
+        "ispy_your_turn": " Ahora te toca a ti. Elige un objeto seguro de la casa y dame una pista.",
+        "ispy_round_over": "No pasa nada, esta ronda ha terminado. Di 'otra vez' cuando pueda buscar algo.",
+        "ispy_clue_help": "Cuéntame algo de tu objeto, por ejemplo su color o dónde está.",
+        "ispy_choose_safe": "Por favor, elige otro objeto seguro de la casa y dame una pista nueva.",
+        "ispy_unsure": "Todavía no lo sé. Por favor, dame otra pista.",
+        "ispy_guess": "¿Es {guess}?",
+        "ispy_right": "¡Sí! Buen objeto. Ahora me toca otra vez a mí. Voy a mirar.",
+        "ispy_beaten": "¡Me has ganado! ¿Qué objeto habías elegido?",
+        "ispy_more_clue": "Buena elección. Dame una pista más.",
+        "ispy_yes_no": "¿He acertado? Di sí o no.",
+        "ispy_clever": "Era un objeto muy listo. Ahora me toca otra vez a mí. Voy a mirar.",
+        "ispy_no_problem": "No pasa nada. Di 'otra vez' cuando pueda buscar algo.",
+        "ispy_look": "Ahora voy a mirar.",
+        "give_up": "¡No pasa nada! Era: {name}.",
+        "right": "¡Sí! Era: {name}.",
+        "good_try": "¡Buen intento! Era: {name}.",
+        "tries_many": "Te quedan {left} intentos.",
+        "tries_one": "Te queda un intento.",
+        "hints_done": "Esas eran todas mis pistas. Era: {name}.",
+        "not_quite": "Todavía no. {tries}",
+        "hint_prefix": "Aquí tienes una pista:",
+        "guess_prefix": "Buen intento, pero todavía no. Nueva pista:",
+        "colour_hint": "Busca algo de color {colour}.",
+        "colour_clue": "Veo, veo, una cosita de color {colour}.",
+    },
+    "de": {
+        "safety": (
+            "Dabei kann ich nicht helfen. Sag es jetzt einem Erwachsenen in der Nähe, dem du vertraust. "
+            "Wenn jemand in Gefahr ist, ruft den Notruf an."
+        ),
+        "no_answer": "Darauf habe ich keine Antwort.",
+        "ispy_your_turn": (
+            " Jetzt bist du dran. Such dir einen sicheren Gegenstand im Haus aus und gib mir einen Tipp."
+        ),
+        "ispy_round_over": (
+            "Das macht nichts, diese Runde ist vorbei. Sag 'nochmal', wenn ich wieder etwas suchen darf."
+        ),
+        "ispy_clue_help": "Erzähl mir etwas über deinen Gegenstand, zum Beispiel die Farbe oder wo er ist.",
+        "ispy_choose_safe": (
+            "Such dir bitte einen anderen, sicheren Gegenstand im Haus aus und gib mir einen neuen Tipp."
+        ),
+        "ispy_unsure": "Ich weiß es noch nicht. Gib mir bitte einen anderen Tipp.",
+        "ispy_guess": "Ist es {guess}?",
+        "ispy_right": "Ja! Guter Gegenstand. Jetzt bin ich wieder dran. Ich schaue mich um.",
+        "ispy_beaten": "Du hast mich besiegt! Welchen Gegenstand hattest du ausgesucht?",
+        "ispy_more_clue": "Gute Wahl. Gib mir noch einen Tipp.",
+        "ispy_yes_no": "Hatte ich recht? Sag ja oder nein.",
+        "ispy_clever": "Das war ein schlauer Gegenstand. Jetzt bin ich wieder dran. Ich schaue mich um.",
+        "ispy_no_problem": "Kein Problem. Sag 'nochmal', wenn ich wieder etwas suchen darf.",
+        "ispy_look": "Ich schaue mich jetzt um.",
+        "give_up": "Das macht nichts! Es war: {name}.",
+        "right": "Ja! Es war: {name}.",
+        "good_try": "Gut versucht! Es war: {name}.",
+        "tries_many": "Du darfst noch {left} Mal raten.",
+        "tries_one": "Du darfst noch ein Mal raten.",
+        "hints_done": "Das waren alle meine Tipps. Es war: {name}.",
+        "not_quite": "Noch nicht. {tries}",
+        "hint_prefix": "Hier ist ein Tipp:",
+        "guess_prefix": "Gut geraten, aber noch nicht. Neuer Tipp:",
+        "colour_hint": "Such etwas, das {colour} ist.",
+        "colour_clue": "Ich sehe was, was du nicht siehst, und das ist {colour}.",
+    },
+    "fr": {
+        "safety": (
+            "Je ne peux pas t'aider avec ça. Parles-en maintenant à un adulte de confiance près de toi. "
+            "Si quelqu'un est en danger, appelez les services d'urgence."
+        ),
+        "no_answer": "Je n'ai pas de réponse pour ça.",
+        "ispy_your_turn": " Maintenant, c'est ton tour. Choisis un objet sûr de la maison et donne-moi un indice.",
+        "ispy_round_over": (
+            "Ce n'est pas grave, cette partie est finie. Dis 'encore' quand je peux chercher quelque chose."
+        ),
+        "ispy_clue_help": "Dis-moi quelque chose sur ton objet, par exemple sa couleur ou où il se trouve.",
+        "ispy_choose_safe": "Choisis un autre objet sûr de la maison, s'il te plaît, et donne-moi un nouvel indice.",
+        "ispy_unsure": "Je ne sais pas encore. Donne-moi un autre indice, s'il te plaît.",
+        "ispy_guess": "Est-ce que c'est {guess} ?",
+        "ispy_right": "Oui ! Bon objet. Maintenant, c'est encore mon tour. Je regarde autour de moi.",
+        "ispy_beaten": "Tu m'as battu ! Quel objet avais-tu choisi ?",
+        "ispy_more_clue": "Bon choix. Donne-moi encore un indice.",
+        "ispy_yes_no": "Est-ce que j'ai trouvé ? Dis oui ou non.",
+        "ispy_clever": "C'était un objet malin. Maintenant, c'est encore mon tour. Je regarde autour de moi.",
+        "ispy_no_problem": "Pas de problème. Dis 'encore' quand je peux chercher quelque chose.",
+        "ispy_look": "Je regarde autour de moi maintenant.",
+        "give_up": "Ce n'est pas grave ! C'était : {name}.",
+        "right": "Oui ! C'était : {name}.",
+        "good_try": "Bien essayé ! C'était : {name}.",
+        "tries_many": "Il te reste {left} essais.",
+        "tries_one": "Il te reste un essai.",
+        "hints_done": "C'étaient tous mes indices. C'était : {name}.",
+        "not_quite": "Pas encore. {tries}",
+        "hint_prefix": "Voici un indice :",
+        "guess_prefix": "Bien essayé, mais pas encore. Nouvel indice :",
+        "colour_hint": "Cherche quelque chose de {colour}.",
+        "colour_clue": "Je vois, je vois quelque chose de {colour}.",
+    },
+    "it": {
+        "safety": (
+            "Non posso aiutarti con questo. Dillo subito a un adulto di fiducia vicino a te. "
+            "Se qualcuno è in pericolo, chiamate i servizi di emergenza."
+        ),
+        "no_answer": "Non ho una risposta per questo.",
+        "ispy_your_turn": " Adesso tocca a te. Scegli un oggetto sicuro della casa e dammi un indizio.",
+        "ispy_round_over": "Non fa niente, questo turno è finito. Di' 'ancora' quando posso cercare qualcosa.",
+        "ispy_clue_help": "Dimmi qualcosa del tuo oggetto, per esempio il colore o dove si trova.",
+        "ispy_choose_safe": "Per favore, scegli un altro oggetto sicuro della casa e dammi un nuovo indizio.",
+        "ispy_unsure": "Non lo so ancora. Per favore, dammi un altro indizio.",
+        "ispy_guess": "È {guess}?",
+        "ispy_right": "Sì! Bell'oggetto. Adesso tocca di nuovo a me. Mi guardo intorno.",
+        "ispy_beaten": "Mi hai battuto! Quale oggetto avevi scelto?",
+        "ispy_more_clue": "Bella scelta. Dammi un altro indizio.",
+        "ispy_yes_no": "Ho indovinato? Di' sì o no.",
+        "ispy_clever": "Era un oggetto furbo. Adesso tocca di nuovo a me. Mi guardo intorno.",
+        "ispy_no_problem": "Nessun problema. Di' 'ancora' quando posso cercare qualcosa.",
+        "ispy_look": "Adesso mi guardo intorno.",
+        "give_up": "Non fa niente! Era: {name}.",
+        "right": "Sì! Era: {name}.",
+        "good_try": "Bel tentativo! Era: {name}.",
+        "tries_many": "Hai ancora {left} tentativi.",
+        "tries_one": "Hai ancora un tentativo.",
+        "hints_done": "Erano tutti i miei indizi. Era: {name}.",
+        "not_quite": "Non ancora. {tries}",
+        "hint_prefix": "Ecco un indizio:",
+        "guess_prefix": "Bel tentativo, ma non ancora. Nuovo indizio:",
+        "colour_hint": "Cerca qualcosa di {colour}.",
+        "colour_clue": "Vedo, vedo una cosa di colore {colour}.",
+    },
+    "pt": {
+        "safety": (
+            "Não posso ajudar com isso. Conta agora a um adulto de confiança que esteja perto. "
+            "Se alguém estiver em perigo, liguem para os serviços de emergência."
+        ),
+        "no_answer": "Não tenho uma resposta para isso.",
+        "ispy_your_turn": " Agora é a tua vez. Escolhe um objeto seguro da casa e dá-me uma pista.",
+        "ispy_round_over": "Não faz mal, esta ronda terminou. Diz 'outra vez' quando eu puder procurar alguma coisa.",
+        "ispy_clue_help": "Diz-me alguma coisa sobre o teu objeto, por exemplo a cor ou onde está.",
+        "ispy_choose_safe": "Por favor, escolhe outro objeto seguro da casa e dá-me uma pista nova.",
+        "ispy_unsure": "Ainda não sei. Por favor, dá-me outra pista.",
+        "ispy_guess": "É {guess}?",
+        "ispy_right": "Sim! Bom objeto. Agora é outra vez a minha vez. Vou olhar à volta.",
+        "ispy_beaten": "Ganhaste-me! Que objeto tinhas escolhido?",
+        "ispy_more_clue": "Boa escolha. Dá-me mais uma pista.",
+        "ispy_yes_no": "Acertei? Diz sim ou não.",
+        "ispy_clever": "Era um objeto esperto. Agora é outra vez a minha vez. Vou olhar à volta.",
+        "ispy_no_problem": "Não há problema. Diz 'outra vez' quando eu puder procurar alguma coisa.",
+        "ispy_look": "Agora vou olhar à volta.",
+        "give_up": "Não faz mal! Era: {name}.",
+        "right": "Sim! Era: {name}.",
+        "good_try": "Boa tentativa! Era: {name}.",
+        "tries_many": "Ainda tens {left} tentativas.",
+        "tries_one": "Ainda tens uma tentativa.",
+        "hints_done": "Eram todas as minhas pistas. Era: {name}.",
+        "not_quite": "Ainda não. {tries}",
+        "hint_prefix": "Aqui tens uma pista:",
+        "guess_prefix": "Boa tentativa, mas ainda não. Nova pista:",
+        "colour_hint": "Procura uma coisa {colour}.",
+        "colour_clue": "Eu vejo, eu vejo uma coisa de cor {colour}.",
+    },
+}
+
+
+def _kids_copy(language: str, key: str, **values: object) -> str:
+    """Fixed copy for a validated session language; an unknown language raises, never English."""
+    return _KIDS_COPY[language][key].format(**values)
 
 
 def _parse_kids_hosted_turn(content: str) -> tuple[str, str]:
@@ -244,6 +537,31 @@ _ISPY_COLOUR_COPY = {
         "red": "rood", "orange": "oranje", "yellow": "geel", "green": "groen", "blue": "blauw",
         "purple": "paars", "pink": "roze", "brown": "bruin", "black": "zwart", "white": "wit",
         "grey": "grijs",
+    },
+    "es": {
+        "red": "rojo", "orange": "naranja", "yellow": "amarillo", "green": "verde", "blue": "azul",
+        "purple": "morado", "pink": "rosa", "brown": "marrón", "black": "negro", "white": "blanco",
+        "grey": "gris",
+    },
+    "de": {
+        "red": "rot", "orange": "orange", "yellow": "gelb", "green": "grün", "blue": "blau",
+        "purple": "lila", "pink": "rosa", "brown": "braun", "black": "schwarz", "white": "weiß",
+        "grey": "grau",
+    },
+    "fr": {
+        "red": "rouge", "orange": "orange", "yellow": "jaune", "green": "vert", "blue": "bleu",
+        "purple": "violet", "pink": "rose", "brown": "marron", "black": "noir", "white": "blanc",
+        "grey": "gris",
+    },
+    "it": {
+        "red": "rosso", "orange": "arancione", "yellow": "giallo", "green": "verde", "blue": "blu",
+        "purple": "viola", "pink": "rosa", "brown": "marrone", "black": "nero", "white": "bianco",
+        "grey": "grigio",
+    },
+    "pt": {
+        "red": "vermelha", "orange": "laranja", "yellow": "amarela", "green": "verde", "blue": "azul",
+        "purple": "roxa", "pink": "cor-de-rosa", "brown": "castanha", "black": "preta", "white": "branca",
+        "grey": "cinzenta",
     },
 }
 _REACHY_PROHIBITED_TOOLS = frozenset(
@@ -317,6 +635,54 @@ _PROJECT_EXECUTION_CLAIM = re.compile(
     r"(?:(?:the|your|this|that)\s+)?(?:code|coding|project|work(?:ing)?|implementation|artifact)\b"
     r"|^\s*(?:(?:it is|it\x27s|we are|we\x27re)\s+)?ready to test[?!.]?\s*$"
 )
+# Fixed spoken setup outcomes when a Workspace turn cannot reach the bound native Hermes session.
+_NATIVE_NOT_READY = {
+    "not_configured": (
+        "No Hermes project session is set up on the agent host, so this conversation isn't connected to one. "
+        "Nothing was sent. The host owner can add one; you can still ask about a project roadmap, status, "
+        "timers or other named home actions."
+    ),
+    "unbound": (
+        "Your Hermes project session isn't open, so I can't discuss this there. Nothing was sent. "
+        "On the phone, open Workspace, tap Show conversation, choose the repository and tap Open project, "
+        "then ask me again."
+    ),
+    "parked": (
+        "This project is paused because Homebody was switched to Everyday. Nothing was sent. "
+        "Switch to Workspace on the phone to continue it."
+    ),
+    "discussion_disabled": (
+        "Voice discussion is not enabled on the agent host for this project, so I can't pass this to your "
+        "Hermes session. Nothing was sent. Ask about the project roadmap for its recorded status."
+    ),
+    "discussion_unenforced": (
+        "Voice discussion with your Hermes session isn't available right now: the agent host didn't confirm "
+        "that it limits a discussion turn to no tools, so I won't start one. Nothing was sent. You can ask "
+        "about the project roadmap, or prepare work for phone approval in Workspace."
+    ),
+}
+# Explicitly named non-private broker capabilities (status, information, timers, media, home actions,
+# plans). Together with _PRIVATE_INTENT_PATTERNS this decides which turns still reach the restricted
+# broker when no native session is reachable; anything else is ordinary conversation.
+_BROKER_REQUEST_INTENT = re.compile(
+    r"(?i)\b(status|capabilit(?:y|ies)|what can you do|search|look up|news|latest|weather|web ?page|website|"
+    r"https?://|timers?|remind(?:er|ers)?|alarm|play|pause|music|media|volume|louder|quieter|undo|"
+    r"turn (?:on|off)|switch (?:on|off)|lights?|lamp|plan|weer|wekker|herinner\w*|speel|muziek|licht|lamp)\b"
+)
+# Fixed broker validation messages -> text-free log categories. Unknown messages log "validation".
+_BROKER_FAILURE_CATEGORIES = {
+    "Agent Mode returned an invalid structured answer": "answer_not_structured",
+    "Agent Mode answer failed read-only provenance validation": "answer_unverified",
+    "Agent Mode answer failed DLP validation": "answer_dlp",
+    "Agent Mode requested an invalid tool batch": "invalid_tool_call",
+    "Agent Mode requested an invalid broker call": "invalid_tool_call",
+    "Agent Mode requested invalid broker arguments": "invalid_tool_call",
+    "project conversation refused a tool outside its read-only scope": "project_scope_refused",
+    "project follow-up permits only the selected project roadmap": "project_scope_refused",
+    "project roadmap conversation requires one read at a time": "project_scope_refused",
+    "Agent Mode refused an adaptive hidden step; request an Agent 0.5 plan preview": "adaptive_step_refused",
+    "Agent run plan requires explicit private-data intent": "private_intent_required",
+}
 _PROHIBITED_SUCCESS_CLAIM = re.compile(
     r"(?i)(?:\b(?:i|we|hermes|reachy)\s+(?:have\s+)?(?:sent|changed|deleted|created|scheduled|"
     r"purchased|ordered|installed|restarted|updated|turned\s+(?:on|off))\b|^\s*done[.!,:])"
@@ -452,7 +818,7 @@ _KIDS_ACTIVITY_INSTRUCTIONS = {
 
 def _build_bridge_kids_prompt(*, age_band: str, activity: str, language: str) -> str:
     """Build the authoritative child policy from validated profile enums on the bridge."""
-    spoken_language = "Dutch" if language == "nl" else "English"
+    spoken_language = _KIDS_LANGUAGE_NAMES[language]
     return (
         "You are Hermes speaking through a Reachy Mini robot in a supervised child session. "
         f"Speak in {spoken_language} for a child aged {age_band}. "
@@ -523,21 +889,31 @@ def _ispy_same_spot(first: dict[str, Any], second: dict[str, Any]) -> bool:
     return overlap >= 0.5 * (aw * ah + bw * bh - overlap)
 
 
-def _ispy_candidate_pool(payload: object, *, frame_count: int) -> list[dict[str, Any]]:
-    """Return the distinct candidates that each pass the full target policy; the pool shape is strict."""
+def _ispy_candidate_pool(payload: object, *, frame_count: int, language: str = "") -> list[dict[str, Any]]:
+    """Validate the complete schema-bounded pool, then deduplicate eligible objects.
+
+    Do not silently truncate before validation: the prompt, native schema and parser share 1..4.
+    A contract-violating pool fails closed rather than biasing selection toward its first objects.
+    """
     if not isinstance(payload, dict) or set(payload) != {"candidates"}:
         raise ValueError("invalid candidate pool")
     raw = payload["candidates"]
-    if not isinstance(raw, list) or not 1 <= len(raw) <= _ISPY_MAX_CANDIDATES:
-        raise ValueError("invalid candidate pool size")
-    required = set(_ISPY_TARGET_SCHEMA["required"])  # type: ignore[arg-type]
+    if not isinstance(raw, list):
+        raise ValueError("invalid candidate pool")
+    if not raw:
+        raise ValueError("no candidates")
+    if len(raw) > _ISPY_MAX_CANDIDATES:
+        raise ValueError("oversized candidate pool")
+    # The same per-language schema the native adapter enforces: exact key set, session hints included.
+    schema = _ispy_response_schema(language)["properties"]["candidates"]["items"]  # type: ignore[index]
+    required = set(schema["required"])
     pool: list[dict[str, Any]] = []
     keys: set[str] = set()
     for item in raw:
         if not isinstance(item, dict) or set(item) != required:
             continue
         try:
-            target = _validate_bridge_ispy_target(item, frame_count=frame_count)
+            target = _validate_bridge_ispy_target(item, frame_count=frame_count, language=language)
         except (TypeError, ValueError):
             continue
         key = _ispy_object_key(str(target["object_name"]))
@@ -550,7 +926,38 @@ def _ispy_candidate_pool(payload: object, *, frame_count: int) -> list[dict[str,
     return pool
 
 
-def _validate_bridge_ispy_target(payload: object, *, frame_count: int) -> dict[str, Any]:
+def _ispy_pool_diagnostics(result: object) -> str:
+    """Content-free shape metadata for a vision reply: lengths, types and counts only."""
+    try:
+        content = result["choices"][0]["message"]["content"]  # type: ignore[index]
+    except (KeyError, IndexError, TypeError):
+        return "content=missing"
+    if not isinstance(content, str):
+        return f"content_type={type(content).__name__}"
+    try:
+        parsed = json.loads(content)
+    except ValueError:
+        return f"content_chars={len(content)} json=invalid"
+    if not isinstance(parsed, dict):
+        return f"content_chars={len(content)} top={type(parsed).__name__}"
+    raw = parsed.get("candidates")
+    count = len(raw) if isinstance(raw, list) else -1
+    return f"content_chars={len(content)} keys={len(parsed)} candidates={count}"
+
+
+def _ispy_rejection_reason(exc: BaseException) -> str:
+    """Our own fixed validator messages only; parser/provider exception text is never logged."""
+    if type(exc) is ValueError and str(exc) in _ISPY_POOL_REASONS:
+        return str(exc)
+    return "unparseable"
+
+
+_ISPY_POOL_REASONS = frozenset({
+    "invalid candidate pool", "no candidates", "oversized candidate pool", "no safe candidate",
+})
+
+
+def _validate_bridge_ispy_target(payload: object, *, frame_count: int, language: str = "") -> dict[str, Any]:
     """Mirror the standalone target policy before retaining only target metadata."""
     if not isinstance(payload, dict) or payload.get("stable") is not True:
         raise ValueError("unstable target")
@@ -607,7 +1014,7 @@ def _validate_bridge_ispy_target(payload: object, *, frame_count: int) -> dict[s
             result.append(item)
         return result
 
-    return {
+    target = {
         "object_name": object_name,
         "colour": colour,
         "category": category,
@@ -620,6 +1027,23 @@ def _validate_bridge_ispy_target(payload: object, *, frame_count: int) -> dict[s
         "hints_en": hints("en"),
         "hints_nl": hints("nl"),
     }
+    if language in _KIDS_SESSION_VOICE_LANGUAGES:
+        target[f"hints_{language}"] = hints(language)
+    return target
+
+
+def _ispy_response_schema(language: str) -> dict[str, object]:
+    """EN/NL keep the original schema; an ES/DE/FR/IT/PT session also requires its own hints."""
+    if language not in _KIDS_SESSION_VOICE_LANGUAGES:
+        return _ISPY_RESPONSE_SCHEMA
+    key = f"hints_{language}"
+    target_schema = {
+        **_ISPY_TARGET_SCHEMA,
+        "properties": {**_ISPY_TARGET_SCHEMA["properties"], key: _ISPY_TARGET_SCHEMA["properties"]["hints_en"]},  # type: ignore[dict-item]
+        "required": [*_ISPY_TARGET_SCHEMA["required"], key],  # type: ignore[misc]
+    }
+    candidates = {**_ISPY_RESPONSE_SCHEMA["properties"]["candidates"], "items": target_schema}  # type: ignore[index]
+    return {**_ISPY_RESPONSE_SCHEMA, "properties": {"candidates": candidates}}
 
 
 _ISPY_MAX_GUESSES = 3
@@ -627,6 +1051,73 @@ _ISPY_FILLER_WORDS = frozenset({
     "um", "uh", "uhm", "hmm", "hm", "eh", "euh", "ehm", "well", "oh", "sorry", "please", "okay", "ok",
     "nou", "alsjeblieft", "alstublieft", "oké", "oke", "really", "echt", "just", "gewoon",
 })
+_ISPY_EXTRA_FILLER = {
+    "es": frozenset({"pues", "bueno", "vale", "porfa", "porfavor", "favor", "por", "mmm"}),
+    "de": frozenset({"äh", "ähm", "also", "bitte", "naja", "na", "mal"}),
+    "fr": frozenset({"ben", "bah", "alors", "stp", "svp", "hum"}),
+    "it": frozenset({"ehm", "beh", "allora", "dai", "per", "favore"}),
+    "pt": frozenset({"hum", "bem", "então", "entao", "pronto", "por", "favor", "olha"}),
+}
+_ISPY_EXTRA_YES = {
+    "es": frozenset({"sí", "si", "claro", "correcto", "exacto", "vale"}),
+    "de": frozenset({"genau", "richtig", "stimmt", "jawohl"}),
+    "fr": frozenset({"oui", "ouais", "exact", "exactement", "bravo", "gagné"}),
+    "it": frozenset({"sì", "si", "esatto", "giusto", "certo", "bravo"}),
+    "pt": frozenset({"sim", "certo", "correto", "exato", "exatamente", "acertaste", "acertou"}),
+}
+_ISPY_EXTRA_NO = {
+    "es": frozenset({"incorrecto", "falso"}), "de": frozenset({"nein", "falsch", "nicht"}),
+    "fr": frozenset({"non", "faux", "raté", "pas"}), "it": frozenset({"non", "sbagliato"}),
+    "pt": frozenset({"não", "nao", "errado", "errada"}),
+}
+# Extra-language phrases count only in a session of that language; EN/NL classification is unchanged.
+_ISPY_EXTRA_GIVE_UP = {
+    "es": frozenset({
+        "no lo se", "no lo sé", "no se", "no sé", "ni idea", "no tengo ni idea", "me rindo", "dímelo", "dimelo",
+        "dime la respuesta", "qué es", "que es", "qué era", "que era", "no sé qué es", "no se que es",
+    }),
+    "de": frozenset({
+        "ich weiß nicht", "ich weiss nicht", "weiß nicht", "weiss nicht", "ich weiß es nicht",
+        "ich weiss es nicht", "keine ahnung", "ich habe keine ahnung", "ich gebe auf", "sag es mir",
+        "sags mir", "was ist es", "was war es",
+    }),
+    # Apostrophes are already removed by _ispy_intent ("j'abandonne" -> "jabandonne").
+    "fr": frozenset({
+        "je sais pas", "je ne sais pas", "sais pas", "aucune idée", "aucune idee", "jai aucune idée",
+        "je nai aucune idée", "jabandonne", "abandonne", "dis moi", "dis le moi", "dis moi la réponse",
+        "cest quoi", "quest ce que cest", "cétait quoi", "je donne ma langue au chat",
+    }),
+    "it": frozenset({
+        "non lo so", "non so", "boh", "non ne ho idea", "nessuna idea", "mi arrendo", "dimmelo",
+        "dimmi la risposta", "cosè", "che cosè", "cosera", "che cosera",
+    }),
+    "pt": frozenset({
+        "não sei", "nao sei", "eu não sei", "eu nao sei", "não faço ideia", "nao faco ideia", "sei lá", "sei la",
+        "desisto", "eu desisto", "diz me", "me diz", "diz me a resposta", "o que é", "o que e", "o que era",
+    }),
+}
+_ISPY_EXTRA_HINT = {
+    "es": frozenset({
+        "pista", "una pista", "dame una pista", "me das una pista", "otra pista", "una pista más", "una pista mas",
+        "ayuda", "ayúdame", "ayudame",
+    }),
+    "de": frozenset({
+        "tipp", "einen tipp", "gib mir einen tipp", "noch einen tipp", "hinweis", "einen hinweis",
+        "gib mir einen hinweis", "noch einen hinweis", "hilfe", "hilf mir",
+    }),
+    "fr": frozenset({
+        "indice", "un indice", "donne moi un indice", "encore un indice", "un autre indice",
+        "un indice sil te plaît", "un indice sil te plait", "aide", "aide moi",
+    }),
+    "it": frozenset({
+        "indizio", "un indizio", "dammi un indizio", "un altro indizio", "ancora un indizio", "aiuto", "aiutami",
+        "suggerimento", "un suggerimento",
+    }),
+    "pt": frozenset({
+        "dica", "uma dica", "dá me uma dica", "da me uma dica", "me dá uma dica", "outra dica", "mais uma dica",
+        "pista", "uma pista", "dá me uma pista", "ajuda", "ajuda me", "me ajuda",
+    }),
+}
 _ISPY_GIVE_UP_PHRASES = frozenset({
     "i dont know", "dont know", "i do not know", "i dont know what it is", "no idea", "i have no idea",
     "i give up", "give up", "tell me", "tell me the answer", "what is it", "what was it", "im stuck",
@@ -643,25 +1134,26 @@ _ISPY_HINT_PHRASES = frozenset({
 })
 
 
-def _ispy_intent(text: str) -> str:
+def _ispy_intent(text: str, language: str = "") -> str:
     """Classify an explicit give-up or hint request; anything else stays an ordinary answer."""
     cleaned = text.casefold().replace("’", "'").replace("'", "")
-    words = [word for word in re.findall(r"[\wÀ-ÿ]+", cleaned) if word not in _ISPY_FILLER_WORDS]
+    filler = _ISPY_FILLER_WORDS | _ISPY_EXTRA_FILLER.get(language, frozenset())
+    words = [word for word in re.findall(r"[\wÀ-ÿ]+", cleaned) if word not in filler]
     phrase = " ".join(words)
-    if phrase in _ISPY_GIVE_UP_PHRASES:
+    if phrase in _ISPY_GIVE_UP_PHRASES or phrase in _ISPY_EXTRA_GIVE_UP.get(language, ()):
         return "give_up"
-    if phrase in _ISPY_HINT_PHRASES:
+    if phrase in _ISPY_HINT_PHRASES or phrase in _ISPY_EXTRA_HINT.get(language, ()):
         return "hint"
     return "answer"
 
 
 def _ispy_hint_ladder(target: dict[str, Any], language: str) -> list[str]:
     """Approved hints first, then a deterministic colour reminder; never a new target."""
-    raw_hints = [str(item) for item in target.get("hints_nl" if language == "nl" else "hints_en") or []]
+    # A session language reads only its own hints: an ES/DE/FR/IT/PT session never speaks English hints.
+    raw_hints = [str(item) for item in target.get("hints_en" if language == "en" else f"hints_{language}") or []]
     colour = str(target.get("colour") or "")
     if colour in _ISPY_COLOUR_COPY[language]:
-        copy = _ISPY_COLOUR_COPY[language][colour]
-        raw_hints.append(f"Zoek iets dat {copy} is." if language == "nl" else f"Look for something {copy}.")
+        raw_hints.append(_kids_copy(language, "colour_hint", colour=_ISPY_COLOUR_COPY[language][colour]))
     ladder: list[str] = []
     seen: set[str] = set()
     for hint in raw_hints:
@@ -686,40 +1178,27 @@ def _ispy_reply(
 
     A round allows at most three meaningful guesses. Hints never repeat; give-up reveals.
     """
-    nl = language == "nl"
     name = str(target["object_name"])
     if intent == "give_up":
-        return (f"Dat geeft niet! Het was de {name}." if nl else f"That's okay! It was the {name}."), \
-            previous_count, hints_given, True
+        return _kids_copy(language, "give_up", name=name), previous_count, hints_given, True
     count = previous_count
     if intent != "hint":
         count += 1
         if matched:
-            return (f"Ja! Het was de {name}." if nl else f"Yes! It was the {name}."), count, hints_given, True
+            return _kids_copy(language, "right", name=name), count, hints_given, True
         if count >= _ISPY_MAX_GUESSES:
-            return (
-                f"Goed geprobeerd! Het was de {name}." if nl else f"Good try! It was the {name}."
-            ), count, hints_given, True
+            return _kids_copy(language, "good_try", name=name), count, hints_given, True
     left = _ISPY_MAX_GUESSES - count
-    tries = (
-        (f"Je mag nog {left} keer raden." if left > 1 else "Je mag nog één keer raden.") if nl
-        else (f"You have {left} guesses left." if left > 1 else "You have one guess left.")
-    )
+    tries = _kids_copy(language, "tries_many", left=left) if left > 1 else _kids_copy(language, "tries_one")
     ladder = _ispy_hint_ladder(target, language)
     if hints_given >= len(ladder):
         if intent == "hint":
-            return (
-                f"Dat waren al mijn hints. Het was de {name}." if nl
-                else f"Those were all my hints. It was the {name}."
-            ), count, hints_given, True
-        return (f"Nog niet. {tries}" if nl else f"Not quite. {tries}"), count, hints_given, False
+            return _kids_copy(language, "hints_done", name=name), count, hints_given, True
+        return _kids_copy(language, "not_quite", tries=tries), count, hints_given, False
     hint = ladder[hints_given].rstrip()
     if hint[-1:] not in {".", "!", "?"}:
         hint += "."
-    if intent == "hint":
-        prefix = "Hier is een hint:" if nl else "Here is a hint:"
-    else:
-        prefix = "Goede gok, maar nog niet. Nieuwe hint:" if nl else "Nice guess, but not yet. New hint:"
+    prefix = _kids_copy(language, "hint_prefix" if intent == "hint" else "guess_prefix")
     return f"{prefix} {hint} {tries}", count, hints_given + 1, False
 
 
@@ -728,6 +1207,10 @@ _KIDS_STREAM_MODEL = "eleven_flash_v2_5"
 
 def _kids_stream_voice(profile: str | None, language: str | None = None) -> str:
     """Resolve a server-approved language; Dutch override never changes English/adult speech."""
+    if language in _KIDS_SESSION_VOICE_LANGUAGES:
+        # Owner-selected voice for this language only; never the default/English Kids voice.
+        voice = (_resolve_secret(_KIDS_SESSION_VOICE_ENV[language], profile) or "").strip()
+        return voice if voice and all(character.isalnum() or character in "_-" for character in voice) else ""
     override = _resolve_secret("ELEVENLABS_KIDS_NL_VOICE_ID", profile) if language == "nl" else ""
     voice = (override or _resolve_secret("ELEVENLABS_KIDS_VOICE_ID", profile) or "cgSgspJ2msm6clMCkdW9").strip()
     return voice if voice and all(character.isalnum() or character in "_-" for character in voice) else ""
@@ -796,11 +1279,15 @@ def _ispy_text_unsafe(text: str) -> bool:
     return _ispy_disallowed(text)
 
 
-def _ispy_confirmation(text: str) -> str:
+def _ispy_confirmation(text: str, language: str = "") -> str:
     """Classify the child's yes/no answer without giving a model control of round state."""
     words = set(re.findall(r"[\wÀ-ÿ]+", text.casefold()))
-    yes = {"yes", "yeah", "yep", "correct", "right", "ja", "jep", "klopt", "goed"}
-    no = {"no", "nope", "not", "wrong", "incorrect", "nee", "fout", "niet"}
+    yes = {"yes", "yeah", "yep", "correct", "right", "ja", "jep", "klopt", "goed"} | _ISPY_EXTRA_YES.get(
+        language, frozenset()
+    )
+    no = {"no", "nope", "not", "wrong", "incorrect", "nee", "fout", "niet"} | _ISPY_EXTRA_NO.get(
+        language, frozenset()
+    )
     if words & no:
         return "no"
     if words & yes:
@@ -809,10 +1296,7 @@ def _ispy_confirmation(text: str) -> str:
 
 
 def _ispy_colour_clue(target: dict[str, Any], language: str) -> str:
-    colour = _ISPY_COLOUR_COPY[language][str(target["colour"])]
-    if language == "nl":
-        return f"Ik zie, ik zie wat jij niet ziet, en de kleur is {colour}."
-    return f"I spy with my little eye, something that is {colour}."
+    return _kids_copy(language, "colour_clue", colour=_ISPY_COLOUR_COPY[language][str(target["colour"])])
 
 
 _AGENT_TOOL_NAMES = frozenset({"ask_hermes", "ask_openclaw"})
@@ -1144,6 +1628,11 @@ class Bridge(NativeWorkspaceRoutes):
         self.http: ClientSession | None = None
         self._kids_sessions: dict[str, dict[str, Any]] = {}
         self._kids_speech_approvals: dict[str, dict[str, Any]] = {}
+        # (age band, activity, language) pinned by the first fixed-speech approval, before any chat turn.
+        self._kids_fixed_profiles: dict[str, tuple[str, str, str]] = {}
+        # Per-session cancellation epoch: bumped by I Spy cancel and End, so a result held across
+        # either is refused even when the session itself stays live for a later deliberate round.
+        self._kids_epochs: dict[str, int] = {}
         self._kids_live: dict[str, float] = {}
         self._kids_ended: dict[str, None] = {}
         # One in-flight I Spy selection per session; Stop, cancel or a newer selection makes it stale.
@@ -1222,10 +1711,64 @@ class Bridge(NativeWorkspaceRoutes):
         }
         return token
 
+    def _require_current_kids_turn(self, session_id: str, child_session: dict[str, Any]) -> None:
+        """Drop a turn result held across Stop/End/expiry/replacement before it can earn speech approval."""
+        self.kids_session_live()  # prunes sessions past the hard cap
+        if session_id not in self._kids_live or self._kids_sessions.get(session_id) is not child_session:
+            raise web.HTTPConflict(text="Kids Mode turn is no longer current")
+
+    @staticmethod
+    async def _kids_stage(awaitable: Any, deadline: float, ceiling: float) -> Any:
+        """Await one turn stage under its own ceiling and the remaining whole-turn budget."""
+        remaining = min(ceiling, deadline - time.monotonic())
+        if remaining <= 0:
+            awaitable.close()
+            raise TimeoutError
+        return await asyncio.wait_for(awaitable, remaining)
+
+    def _kids_retry_response(
+        self,
+        session_id: str,
+        child_session: dict[str, Any],
+        *,
+        language: str,
+        hosted: bool,
+        activity: str = "",
+        snapshot: dict[str, Any] | None = None,
+    ) -> web.Response:
+        """Speak fixed localized retry copy after a transient failure; history, game state and outcome stay."""
+        if snapshot is not None:  # undo any game-state step taken before the failing stage
+            child_session.clear()
+            child_session.update(snapshot)
+        self._require_current_kids_turn(session_id, child_session)
+        reply = _KIDS_MODEL_RETRY_REPLY[language]  # validated session language; never another language
+        child_session["updated_at"] = time.monotonic()
+        payload: dict[str, object] = {
+            "text": reply,
+            "screened": True,
+            "speech_approval": self._issue_kids_speech_approval(session_id, reply),
+            "fallback_speech_approval": self._issue_kids_speech_approval(session_id, reply),
+            "retry": True,
+        }
+        if activity == "ispy":
+            role = str(child_session.get("ispy_role") or "reachy_picker")
+            payload.update({
+                "ispy_role": role,
+                "ispy_phase": "reachy_guessing" if role == "reachy_picker"
+                else str(child_session.get("ispy_player_phase") or "complete"),
+                "ispy_next_action": "",
+            })
+        if hosted:
+            payload["game_state"] = "playing"  # a failed turn never finishes a hosted round
+        return web.json_response(payload)
+
     def _kids_approved_language(self, session_id: str) -> str:
         profile = getattr(self, "_kids_sessions", {}).get(session_id, {}).get("profile", ())
         if isinstance(profile, (tuple, list)) and len(profile) >= 3 and profile[2] in _KIDS_LANGUAGES:
             return profile[2]
+        pinned = getattr(self, "_kids_fixed_profiles", {}).get(session_id, ())
+        if len(pinned) == 3 and pinned[2] in _KIDS_LANGUAGES:
+            return pinned[2]
         return "en"  # legacy synthetic/internal approvals retain the default voice, never Dutch override
 
     def _consume_kids_speech_approval(self, token: str, session_id: str, text: str) -> str:
@@ -1414,7 +1957,9 @@ class Bridge(NativeWorkspaceRoutes):
             await self.warm_agents.evict(reason="kids")
         else:
             self._end_kids_live(session_id)
+            self._bump_kids_epoch(session_id)
             self._kids_sessions.pop(session_id, None)
+            self._kids_fixed_profiles.pop(session_id, None)
             self._ispy_selections.pop(session_id, None)
             self._kids_speech_approvals = {
                 token: approval
@@ -1487,7 +2032,7 @@ class Bridge(NativeWorkspaceRoutes):
         providers["stt_locality"] = _stt_locality(provider_names.get("stt_provider", ""), self.hermes_enabled)
         providers.update(_kids_legacy_voice_proof(self.profile))
         providers["kids_voice_proofs"] = {
-            language: _kids_voice_proof(self.profile, language) for language in ("en", "nl")
+            language: _kids_voice_proof(self.profile, language) for language in sorted(_KIDS_LANGUAGES)
         }
         return web.json_response(
             {
@@ -1736,6 +2281,13 @@ class Bridge(NativeWorkspaceRoutes):
         evicted = await self.warm_agents.evict(reason="owner")
         return web.json_response({"ok": True, "evicted": evicted}, headers={"Cache-Control": "no-store"})
 
+    async def _kids_moderation(self, text: str, openai_key: str) -> bool:
+        """Moderation under its own stage ceiling; transport failures surface as unavailable, never as safe."""
+        try:
+            return await asyncio.wait_for(self._moderation_flagged(text, openai_key), _KIDS_MODERATION_TIMEOUT_SECONDS)
+        except ClientError as exc:
+            raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is unavailable") from exc
+
     async def _moderation_flagged(self, text: str, openai_key: str) -> bool:
         """Fail closed when OpenAI moderation cannot establish a safe text boundary."""
         if self.http is None:
@@ -1744,15 +2296,22 @@ class Bridge(NativeWorkspaceRoutes):
             "https://api.openai.com/v1/moderations",
             headers={"Authorization": f"Bearer {openai_key}"},
             json={"model": "omni-moderation-latest", "input": text},
+            timeout=ClientTimeout(total=_KIDS_MODERATION_TIMEOUT_SECONDS),
         ) as response:
-            payload = await response.json(content_type=None)
+            try:
+                payload = await response.json(content_type=None)
+            except (ValueError, ClientError) as exc:  # malformed transport JSON is unavailable, never safe
+                raise web.HTTPServiceUnavailable(text="Kids Mode safety screening returned invalid data") from exc
             if response.status != 200:
                 _LOGGER.warning("Kids Mode moderation failed with HTTP %s", response.status)
                 raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is unavailable")
-            try:
-                return bool(payload["results"][0]["flagged"])
-            except (KeyError, IndexError, TypeError) as exc:
-                raise web.HTTPServiceUnavailable(text="Kids Mode safety screening returned invalid data") from exc
+        # Strict: exactly one boolean verdict. Missing, null, string or numeric results fail closed.
+        results = payload.get("results") if isinstance(payload, dict) else None
+        flagged = results[0].get("flagged") if isinstance(results, list) and results and isinstance(
+            results[0], dict) else None
+        if not isinstance(flagged, bool):
+            raise web.HTTPServiceUnavailable(text="Kids Mode safety screening returned invalid data")
+        return flagged
 
     async def _judge_ispy_guess(
         self, guess: str, target: dict[str, Any], *, language: str, openai_key: str
@@ -1888,7 +2447,9 @@ class Bridge(NativeWorkspaceRoutes):
         # Unhosted sessions keep their original fingerprint; hosted ones cannot be mixed with them.
         fingerprint = (age_band, activity, language) + ((True,) if hosted else ())
         child_session = self._kids_sessions.get(session_id)
-        if child_session is not None and child_session.get("profile") != fingerprint:
+        if (
+            child_session is not None and child_session.get("profile") != fingerprint
+        ) or self._kids_profile_conflicts(session_id, fingerprint):
             raise web.HTTPConflict(text="Kids Mode profile cannot change during a session")
         if child_session is None:
             if len(self._kids_sessions) >= _KIDS_HISTORY_LIMIT:
@@ -1900,15 +2461,24 @@ class Bridge(NativeWorkspaceRoutes):
             child_session = {"profile": fingerprint, "history": [], "updated_at": now}
             self._kids_sessions[session_id] = child_session
         history = list(child_session.get("history") or [])[-8:]
+        deadline = time.monotonic() + _KIDS_TURN_BUDGET_SECONDS
+        snapshot = dict(child_session)  # restored if a later stage fails, so nothing half-commits
 
-        safety_reply = (
-            "Daar kan ik niet mee helpen. Vertel het nu aan een volwassene die je vertrouwt. "
-            "Is iemand in direct gevaar, bel dan de hulpdiensten."
-            if language == "nl"
-            else "I can't help with that. Please tell a trusted grown-up nearby now. "
-            "If someone is in immediate danger, contact your local emergency services."
-        )
-        if await self._moderation_flagged(text, openai_key):
+        def retry(stage: str, exc: BaseException) -> web.Response:
+            _LOGGER.warning("Kids Mode %s failed (%s); asking the child to repeat", stage, type(exc).__name__)
+            return self._kids_retry_response(
+                session_id, child_session, language=language, hosted=hosted, activity=activity, snapshot=snapshot
+            )
+
+        safety_reply = _kids_copy(language, "safety")
+        try:
+            input_flagged = await self._kids_stage(
+                self._kids_moderation(text, openai_key), deadline, _KIDS_MODERATION_TIMEOUT_SECONDS
+            )
+        except (TimeoutError, web.HTTPServiceUnavailable) as exc:
+            return retry("input moderation", exc)  # unscreened input never reaches the model
+        if input_flagged:
+            self._require_current_kids_turn(session_id, child_session)
             approval_token = self._issue_kids_speech_approval(session_id, safety_reply)
             fallback_approval = self._issue_kids_speech_approval(session_id, safety_reply)
             safety_payload: dict[str, object] = {
@@ -1945,11 +2515,16 @@ class Bridge(NativeWorkspaceRoutes):
                 target = child_session.get("ispy_target")
                 if not isinstance(target, dict):
                     raise web.HTTPConflict(text="I Spy has no approved active target")
-                intent = _ispy_intent(text)
+                intent = _ispy_intent(text, language)
                 # Give-up and hint requests are game moves, never judged as guesses.
-                matched = intent == "answer" and await self._judge_ispy_guess(
-                    text, target, language=language, openai_key=openai_key
-                )
+                try:
+                    matched = intent == "answer" and await self._kids_stage(
+                        self._judge_ispy_guess(text, target, language=language, openai_key=openai_key),
+                        deadline,
+                        _KIDS_ISPY_MODEL_TIMEOUT_SECONDS,
+                    )
+                except (TimeoutError, ClientError, web.HTTPBadGateway, web.HTTPServiceUnavailable) as exc:
+                    return retry("I Spy guess judging", exc)  # the guess is not counted
                 answer, count, hints_given, complete = _ispy_reply(
                     target,
                     language=language,
@@ -1970,17 +2545,12 @@ class Bridge(NativeWorkspaceRoutes):
                         "ispy_player_guesses": [],
                     })
                     ispy_role = "player_picker"
-                    invitation = (
-                        " Nu ben jij aan de beurt. Kies een veilig voorwerp in huis en geef me één hint."
-                        if language == "nl"
-                        else " Now it's your turn. Choose a safe household object and give me one clue."
-                    )
-                    answer += invitation
+                    answer += _kids_copy(language, "ispy_your_turn")
             elif ispy_role == "player_picker":
                 phase = str(child_session.get("ispy_player_phase") or "awaiting_clue")
                 clues = [str(item) for item in child_session.get("ispy_player_clues") or []][-6:]
                 guesses = [str(item) for item in child_session.get("ispy_player_guesses") or []][-6:]
-                intent = _ispy_intent(text)
+                intent = _ispy_intent(text, language)
                 if (
                     intent == "give_up" and phase in {"awaiting_clue", "awaiting_confirmation", "awaiting_reveal"}
                 ) or (intent != "answer" and phase == "awaiting_reveal"):
@@ -1988,39 +2558,27 @@ class Bridge(NativeWorkspaceRoutes):
                     child_session["ispy_role"] = "reachy_pending"
                     child_session["ispy_player_phase"] = "complete"
                     ispy_role = "reachy_pending"
-                    answer = (
-                        "Dat geeft niet, deze ronde is klaar. Zeg 'nog een keer' als ik weer iets mag zoeken."
-                        if language == "nl"
-                        else "That's okay, this round is finished. Say 'play again' when I may look for something."
-                    )
+                    answer = _kids_copy(language, "ispy_round_over")
                 elif intent == "hint" and phase == "awaiting_clue":
-                    answer = (
-                        "Vertel me iets over jouw voorwerp, bijvoorbeeld de kleur of waar het staat."
-                        if language == "nl"
-                        else "Tell me something about your object, like its colour or where it is."
-                    )
+                    answer = _kids_copy(language, "ispy_clue_help")
                 elif phase == "awaiting_clue":
                     if _ispy_text_unsafe(text):
-                        answer = (
-                            "Kies alsjeblieft een ander, veilig voorwerp in huis en geef me een nieuwe hint."
-                            if language == "nl"
-                            else "Please choose a different safe household object and give me a new clue."
-                        )
+                        answer = _kids_copy(language, "ispy_choose_safe")
                     else:
                         clues.append(text[:200])
                         try:
-                            guess = await self._guess_player_ispy_object(
-                                clues,
-                                guesses,
-                                language=language,
-                                openai_key=openai_key,
+                            guess = await self._kids_stage(
+                                self._guess_player_ispy_object(
+                                    clues,
+                                    guesses,
+                                    language=language,
+                                    openai_key=openai_key,
+                                ),
+                                deadline,
+                                _KIDS_ISPY_MODEL_TIMEOUT_SECONDS,
                             )
-                        except (web.HTTPBadGateway, web.HTTPServiceUnavailable):
-                            answer = (
-                                "Ik weet het nog niet. Geef me alsjeblieft een andere hint."
-                                if language == "nl"
-                                else "I'm not sure yet. Please give me a different clue."
-                            )
+                        except (TimeoutError, ClientError, web.HTTPBadGateway, web.HTTPServiceUnavailable):
+                            answer = _kids_copy(language, "ispy_unsure")
                         else:
                             guesses.append(guess)
                             child_session.update({
@@ -2029,70 +2587,46 @@ class Bridge(NativeWorkspaceRoutes):
                                 "ispy_player_last_guess": guess,
                                 "ispy_player_phase": "awaiting_confirmation",
                             })
-                            answer = f"Is het een {guess}?" if language == "nl" else f"Is it a {guess}?"
+                            answer = _kids_copy(language, "ispy_guess", guess=guess)
                 elif phase == "awaiting_confirmation":
-                    confirmation = _ispy_confirmation(text)
+                    confirmation = _ispy_confirmation(text, language)
                     if confirmation == "yes":
                         child_session["ispy_role"] = "reachy_pending"
                         child_session["ispy_player_phase"] = "complete"
                         ispy_role = "reachy_pending"
                         ispy_next_action = "prepare_robot_round"
                         hosted_outcome = "guessed"
-                        answer = (
-                            "Ja! Goed voorwerp. Nu ben ik weer aan de beurt. Ik ga rondkijken."
-                            if language == "nl"
-                            else "Yes! Good object. Now it's my turn again. I'll look around."
-                        )
+                        answer = _kids_copy(language, "ispy_right")
                     elif confirmation == "no" and len(guesses) >= _ISPY_MAX_GUESSES:
                         child_session["ispy_player_phase"] = "awaiting_reveal"
-                        answer = (
-                            "Je hebt me verslagen! Welk voorwerp had je gekozen?"
-                            if language == "nl"
-                            else "You beat me! What object did you choose?"
-                        )
+                        answer = _kids_copy(language, "ispy_beaten")
                     elif confirmation == "no":
                         child_session["ispy_player_phase"] = "awaiting_clue"
-                        answer = (
-                            "Goede keuze. Geef me nog één hint."
-                            if language == "nl"
-                            else "Good choice. Give me one more clue."
-                        )
+                        answer = _kids_copy(language, "ispy_more_clue")
                     else:
-                        answer = (
-                            "Was mijn gok goed? Zeg ja of nee."
-                            if language == "nl"
-                            else "Was my guess right? Please say yes or no."
-                        )
+                        answer = _kids_copy(language, "ispy_yes_no")
                 elif phase == "awaiting_reveal":
                     hosted_outcome = "beaten"
                     child_session["ispy_role"] = "reachy_pending"
                     child_session["ispy_player_phase"] = "complete"
                     ispy_role = "reachy_pending"
                     ispy_next_action = "prepare_robot_round"
-                    answer = (
-                        "Dat was een slim voorwerp. Nu ben ik weer aan de beurt. Ik ga rondkijken."
-                        if language == "nl"
-                        else "That was a clever object. Now it's my turn again. I'll look around."
-                    )
+                    answer = _kids_copy(language, "ispy_clever")
                 else:
                     raise web.HTTPConflict(text="I Spy player turn has invalid state")
-            elif ispy_role == "reachy_pending" and _ispy_intent(text) != "answer":
+            elif ispy_role == "reachy_pending" and _ispy_intent(text, language) != "answer":
                 # A give-up or hint request never starts a camera search.
-                answer = (
-                    "Geen probleem. Zeg 'nog een keer' als ik weer iets mag zoeken."
-                    if language == "nl"
-                    else "No problem. Say 'play again' when I may look for something."
-                )
+                answer = _kids_copy(language, "ispy_no_problem")
             elif ispy_role == "reachy_pending":
                 ispy_next_action = "prepare_robot_round"
-                answer = "Ik ga nu rondkijken." if language == "nl" else "I'll look around now."
+                answer = _kids_copy(language, "ispy_look")
             else:
                 raise web.HTTPConflict(text="I Spy turn state is invalid")
             if hosted and ispy_role == "reachy_pending":
                 # The game master offers another round or a different game; it never searches on its own.
                 game_state = "finished"
                 # Keep the real outcome; only drop the automatic "I'll look around" search sentence.
-                answer = _ISPY_HOSTED_ROUND_DONE[hosted_outcome]["nl" if language == "nl" else "en"]
+                answer = _ISPY_HOSTED_ROUND_DONE[hosted_outcome][language]
                 ispy_next_action = ""
         else:
             system_prompt = _build_bridge_kids_prompt(
@@ -2116,28 +2650,46 @@ class Bridge(NativeWorkspaceRoutes):
                     "type": "json_schema",
                     "json_schema": {"name": "kids_hosted_turn", "strict": True, "schema": _KIDS_HOSTED_TURN_SCHEMA},
                 }
-            async with self.http.post(
-                self.llm.chat_url,
-                headers=self._llm_headers("Kids Mode model access is not configured"),
-                json=self.llm.request(model_request),
-            ) as response:
-                result = await response.json(content_type=None)
-                if response.status != 200:
-                    _LOGGER.warning("Kids Mode model failed with HTTP %s", response.status)
-                    raise web.HTTPBadGateway(text="Kids Mode model request failed")
+            headers = self._llm_headers("Kids Mode model access is not configured")
+
+            async def model_turn() -> dict[str, Any]:
+                assert self.http is not None
+                async with self.http.post(
+                    self.llm.chat_url,
+                    headers=headers,
+                    json=self.llm.request(model_request),
+                    timeout=ClientTimeout(total=_KIDS_MODEL_TIMEOUT_SECONDS),
+                ) as response:
+                    result = await response.json(content_type=None)
+                    if response.status != 200:
+                        _LOGGER.warning("Kids Mode model failed with HTTP %s", response.status)
+                        raise web.HTTPBadGateway(text="Kids Mode model request failed")
+                    return result
+
             try:
+                result = await self._kids_stage(model_turn(), deadline, _KIDS_MODEL_TIMEOUT_SECONDS)
                 answer = str(result["choices"][0]["message"]["content"]).strip()
                 if hosted:
                     answer, game_state = _parse_kids_hosted_turn(answer)
-            except (KeyError, IndexError, TypeError, ValueError) as exc:
-                raise web.HTTPBadGateway(text="Kids Mode model returned invalid data") from exc
+            except (
+                TimeoutError, ClientError, web.HTTPBadGateway, web.HTTPServiceUnavailable,
+                KeyError, IndexError, TypeError, ValueError,
+            ) as exc:
+                return retry("model turn", exc)
         answer = _kids_speech_friendly(answer[:_MAX_KIDS_OUTPUT_CHARACTERS])
         if not answer:
-            answer = "Daar heb ik geen antwoord op." if language == "nl" else "I don't have a spoken answer for that."
-        if await self._moderation_flagged(answer, openai_key):
+            answer = _kids_copy(language, "no_answer")
+        try:
+            output_flagged = await self._kids_stage(
+                self._kids_moderation(answer, openai_key), deadline, _KIDS_MODERATION_TIMEOUT_SECONDS
+            )
+        except (TimeoutError, web.HTTPServiceUnavailable) as exc:
+            return retry("output moderation", exc)  # an unscreened answer is never committed or approved
+        if output_flagged:
             answer = safety_reply
             ispy_next_action = ""
             game_state = "playing"
+        self._require_current_kids_turn(session_id, child_session)
         child_session["history"] = (
             history
             + [
@@ -2230,7 +2782,7 @@ class Bridge(NativeWorkspaceRoutes):
         content: list[dict[str, object]] = [{
             "type": "text",
             "text": (
-                f"List up to {_ISPY_MAX_CANDIDATES} different child-safe household objects, each visible clearly "
+                f"List at most {_ISPY_MAX_CANDIDATES} different child-safe household objects, each visible clearly "
                 "and consistently in at least two supplied frames. Each candidate must be a different physical "
                 "object: never list the same object twice under another name. Mix kinds, sizes and colours where "
                 "the room allows, but only list objects that truly qualify; fewer candidates is fine. Never list "
@@ -2239,8 +2791,12 @@ class Bridge(NativeWorkspaceRoutes):
                 "one of red, orange, yellow, green, blue, purple, pink, brown, black, white, grey. Set stable "
                 "true, visible_frame_count between 2 and the supplied frame count, and confidence from 0.78 to "
                 "1.0. bbox is normalized [x,y,width,height], fully inside the image, width and height at least "
-                "0.12, with area from 0.025 to 0.65. Provide 1-2 short child-safe hints in English and Dutch. "
-                "Do not use any forbidden word in any candidate string, even as nearby context: "
+                "0.12, with area from 0.025 to 0.65. Provide 1-2 short child-safe hints in English and Dutch"
+                + (
+                    f", and in {_KIDS_LANGUAGE_NAMES[language]} as hints_{language}"
+                    if language in _KIDS_SESSION_VOICE_LANGUAGES else ""
+                )
+                + ". Do not use any forbidden word in any candidate string, even as nearby context: "
                 f"{forbidden}. Use a generic safe location instead. Age band {age_band}; language {language}."
             ),
         }]
@@ -2257,7 +2813,9 @@ class Bridge(NativeWorkspaceRoutes):
                 "messages": [{"role": "user", "content": content}],
                 "response_format": {
                     "type": "json_schema",
-                    "json_schema": {"name": "kids_ispy_candidates", "strict": True, "schema": _ISPY_RESPONSE_SCHEMA},
+                    "json_schema": {
+                        "name": "kids_ispy_candidates", "strict": True, "schema": _ispy_response_schema(language),
+                    },
                 },
             },
         ) as response:
@@ -2267,12 +2825,21 @@ class Bridge(NativeWorkspaceRoutes):
         frames.clear()
         content.clear()
         self._require_current_ispy_selection(session_id, token)
+        diagnostics = _ispy_pool_diagnostics(result)
         try:
             raw_pool = json.loads(result["choices"][0]["message"]["content"])
-            pool = _ispy_candidate_pool(raw_pool, frame_count=frame_count)
+            pool = _ispy_candidate_pool(raw_pool, frame_count=frame_count, language=language)
         except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            _LOGGER.warning("I Spy candidates rejected (%s): %s", type(exc).__name__, exc)
+            # Provider 200 is not schema acceptance. Log shape metadata only, never candidate text.
+            _LOGGER.warning(
+                "I Spy candidates rejected (%s: %s; provider=%s %s)",
+                type(exc).__name__, _ispy_rejection_reason(exc), getattr(self.llm, "name", "?"), diagnostics,
+            )
             raise web.HTTPBadGateway(text="I Spy vision returned unsafe or invalid data") from exc
+        _LOGGER.info(
+            "I Spy candidates accepted (provider=%s %s eligible=%d)",
+            getattr(self.llm, "name", "?"), diagnostics, len(pool),
+        )
         fingerprint = (age_band, "ispy", language)
         child_session = self._kids_sessions.get(session_id)
         if child_session is not None and (
@@ -2280,7 +2847,9 @@ class Bridge(NativeWorkspaceRoutes):
         ):
             self._kids_sessions.pop(session_id, None)
             child_session = None
-        if child_session is not None and child_session.get("profile") != fingerprint:
+        if (
+            child_session is not None and child_session.get("profile") != fingerprint
+        ) or self._kids_profile_conflicts(session_id, fingerprint):
             raise web.HTTPConflict(text="Kids Mode profile cannot change during a session")
         # Uniform code-side choice among validated distinct objects, preferring ones not used this session.
         recent = list(child_session.get("ispy_recent") or []) if child_session is not None else []
@@ -2297,6 +2866,7 @@ class Bridge(NativeWorkspaceRoutes):
                 str(option["location"]),
                 *(str(item) for item in option["hints_en"]),
                 *(str(item) for item in option["hints_nl"]),
+                *(str(item) for item in option.get(f"hints_{language}", ()) if language not in {"en", "nl"}),
             ))
             flagged = await self._moderation_flagged(moderation_text, openai_key)
             self._require_current_ispy_selection(session_id, token)
@@ -2306,7 +2876,9 @@ class Bridge(NativeWorkspaceRoutes):
         if target is None:
             raise web.HTTPBadGateway(text="I Spy target was not approved")
         child_session = self._kids_sessions.get(session_id)
-        if child_session is not None and child_session.get("profile") != fingerprint:
+        if (
+            child_session is not None and child_session.get("profile") != fingerprint
+        ) or self._kids_profile_conflicts(session_id, fingerprint):
             raise web.HTTPConflict(text="Kids Mode profile cannot change during a session")
         if child_session is None:
             child_session = {"profile": fingerprint, "history": [], "updated_at": time.monotonic()}
@@ -2356,9 +2928,19 @@ class Bridge(NativeWorkspaceRoutes):
             or profile[2] not in _KIDS_LANGUAGES
         ):
             raise web.HTTPConflict(text="I Spy has no approved Reachy turn")
+        # Like the chat and approval routes, use marks the session live; an ended session never revives.
+        self._mark_kids_live(session_id)
+        epoch = self._kids_epoch(session_id)
+        self._require_same_ispy_round(session_id, child_session, target, epoch)
         clue = _ispy_colour_clue(target, str(profile[2]))
-        if await self._moderation_flagged(clue, openai_key):
+        try:
+            flagged = await self._kids_moderation(clue, openai_key)
+        except TimeoutError as exc:
+            raise web.HTTPServiceUnavailable(text="I Spy safety screening is unavailable") from exc
+        if flagged:
             raise web.HTTPBadGateway(text="I Spy clue was not approved")
+        # End, I Spy cancel, replacement or a new target while moderation ran: no approval.
+        self._require_same_ispy_round(session_id, child_session, target, epoch)
         approval = self._issue_kids_speech_approval(session_id, clue)
         fallback = self._issue_kids_speech_approval(session_id, clue)
         child_session["updated_at"] = time.monotonic()
@@ -2370,6 +2952,122 @@ class Bridge(NativeWorkspaceRoutes):
                 "ispy_role": "reachy_picker",
             },
             headers={"Cache-Control": "no-store"},
+        )
+
+    async def kids_speech_approve(self, request: web.Request) -> web.Response:
+        """Render and approve one server-authored fixed Kids line (greeting, host prompt, notice, clue).
+
+        The caller sends catalog selectors, never text. The bridge renders the line from
+        ``kids_fixed_copy`` (or, for ``ispy_clue``, from its own validated target), moderates it,
+        and binds single-use exact-text approvals to the live session. The session's validated
+        age band, activity and language are pinned here or by its chat/I Spy profile.
+        """
+        self.require_auth(request)
+        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        if not openai_key:
+            raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is not configured")
+        try:
+            payload = await request.json()
+            session_id = str(payload.get("session_id") or "")
+            age_band = str(payload.get("age_band") or "")
+            activity = str(payload.get("activity") or "")
+            language = str(payload.get("language") or "")
+            lines = payload.get("lines")
+            if (
+                set(payload) != {"session_id", "age_band", "activity", "language", "lines"}
+                or _KIDS_SESSION_ID_RE.fullmatch(session_id) is None
+                or age_band not in _KIDS_AGE_BANDS
+                or activity not in _KIDS_ACTIVITIES
+                or language not in _KIDS_LANGUAGES
+                or not isinstance(lines, list)
+                or not 1 <= len(lines) <= _KIDS_FIXED_MAX_SEGMENTS
+            ):
+                raise ValueError
+            wants_clue = [segment == {"kind": "ispy_clue"} for segment in lines]
+            if sum(wants_clue) > (1 if activity == "ispy" else 0):
+                raise ValueError
+            rendered = [
+                "" if clue else _render_kids_fixed_segment(segment, activity=activity, language=language)
+                for segment, clue in zip(lines, wants_clue, strict=True)
+            ]
+        except Exception as exc:
+            raise web.HTTPBadRequest(text="Invalid Kids speech approval request") from exc
+        profile = (age_band, activity, language)
+        # Like the chat and I Spy routes, use marks the session live; an ended session never revives.
+        self._mark_kids_live(session_id)
+        self._require_fixed_speech_profile(session_id, profile)
+        epoch = self._kids_epoch(session_id)  # identity of this request's session lifetime
+        clue_round: tuple[dict[str, Any], dict[str, Any]] | None = None
+        if any(wants_clue):
+            # Only the bridge's own validated target, never caller data, fills the clue.
+            child_session = self._kids_sessions.get(session_id)
+            target = child_session.get("ispy_target") if child_session is not None else None
+            if (
+                child_session is None or child_session.get("ispy_role") != "reachy_picker"
+                or not isinstance(target, dict)
+            ):
+                raise web.HTTPConflict(text="I Spy has no approved Reachy turn")
+            clue_round = (child_session, target)
+            rendered[wants_clue.index(True)] = _ispy_colour_clue(target, language)
+        text = " ".join(rendered)
+        try:
+            flagged = await self._kids_moderation(text, openai_key)
+        except (TimeoutError, web.HTTPServiceUnavailable) as exc:
+            raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is unavailable") from exc
+        if flagged:
+            raise web.HTTPForbidden(text="Kids Mode speech was not approved")
+        self._require_fixed_speech_profile(session_id, profile)  # ended or changed while moderation ran
+        if self._kids_epoch(session_id) != epoch:
+            raise web.HTTPConflict(text="Kids Mode request was cancelled")
+        if clue_round is not None:
+            self._require_same_ispy_round(session_id, clue_round[0], clue_round[1], epoch)
+        self._kids_fixed_profiles[session_id] = profile
+        return web.json_response(
+            {
+                "text": text,
+                "speech_approval": self._issue_kids_speech_approval(session_id, text),
+                "fallback_speech_approval": self._issue_kids_speech_approval(session_id, text),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    def _kids_epoch(self, session_id: str) -> int:
+        return getattr(self, "_kids_epochs", {}).get(session_id, 0)
+
+    def _bump_kids_epoch(self, session_id: str) -> None:
+        epochs = self.__dict__.setdefault("_kids_epochs", {})
+        epochs[session_id] = epochs.get(session_id, 0) + 1
+        if len(epochs) > 4 * _KIDS_HISTORY_LIMIT:  # ended sessions never revive, so their epochs can go
+            for key in [key for key in epochs if key not in self._kids_live and key != session_id]:
+                epochs.pop(key, None)
+
+    def _require_same_ispy_round(
+        self, session_id: str, child_session: dict[str, Any], target: dict[str, Any], epoch: int
+    ) -> None:
+        """Refuse a clue held across End/expiry, I Spy cancel, session replacement or a new target."""
+        self.kids_session_live()  # prunes sessions past the hard cap
+        if (
+            session_id not in self._kids_live
+            or self._kids_epoch(session_id) != epoch
+            or self._kids_sessions.get(session_id) is not child_session
+            or child_session.get("ispy_target") is not target
+            or child_session.get("ispy_role") != "reachy_picker"
+        ):
+            raise web.HTTPConflict(text="I Spy round is no longer current")
+
+    def _require_fixed_speech_profile(self, session_id: str, profile: tuple[str, str, str]) -> None:
+        self.kids_session_live()  # prunes sessions past the hard cap
+        if session_id not in self._kids_live:
+            raise web.HTTPConflict(text="Kids Mode session is not live")
+        if self._kids_profile_conflicts(session_id, profile):
+            raise web.HTTPConflict(text="Kids Mode profile cannot change during a session")
+
+    def _kids_profile_conflicts(self, session_id: str, profile: tuple[str, ...]) -> bool:
+        """True when a validated (age band, activity, language) differs from this session's bound profile."""
+        bound = getattr(self, "_kids_fixed_profiles", {}).get(session_id)
+        chat = getattr(self, "_kids_sessions", {}).get(session_id, {}).get("profile")
+        return any(
+            isinstance(other, (tuple, list)) and tuple(other[:3]) != tuple(profile[:3]) for other in (bound, chat)
         )
 
     async def kids_voice_proof(self, request: web.Request) -> web.Response:
@@ -2395,6 +3093,7 @@ class Bridge(NativeWorkspaceRoutes):
                 raise ValueError
         except Exception as exc:
             raise web.HTTPBadRequest(text="Invalid I Spy cancellation") from exc
+        self._bump_kids_epoch(session_id)  # held approvals/clues from before the cancel are refused
         self._kids_sessions.pop(session_id, None)
         self._ispy_selections.pop(session_id, None)
         self._kids_speech_approvals = {
@@ -2652,7 +3351,9 @@ class Bridge(NativeWorkspaceRoutes):
         """Workspace turn: bound native Hermes discussion when enabled, else the restricted broker.
 
         Provenance is recorded per device so a broker answer is never labelled as the native
-        Hermes session.
+        Hermes session. Without a reachable native session (none configured, unbound, parked or
+        discussion off), ordinary chat gets a fixed setup outcome; only explicitly named
+        roadmap/capability requests reach the restricted broker.
         """
         parsed = BrokerContext.parse(context)
         self._answer_sources[device_id] = {"kind": "workspace_status"}
@@ -2660,28 +3361,37 @@ class Bridge(NativeWorkspaceRoutes):
         if proposal is not None:
             return proposal
         manager = self.native_workspace
-        binding = manager.bindings.get(device_id) if manager is not None else None
-        if binding and not binding.get("detached") and not binding.get("parked"):
-            if manager._target(binding).discussion_enabled:
-                self.agent_broker.authorize_context(parsed)
-                try:
-                    result = await manager.discuss(device_id, text)
-                except WorkspaceError as exc:
-                    self._answer_sources[device_id] = {"kind": "native_unavailable"}
-                    return f"{exc}. No answer came from your Hermes session."
-                await self.agent_broker.assert_current(device_id, parsed.session_generation)
-                self._answer_sources[device_id] = dict(result["source"])
-                return str(result["text"])
-        self._answer_sources[device_id] = {
-            "kind": "restricted_broker",
-            "label": "Restricted roadmap reader — not your Hermes session",
-        }
+        if manager is not None:
+            # Readiness follows a fresh, bounded handshake; discuss() verifies again before sending.
+            await manager.verify_discussion(device_id)
+        readiness = self.native_readiness(device_id)
+        if readiness == "ready":
+            self.agent_broker.authorize_context(parsed)
+            try:
+                result = await manager.discuss(device_id, text)
+            except WorkspaceError as exc:
+                self._answer_sources[device_id] = {"kind": "native_unavailable"}
+                return f"{exc}. No answer came from your Hermes session."
+            await self.agent_broker.assert_current(device_id, parsed.session_generation)
+            self._answer_sources[device_id] = dict(result["source"])
+            return str(result["text"])
         async with self.agent_broker.project_conversation(device_id, parsed) as lease:
             explicit = _has_explicit_private_intent(text, "read_project_roadmap")
             followup = bool(lease.selected_project_id) and re.fullmatch(
                 r"(?i)\s*(?:what(?:'s| is)? next|which (?:item|part) (?:is )?next|"
                 r"what (?:did we finish|is finished)|wat is (?:de volgende stap|af))\??\s*", text
             ) is not None
+            if not followup and not _BROKER_REQUEST_INTENT.search(text) and not any(
+                pattern.search(text) for pattern in _PRIVATE_INTENT_PATTERNS.values()
+            ):
+                # Never relabel or silently reroute ordinary chat: the native session is not reachable.
+                self.agent_broker.authorize_context(parsed)
+                self._answer_sources[device_id] = {"kind": "native_not_ready", "state": readiness}
+                return _NATIVE_NOT_READY[readiness]
+            self._answer_sources[device_id] = {
+                "kind": "restricted_broker",
+                "label": "Restricted roadmap reader — not your Hermes session",
+            }
             project_intent = explicit or followup
             answer = await self._agent_answer_turn(
                 text, context=context, device_id=device_id,
@@ -3404,18 +4114,44 @@ class Bridge(NativeWorkspaceRoutes):
                 )
                 return str(result["text"])
 
-            async def workspace(text: str, earlier: str) -> str:
+            async def workspace(text: str, earlier: str) -> DelegationResult:
                 assert context is not None
                 request_id = new_request_id()
-                parsed = await self.agent_broker.register_request(device_id, context, request_id)
+                try:
+                    parsed = await self.agent_broker.register_request(device_id, context, request_id)
+                except BrokerValidationError as exc:
+                    raise PermissionError("stale Workspace session") from exc
                 try:
                     self.agent_broker.authorize_context(parsed)
-                    return await asyncio.wait_for(
+                    answer = await asyncio.wait_for(
                         self._agent_answer(text, context=context, device_id=device_id),
                         timeout=self._agent_ask_timeout_seconds,
                     )
+                    await self.agent_broker.assert_current(device_id, parsed.session_generation)
+                except BrokerValidationError as exc:
+                    reason = str(exc)
+                    if reason in {"stale_session", "session_context_changed_without_generation"}:
+                        raise PermissionError("stale Workspace session") from exc  # ends silently
+                    category = _BROKER_FAILURE_CATEGORIES.get(reason) or (
+                        reason if re.fullmatch(r"[a-z_]{1,48}", reason) else "validation")
+                    raise DelegationFailure(category, (
+                        "The restricted roadmap reader could not verify an answer. Nothing is confirmed and "
+                        "nothing was done. Your Hermes project session was not asked."
+                    )) from exc
+                except BrokerUnavailableError as exc:
+                    raise DelegationFailure("provider_unavailable", (
+                        "Agent reasoning on the Hermes host is unavailable right now. Nothing was done."
+                    )) from exc
+                except TimeoutError as exc:
+                    raise DelegationFailure("timeout", (
+                        "The agent host did not answer in time. Nothing is confirmed."
+                    )) from exc
                 finally:
+                    source = self._answer_sources.pop(device_id, {})
                     await self.agent_broker.unregister_request(device_id, parsed.session_generation, request_id)
+                state = {"native_not_ready": "not_ready", "native_unavailable": "failed"}.get(
+                    str(source.get("kind")), "answered")
+                return DelegationResult(answer, state)
 
             return everyday if context is None else workspace
 
@@ -4003,7 +4739,10 @@ class Bridge(NativeWorkspaceRoutes):
             raise web.HTTPBadRequest(text="Missing input text")
         if _KIDS_SESSION_ID_RE.fullmatch(session_id) is None or not approval:
             raise web.HTTPForbidden(text="Kids Mode fallback requires a moderated-response approval")
-        self._consume_kids_speech_approval(approval, session_id, text)
+        language = self._consume_kids_speech_approval(approval, session_id, text)
+        if language in _KIDS_SESSION_VOICE_LANGUAGES:
+            # Configured speech is not that language's selected Kids voice: stay silent instead.
+            raise web.HTTPServiceUnavailable(text="Kids Mode fallback speech is unavailable for this language")
         return await self._speech_response({"input": text, "provider": "configured"})
 
     async def _speech_response(self, payload: dict[str, Any]) -> web.Response:
@@ -4129,6 +4868,7 @@ def create_app(
     app.router.add_post("/v1/kids/ispy/select", bridge.kids_ispy_select)
     app.router.add_post("/v1/kids/ispy/clue", bridge.kids_ispy_clue)
     app.router.add_post("/v1/kids/ispy/cancel", bridge.kids_ispy_cancel)
+    app.router.add_post("/v1/kids/speech/approve", bridge.kids_speech_approve)
     app.router.add_post("/v1/kids/speech/stream", bridge.kids_speech_stream)
     app.router.add_post("/v1/kids/speech/fallback", bridge.kids_speech_fallback)
     app.router.add_post("/v1/audio/transcriptions", bridge.transcribe)

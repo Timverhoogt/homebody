@@ -646,6 +646,11 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .presentation-status-grid strong { display: block; margin-top: 4px; overflow-wrap: anywhere; font-size: .86rem; }
 .presentation-actions { display: grid; grid-template-columns: repeat(2, minmax(160px, 1fr)); gap: 9px; margin-top: 12px; }
 .presentation-help { margin: 10px 0 0; font-size: .78rem; }
+.presentation-readiness-summary { margin: 12px 0 6px; font-size: .9rem; }
+.presentation-requirements { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.presentation-requirements li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: .86rem; }
+#presentation-stop-help { margin-top: 8px; }
+.presentation-requirements button { min-height: 36px; padding: 4px 12px; border-radius: 10px; font-size: .8rem; }
 .agent-run-sheet textarea { min-height: 112px; margin-top: 18px; font-size: 1rem; }
 .agent-guardrail-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 18px; }
 .agent-guardrail-row span { padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--muted); background: transparent; font-family: var(--mono); font-size: .64rem; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }

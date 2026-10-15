@@ -227,7 +227,9 @@ def test_bridge_kids_route_has_moderation_on_both_sides_and_no_hermes_forwarding
     source = (ROOT / "companion" / "hermes_reachy_bridge.py").read_text(encoding="utf-8")
     method = source.split("    async def kids_chat", 1)[1].split("    async def kids_ispy_select", 1)[0]
 
-    assert method.count("await self._moderation_flagged") == 2
+    # Input and output screening, each through the bounded wrapper around _moderation_flagged.
+    assert method.count("self._kids_moderation(") == 2 and "await self._moderation_flagged" not in method
+    assert "self._moderation_flagged(" in source.split("    async def _kids_moderation", 1)[1].split("\n\n", 1)[0]
     # The model call goes to the configured text provider; moderation stays OpenAI (checked above).
     assert "self.llm.chat_url" in method and "self.llm.request(" in method
     assert "max_completion_tokens" in method

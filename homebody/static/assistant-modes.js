@@ -66,6 +66,11 @@
     text('workspace-mode-voice', voiceState === 'listening' ? 'Listening now'
       : ['thinking', 'looking', 'speaking'].includes(voiceState) ? 'In a voice turn'
         : 'Not listening · say “Hey Homebody” to Reachy to talk');
+    text('workspace-mode-route', native.session === 'bound'
+      ? native.voice === 'native' ? `Your project session · ${native.label}`
+        : 'Not sent · voice discussion is off for this session on the agent host'
+      : native.session === 'unconfirmed' || native.session === 'checking' ? 'Unconfirmed'
+        : 'Not sent to a project · Show conversation, then Open project');
     text('workspace-mode-work', native.uncertain ? 'Project work status unconfirmed. Stop project work stays available.'
       : badgeState === 'running' ? 'Project work running.'
         : badgeState === 'stopping' ? 'Project work stopping.'
@@ -80,6 +85,7 @@
     text('workspace-mode-repository', 'None selected');
     text('workspace-mode-session', 'Not checked');
     text('workspace-mode-display', 'Off');
+    text('workspace-mode-route', 'Not checked yet');
     unknownReason = reason;
     renderMode();
   }

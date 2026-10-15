@@ -134,6 +134,30 @@ class _SpeechClient:
             raise RuntimeError("synthetic TTS failure")
         return SpeechAudio(b"audio", "audio/mpeg", ".mp3", "fake-tts")
 
+    # Kids greetings/host lines: exact-text approval, then the Kids voice stream (no generic TTS).
+    last_tts_provider = "fake-kids-stream"
+
+    # Optional hold point for lifecycle tests: entered is set, then the approval waits for release.
+    approve_entered: threading.Event | None = None
+    approve_release: threading.Event | None = None
+    approve_error: Exception | None = None
+    approved_lines: list[object] = []
+
+    def approve_kids_fixed_speech(self, lines) -> str:
+        assert self.config.kids_mode_enabled and lines
+        _SpeechClient.approved_lines.append(lines)
+        if _SpeechClient.approve_entered is not None and _SpeechClient.approve_release is not None:
+            _SpeechClient.approve_entered.set()
+            assert _SpeechClient.approve_release.wait(5)
+        if _SpeechClient.approve_error is not None:
+            raise _SpeechClient.approve_error
+        if _SpeechClient.fail:
+            raise RuntimeError("synthetic TTS failure")
+        return "Server-rendered fixed line."
+
+    def iter_kids_speech(self, _text: str, *, should_stop=None):
+        yield b"\x00\x00" * 2400
+
     def close(self) -> None:
         pass
 
@@ -143,6 +167,9 @@ class StartHarness:
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch, *, fail_tts: bool = False) -> None:
         _SpeechClient.fail = fail_tts
+        _SpeechClient.approve_entered = _SpeechClient.approve_release = None
+        _SpeechClient.approve_error = None
+        _SpeechClient.approved_lines = []
         monkeypatch.setattr("homebody.runtime.HermesBridgeClient", _SpeechClient)
         self.stop_event = threading.Event()
         runtime = HermesVoiceRuntime(
@@ -437,8 +464,11 @@ def test_kids_language_hint_skips_detection_and_other_inputs_keep_autodetect(tmp
     model = _FakeModel()
     assert local_stt_command.transcribe(model, str(tmp_path / "homebody-stt-nl-abc.wav")) == "De gele bal."
     assert local_stt_command.transcribe(model, str(tmp_path / "homebody-stt-abc.wav")) == "De gele bal."
-    assert local_stt_command.transcribe(model, str(tmp_path / "homebody-stt-de-abc.wav")) == "De gele bal."
-    assert [call["language"] for call in model.calls] == ["nl", None, None]
+    assert local_stt_command.transcribe(model, str(tmp_path / "homebody-stt-sv-abc.wav")) == "De gele bal."
+    for language in ("de", "es", "fr", "it", "pt"):
+        hinted = str(tmp_path / f"homebody-stt-{language}-abc.wav")
+        assert local_stt_command.transcribe(model, hinted) == "De gele bal."
+    assert [call["language"] for call in model.calls] == ["nl", None, None, "de", "es", "fr", "it", "pt"]
     for call in model.calls:
         assert call["vad_filter"] is True and call["condition_on_previous_text"] is False
 

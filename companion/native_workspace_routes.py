@@ -138,6 +138,22 @@ class NativeWorkspaceRoutes:
             if context is not None:
                 await self.agent_broker.unregister_request(device, context.session_generation, request_id)
 
+    def native_readiness(self, device):
+        """Categorical voice readiness of this device's native session; never text or identities."""
+        manager = self.native_workspace
+        if manager is None or not manager.targets:
+            return "not_configured"
+        binding = manager.bindings.get(device)
+        if not binding or binding.get("detached"):
+            return "unbound"
+        if binding.get("parked"):
+            return "parked"
+        target = manager._target(binding)
+        if not target.discussion_enabled:
+            return "discussion_disabled"
+        # Host opt-in alone is not ready: the backend must enforce a tool-free discussion run.
+        return "ready" if manager.discussion_available(target) else "discussion_unenforced"
+
     async def native_voice_proposal(self, device, context, text):
         """Voice can propose exact work, not grant consent or arbitrary session selection."""
         manager = self.native_workspace

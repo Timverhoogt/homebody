@@ -16,7 +16,7 @@ Provider credentials stay on the Hermes host. Reachy stores only the bridge URL 
 ## Purpose modes and speech engines
 
 - **Everyday** uses narrow host text/tool calls for general answers, configured weather/time and allowlisted home controls. It does not instantiate a full agent, inherit private memory or fall back to Hermes when unavailable.
-- **Workspace** requires explicit project selection. Native support binds an exact host-registered Hermes session, with its real identity/history; restricted broker answers remain labelled separately. Register projects in `REACHY_AGENT_PROJECTS_JSON` and native targets in `REACHY_NATIVE_TARGETS_JSON`. Native discussion is opt-in and uses the worker's configured tools: ‘discuss only’ is an instruction, **not enforcement**. Configure owner-scoped read-only tools when a read-only guarantee is needed. The planned execution flow additionally requires explicit enablement, exact phone approval and fixed verifier/artifact receipts; these do not universally gate every discussion tool call. CWD is context, **not a sandbox**. See [native Workspace](../docs/native-workspace.md).
+- **Workspace** requires explicit project selection. Native support binds an exact host-registered Hermes session, with its real identity/history; restricted broker answers remain labelled separately. Register projects in `REACHY_AGENT_PROJECTS_JSON` and native targets in `REACHY_NATIVE_TARGETS_JSON`. Native discussion is opt-in and only runs on a Hermes host that advertises and echoes the enforced native discussion contract v1 (no tools, refused at dispatch); otherwise nothing is sent. The execution flow separately requires explicit enablement, exact phone approval and fixed verifier/artifact receipts, and runs with the worker's configured tools. CWD is context, **not a sandbox**. See [native Workspace](../docs/native-workspace.md).
 - **Kids** has no adult memory or tools. Provider changes do not alter moderation, I Spy camera consent, session-generation isolation or Stop/expiry/fold lifecycle. It remains supervised, not a babysitter.
 
 Speech engines are **Pipeline** (STT/text/TTS), **Realtime** and **GPT-Live preview**, selected separately under Advanced. GPT-Live exposes no direct camera, movement or memory tools; delegated text follows the selected purpose boundary; physical echo cancellation and barge-in remain unverified. See [Everyday / Workspace](../docs/everyday-workspace.md).
@@ -342,6 +342,7 @@ Authorization: Bearer <API_SERVER_KEY>
 | `POST /v1/chat/completions` | Authenticated proxy to Hermes API Server |
 | `POST /v1/kids/session` | Reachy reports a Kids session as `active` or `ended` for the bridge-side Kids latch |
 | `POST /v1/kids/chat` | Bounded, pre/post-moderated child chat without Hermes memory/tools |
+| `POST /v1/kids/speech/approve` | Render one server-authored fixed Kids line from catalog selectors (`kids_fixed_copy.py`; never caller text), moderate it, and return its text with single-use speech approvals; no audio |
 | `POST /v1/kids/speech/stream` | Fixed-policy ElevenLabs Flash v2.5 24 kHz PCM stream for approved child text |
 | `POST /v1/audio/transcriptions` | Configured/local/ElevenLabs STT |
 | `POST /v1/audio/speech` | Configured/Edge/ElevenLabs TTS |

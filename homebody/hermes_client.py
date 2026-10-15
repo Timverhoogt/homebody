@@ -16,6 +16,11 @@ from .config import AppConfig
 from .ispy import ISpyTarget, validate_ispy_target
 
 _LOGGER = logging.getLogger(__name__)
+# The bridge bounds one Kids chat turn at 25 s (stages included) and fixed-speech approval by a 6 s
+# moderation ceiling; Reachy waits a little longer so the bridge's localized retry, not a client
+# timeout, decides the outcome. Speech streaming/playback has its own separate limits.
+KIDS_CHAT_TIMEOUT_SECONDS = 30.0
+KIDS_FIXED_SPEECH_TIMEOUT_SECONDS = 10.0
 
 
 class HermesBridgeError(RuntimeError):
@@ -143,9 +148,41 @@ class HermesBridgeClient:
         self._raise_for_error(response, "I Spy target selection")
         payload = response.json()
         try:
-            return validate_ispy_target(payload["target"], frame_count=len(frames))
+            return validate_ispy_target(payload["target"], frame_count=len(frames), language=language)
         except (KeyError, TypeError, ValueError) as exc:
             raise HermesBridgeError("Hermes returned an unsafe or invalid I Spy target") from exc
+
+    def approve_kids_fixed_speech(self, lines: tuple[dict[str, str], ...]) -> str:
+        """Ask the bridge to render and approve server-authored fixed Kids copy; return its exact text.
+
+        Only catalog selectors are sent, never text; the returned text is spoken unchanged.
+        """
+        self._kids_speech_approval = ""
+        self._kids_fallback_speech_approval = ""
+        if not self.config.kids_mode_enabled or not lines:
+            raise HermesBridgeError("Kids fixed speech needs an active Kids session and a catalog line")
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/kids/speech/approve",
+            headers={"Authorization": f"Bearer {self.config.api_key}"},
+            json={
+                "session_id": self.config.kids_session_id,
+                "age_band": self.config.kids_age_band,
+                "activity": self.config.kids_activity,
+                "language": self.config.language,
+                "lines": [dict(line) for line in lines],
+            },
+            timeout=KIDS_FIXED_SPEECH_TIMEOUT_SECONDS,
+        )
+        self._raise_for_error(response, "Kids fixed speech approval")
+        payload = response.json()
+        approved = str(payload.get("text") or "") if isinstance(payload, dict) else ""
+        approval = str(payload.get("speech_approval") or "").strip() if isinstance(payload, dict) else ""
+        fallback = str(payload.get("fallback_speech_approval") or "").strip() if isinstance(payload, dict) else ""
+        if not approved.strip() or approved != approved.strip() or not approval or not fallback:
+            raise HermesBridgeError("Hermes returned an incomplete Kids speech approval")
+        self._kids_speech_approval = approval
+        self._kids_fallback_speech_approval = fallback
+        return approved
 
     def ispy_clue(self, session_id: str) -> str:
         """Fetch the server-owned colour clue with exact child-speech approvals."""
@@ -233,12 +270,12 @@ class HermesBridgeClient:
         # Silence or unintelligible audio is a normal no-speech turn, not a bridge failure.
         return transcript
 
-    def kids_voice_proof(self, *, timeout: float = 1.5) -> dict[str, str]:
+    def kids_voice_proof(self, *, timeout: float = 1.5, language: str | None = None) -> dict[str, str]:
         """Fresh bridge proof (digest + model) of the effective Kids streaming voice; bounded."""
         response = self._client.get(
             f"{self.config.bridge_url}/v1/kids/voice-proof",
             headers={"Authorization": f"Bearer {self.config.api_key}"},
-            params={"language": self.config.language},
+            params={"language": language or self.config.language},
             timeout=timeout,
         )
         self._raise_for_error(response, "Kids voice proof")
@@ -654,6 +691,7 @@ class HermesBridgeClient:
             f"{self.config.bridge_url}/v1/kids/chat",
             headers={"Authorization": f"Bearer {self.config.api_key}"},
             json=request_body,
+            timeout=httpx.Timeout(KIDS_CHAT_TIMEOUT_SECONDS, connect=10.0),
         )
         self._raise_for_error(response, "Kids Mode response")
         payload = response.json()

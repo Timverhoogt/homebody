@@ -229,6 +229,7 @@ def _native_fixture(page, runtime):
         body = json.loads(route.request.post_data or "{}")
         if action in held["actions"]:
             held["routes"].append(route)
+            page.evaluate("window.__nativeRouteHeld = true")
             return
         response = fixture
         if action == "bind":
@@ -333,23 +334,31 @@ def test_workspace_bench_follows_native_state_without_inventing_progress(workspa
 
 
 def test_workspace_bench_late_reads_lost_connection_and_privacy_win(workspace_browser):
-    page, _display, runtime, errors = workspace_browser
+    page, display, runtime, errors = workspace_browser
     fixture, held = _native_fixture(page, runtime)
     _open_native(page)
-    # A read admitted before reset cannot repaint a running bench afterwards.
+    # A read admitted before display revocation cannot repaint the bench.
     fixture.update(
         binding={"backend": "hermes", "project_id": "photo", "session_id": "s"},
         run={"status": "running", "run_id": "r"},
     )
     held["actions"].add("read")
-    page.evaluate("HomebodyNativeWorkspace.update(true)")
-    page.wait_for_timeout(150)
+    with page.expect_request("**/api/agent/workspace/native/read"):
+        page.evaluate("() => { void HomebodyNativeWorkspace.update(true); }")
+    page.wait_for_function("window.__nativeRouteHeld === true")
     assert held["routes"]
+    admitted = json.loads(json.dumps(fixture))
+    # Revoke the authoritative display lease too: otherwise normal polling may
+    # legitimately rediscover the still-authorized run after a client-only reset.
+    display.update(enabled=False, generation=display["generation"] + 1)
     page.evaluate("HomebodyNativeWorkspace.reset()")
-    held["routes"].pop().fulfill(json=fixture)
-    page.wait_for_timeout(150)
-    assert page.evaluate(BENCH) in {"idle", "offline"}
+    held["routes"].pop().fulfill(json=admitted)
+    page.evaluate("refreshStatus()")
+    page.wait_for_function(f"['idle', 'offline'].includes({BENCH})")
     held["actions"].clear()
+    # A fresh display lease is a positive control for subsequent connection loss.
+    display.update(enabled=True, generation=display["generation"] + 1, seconds_remaining=3600)
+    page.evaluate("refreshStatus()")
     # Connection lost: "unconfirmed", never "stopped" or "done", and Stop stays available.
     page.unroute("**/api/agent/workspace/native/*")
     page.route("**/api/agent/workspace/native/*", lambda route: route.fulfill(status=502, json={"detail": "down"}))

@@ -16,10 +16,22 @@ from urllib.parse import quote
 from aiohttp import ClientSession, ClientTimeout, WSMsgType
 
 try:
-    from companion.native_workspace import WorkspaceError
+    from companion.native_workspace import (
+        DISCUSSION_CAPABILITY,
+        DISCUSSION_UNENFORCED,
+        WorkspaceError,
+        discussion_echo,
+        discussion_policy,
+    )
     from companion.reachy_agent_broker import redact_payload
 except ModuleNotFoundError:
-    from native_workspace import WorkspaceError
+    from native_workspace import (
+        DISCUSSION_CAPABILITY,
+        DISCUSSION_UNENFORCED,
+        WorkspaceError,
+        discussion_echo,
+        discussion_policy,
+    )
     from reachy_agent_broker import redact_payload
 
 
@@ -119,34 +131,86 @@ class HermesNativeAdapter:
             raise WorkspaceError("native run admission did not return an exact run identity")
         return run_id
 
-    async def discuss(self, target, text, request_id, instructions, *, timeout=75.0, poll=0.5):
-        """One native discussion turn in the bound session: POST /v1/runs, then poll its status.
+    async def discussion_handshake(self, target):
+        """The served profile, only if the host advertises exactly the enforced discussion contract v1.
 
-        The answer is returned only when the run's own status reports this exact session and run.
+        Anything else (missing, older, extra or differently valued fields) is unsupported: fail closed.
         """
-        headers = {**self.headers(target), "Idempotency-Key": request_id}
-        admitted = await json_request(
+        payload = await json_request(self.http, "GET", f"{target.url}/v1/capabilities", headers=self.headers(target))
+        features = payload.get("features")
+        feature = features.get("native_discussion") if isinstance(features, dict) else None
+        if (
+            not isinstance(feature, dict)
+            or set(feature) != set(DISCUSSION_CAPABILITY) | {"profile"}
+            or any(type(feature[k]) is not type(v) or feature[k] != v for k, v in DISCUSSION_CAPABILITY.items())
+            or type(feature["profile"]) is not str
+            or not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", feature["profile"])
+        ):
+            raise WorkspaceError(DISCUSSION_UNENFORCED)
+        return feature["profile"]
+
+    async def discuss(self, target, text, request_id, *, profile, timeout=75.0, poll=0.5):
+        """One enforced discussion run in the bound session: admission and every status must echo the
+        exact policy sent, for this session and run; anything else stops the run and fails closed."""
+        policy = discussion_policy(target.session_id, profile)
+        admission = asyncio.ensure_future(json_request(
             self.http,
             "POST",
             f"{target.url}/v1/runs",
-            headers=headers,
-            body={"session_id": target.session_id, "input": text, "instructions": instructions},
-        )
+            headers={**self.headers(target), "Idempotency-Key": request_id},
+            body={"session_id": target.session_id, "input": text, "hermes_discussion": policy},
+        ))
+        try:
+            admitted = await asyncio.shield(admission)
+        except asyncio.CancelledError:
+            # Stop landed while admission was in flight: let the POST finish (json_request is bounded
+            # at 20 s) so an admitted run is identified and stopped rather than orphaned.
+            await asyncio.shield(self._stop_admitted(target, admission))
+            raise
         run_id = admitted.get("run_id")
         if not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", run_id):
             raise WorkspaceError("native run admission did not return an exact run identity")
         status_url = f"{target.url}/v1/runs/{quote(run_id, safe='')}"
         deadline = asyncio.get_running_loop().time() + timeout
-        while True:
-            payload = await json_request(self.http, "GET", status_url, headers=self.headers(target))
-            if payload.get("session_id") != target.session_id or payload.get("run_id", run_id) != run_id:
-                raise WorkspaceError("native discussion answer belongs to a different session or run")
-            status = payload.get("status")
-            if status in {"completed", "failed", "cancelled", "interrupted"}:
-                return {"run_id": run_id, "status": status, "output": public_output(payload.get("output", ""))}
-            if asyncio.get_running_loop().time() >= deadline:
-                return {"run_id": run_id, "status": "timeout", "output": ""}
-            await asyncio.sleep(poll)
+        try:
+            if discussion_echo(admitted.get("discussion"), policy) is None:
+                raise WorkspaceError(DISCUSSION_UNENFORCED)
+            while True:
+                payload = await json_request(self.http, "GET", status_url, headers=self.headers(target))
+                if payload.get("session_id") != target.session_id or payload.get("run_id", run_id) != run_id:
+                    raise WorkspaceError("native discussion answer belongs to a different session or run")
+                refused = discussion_echo(payload.get("discussion"), policy)
+                if refused is None:
+                    raise WorkspaceError(DISCUSSION_UNENFORCED)
+                status = payload.get("status")
+                if status in {"completed", "failed", "cancelled", "interrupted"}:
+                    return {"run_id": run_id, "status": status, "output": public_output(payload.get("output", "")),
+                            "tool_calls_refused": refused}
+                if asyncio.get_running_loop().time() >= deadline:
+                    await self._stop_quietly(target, run_id)
+                    return {"run_id": run_id, "status": "timeout", "output": "", "tool_calls_refused": refused}
+                await asyncio.sleep(poll)
+        except asyncio.CancelledError:
+            await asyncio.shield(self._stop_quietly(target, run_id))
+            raise
+        except WorkspaceError:
+            await self._stop_quietly(target, run_id)
+            raise
+
+    async def _stop_admitted(self, target, admission):
+        try:
+            admitted = await admission
+        except Exception:
+            return  # never admitted, or admission outcome lost: see docs/native-discussion-contract.md
+        run_id = admitted.get("run_id") if isinstance(admitted, dict) else None
+        if isinstance(run_id, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", run_id):
+            await self._stop_quietly(target, run_id)
+
+    async def _stop_quietly(self, target, run_id):
+        try:
+            await self.stop(target, run_id)
+        except Exception:
+            pass  # best effort: the answer is already refused, whatever the backend says
 
     async def events(self, target, run_id):
         status_url = f"{target.url}/v1/runs/{quote(run_id, safe='')}"

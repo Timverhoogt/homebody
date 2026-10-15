@@ -880,8 +880,9 @@ def test_agent_answer_rejects_success_claims_and_unverified_provenance(
         try:
             bridge.agent_broker.authorize_context(parsed)
             with pytest.raises(bridge_module.BrokerValidationError):
+                # An explicitly named capability reaches the restricted broker, whose validator rejects.
                 await bridge._agent_answer(
-                    "Do something", context=agent_context, device_id="reachy-a"
+                    "Check the Reachy status", context=agent_context, device_id="reachy-a"
                 )
         finally:
             await bridge.agent_broker.unregister_request("reachy-a", 8, "agent-invalid-answer")

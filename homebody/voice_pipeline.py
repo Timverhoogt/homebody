@@ -47,8 +47,10 @@ def kids_ack_voice_proof(health: dict[str, object], language: str) -> tuple[obje
         proofs = health["kids_voice_proofs"]
         proof = proofs.get(language) if isinstance(proofs, dict) else None
         proof = proof if isinstance(proof, dict) else {}
-    else:
+    elif language in {"en", "nl"}:
         proof = health  # legacy bridges have one voice for both languages
+    else:
+        proof = {}  # a legacy language-agnostic proof never covers ES/DE/FR/IT/PT
     return proof.get("kids_voice_sha256"), proof.get("kids_tts_model")
 
 
@@ -372,6 +374,11 @@ class PipelineVoiceMixin:
                     self._workspace_event(
                         workspace_generation, "activity",
                         "Answered by the restricted roadmap reader — not your Hermes session",
+                    )
+                elif source.get("kind") == "native_not_ready":
+                    self._workspace_event(
+                        workspace_generation, "activity",
+                        "Not sent: your Hermes project session is not open for voice",
                     )
                 self._workspace_event(workspace_generation, "activity", "Preparing the spoken reply")
                 if not settle_ack():  # the moderated answer never overlaps a cached clip

@@ -56,82 +56,40 @@ def test_refresh_combines_known_paired_and_connected_devices() -> None:
     assert devices["11:22:33:44:55:66"]["paired"] is False
 
 
-def test_pair_uses_one_bounded_bluetoothctl_session_and_validates_mac() -> None:
-    calls: list[tuple[list[str], str | None, float]] = []
+def test_missing_dbus_next_fails_pairing_closed_without_breaking_import(monkeypatch) -> None:
+    import sys
 
-    def runner(command: list[str], input_text: str | None, timeout: float):
-        calls.append((command, input_text, timeout))
-        arguments = command[1:]
-        if arguments == ["show"]:
-            output = "Powered: yes"
-        elif arguments == ["devices", "Paired"]:
-            output = "Device AA:BB:CC:DD:EE:FF Wireless Controller"
-        elif arguments == ["devices", "Connected"]:
-            output = "Device AA:BB:CC:DD:EE:FF Wireless Controller"
-        elif arguments == ["devices"]:
-            output = "Device AA:BB:CC:DD:EE:FF Wireless Controller"
-        elif arguments == ["info", "AA:BB:CC:DD:EE:FF"]:
-            output = "Paired: yes\nBonded: yes\nTrusted: yes\nConnected: yes"
-        else:
-            output = "Pairing successful\nConnection successful"
-        return FakeResult(returncode=0, stdout=output)
+    from homebody import bluetooth
 
-    service = BluetoothGamepadService(lambda *_args: None, command_runner=runner, adapter_available=True)
-    status = service.pair("aa:bb:cc:dd:ee:ff")
-    pair_call = next(call for call in calls if "pair" in call[0])
-    assert pair_call[0] == [
-        "bluetoothctl", "--timeout", "35", "--agent", "NoInputNoOutput",
-        "pair", "AA:BB:CC:DD:EE:FF",
-    ]
-    assert pair_call[1] is None
-    assert ["bluetoothctl", "trust", "AA:BB:CC:DD:EE:FF"] in [call[0] for call in calls]
-    assert ["bluetoothctl", "connect", "AA:BB:CC:DD:EE:FF"] in [call[0] for call in calls]
-    paired_devices = cast(list[dict[str, object]], status["devices"])
-    assert paired_devices[0]["connected"] is True
-    assert paired_devices[0]["bonded"] is True
-
-    with pytest.raises(ValueError, match="MAC address"):
-        service.pair("not-a-mac")
+    monkeypatch.setitem(sys.modules, "homebody.bluetooth_agent", None)
+    with pytest.raises(RuntimeError, match="dbus-next"):
+        bluetooth._default_agent_factory("AA:BB:CC:DD:EE:FF")
 
 
-def test_pair_requires_positive_bluez_properties_before_trust() -> None:
+def test_pair_and_device_operations_validate_mac_before_any_bluez_command() -> None:
+    # The lifecycle itself is covered by tests/test_bluetooth_pairing.py.
     calls: list[list[str]] = []
+    sessions: list[str] = []
 
     def runner(command: list[str], _input: str | None, _timeout: float):
         calls.append(command)
-        if command[1:2] == ["info"]:
-            return FakeResult(returncode=0, stdout="Paired: no\nTrusted: no\nConnected: no")
-        return FakeResult(returncode=0, stdout="Pairing request returned")
+        return FakeResult(returncode=0, stdout="")
 
-    service = BluetoothGamepadService(lambda *_args: None, command_runner=runner, adapter_available=True)
-    with pytest.raises(RuntimeError, match="did not confirm pairing"):
-        service.pair("AA:BB:CC:DD:EE:FF")
-    assert not any(call[1:2] == ["trust"] for call in calls)
+    def agent_factory(target: str):
+        sessions.append(target)
+        raise AssertionError("no agent for an invalid address")
 
-
-def test_pair_removes_stale_unbonded_device_and_requires_a_real_bond() -> None:
-    calls: list[list[str]] = []
-    info_calls = 0
-
-    def runner(command: list[str], _input: str | None, _timeout: float):
-        nonlocal info_calls
-        calls.append(command)
-        if command[1:2] == ["info"]:
-            info_calls += 1
-            return FakeResult(returncode=0, stdout="Paired: yes\nBonded: no\nConnected: yes")
-        return FakeResult(returncode=0, stdout="Command successful")
-
-    service = BluetoothGamepadService(lambda *_args: None, command_runner=runner, adapter_available=True)
-    with pytest.raises(RuntimeError, match="did not create a bond"):
-        service.pair("AA:BB:CC:DD:EE:FF")
-
-    assert info_calls == 2
-    assert calls[1] == ["bluetoothctl", "remove", "AA:BB:CC:DD:EE:FF"]
-    assert calls[2] == [
-        "bluetoothctl", "--timeout", "35", "--agent", "NoInputNoOutput",
-        "pair", "AA:BB:CC:DD:EE:FF",
-    ]
-    assert not any(call[1:2] == ["trust"] for call in calls)
+    service = BluetoothGamepadService(
+        lambda *_args: True, command_runner=runner, adapter_available=True, agent_factory=agent_factory
+    )
+    for operation in (service.pair, service.connect, service.disconnect, service.remove):
+        with pytest.raises(ValueError, match="MAC address"):
+            operation("not-a-mac")
+    assert calls == []
+    assert sessions == []
+    assert service.status()["operation"] == {
+        "name": "", "address": "", "phase": "", "error": "", "input_path": "",
+    }
 
 
 def test_scan_failure_propagates_and_retains_error() -> None:
@@ -594,4 +552,10 @@ def test_bluetooth_ui_exposes_pairing_mapping_and_v35_assets() -> None:
     assert "/api/bluetooth/scan" in script
     assert "/api/bluetooth/gamepad" in script
     assert "if (body.last_error) throw new Error(body.last_error);" in script
+    assert "if (body.operation && body.operation.error) throw new Error(body.operation.error);" in script
+    # Selection is bound to the chosen MAC and never falls back to the first listed device.
+    assert "select.value = bluetoothSelectedAddress;" in script
+    assert "bluetoothSelectedAddress = $(\"bluetooth-device-select\").value;" in script
+    assert "if (devices.some((device) => device.address === previous)) select.value = previous;" not in script
+    assert "bluetoothRefreshPending || bluetoothCommandPending" in script
     assert "homebody-shell-v" in worker

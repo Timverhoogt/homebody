@@ -37,8 +37,8 @@ from .config import AppConfig, config_transaction, default_config_path, load_con
 from .contextual_offers import ContextualOffer
 from .gpio_buttons import ButtonEvent, ButtonName, GpioButtonService
 from .hermes_client import HermesBridgeClient
-from .kids_mode import KidsProfile
-from .kids_runtime import ISpyInputUnavailable
+from .kids_mode import LANGUAGE_NAMES, SESSION_VOICE_LANGUAGES, KidsProfile
+from .kids_runtime import ISpyInputUnavailable, valid_kids_voice_proof
 from .local_vision import LocalVisionClient, LocalVisionError
 from .mcp_oauth import OAuthError, OAuthServer
 from .mcp_public import PublicAgentListener, build_public_app
@@ -377,7 +377,7 @@ class KidsModeRequest(BaseModel):
     nickname: str = Field(default="", max_length=32)
     age_band: str = Field(default="7-9", pattern=r"^(4-6|7-9|10-12)$")
     activity: str = Field(default="buddy", pattern=r"^(buddy|story|quiz|riddles|calm|ispy)$")
-    language: str = Field(default="en", pattern=r"^(en|nl)$")
+    language: str = Field(default="en", pattern=r"^(en|nl|es|de|fr|it|pt)$")
     duration_minutes: int = Field(default=30, ge=15, le=60)
     motion_enabled: bool = True
     camera_consent: bool = False
@@ -1562,6 +1562,14 @@ class Homebody(ReachyMiniApp):
                     status_code=409,
                     detail="Kids Mode requires ElevenLabs Flash streaming on the private bridge",
                 )
+            if request.language in SESSION_VOICE_LANGUAGES:
+                # Only this language's own voice proof counts; never an English, Dutch or legacy proof.
+                proofs = health.get("kids_voice_proofs")
+                if not valid_kids_voice_proof(proofs.get(request.language) if isinstance(proofs, dict) else None):
+                    name = LANGUAGE_NAMES[request.language]
+                    raise HTTPException(
+                        status_code=409, detail=f"Kids Mode {name} voice is not configured on the Hermes host",
+                    )
             try:
                 profile = KidsProfile(**request.model_dump())
                 kids_mode = self._runtime.start_kids_mode(profile)

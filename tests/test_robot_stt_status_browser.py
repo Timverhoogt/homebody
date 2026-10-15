@@ -75,7 +75,10 @@ def test_owner_loss_hides_reachy_claim(ui):
     page.click("#tab-kids")
     show(page, state, kids("transcribing", "robot", verified=True, locality="local"))
     title_is(page, "Transcribing on Reachy")
-    page.evaluate("HomebodyOwner.isOwner = () => false; refreshStatus()")
+    # Exercise actual owner revocation and teardown, not a getter override that leaves authority live.
+    page.route("**/api/agent/activity", lambda route: route.fulfill(status=401, json={"detail": "owner required"}))
+    page.evaluate("fetch('/api/agent/activity')")
+    page.wait_for_function("HomebodyOwner.isOwner() === false")
     page.wait_for_function(
         "document.querySelector('#kids-stage .hb-scene-title').textContent !== 'Transcribing on Reachy'"
     )

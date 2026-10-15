@@ -74,6 +74,33 @@ def test_bluetooth_management_routes_are_bounded_and_persist_gamepad_opt_in(monk
     assert saved and saved[-1].gamepad_enabled is True
 
 
+def test_pair_route_reports_late_hid_rejection_and_status_keeps_the_error(monkeypatch) -> None:
+    pytest.importorskip("dbus_next")
+    from test_bluetooth_pairing import HID_UUID, TARGET, FakeBlueZ, device_path, make_service
+
+    # HID arrives on a non-canonical object for the MAC: rejected, then the controller disconnects.
+    bluez = FakeBlueZ(
+        advertising={TARGET: "Wireless Controller"},
+        hid_requests=[(device_path(TARGET, "/org/bluez/hci1"), HID_UUID)],
+    )
+    app = Homebody(False)
+    service = make_service(bluez)
+    app._bluetooth = service
+    client = TestClient(app.settings_app)
+
+    failed = client.post("/api/bluetooth/pair", json={"address": TARGET})
+    assert failed.status_code == 502
+    assert "did not confirm connection" in failed.json()["detail"]
+    # Movement consent is untouched and a successful poll cannot erase the failure.
+    status = client.get("/api/bluetooth/status").json()
+    assert status["ok"] is True
+    assert status["gamepad_enabled"] is False
+    assert status["operation"]["phase"] == "failed"
+    assert "did not confirm connection" in status["operation"]["error"]
+    assert bluez.agents[0].closed is True
+    assert bluez.devices[TARGET].trusted is False
+
+
 def test_gamepad_enable_failure_does_not_persist_future_auto_enable(monkeypatch) -> None:
     class FailingBluetoothService(FakeBluetoothService):
         def set_gamepad_enabled(self, enabled: bool) -> dict[str, object]:

@@ -62,8 +62,11 @@ class SttResult:
 
 
 def robot_language(config: AppConfig) -> str:
-    """Kids use the parent-selected profile language per turn; adults keep autodetect."""
-    if config.kids_mode_enabled and config.language in {"en", "nl"}:
+    """Kids use the parent-selected profile language per turn; adults keep autodetect.
+
+    This is transport only: whether the provisioned model honours ES/DE/FR/IT/PT is measured on the device.
+    """
+    if config.kids_mode_enabled and config.language in {"en", "nl", "es", "de", "fr", "it", "pt"}:
         return config.language
     return "auto"
 

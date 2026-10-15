@@ -103,6 +103,11 @@ class RuntimeStatus:
     local_vision_last_latency_ms: int = 0
     local_vision_last_error: str = ""
     face_tracking_active: bool = False
+    # "off", "requested" (command sent; the daemon owns tracking and its health is not observable here)
+    # or "command_failed". Never "running": a sent command does not prove the daemon tracker works.
+    face_tracking_state: str = "off"
+    # Offline check of the pinned face model in this app user's HF cache (the daemon's may differ).
+    face_model_app_cache: str = "unchecked"
     doa_angle_degrees: float | None = None
     gesture_detection_active: bool = False
     gesture_detected: str = "none"

@@ -12,7 +12,7 @@ Protocol v1, one request per connection:
   ``recognize``, by exactly ``samples * 4`` bytes of little-endian float32 mono PCM at 16 kHz::
 
     {"v": 1, "op": "recognize", "session": "<id>", "turn": 7, "generation": 3,
-     "language": "en" | "nl" | "auto", "rate": 16000, "samples": 48000}
+     "language": "en" | "nl" | "es" | "de" | "fr" | "it" | "pt" | "auto", "rate": 16000, "samples": 48000}
     {"v": 1, "op": "status"}
 
 * reply: one JSON line. ``recognize`` echoes ``session``/``turn``/``generation`` exactly and
@@ -65,7 +65,7 @@ _WATCHDOG_GRACE_SECONDS = 2.0
 _SESSION = re.compile(r"^[A-Za-z0-9_-]{0,64}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _RECOGNIZE_KEYS = frozenset({"v", "op", "session", "turn", "generation", "language", "rate", "samples"})
-_LANGUAGES = {"en": "en", "nl": "nl", "auto": None}
+_LANGUAGES = {"en": "en", "nl": "nl", "es": "es", "de": "de", "fr": "fr", "it": "it", "pt": "pt", "auto": None}
 
 
 class UntrustedEndpointError(RuntimeError):
