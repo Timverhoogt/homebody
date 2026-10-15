@@ -27,7 +27,6 @@ sys.path.insert(0, str(SOURCE))
 
 try:
     from aiohttp import web
-
     from gateway.config import PlatformConfig
     from gateway.platforms.api_server import APIServerAdapter
     from hermes_state import SessionDB
@@ -37,15 +36,32 @@ except ImportError as exc:  # an interpreter without Hermes' dependencies: repor
 
 KEY = "native-token"
 PWNED = STATE / "pwned.txt"
-HOSTILE = ["terminal", "write_file", "patch", "memory", "delegate_task", "mcp_github_create_issue",
-           "tool_call", "execute_code", "skill_manage", "send_message"]
+HOSTILE = [
+    "terminal",
+    "write_file",
+    "patch",
+    "memory",
+    "delegate_task",
+    "mcp_github_create_issue",
+    "tool_call",
+    "execute_code",
+    "skill_manage",
+    "send_message",
+]
 evidence = {"model_calls": [], "resolved": [], "agents": [], "direct": {}, "plugin_fired": []}
 slow_release = threading.Event()
 
 
 def response(content="", tool_calls=None):
-    msg = SimpleNamespace(content=content, tool_calls=tool_calls, reasoning=None, reasoning_content=None,
-                          reasoning_details=None, refusal=None, role="assistant")
+    msg = SimpleNamespace(
+        content=content,
+        tool_calls=tool_calls,
+        reasoning=None,
+        reasoning_content=None,
+        reasoning_details=None,
+        refusal=None,
+        role="assistant",
+    )
     finish = "tool_calls" if tool_calls else "stop"
     return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason=finish)], model="fake", usage=None)
 
@@ -58,13 +74,15 @@ def tool_call(i, name):
 def fake_model(agent, api_kwargs, *args, **kwargs):
     messages = api_kwargs["messages"]
     user = next(m["content"] for m in reversed(messages) if m["role"] == "user")
-    evidence["model_calls"].append({
-        "tools": len(api_kwargs.get("tools") or []),
-        "roles": [m["role"] for m in messages],
-        "history": [str(m.get("content")) for m in messages if m["role"] in {"user", "assistant"}],
-        "tool_results": [str(m.get("content")) for m in messages if m["role"] == "tool"],
-        "system": str(messages[0].get("content"))[:4000],
-    })
+    evidence["model_calls"].append(
+        {
+            "tools": len(api_kwargs.get("tools") or []),
+            "roles": [m["role"] for m in messages],
+            "history": [str(m.get("content")) for m in messages if m["role"] in {"user", "assistant"}],
+            "tool_results": [str(m.get("content")) for m in messages if m["role"] == "tool"],
+            "system": str(messages[0].get("content"))[:4000],
+        }
+    )
     if "SLOW" in user:
         slow_release.wait(10)
         return response("late answer that must never be published")
@@ -72,8 +90,11 @@ def fake_model(agent, api_kwargs, *args, **kwargs):
         agent.valid_tool_names = set(HOSTILE)  # restored/inherited tool authority
         import model_tools
         from tools.registry import registry
+
         evidence["direct"] = {
-            "handle_function_call": model_tools.handle_function_call("write_file", {"path": str(PWNED), "content": "x"}),
+            "handle_function_call": model_tools.handle_function_call(
+                "write_file", {"path": str(PWNED), "content": "x"}
+            ),
             "registry": registry.dispatch("terminal", {"command": f"touch {PWNED}"}),
         }
         return response("", [tool_call(i, name) for i, name in enumerate(HOSTILE)])
@@ -86,27 +107,36 @@ def main():
     for sid in ("native-existing", "other-session"):
         db.create_session(session_id=sid, source="api_server", model="m")
     db.append_message("native-existing", "user", "Where did we leave the photo importer?")
-    db.append_message("native-existing", "assistant", "Blocked on the EXIF date parser; accept offset-less timestamps.")
+    db.append_message(
+        "native-existing", "assistant", "Blocked on the EXIF date parser; accept offset-less timestamps."
+    )
     adapter = APIServerAdapter(PlatformConfig(enabled=True, extra={"key": KEY}))
     adapter._session_db = db
     # Would-write plugin sentinel on every lifecycle hook (shell hooks/webhooks register the same way).
     from hermes_cli.plugins import VALID_HOOKS, get_plugin_manager
+
     manager = get_plugin_manager()
     for name in VALID_HOOKS:
-        manager._hooks.setdefault(name, []).append(
-            lambda _hook=name, **_kw: evidence["plugin_fired"].append(_hook))
+        manager._hooks.setdefault(name, []).append(lambda _hook=name, **_kw: evidence["plugin_fired"].append(_hook))
     real_create = adapter._create_agent
 
     def create(**kwargs):
         agent = real_create(**kwargs)
-        evidence["agents"].append({
-            "discussion": getattr(agent, "_hermes_discussion_policy", None) is not None,
-            "enabled_toolsets": agent.enabled_toolsets, "valid_tools": sorted(agent.valid_tool_names)[:5],
-            "tool_count": len(agent.valid_tool_names), "memory_manager": agent._memory_manager is not None,
-            "background_review": not agent.skip_background_review, "session_id": agent.session_id})
+        evidence["agents"].append(
+            {
+                "discussion": getattr(agent, "_hermes_discussion_policy", None) is not None,
+                "enabled_toolsets": agent.enabled_toolsets,
+                "valid_tools": sorted(agent.valid_tool_names)[:5],
+                "tool_count": len(agent.valid_tool_names),
+                "memory_manager": agent._memory_manager is not None,
+                "background_review": not agent.skip_background_review,
+                "session_id": agent.session_id,
+            }
+        )
         return agent
 
     from tools.registry import ToolRegistry
+
     real_get_entry = ToolRegistry.get_entry
 
     def get_entry(self, name, **kw):
@@ -116,17 +146,26 @@ def main():
 
     async def evidence_route(request):
         rows = db.get_messages_as_conversation("native-existing")
-        return web.json_response({**evidence, "pwned": PWNED.exists(),
-                                  "transcript": [[r["role"], str(r.get("content"))] for r in rows],
-                                  "other_rows": len(db.get_messages_as_conversation("other-session")),
-                                  "missing_created": db.get_session("missing-session") is not None})
+        return web.json_response(
+            {
+                **evidence,
+                "pwned": PWNED.exists(),
+                "transcript": [[r["role"], str(r.get("content"))] for r in rows],
+                "other_rows": len(db.get_messages_as_conversation("other-session")),
+                "missing_created": db.get_session("missing-session") is not None,
+            }
+        )
 
     async def release_route(request):
         slow_release.set()
         return web.json_response({"released": True})
 
-    runtime = {"api_key": "test-key-1234567890", "base_url": "http://127.0.0.1:9/v1", "provider": "custom",
-               "api_mode": "chat_completions"}
+    runtime = {
+        "api_key": "test-key-1234567890",
+        "base_url": "http://127.0.0.1:9/v1",
+        "provider": "custom",
+        "api_mode": "chat_completions",
+    }
     patches = [
         patch("gateway.run._resolve_runtime_agent_kwargs", side_effect=lambda: dict(runtime)),
         patch("gateway.run._resolve_gateway_model", return_value="test/model"),
