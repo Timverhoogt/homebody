@@ -21,7 +21,7 @@ from test_live_transport import FakeLive, collect, delta
 import companion.hermes_reachy_bridge as bridge_module
 from companion import live_transport
 from companion.hermes_reachy_bridge import Bridge
-from companion.native_workspace import NativeWorkspace, TargetConfig
+from companion.native_workspace import DISCUSSION_UNENFORCED, NativeWorkspace, TargetConfig, WorkspaceError
 from companion.reachy_agent_broker import BrokerConfig, BrokerValidationError, ReachyAgentBroker
 from companion.reachy_projects import Project, ProjectCatalog
 
@@ -48,11 +48,18 @@ class Adapter:
         self.calls = []
         self.block = False
         self.release = None
+        self.enforced = True  # whether the host's capability handshake proves contract v1
 
     async def history(self, target):
         return []
 
-    async def discuss(self, target, text, request_id, instructions):
+    async def discussion_handshake(self, target):
+        if not self.enforced:
+            raise WorkspaceError(DISCUSSION_UNENFORCED)
+        return "default"
+
+    async def discuss(self, target, text, request_id, *, profile):
+        assert profile == "default"
         if self.block:
             self.release = asyncio.Event()  # created on the running session loop
         self.calls.append(("discuss", target.session_id, text))
@@ -177,15 +184,37 @@ def states(events):
 # --- Native conversation is the goal ----------------------------------------------------------
 
 
-def test_enabled_discussion_cannot_launch_an_unapproved_tool_capable_run(tmp_path, monkeypatch):
-    # Hermes /v1/runs runs with the full platform toolset and admits no per-run restriction; the
-    # discussion instructions are a prompt, not authorization. Host opt-in must not launch it.
+def test_enforced_discussion_answers_from_native_hermes(tmp_path, monkeypatch):
     bridge, adapter, provider = make_bridge(tmp_path, monkeypatch)
 
     async def bind():
         await bridge.native_workspace.bind(DEVICE, "photo")
 
     asyncio.run(bind())
+    assert bridge.native_readiness(DEVICE) == "discussion_unenforced"  # nothing verified yet
+    events, commentary = run_live(bridge, monkeypatch, "Let's discuss the importer design")
+    assert states(events) == ["started", "answered"]
+    assert [c["content"] for c in commentary] == ["From your Hermes session."]
+    assert adapter.calls == [("discuss", "native-existing", "Let's discuss the importer design")]
+    assert provider.payloads == []  # never the restricted broker
+
+
+def test_unverified_host_launches_no_discussion_run(tmp_path, monkeypatch):
+    # Host opt-in alone is not enough: without a handshake proving the enforced contract (an
+    # older runtime, an ambiguous capability) no run is launched and nothing is relabelled native.
+    bridge, adapter, provider = make_bridge(tmp_path, monkeypatch)
+    adapter.enforced = False
+
+    async def scenario():
+        manager = bridge.native_workspace
+        await manager.bind(DEVICE, "photo")
+        await manager.verify_discussion(DEVICE)
+        assert manager.discussion_available(manager.targets["photo"]) is False
+        with pytest.raises(WorkspaceError, match="did not confirm"):
+            await manager.discuss(DEVICE, "Let's discuss the importer")
+        assert (await manager.snapshot(DEVICE))["binding"]["voice_discussion"] is False
+
+    asyncio.run(scenario())
     assert bridge.native_readiness(DEVICE) == "discussion_unenforced"
     events, commentary = run_live(bridge, monkeypatch, "Let's discuss the importer design", wait_for="not_ready")
     assert states(events) == ["started", "not_ready"]
@@ -196,41 +225,27 @@ def test_enabled_discussion_cannot_launch_an_unapproved_tool_capable_run(tmp_pat
     assert "From your Hermes session." not in spoken
 
 
-def test_native_discussion_is_refused_before_any_native_request(tmp_path, monkeypatch):
-    from companion.native_adapters import HermesNativeAdapter
-    from companion.native_workspace import DISCUSSION_UNENFORCED, WorkspaceError
-
+def test_stop_during_discussion_cancels_it_and_discards_the_late_answer(tmp_path, monkeypatch):
     bridge, adapter, _provider = make_bridge(tmp_path, monkeypatch)
-
-    class RecordingHttp:
-        def __init__(self):
-            self.requests = []
-
-        def request(self, method, url, **_kwargs):
-            self.requests.append((method, url))
-            raise AssertionError("no native request may be made for discussion")
-
-        get = post = request
+    adapter.block = True
 
     async def scenario():
         manager = bridge.native_workspace
         await manager.bind(DEVICE, "photo")
-        target = manager.targets["photo"]
-        assert target.discussion_enabled and manager.discussion_available(target) is False
-        with pytest.raises(WorkspaceError, match="nothing was sent"):
-            await manager.discuss(DEVICE, "Let's discuss the importer")
-        snapshot = await manager.snapshot(DEVICE)
-        assert snapshot["binding"]["voice_discussion"] is False
-        http = RecordingHttp()
-        native = HermesNativeAdapter(http, lambda _name: "fixture-token")
-        with pytest.raises(WorkspaceError) as refused:
-            await native.discuss(target, "Let's discuss", "req-1", "Discuss only")
-        assert str(refused.value) == DISCUSSION_UNENFORCED
-        assert http.requests == []
+        turn = asyncio.create_task(manager.discuss(DEVICE, "Let's discuss the importer"))
+        for _ in range(100):
+            if adapter.calls:
+                break
+            await asyncio.sleep(0.01)
+        await manager.stop(DEVICE)
+        adapter.release.set()
+        with pytest.raises(WorkspaceError, match="stopped"):
+            await turn
+        assert manager.discussions == {}
+        assert not any(e["role"] == "assistant" for e in manager.events.get(DEVICE, ()))
         await manager.close()
 
     asyncio.run(scenario())
-    assert adapter.calls == []
 
 
 @pytest.mark.parametrize("setup", ["unbound", "detached", "parked", "discussion_disabled"])

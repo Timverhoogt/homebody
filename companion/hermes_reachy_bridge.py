@@ -656,9 +656,9 @@ _NATIVE_NOT_READY = {
         "Hermes session. Nothing was sent. Ask about the project roadmap for its recorded status."
     ),
     "discussion_unenforced": (
-        "Voice discussion with your Hermes session isn't available yet: the agent host can't limit a "
-        "discussion turn to no tools, so I won't start one. Nothing was sent. You can ask about the project "
-        "roadmap, or prepare work for phone approval in Workspace."
+        "Voice discussion with your Hermes session isn't available right now: the agent host didn't confirm "
+        "that it limits a discussion turn to no tools, so I won't start one. Nothing was sent. You can ask "
+        "about the project roadmap, or prepare work for phone approval in Workspace."
     ),
 }
 # Explicitly named non-private broker capabilities (status, information, timers, media, home actions,
@@ -3361,6 +3361,9 @@ class Bridge(NativeWorkspaceRoutes):
         if proposal is not None:
             return proposal
         manager = self.native_workspace
+        if manager is not None:
+            # Readiness follows a fresh, bounded handshake; discuss() verifies again before sending.
+            await manager.verify_discussion(device_id)
         readiness = self.native_readiness(device_id)
         if readiness == "ready":
             self.agent_broker.authorize_context(parsed)

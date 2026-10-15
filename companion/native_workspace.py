@@ -34,20 +34,47 @@ class WorkspaceError(ValueError):
 
 _TERMINAL = {"completed", "failed", "cancelled", "interrupted", "verification_failed"}
 _ACTIVE = {"submitting", "running", "stopping", "disconnected", "verifying", "submission_unknown"}
-DISCUSSION_INSTRUCTIONS = (
-    "Homebody Workspace discussion turn from the owner's voice. Discuss and explain only: do not edit "
-    "files, run commands or take external actions in this turn. Execution needs a separate phone "
-    "approval. Reply in a few spoken sentences."
-)
 # A discussion turn may only launch on a run whose tool authority the backend itself restricts.
-# Hermes POST /v1/runs (gateway/platforms/api_server_runs.py) admits no per-run toolset restriction
-# and runs with the full platform toolset; DISCUSSION_INSTRUCTIONS are a prompt, not authorization.
-# Until a backend exposes an enforceable discussion-only run, no native discussion run is launched,
-# whatever discussion_enabled says. See docs/native-workspace.md.
+# Hermes native discussion contract v1 (docs/native-discussion-contract.md): the host advertises
+# features.native_discussion, admits POST /v1/runs with an exact hermes_discussion policy, refuses
+# every tool dispatch in that run and echoes the policy on admission and status. A host that does not
+# advertise exactly this, or a run that does not echo it, gets no discussion turn. Prompts are not
+# authorization, so Homebody sends none.
+DISCUSSION_CAPABILITY = {
+    "version": 1,
+    "request_field": "hermes_discussion",
+    "mode": "discussion",
+    "tools": "none",
+    "enforcement": "dispatch",
+    "history": "session",
+}
 DISCUSSION_UNENFORCED = (
-    "Native voice discussion is not available: the Hermes host cannot restrict a discussion turn "
-    "to no tools, so nothing was sent"
+    "Native voice discussion is not available: the Hermes host did not confirm a tool-free "
+    "discussion run, so nothing was answered from your session"
 )
+_HANDSHAKE_TIMEOUT = 10.0
+
+
+def discussion_policy(session_id, profile):
+    return {"version": 1, "mode": "discussion", "tools": "none", "session_id": session_id, "profile": profile}
+
+
+def discussion_echo(echo, policy):
+    """Refused tool-call count when ``echo`` is the host's exact acceptance of ``policy``, else None."""
+    digest = hashlib.sha256(
+        json.dumps(policy, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+    ).hexdigest()
+    if (
+        not isinstance(echo, dict)
+        or set(echo) != set(policy) | {"enforcement", "policy_digest", "tool_calls_refused"}
+        or any(type(echo[k]) is not type(v) or echo[k] != v for k, v in policy.items())
+        or echo["enforcement"] != "dispatch"
+        or echo["policy_digest"] != digest
+        or type(echo["tool_calls_refused"]) is not int
+        or echo["tool_calls_refused"] < 0
+    ):
+        return None
+    return echo["tool_calls_refused"]
 
 
 @dataclass(frozen=True)
@@ -181,6 +208,8 @@ class NativeWorkspace:
         self._approval_timers = {}
         self.tasks = {}
         self.verifiers = {}
+        self.discussions = {}  # device -> in-flight discussion task (Stop cancels it and its backend run)
+        self.discussion_profiles = {}  # target_id -> served profile from the last verified handshake
         self.events = {}
         self._lock = asyncio.Lock()
         self._closed = False
@@ -264,24 +293,94 @@ class NativeWorkspace:
         return {"status": status, "running": status in _ACTIVE, "ready_to_test": run.get("ready_to_test") is True,
                 "parked": bool(binding.get("parked"))}
 
-    @staticmethod
-    def discussion_available(target):
-        """Whether a spoken turn may reach this native session; host opt-in alone is not enough.
+    def discussion_available(self, target):
+        """Whether a spoken turn may reach this native session: host opt-in plus the latest handshake
+        proving the backend enforces the discussion contract. Each turn re-verifies before sending."""
+        return bool(target.discussion_enabled and target.target_id in self.discussion_profiles)
 
-        No supported backend enforces a tool-free discussion run (see DISCUSSION_UNENFORCED).
-        """
-        return False
+    async def _handshake(self, target):
+        """Verified served profile, or None (and forget any earlier verification): fail closed."""
+        try:
+            async with asyncio.timeout(_HANDSHAKE_TIMEOUT):
+                profile = await self.adapters[target.backend].discussion_handshake(target)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.discussion_profiles.pop(target.target_id, None)
+            return None
+        self.discussion_profiles[target.target_id] = profile
+        return profile
+
+    async def verify_discussion(self, device):
+        """Refresh the handshake for this device's bound, discussion-enabled session (voice readiness)."""
+        binding = self.bindings.get(device)
+        if not binding or binding.get("detached") or binding.get("parked"):
+            return
+        target = self._target(binding)
+        if target.discussion_enabled:
+            await self._handshake(target)
 
     async def discuss(self, device, text):
-        """Refuse a native discussion turn before any native request; it cannot be made tool-free."""
+        """One enforced, tool-free discussion turn in the bound native Hermes session."""
         async with self._lock:
             binding = self._binding(device)
             target = self._target(binding)
             if not target.discussion_enabled:
                 raise WorkspaceError("Native discussion is not enabled for this project on the host")
-            if not self.discussion_available(target):
+            if binding.get("run", {}).get("status") in _ACTIVE:
+                raise WorkspaceError("Project work is running; ask for its status instead")
+            if device in self.discussions:
+                raise WorkspaceError("A discussion turn is already in progress")
+            if (
+                type(text) is not str
+                or not text.strip()
+                or len(text) > 4000
+                or any(ord(c) < 32 and c not in "\n\t" for c in text)
+            ):
+                raise WorkspaceError("native discussion text must contain 1–4000 characters")
+            epoch = binding["epoch"]
+            profile = await self._handshake(target)  # re-verified right before any submission
+            if profile is None:
                 raise WorkspaceError(DISCUSSION_UNENFORCED)
-            raise WorkspaceError("Native discussion has no enforceable backend run")
+            task = asyncio.create_task(
+                self.adapters[target.backend].discuss(
+                    target, str(redact_payload(text)), secrets.token_hex(16), profile=profile
+                )
+            )
+            self.discussions[device] = task
+        try:
+            result = await task
+        except asyncio.CancelledError:
+            if task.cancelled() and asyncio.current_task().cancelling() == 0:
+                raise WorkspaceError("Workspace was stopped; the discussion answer was discarded") from None
+            raise
+        finally:
+            if self.discussions.get(device) is task:
+                del self.discussions[device]
+        if (
+            self.bindings.get(device) is not binding
+            or binding["epoch"] != epoch
+            or binding.get("detached")
+            or binding.get("parked")
+        ):
+            raise WorkspaceError("Workspace changed during the discussion turn; the answer was discarded")
+        output = result.get("output") or ""
+        if result.get("status") != "completed" or not output:
+            raise WorkspaceError(f"Native discussion turn {result.get('status', 'failed')}; no answer is confirmed")
+        self._event(device, binding, "user", text)
+        self._event(device, binding, "assistant", output)
+        return {
+            "text": output,
+            "source": {
+                "kind": "native_hermes",
+                "backend": target.backend,
+                "project_id": target.project_id,
+                "session_id": target.session_id,
+                "run_id": result["run_id"],
+                "enforcement": "dispatch",
+                "tool_calls_refused": result.get("tool_calls_refused", 0),
+            },
+        }
 
     def _target(self, binding):
         return self.targets[binding["target_id"]]
@@ -571,6 +670,9 @@ class NativeWorkspace:
         async with self._lock:
             self._discard_draft(device)
             binding = self.bindings.get(device)
+            discussion = self.discussions.get(device)
+            if discussion is not None:
+                discussion.cancel()  # the adapter stops the backend run; no late answer is published
             if not binding:
                 return {"status": "idle"}
             binding["epoch"] = secrets.token_hex(16)
@@ -637,7 +739,7 @@ class NativeWorkspace:
             "session_id": target.session_id,
             "backend": target.backend,
             # Whether spoken Workspace turns reach this session. Host opt-in is not enough: the
-            # backend must enforce a tool-free run, which none does yet.
+            # backend must have proven (handshake) that it enforces a tool-free discussion run.
             "voice_discussion": self.discussion_available(target),
         }
         payload["run"] = dict(binding.get("run", {}))
@@ -685,6 +787,8 @@ class NativeWorkspace:
         self._closed = True
         for device in list(self.drafts):
             self._discard_draft(device)
+        for task in list(self.discussions.values()):
+            task.cancel()
         for task in self.tasks.values():
             task.cancel()
         await asyncio.gather(*self.tasks.values(), return_exceptions=True)
