@@ -43,20 +43,6 @@ This sequence is the target, **not a claim that the existing bounded Agent Broke
 
 Reconsider an isolated, resource-bounded local Hermes runtime only for a measured need (offline household capability, standalone deployment or lower orchestration latency). Before choosing it, compare remote and local orchestration latency, RAM/CPU under the normal robot+vision workload, supervision/Stop/recovery, session synchronization and credential scope. No silent install, model load, provider-key copying or shared robotics dependency changes.
 
-### Product backlog: additional spoken languages (planned)
-
-**Outcome:** Expand beyond the existing Dutch/English experience without changing saved language or voice choices implicitly. This is a roadmap item, not implemented or enabled support, and does not add a fifth Agent delivery goal.
-
-- **Requested next languages:** Spanish (`es`) and German (`de`).
-- **Proposed usual follow-ons:** French (`fr`), Italian (`it`) and Portuguese (`pt`); confirm priorities and regional accents before implementation rather than treating these suggestions as owner-selected voices/locales.
-- Provide an explicit language choice in onboarding and caregiver setup. Keep spoken-language readiness separate from dashboard translation; a translated picker is not end-to-end language support.
-- Cover deterministic greetings, game-master/activity dialogue, hints, switching, retry/help/give-up/Stop phrases and safety/fallback messages—not only model-generated answers. Keep input/output moderation, caregiver deadlines, privacy and cancellation equally enforced in every language.
-- Audition a suitable native-accent voice per locale and prepare matching integrity-checked waiting clips. Select the voice from the approved session language, keep current voice/model proofs, and preserve existing Dutch Ruth, English Kids and adult engine settings.
-- Verify recognition model/language coverage and any explicitly local fallback. Test short answers, numbers, Stop/help/switch phrases, silence/noise and real turn latency per language; do not infer readiness from multilingual model marketing or silently route audio to cloud recognition.
-- **Acceptance per language:** automated lifecycle/safety regressions plus native-speaker review and caregiver-supervised microphone-to-speaker/game testing. Report synthetic, provider-access, deployment and acoustic acceptance separately; enable a new language only after its own checks pass.
-
-Track onboarding language selection within [guided first run](2026-10-14-installation-onboarding-roadmap.md#3-complete-guided-first-run--partial). Scheduling and additional locales remain open; no robot/runtime changes are authorized by this backlog entry.
-
 ### Current implementation and acceptance status (2026-10-13)
 
 - **Deployed baseline: Homebody 0.5.8**, [PR #85](https://github.com/Timverhoogt/homebody/pull/85). Goal 1's owner-only RAM conversation display is shipped, with separate Workspace mode and Conversation & projects view. The complete supervised spoken coding workflow is **not accepted**.
