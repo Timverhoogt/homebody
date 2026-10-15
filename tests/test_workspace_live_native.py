@@ -177,18 +177,60 @@ def states(events):
 # --- Native conversation is the goal ----------------------------------------------------------
 
 
-def test_bound_session_with_discussion_answers_from_native_hermes(tmp_path, monkeypatch):
+def test_enabled_discussion_cannot_launch_an_unapproved_tool_capable_run(tmp_path, monkeypatch):
+    # Hermes /v1/runs runs with the full platform toolset and admits no per-run restriction; the
+    # discussion instructions are a prompt, not authorization. Host opt-in must not launch it.
     bridge, adapter, provider = make_bridge(tmp_path, monkeypatch)
 
     async def bind():
         await bridge.native_workspace.bind(DEVICE, "photo")
 
     asyncio.run(bind())
-    events, commentary = run_live(bridge, monkeypatch, "Let's discuss the importer design")
-    assert states(events) == ["started", "answered"]
-    assert [c["content"] for c in commentary] == ["From your Hermes session."]
-    assert adapter.calls == [("discuss", "native-existing", "Let's discuss the importer design")]
-    assert provider.payloads == []  # never the restricted broker
+    assert bridge.native_readiness(DEVICE) == "discussion_unenforced"
+    events, commentary = run_live(bridge, monkeypatch, "Let's discuss the importer design", wait_for="not_ready")
+    assert states(events) == ["started", "not_ready"]
+    assert adapter.calls == []  # no native run of any kind
+    assert provider.payloads == []  # and never the restricted broker as ordinary-chat fallback
+    spoken = [c["content"] for c in commentary]
+    assert len(spoken) == 1 and "Nothing was sent" in spoken[0] and "no tools" in spoken[0]
+    assert "From your Hermes session." not in spoken
+
+
+def test_native_discussion_is_refused_before_any_native_request(tmp_path, monkeypatch):
+    from companion.native_adapters import HermesNativeAdapter
+    from companion.native_workspace import DISCUSSION_UNENFORCED, WorkspaceError
+
+    bridge, adapter, _provider = make_bridge(tmp_path, monkeypatch)
+
+    class RecordingHttp:
+        def __init__(self):
+            self.requests = []
+
+        def request(self, method, url, **_kwargs):
+            self.requests.append((method, url))
+            raise AssertionError("no native request may be made for discussion")
+
+        get = post = request
+
+    async def scenario():
+        manager = bridge.native_workspace
+        await manager.bind(DEVICE, "photo")
+        target = manager.targets["photo"]
+        assert target.discussion_enabled and manager.discussion_available(target) is False
+        with pytest.raises(WorkspaceError, match="nothing was sent"):
+            await manager.discuss(DEVICE, "Let's discuss the importer")
+        snapshot = await manager.snapshot(DEVICE)
+        assert snapshot["binding"]["voice_discussion"] is False
+        http = RecordingHttp()
+        native = HermesNativeAdapter(http, lambda _name: "fixture-token")
+        with pytest.raises(WorkspaceError) as refused:
+            await native.discuss(target, "Let's discuss", "req-1", "Discuss only")
+        assert str(refused.value) == DISCUSSION_UNENFORCED
+        assert http.requests == []
+        await manager.close()
+
+    asyncio.run(scenario())
+    assert adapter.calls == []
 
 
 @pytest.mark.parametrize("setup", ["unbound", "detached", "parked", "discussion_disabled"])
@@ -305,25 +347,50 @@ def test_provider_unavailable_is_failed_with_truthful_text(tmp_path, monkeypatch
     assert "category=provider_unavailable" in caplog.text
 
 
-def test_clear_during_native_turn_discards_late_answer_and_ends_session(tmp_path, monkeypatch):
+def test_clear_during_restricted_turn_discards_late_answer_and_ends_session(tmp_path, monkeypatch):
+    # Native discussion no longer launches a run, so the late-answer fence is exercised on the
+    # remaining delegated path: a labelled roadmap read whose provider reply lands after Clear.
     bridge, adapter, provider = make_bridge(tmp_path, monkeypatch)
+    release = asyncio.Event()
+    # The same valid two-step reply that answers in test_explicit_roadmap_request_still_uses_...
+    replies = [
+        {"role": "assistant", "tool_calls": [{"id": "c1", "type": "function", "function": {
+            "name": "read_project_roadmap", "arguments": json.dumps({"project_id": "photo"})}}]},
+        answer("The roadmap lists import readiness next.", ["read_project_roadmap"]),
+    ]
 
-    async def bind():
-        await bridge.native_workspace.bind(DEVICE, "photo")
+    def blocked_post(url, *, json, **kwargs):
+        provider.payloads.append(copy.deepcopy(json))
+        message = replies.pop(0)
 
-    asyncio.run(bind())
-    adapter.block = True
+        class Response:
+            status = 200
+
+            async def __aenter__(self):
+                await release.wait()
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            async def json(self, **_kwargs):
+                return {"choices": [{"message": message}]}
+
+        return Response()
+
+    provider.post = blocked_post
 
     async def during(bridge):
         for _ in range(100):
-            if adapter.calls:
+            if provider.payloads:
                 break
             await asyncio.sleep(0.02)
         # A new runtime generation (owner Clear, profile change, privacy) while the turn is running.
         await bridge.agent_broker.establish_session(DEVICE, ctx(2))
-        adapter.release.set()
+        release.set()
 
-    events, commentary = run_live(bridge, monkeypatch, "Let's discuss the importer", during=during)
-    assert adapter.calls and commentary == []  # nothing spoken after Clear
+    events, commentary = run_live(bridge, monkeypatch, "What is next on the photo project roadmap?",
+                                  during=during)
+    assert provider.payloads and commentary == []  # nothing spoken after Clear
     assert "answered" not in states(events) and "failed" not in states(events)
-    assert provider.payloads == []
+    assert adapter.calls == []

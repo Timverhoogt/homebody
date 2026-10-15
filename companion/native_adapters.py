@@ -16,10 +16,10 @@ from urllib.parse import quote
 from aiohttp import ClientSession, ClientTimeout, WSMsgType
 
 try:
-    from companion.native_workspace import WorkspaceError
+    from companion.native_workspace import DISCUSSION_UNENFORCED, WorkspaceError
     from companion.reachy_agent_broker import redact_payload
 except ModuleNotFoundError:
-    from native_workspace import WorkspaceError
+    from native_workspace import DISCUSSION_UNENFORCED, WorkspaceError
     from reachy_agent_broker import redact_payload
 
 
@@ -119,34 +119,13 @@ class HermesNativeAdapter:
             raise WorkspaceError("native run admission did not return an exact run identity")
         return run_id
 
-    async def discuss(self, target, text, request_id, instructions, *, timeout=75.0, poll=0.5):
-        """One native discussion turn in the bound session: POST /v1/runs, then poll its status.
+    async def discuss(self, target, text, request_id, instructions):
+        """Refused before any request: POST /v1/runs runs with the full platform toolset.
 
-        The answer is returned only when the run's own status reports this exact session and run.
+        Hermes admits no per-run toolset restriction there, and instructions are a prompt, not
+        authorization, so an unapproved discussion turn would be a tool-capable run.
         """
-        headers = {**self.headers(target), "Idempotency-Key": request_id}
-        admitted = await json_request(
-            self.http,
-            "POST",
-            f"{target.url}/v1/runs",
-            headers=headers,
-            body={"session_id": target.session_id, "input": text, "instructions": instructions},
-        )
-        run_id = admitted.get("run_id")
-        if not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", run_id):
-            raise WorkspaceError("native run admission did not return an exact run identity")
-        status_url = f"{target.url}/v1/runs/{quote(run_id, safe='')}"
-        deadline = asyncio.get_running_loop().time() + timeout
-        while True:
-            payload = await json_request(self.http, "GET", status_url, headers=self.headers(target))
-            if payload.get("session_id") != target.session_id or payload.get("run_id", run_id) != run_id:
-                raise WorkspaceError("native discussion answer belongs to a different session or run")
-            status = payload.get("status")
-            if status in {"completed", "failed", "cancelled", "interrupted"}:
-                return {"run_id": run_id, "status": status, "output": public_output(payload.get("output", ""))}
-            if asyncio.get_running_loop().time() >= deadline:
-                return {"run_id": run_id, "status": "timeout", "output": ""}
-            await asyncio.sleep(poll)
+        raise WorkspaceError(DISCUSSION_UNENFORCED)
 
     async def events(self, target, run_id):
         status_url = f"{target.url}/v1/runs/{quote(run_id, safe='')}"

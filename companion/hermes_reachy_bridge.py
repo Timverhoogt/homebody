@@ -353,6 +353,11 @@ _NATIVE_NOT_READY = {
         "Voice discussion is not enabled on the agent host for this project, so I can't pass this to your "
         "Hermes session. Nothing was sent. Ask about the project roadmap for its recorded status."
     ),
+    "discussion_unenforced": (
+        "Voice discussion with your Hermes session isn't available yet: the agent host can't limit a "
+        "discussion turn to no tools, so I won't start one. Nothing was sent. You can ask about the project "
+        "roadmap, or prepare work for phone approval in Workspace."
+    ),
 }
 # Explicitly named non-private broker capabilities (status, information, timers, media, home actions,
 # plans). Together with _PRIVATE_INTENT_PATTERNS this decides which turns still reach the restricted

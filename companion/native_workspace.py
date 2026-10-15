@@ -39,6 +39,15 @@ DISCUSSION_INSTRUCTIONS = (
     "files, run commands or take external actions in this turn. Execution needs a separate phone "
     "approval. Reply in a few spoken sentences."
 )
+# A discussion turn may only launch on a run whose tool authority the backend itself restricts.
+# Hermes POST /v1/runs (gateway/platforms/api_server_runs.py) admits no per-run toolset restriction
+# and runs with the full platform toolset; DISCUSSION_INSTRUCTIONS are a prompt, not authorization.
+# Until a backend exposes an enforceable discussion-only run, no native discussion run is launched,
+# whatever discussion_enabled says. See docs/native-workspace.md.
+DISCUSSION_UNENFORCED = (
+    "Native voice discussion is not available: the Hermes host cannot restrict a discussion turn "
+    "to no tools, so nothing was sent"
+)
 
 
 @dataclass(frozen=True)
@@ -255,48 +264,24 @@ class NativeWorkspace:
         return {"status": status, "running": status in _ACTIVE, "ready_to_test": run.get("ready_to_test") is True,
                 "parked": bool(binding.get("parked"))}
 
+    @staticmethod
+    def discussion_available(target):
+        """Whether a spoken turn may reach this native session; host opt-in alone is not enough.
+
+        No supported backend enforces a tool-free discussion run (see DISCUSSION_UNENFORCED).
+        """
+        return False
+
     async def discuss(self, device, text):
-        """One discussion turn in the bound native Hermes session, only if the host enabled it."""
+        """Refuse a native discussion turn before any native request; it cannot be made tool-free."""
         async with self._lock:
             binding = self._binding(device)
             target = self._target(binding)
             if not target.discussion_enabled:
                 raise WorkspaceError("Native discussion is not enabled for this project on the host")
-            if binding.get("run", {}).get("status") in _ACTIVE:
-                raise WorkspaceError("Project work is running; ask for its status instead")
-            if (
-                type(text) is not str
-                or not text.strip()
-                or len(text) > 4000
-                or any(ord(c) < 32 and c not in "\n\t" for c in text)
-            ):
-                raise WorkspaceError("native discussion text must contain 1–4000 characters")
-            epoch = binding["epoch"]
-        result = await self.adapters[target.backend].discuss(
-            target, str(redact_payload(text)), secrets.token_hex(16), DISCUSSION_INSTRUCTIONS
-        )
-        if (
-            self.bindings.get(device) is not binding
-            or binding["epoch"] != epoch
-            or binding.get("detached")
-            or binding.get("parked")
-        ):
-            raise WorkspaceError("Workspace changed during the discussion turn; the answer was discarded")
-        output = result.get("output") or ""
-        if result.get("status") != "completed" or not output:
-            raise WorkspaceError(f"Native discussion turn {result.get('status', 'failed')}; no answer is confirmed")
-        self._event(device, binding, "user", text)
-        self._event(device, binding, "assistant", output)
-        return {
-            "text": output,
-            "source": {
-                "kind": "native_hermes",
-                "backend": target.backend,
-                "project_id": target.project_id,
-                "session_id": target.session_id,
-                "run_id": result["run_id"],
-            },
-        }
+            if not self.discussion_available(target):
+                raise WorkspaceError(DISCUSSION_UNENFORCED)
+            raise WorkspaceError("Native discussion has no enforceable backend run")
 
     def _target(self, binding):
         return self.targets[binding["target_id"]]
@@ -651,8 +636,9 @@ class NativeWorkspace:
             "project_id": target.project_id,
             "session_id": target.session_id,
             "backend": target.backend,
-            # Whether spoken Workspace turns reach this session; categorical host setting only.
-            "voice_discussion": target.discussion_enabled,
+            # Whether spoken Workspace turns reach this session. Host opt-in is not enough: the
+            # backend must enforce a tool-free run, which none does yet.
+            "voice_discussion": self.discussion_available(target),
         }
         payload["run"] = dict(binding.get("run", {}))
         epoch = binding["epoch"]

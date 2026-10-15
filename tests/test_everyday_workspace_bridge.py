@@ -67,8 +67,15 @@ def test_discussion_flag_is_hermes_only_and_keeps_legacy_fingerprint(tmp_path):
                                    "project_id": "photo", "session_id": "s1", "discussion_enabled": True}}, projects)
 
 
-def test_hermes_discussion_checks_exact_session_and_run_identity():
-    seen = {"posts": [], "gets": 0, "session": "native-existing"}
+def test_hermes_discussion_admits_no_native_run_even_when_enabled():
+    # Hermes /v1/runs runs with the full platform toolset; "Discuss only" instructions are a prompt,
+    # not authorization. An enabled discussion target must not admit a run or poll its status.
+    seen = {"posts": [], "gets": 0, "requests": 0}
+
+    @web.middleware
+    async def count(request, handler):
+        seen["requests"] += 1
+        return await handler(request)
 
     async def runs(request):
         seen["posts"].append((dict(request.headers), await request.json()))
@@ -76,13 +83,11 @@ def test_hermes_discussion_checks_exact_session_and_run_identity():
 
     async def status(request):
         seen["gets"] += 1
-        if seen["gets"] == 1:
-            return web.json_response({"run_id": "run-d1", "status": "running", "session_id": seen["session"]})
-        return web.json_response({"run_id": "run-d1", "status": "completed", "session_id": seen["session"],
+        return web.json_response({"run_id": "run-d1", "status": "completed", "session_id": "native-existing",
                                   "output": "Roadmap item two is next."})
 
     async def main():
-        app = web.Application()
+        app = web.Application(middlewares=[count])
         app.router.add_post("/v1/runs", runs)
         app.router.add_get("/v1/runs/{run_id}", status)
         server = TestServer(app)
@@ -92,19 +97,14 @@ def test_hermes_discussion_checks_exact_session_and_run_identity():
         try:
             async with aiohttp.ClientSession() as http:
                 adapter = HermesNativeAdapter(http, lambda name: "native-token")
-                good = await adapter.discuss(target, "What is next?", "req-1", "Discuss only", poll=0.01)
-                seen["session"], seen["gets"] = "other-session", 1
-                with pytest.raises(WorkspaceError, match="different session"):
-                    await adapter.discuss(target, "What is next?", "req-2", "Discuss only", poll=0.01)
+                for request_id in ("req-1", "req-2"):
+                    with pytest.raises(WorkspaceError, match="cannot restrict a discussion turn to no tools"):
+                        await adapter.discuss(target, "What is next?", request_id, "Discuss only")
         finally:
             await server.close()
-        return good
 
-    good = asyncio.run(main())
-    assert good == {"run_id": "run-d1", "status": "completed", "output": "Roadmap item two is next."}
-    headers, body = seen["posts"][0]
-    assert headers["Authorization"] == "Bearer native-token" and headers["Idempotency-Key"] == "req-1"
-    assert body == {"session_id": "native-existing", "input": "What is next?", "instructions": "Discuss only"}
+    asyncio.run(main())
+    assert seen == {"posts": [], "gets": 0, "requests": 0}  # zero admitted POSTs, zero status GETs
 
 
 def run_bridge(tmp_path, test, *, discussion=True):
@@ -172,18 +172,29 @@ def test_plain_profile_change_without_park_still_detaches(tmp_path):
     run_bridge(tmp_path, test)
 
 
-def test_workspace_answer_comes_from_native_session_with_provenance(tmp_path):
+def test_enabled_discussion_gives_truthful_not_ready_without_native_run_or_broker(tmp_path):
     async def test(bridge, client, adapter):
+        broker_turns = []
+
+        async def broker_turn(*args, **kwargs):
+            broker_turns.append(args)
+            return "Restricted roadmap summary."
+
+        bridge._agent_answer_turn = broker_turn
         await session(client, ctx(1))
         await bridge.native_workspace.bind("reachy-1", "photo")
+        assert bridge.native_workspace.targets["photo"].discussion_enabled is True
         response = await client.post("/v1/agent/ask", headers=HEADERS, json={
-            "request_id": "agent-0123456789", "request": "What is the next roadmap item?", "context": ctx(1)})
+            "request_id": "agent-0123456789", "request": "Tell me about it", "context": ctx(1)})
         body = await response.json()
-        assert body["text"] == "From your Hermes session."
-        assert body["source"] == {"kind": "native_hermes", "backend": "hermes", "project_id": "photo",
-                                  "session_id": "native-existing", "run_id": "run-d1"}
-        assert adapter.calls[0][:3] == ("discuss", "native-existing", "What is the next roadmap item?")
-        assert "do not edit" in adapter.calls[0][3]
+        assert body["source"] == {"kind": "native_not_ready", "state": "discussion_unenforced"}
+        assert "Nothing was sent" in body["text"] and "no tools" in body["text"]
+        assert "From your Hermes session." not in body["text"]
+        assert "native_hermes" not in json.dumps(body) and "run-d1" not in json.dumps(body)
+        assert adapter.calls == []  # no native discussion run
+        assert broker_turns == []  # and no ordinary-chat fallback to the restricted broker
+        snapshot = await bridge.native_workspace.snapshot("reachy-1")
+        assert snapshot["binding"]["voice_discussion"] is False
 
     run_bridge(tmp_path, test)
 

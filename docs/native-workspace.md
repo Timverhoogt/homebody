@@ -12,6 +12,12 @@ Execution requires fixed absolute-executable argv checks and exact relative arti
 
 OpenClaw uses native protocol 4, session resolution/history, chat admission, run observation and exact abort. Optional approval observation requests existing operator approval scope and emits only a generic session-scoped notice, not a claim that this particular run is blocked. Approval decisions remain in the backend owner UI. Secret-reference objects are not bearer tokens: provide a securely resolved host credential through approved deployment mechanisms; do not export write-only stores or stringify references.
 
+## Spoken discussion: not available
+
+The optional target field `discussion_enabled` (Hermes only) is accepted, but setting it does not make spoken discussion available. A discussion turn would be an unapproved native run, and the installed Hermes `POST /v1/runs` (`gateway/platforms/api_server_runs.py`) has no per-run toolset restriction: every run gets the full platform toolset. Discussion instructions are only a prompt, so they don't authorize or restrict anything. Homebody therefore refuses discussion before making any native request. Voice readiness reports `discussion_unenforced`, the spoken reply says nothing was sent, the Workspace snapshot reports `voice_discussion: false`, and ordinary chat does not fall back to the restricted broker. Roadmap reading, history display and the owner-approved execution flow are unchanged.
+
+Prerequisite for enabling it: the backend must provide a discussion-only run that it enforces itself, such as a per-run empty or read-only toolset that the server applies and confirms, so that a tool call is refused regardless of the prompt. A Homebody change must then use that run and add tests that show a tool-capable run cannot start. Native spoken discussion has not been accepted.
+
 ## Truthful progress and recovery
 
 Public accepted messages and explicit lifecycle/tool facts are displayed; hidden reasoning, tool arguments/results and generic payloads are excluded. Connection/admission uncertainty is not completion. No submission is replayed after a lost acknowledgement or restart. Existing native jobs are observed again by exact identity. Unknown or unconfirmed stopped work blocks session reuse, including from another device. Configuration changes require reconciliation of the journal before replacing targets.

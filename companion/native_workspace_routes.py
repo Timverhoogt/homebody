@@ -148,7 +148,11 @@ class NativeWorkspaceRoutes:
             return "unbound"
         if binding.get("parked"):
             return "parked"
-        return "ready" if manager._target(binding).discussion_enabled else "discussion_disabled"
+        target = manager._target(binding)
+        if not target.discussion_enabled:
+            return "discussion_disabled"
+        # Host opt-in alone is not ready: the backend must enforce a tool-free discussion run.
+        return "ready" if manager.discussion_available(target) else "discussion_unenforced"
 
     async def native_voice_proposal(self, device, context, text):
         """Voice can propose exact work, not grant consent or arbitrary session selection."""
