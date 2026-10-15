@@ -96,7 +96,11 @@ def test_owner_loss_hides_transcription_claim(ui):
     page.wait_for_function(
         "document.querySelector('#kids-stage .hb-scene-title').textContent === 'Local transcription'"
     )
-    page.evaluate("HomebodyOwner.isOwner = () => false; refreshStatus()")
+    # Revoke through the real owner fetch transport; overriding isOwner alone skips teardown
+    # and the guarded status poll correctly refuses to repaint a now-unauthorized reply.
+    page.route("**/api/agent/activity", lambda route: route.fulfill(status=401, json={"detail": "owner required"}))
+    page.evaluate("fetch('/api/agent/activity')")
+    page.wait_for_function("HomebodyOwner.isOwner() === false")
     page.wait_for_function(
         "document.querySelector('#kids-stage .hb-scene-title').textContent !== 'Local transcription'"
     )
