@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.17] — Speech safety, five Kids languages and enforced Workspace discussion
+
+- Integrate strict server-rendered Kids speech selectors, exact moderated-text capabilities, bounded turn deadlines and Stop/End fences across recognition, game transitions and synthesis.
+- Negotiate tool-free same-session native Hermes discussion with enforced dispatch, plugin and auxiliary-work isolation. Requires a compatible separately deployed native listener; unavailable enforcement fails closed. Lost admission responses can leave tool-free transcript context, never work authorization.
+- Repair owner-loss and stale native display/readiness responses, preserve existing consents, and keep Bluetooth controller pairing explicit and movement disabled by default.
+- Report daemon face following as requested rather than confirmed; provide pinned, checksum-verified model-cache provisioning without camera activation.
 - Add Spanish, German, French, Italian and Portuguese Kids sessions on the strict server-rendered catalog.
   - Selector-only fixed speech, session-pinned language, per-language bridge and robot copy, retry and safety copy.
   - I Spy requires session-language hints in the strict native schema.
@@ -14,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Start is refused before any side effect without that language's voice proof, and a Stop/End during the proof wins.
   - EN/NL and Dutch Ruth are unchanged.
 - Add the source-only `tools/kids_language_readiness.py`. It reports source, config and manual acceptance separately.
-- No voices, regions or waiting clips are selected or shipped; Portuguese copy is provisional European Portuguese. Not native-reviewed, deployed or accepted (see `docs/kids-language-deployment-readiness.md`).
+- Voice IDs remain host-configured, not shipped defaults; new-language waiting clips are optional and absent. Portuguese copy targets European Portuguese. Owner-selected reference-host voices do not establish native-language or supervised gameplay acceptance (see `docs/kids-language-deployment-readiness.md`).
 - Synchronize PWA shell/query v98.
 
 ## [0.5.16] — Dutch Kids voice and latency visibility
