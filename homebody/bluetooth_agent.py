@@ -379,7 +379,10 @@ class BluezPairingAgent:
             await asyncio.wait(pending, timeout=timeout)
 
     def _run_cleanup(self, coroutine, timeout: float, what: str, errors: list):
-        future = asyncio.run_coroutine_threadsafe(asyncio.wait_for(coroutine, timeout), self._loop)
+        # On Python 3.11 wait_for creates a supervisor task. _cancel_remaining
+        # must not cancel that supervisor and thereby cancel its own cleanup.
+        # The calling thread already imposes a finite deadline below.
+        future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
         try:
             return future.result(timeout + 1.0)
         except BaseException as exc:  # noqa: BLE001 - every cleanup step must still run

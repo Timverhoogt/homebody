@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.5.17] — Speech safety, five Kids languages and enforced Workspace discussion
+## [0.5.18] — Speech safety, five Kids languages and enforced Workspace discussion
+
+- Correct Python 3.11 Bluetooth-agent teardown so cancellation cannot cancel its own cleanup supervisor. The 0.5.17 draft failed the hosted compatibility gate and was not publicly released or deployed.
 
 - Integrate strict server-rendered Kids speech selectors, exact moderated-text capabilities, bounded turn deadlines and Stop/End fences across recognition, game transitions and synthesis.
 - Negotiate tool-free same-session native Hermes discussion with enforced dispatch, plugin and auxiliary-work isolation. Requires a compatible separately deployed native listener; unavailable enforcement fails closed. Lost admission responses can leave tool-free transcript context, never work authorization.
