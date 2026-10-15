@@ -40,6 +40,11 @@ _LOGGER = logging.getLogger("homebody.runtime")
 _KIDS_FIRST_LISTEN_TTL_SECONDS = 10.0
 
 
+def _host_selector(key: str, **slots: str) -> tuple[dict[str, str], ...]:
+    """One host-line catalog selector (activity-id slots only) for the bridge to render and approve."""
+    return ({"kind": "host", "key": key, **slots},)
+
+
 class ISpyInputUnavailable(RuntimeError):
     """A safe categorical typed-input lifecycle/availability error."""
 
@@ -106,9 +111,11 @@ class KidsModeMixin:
             and self._effective_power_mode() not in {"meeting", "sleep"}
         )
 
-    def _arm_kids_first_listen(self, session_id: str) -> bool:
+    def _arm_kids_first_listen(self, session_id: str, *, generation: int | None = None) -> bool:
         """Arm the first listening turn for exactly the still-current, never-stopped Start session."""
         with self._kids_lock:
+            if generation is not None and generation != self._kids_generation:
+                return False  # the line belonged to an earlier, stopped or replaced generation
             ticket = (
                 session_id, self._kids_generation, self._kids_start_stop_generation,
                 time.monotonic() + _KIDS_FIRST_LISTEN_TTL_SECONDS,
@@ -220,11 +227,15 @@ class KidsModeMixin:
         if self._motion is not None:
             self._motion.enabled = profile.motion_enabled
         ispy_target: ISpyTarget | None = None
-        greeting = kids_greeting(profile)
+        # Spoken fixed copy is rendered and approved by the bridge from catalog selectors only; the
+        # caregiver-typed nickname is free text, so it is never part of an approved spoken line.
+        greeting = kids_greeting(replace(profile, nickname=""))
+        lines: tuple[dict[str, str], ...] = ({"kind": "greeting"},)
         if profile.host:
             # The host opens in the lobby: no game, no camera, two concrete choices.
             first, second = lobby_choices(camera_consent=profile.camera_consent)
-            greeting = host_line(profile.language, "lobby", a=first, b=second, nickname=profile.nickname)
+            greeting = host_line(profile.language, "lobby", a=first, b=second)
+            lines = ({"kind": "host", "key": "lobby", "a": first, "b": second},)
         elif profile.activity == "ispy":
             try:
                 ispy_target = self._prepare_ispy_round(generation, profile)
@@ -244,10 +255,10 @@ class KidsModeMixin:
                 self.queue_announcement(
                     ispy_target.clue(profile.language) if ispy_target else greeting,
                     behavior="wake_and_stay",
-                    provider="elevenlabs",
-                    model="eleven_flash_v2_5",
-                    voice="cgSgspJ2msm6clMCkdW9",
                     kids_listen_session_id=started_session_id,
+                    kids_voice_session_id=started_session_id,
+                    kids_speech_lines=({"kind": "ispy_clue"},) if ispy_target else lines,
+                    kids_generation=generation,
                 )
             except Exception:
                 self.stop_kids_mode(
@@ -477,6 +488,7 @@ class KidsModeMixin:
             if not self._kids_active or generation != self._kids_generation or self._kids_profile is None:
                 return
             language = self._kids_profile.language
+            session_id = self._kids_session_id
         try:
             self._request_conversation_stop()
             self._clear_streamed_audio()
@@ -485,9 +497,9 @@ class KidsModeMixin:
                 repeat=1,
                 pause_seconds=0.0,
                 behavior="voice_only",
-                provider="elevenlabs",
-                model="eleven_flash_v2_5",
-                voice="cgSgspJ2msm6clMCkdW9",
+                kids_voice_session_id=session_id,
+                kids_speech_lines=({"kind": "notice", "key": "five_minutes"},),
+                kids_generation=generation,
             )
         except Exception:
             _LOGGER.exception("Could not play the Kids Mode five-minute warning")
@@ -799,7 +811,9 @@ class KidsModeMixin:
             self._kids_warning_timer = warning
             warning.start()
 
-    def _kids_host_speak(self, text: str, generation: int, *, phase: str, listen: bool = True) -> bool:
+    def _kids_host_speak(
+        self, text: str, generation: int, *, phase: str, lines: tuple[dict[str, str], ...], listen: bool = True,
+    ) -> bool:
         """Queue one fixed host line for exactly this generation; Stop/End/privacy always win.
 
         Queued under the motor and Kids locks, so a concurrent End either clears it from the queue
@@ -816,10 +830,10 @@ class KidsModeMixin:
             self.queue_announcement(
                 text,
                 behavior="wake_and_stay",
-                provider="elevenlabs",
-                model="eleven_flash_v2_5",
-                voice="cgSgspJ2msm6clMCkdW9",
                 kids_listen_session_id=self._kids_session_id if listen else "",
+                kids_voice_session_id=self._kids_session_id,
+                kids_speech_lines=lines,
+                kids_generation=generation,
             )
             return True
 
@@ -855,7 +869,7 @@ class KidsModeMixin:
                 self._kids_host_phase = "transition"
                 self._kids_host_notice = ""
         if text:
-            self._kids_host_speak(text, generation, phase=phase)
+            self._kids_host_speak(text, generation, phase=phase, lines=_host_selector("camera_needed"))
             return
         threading.Thread(
             target=self._kids_host_transition, args=(activity, generation),
@@ -914,9 +928,11 @@ class KidsModeMixin:
                                         expected_generation=generation)
                 return
             text = f"{intro} {target.clue(profile.language)}"
+            lines = (*_host_selector("start", a=activity), {"kind": "ispy_clue"})
         else:
             text = f"{intro} {kids_greeting(replace(profile, nickname=''))}"
-        self._kids_host_speak(text, generation, phase="playing")
+            lines = (*_host_selector("start", a=activity), {"kind": "greeting"})
+        self._kids_host_speak(text, generation, phase="playing", lines=lines)
 
     def _kids_host_offer(self, generation: int, *, finished_activity: str) -> bool:
         with self._kids_lock:
@@ -931,6 +947,7 @@ class KidsModeMixin:
             self._kids_host_reprompts = 0
         return self._kids_host_speak(
             host_line(profile.language, "offer", a=finished_activity, b=other), generation, phase="offer",
+            lines=_host_selector("offer", a=finished_activity, b=other),
         )
 
     def _kids_host_handle_transcript(self, session_id: str, transcript: str, *, typed: bool = False) -> bool:
@@ -976,7 +993,10 @@ class KidsModeMixin:
             ]
             self._kids_host_choose(options[0], generation)
         elif command.kind == "help" and phase == "playing":
-            self._kids_host_speak(host_line(language, "help_playing"), generation, phase="playing")
+            self._kids_host_speak(
+                host_line(language, "help_playing"), generation, phase="playing",
+                lines=_host_selector("help_playing"),
+            )
         else:
             with self._kids_lock:
                 if not self._kids_host_current(generation):
@@ -988,11 +1008,14 @@ class KidsModeMixin:
             first_name = activity if first == "again" else first
             if reprompts > MAX_CHOICE_REPROMPTS:
                 # Bounded: stop asking, wait quietly; a game name, wake word or caregiver can resume.
-                self._kids_host_speak(host_line(language, "waiting"), generation, phase="waiting", listen=False)
+                self._kids_host_speak(
+                    host_line(language, "waiting"), generation, phase="waiting", listen=False,
+                    lines=_host_selector("waiting"),
+                )
             else:
                 key = "offer_retry" if first == "again" and command.kind != "help" else "help"
                 self._kids_host_speak(host_line(language, key, a=first_name, b=second), generation,
-                                      phase=phase or "lobby")
+                                      phase=phase or "lobby", lines=_host_selector(key, a=first_name, b=second))
         return True
 
     def _kids_host_child_stop(self, play_id: str) -> None:

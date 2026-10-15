@@ -152,7 +152,9 @@ def test_host_start_opens_lobby_in_selected_language_with_two_choices(host) -> N
         "available": ["story", "riddles", "quiz", "buddy", "calm"],
     }
     text, kwargs = host.spoken[-1]
-    assert text.startswith("Hoi Sam!") and "verhaal" in text and "raadsels" in text
+    # The caregiver-typed nickname is free text and is never part of an approved spoken line.
+    assert text.startswith("Hoi!") and "Sam" not in text and "verhaal" in text and "raadsels" in text
+    assert kwargs["kids_speech_lines"] == ({"kind": "host", "key": "lobby", "a": "story", "b": "riddles"},)
     assert kwargs["kids_listen_session_id"] == host.runtime._kids_session_id
     assert host.runtime._kids_voice_config(AppConfig()).kids_host_enabled is True
 
@@ -188,7 +190,9 @@ def test_switch_invalidates_old_game_and_preserves_monotonic_deadline(host) -> N
     assert text.startswith("Okay, riddles!") and kwargs["kids_listen_session_id"] == runtime._kids_session_id
     # Stale speech from the old generation can no longer be queued.
     before = len(host.spoken)
-    assert runtime._kids_host_speak("stale", old_generation, phase="offer") is False
+    assert runtime._kids_host_speak(
+        "stale", old_generation, phase="offer", lines=({"kind": "host", "key": "waiting"},)
+    ) is False
     assert len(host.spoken) == before
     # A stale transition callback is a no-op.
     runtime._kids_host_transition("quiz", old_generation)
@@ -564,12 +568,18 @@ def test_bridge_hosted_turn_uses_strict_schema_and_reports_finish(monkeypatch) -
 def test_bridge_hosted_turn_rejects_prose_and_moderation_still_wins(monkeypatch) -> None:
     from aiohttp import web
 
-    _module, bridge = load_bridge(monkeypatch)
-    with pytest.raises(web.HTTPBadGateway):
-        run_kids_chat(bridge, body(hosted=True), "The story is finished now.")
-    with pytest.raises(web.HTTPBadGateway):
-        run_kids_chat(bridge, body(hosted=True, input="x") | {"session_id": "kids-" + "c" * 32},
-                      json.dumps({"reply": "x", "game_state": "finished", "extra": 1}))
+    module, bridge = load_bridge(monkeypatch)
+    # Prose or extra keys are never parsed or guessed: the child hears the fixed retry line and the
+    # round keeps playing.
+    for session_id, reply in (
+        ("kids-" + "b" * 32, "The story is finished now."),
+        ("kids-" + "c" * 32, json.dumps({"reply": "x", "game_state": "finished", "extra": 1})),
+    ):
+        response, _ = run_kids_chat(bridge, body(hosted=True) | {"session_id": session_id}, reply)
+        payload = json.loads(response.text)
+        assert payload["game_state"] == "playing" and payload["retry"] is True
+        assert payload["text"] == module._KIDS_MODEL_RETRY_REPLY["en"]
+        assert bridge._kids_sessions[session_id]["history"] == []
     response, _ = run_kids_chat(
         bridge, body() | {"session_id": "kids-" + "d" * 32, "hosted": True},
         json.dumps({"reply": "unsafe words", "game_state": "finished"}), flagged=("unsafe words",),

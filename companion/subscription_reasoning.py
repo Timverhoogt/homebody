@@ -7,7 +7,9 @@ The caller supplies only the Everyday messages and allowlisted tool schemas.
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
+import re
 import sys
 from typing import Any
 from urllib.parse import urlparse
@@ -16,6 +18,112 @@ try:
     from companion.reachy_agent_broker import BrokerUnavailableError
 except ImportError:
     from reachy_agent_broker import BrokerUnavailableError
+
+# Native Structured Outputs (Responses ``text.format``). The installed Hermes Codex adapter drops chat
+# ``response_format`` and forwards only ``service_tier``/``reasoning`` from ``extra_body``, so the schema
+# is added at a Homebody-owned, per-request adapter boundary and checked on the final wire.
+_FORMAT_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
+# Keywords in the documented strict subset that Homebody schemas use. ``minLength``/``maxLength`` are not
+# in that subset for strings, so they are left off the wire; the bridge still enforces them on every reply.
+_WIRE_KEYWORDS = frozenset({
+    "type", "properties", "required", "additionalProperties", "items", "enum",
+    "minimum", "maximum", "minItems", "maxItems", "description",
+})
+_HOST_ONLY_KEYWORDS = frozenset({"minLength", "maxLength"})
+
+
+def _native_schema(node: object) -> dict[str, Any]:
+    """Project a Homebody JSON schema onto the strict wire subset; raise on anything else."""
+    if not isinstance(node, dict):
+        raise ValueError("schema node must be an object")
+    unknown = set(node) - _WIRE_KEYWORDS - _HOST_ONLY_KEYWORDS
+    if unknown:
+        raise ValueError(f"unsupported strict schema keyword(s): {sorted(unknown)}")
+    wire: dict[str, Any] = {}
+    for key, value in node.items():
+        if key in _HOST_ONLY_KEYWORDS:
+            continue
+        if key == "properties":
+            if not isinstance(value, dict):
+                raise ValueError("properties must be an object")
+            wire[key] = {name: _native_schema(child) for name, child in value.items()}
+        elif key == "items":
+            wire[key] = _native_schema(value)
+        else:
+            wire[key] = copy.deepcopy(value)
+    if node.get("type") == "object":
+        properties = node.get("properties")
+        if (
+            node.get("additionalProperties") is not False
+            or not isinstance(properties, dict)
+            or not isinstance(node.get("required"), list)
+            or set(node["required"]) != set(properties)
+        ):
+            raise ValueError("strict objects need additionalProperties false and every property required")
+    return wire
+
+
+def native_text_format(response_format: object) -> dict[str, Any] | None:
+    """Chat ``response_format`` json_schema -> Responses ``text.format``; None when no schema was asked."""
+    if not isinstance(response_format, dict) or response_format.get("type") != "json_schema":
+        if isinstance(response_format, dict) and response_format:
+            raise ValueError("only json_schema response formats are supported")
+        return None
+    spec = response_format.get("json_schema")
+    if (
+        not isinstance(spec, dict)
+        or spec.get("strict") is not True
+        or not isinstance(spec.get("name"), str)
+        or not _FORMAT_NAME.fullmatch(spec["name"])
+    ):
+        raise ValueError("json_schema needs strict true and a valid name")
+    return {"type": "json_schema", "name": spec["name"], "strict": True, "schema": _native_schema(spec.get("schema"))}
+
+
+class _WireCheckedResponses:
+    def __init__(self, responses: Any, text: dict[str, Any]) -> None:
+        self._responses, self._text = responses, text
+
+    def create(self, **kwargs: Any) -> Any:
+        # The last point before the SDK serializes the request: the exact format must be on it.
+        if kwargs.get("text") != self._text or "text" in (kwargs.get("extra_body") or {}):
+            raise BrokerUnavailableError("Structured output could not be enforced on the subscription wire")
+        return self._responses.create(**kwargs)
+
+
+class _WireCheckedClient:
+    """Per-request view of the shared OpenAI client; everything but ``responses.create`` delegates."""
+
+    def __init__(self, client: Any, text: dict[str, Any]) -> None:
+        self._homebody_client = client
+        self.responses = _WireCheckedResponses(client.responses, text)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._homebody_client, name)
+
+
+def _structured_adapter(adapter: Any, text_format: dict[str, Any]) -> Any:
+    """A fresh per-request subclass instance of the installed Codex adapter that adds ``text.format``.
+
+    Fails closed unless the resolved adapter is the installed ``_CodexCompletionsAdapter``; the shared
+    adapter, its class and the shared client are never modified.
+    """
+    try:
+        from agent.auxiliary_client import _CodexCompletionsAdapter
+    except ImportError as exc:
+        raise BrokerUnavailableError("Structured output needs the installed Hermes Codex adapter") from exc
+    if not isinstance(adapter, _CodexCompletionsAdapter):
+        raise BrokerUnavailableError("Structured output cannot be enforced by this subscription adapter")
+    text = {"format": copy.deepcopy(text_format)}
+
+    class _StructuredCodexAdapter(type(adapter)):  # type: ignore[misc, valid-type]
+        def _build_responses_kwargs(self, kwargs: dict[str, Any]) -> tuple[dict[str, Any], str, Any]:
+            resp_kwargs, model, timeout = super()._build_responses_kwargs(kwargs)
+            if "text" in resp_kwargs:
+                raise BrokerUnavailableError("Unexpected adapter text configuration; refusing to merge formats")
+            return {**resp_kwargs, "text": copy.deepcopy(text)}, model, timeout
+
+    return _StructuredCodexAdapter(_WireCheckedClient(adapter._client, text), adapter._model)
 
 
 def _resolve_client(model: str) -> Any:
@@ -84,9 +192,14 @@ class SubscriptionTextProvider:
                 "timeout": timeout_seconds,
                 "extra_body": {"reasoning": {"enabled": False, "effort": "none"}},
             }
-            if body.get("response_format", {}).get("type") == "json_schema":
-                # The host still strictly validates each I Spy schema and safety rule.
-                # Do not pretend that a chat response_format ignored by Codex enforces it.
+            try:
+                text_format = native_text_format(body.get("response_format"))
+            except ValueError as exc:
+                raise BrokerUnavailableError("Structured output schema is outside the enforceable subset") from exc
+            adapter = client.chat.completions
+            if text_format is not None:
+                # Native strict Structured Outputs on the Responses wire, plus the schema as an
+                # instruction. The host still strictly validates each reply and safety rule.
                 instruction = "Return only JSON matching this schema, without markdown: " + json.dumps(
                     body["response_format"]["json_schema"]["schema"]
                 )
@@ -96,16 +209,27 @@ class SubscriptionTextProvider:
                     {"role": "system", "content": "\n".join([*systems, instruction])},
                     *(m for m in messages if m.get("role") != "system"),
                 ]
-            adapter = client.chat.completions
+                adapter = _structured_adapter(adapter, text_format)
             wire, _, _ = adapter._build_responses_kwargs(kwargs)
             if wire.get("reasoning", {}).get("effort") != "none":
                 raise BrokerUnavailableError("This model cannot run with reasoning off; no reasoning-on fallback")
+            if text_format is not None and wire.get("text") != {"format": text_format}:
+                raise BrokerUnavailableError("Structured output could not be enforced on the subscription wire")
             # The installed Codex adapter has a hard total streaming deadline,
             # not merely a per-chunk socket timeout. It translates chat tool history.
-            response = client.chat.completions.create(
-                **kwargs,
-            )
-            message = response.choices[0].message
+            response = adapter.create(**kwargs)
+            choice = response.choices[0]
+            message = choice.message
+            if text_format is not None:
+                # A refusal, truncation, tool call or non-object reply is never a schema answer.
+                content = message.content
+                if (
+                    getattr(choice, "finish_reason", None) not in (None, "stop")
+                    or message.tool_calls
+                    or not isinstance(content, str)
+                    or not isinstance(json.loads(content), dict)
+                ):
+                    raise BrokerUnavailableError("Structured subscription reply was refused or invalid")
             calls = [
                 {
                     "id": call.id,

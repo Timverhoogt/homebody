@@ -342,6 +342,7 @@ Authorization: Bearer <API_SERVER_KEY>
 | `POST /v1/chat/completions` | Authenticated proxy to Hermes API Server |
 | `POST /v1/kids/session` | Reachy reports a Kids session as `active` or `ended` for the bridge-side Kids latch |
 | `POST /v1/kids/chat` | Bounded, pre/post-moderated child chat without Hermes memory/tools |
+| `POST /v1/kids/speech/approve` | Render one server-authored fixed Kids line from catalog selectors (`kids_fixed_copy.py`; never caller text), moderate it, and return its text with single-use speech approvals; no audio |
 | `POST /v1/kids/speech/stream` | Fixed-policy ElevenLabs Flash v2.5 24 kHz PCM stream for approved child text |
 | `POST /v1/audio/transcriptions` | Configured/local/ElevenLabs STT |
 | `POST /v1/audio/speech` | Configured/Edge/ElevenLabs TTS |
