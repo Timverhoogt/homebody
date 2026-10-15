@@ -32,6 +32,8 @@ let selectedKidsActivity = "buddy";
 let kidsPreviewSingle = false;
 let bluetoothRefreshPending = false;
 let bluetoothState = null;
+let bluetoothSelectedAddress = "";
+let bluetoothCommandPending = false;
 let agentRequestPending = false;
 let agentProfileActive = false;
 // Bumped on every mode request or reported profile change; older Agent poll replies are dropped.
@@ -2369,7 +2371,10 @@ function renderBluetooth(state) {
   bluetoothState = state;
   const devices = Array.isArray(state.devices) ? state.devices : [];
   const select = $("bluetooth-device-select");
-  const previous = select.value;
+  // Selection is bound to the MAC the owner chose, never to list position.
+  if (bluetoothSelectedAddress && !devices.some((device) => device.address === bluetoothSelectedAddress)) {
+    bluetoothSelectedAddress = "";
+  }
   select.replaceChildren();
   if (!devices.length) {
     const option = document.createElement("option");
@@ -2377,6 +2382,10 @@ function renderBluetooth(state) {
     option.textContent = "No controller found";
     select.appendChild(option);
   } else {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Choose a device…";
+    select.appendChild(placeholder);
     devices.forEach((device) => {
       const option = document.createElement("option");
       option.value = device.address;
@@ -2388,9 +2397,9 @@ function renderBluetooth(state) {
       option.textContent = `${device.name} · ${device.address}${flags ? ` · ${flags}` : ""}`;
       select.appendChild(option);
     });
-    if (devices.some((device) => device.address === previous)) select.value = previous;
   }
-  const selected = devices.find((device) => device.address === select.value);
+  select.value = bluetoothSelectedAddress;
+  const selected = devices.find((device) => device.address === bluetoothSelectedAddress);
   $("bluetooth-adapter-state").textContent = !state.adapter_available
     ? "BlueZ unavailable"
     : state.adapter_powered ? "Powered on" : "Powered off";
@@ -2414,7 +2423,12 @@ function renderBluetooth(state) {
   $("bluetooth-badge").textContent = state.gamepad_connected
     ? "Controller ready" : connected ? "Bluetooth connected" : state.adapter_available ? "Ready" : "Unavailable";
   const message = $("bluetooth-message");
-  if (state.last_error) {
+  const operation = state.operation || {};
+  if (operation.error) {
+    // An explicit operation's failure stays visible until the next operation.
+    message.textContent = operation.error;
+    message.className = "message error";
+  } else if (state.last_error) {
     message.textContent = state.last_error;
     message.className = "message error";
   } else if (state.feature_error) {
@@ -2426,8 +2440,19 @@ function renderBluetooth(state) {
   }
 }
 
+function bluetoothOperationSummary(operation) {
+  if (operation.name === "pair" && operation.phase === "input_ready") {
+    return `Paired, bonded, and connected; input device ${operation.input_path} is present. `
+      + "Enable controller movement separately.";
+  }
+  if (operation.name === "pair" && operation.phase === "connected") {
+    return "Paired, bonded, and connected. This device exposed no controller input.";
+  }
+  return "Bluetooth controller settings updated.";
+}
+
 async function refreshBluetooth() {
-  if (bluetoothRefreshPending || $("panel-robot").hidden) return;
+  if (bluetoothRefreshPending || bluetoothCommandPending || $("panel-robot").hidden) return;
   bluetoothRefreshPending = true;
   try {
     const response = await fetch("/api/bluetooth/status", { cache: "no-store" });
@@ -2457,6 +2482,8 @@ async function bluetoothCommand(path, payload, pendingText) {
     "bluetooth-scan-button", "bluetooth-pair-button", "bluetooth-connect-button",
     "bluetooth-disconnect-button", "bluetooth-remove-button", "gamepad-enabled",
   ].forEach((id) => { $(id).disabled = true; });
+  bluetoothCommandPending = true;
+  let failure = null;
   try {
     const response = await fetch(path, {
       method: "POST",
@@ -2467,16 +2494,23 @@ async function bluetoothCommand(path, payload, pendingText) {
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     renderBluetooth(body);
     if (body.last_error) throw new Error(body.last_error);
-    message.textContent = "Bluetooth controller settings updated.";
+    if (body.operation && body.operation.error) throw new Error(body.operation.error);
+    message.textContent = bluetoothOperationSummary(body.operation || {});
     notifyFeedback(message, "ok");
   } catch (error) {
+    failure = error;
+  } finally {
+    bluetoothCommandPending = false;
+  }
+  if (failure) {
     await refreshBluetooth();
-    message.textContent = String(error);
+    message.textContent = String(failure);
     notifyFeedback(message, "error");
   }
 }
 
 $("bluetooth-device-select").addEventListener("change", () => {
+  bluetoothSelectedAddress = $("bluetooth-device-select").value;
   if (bluetoothState) renderBluetooth(bluetoothState);
 });
 $("bluetooth-scan-button").addEventListener("click", () => {

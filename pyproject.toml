@@ -14,6 +14,7 @@ license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 authors = [{ name = "Tim Verhoogt and contributors" }]
 dependencies = [
     "aioesphomeapi>=45.6,<46",
+    "dbus-next==0.2.3; sys_platform == 'linux'",
     "evdev==1.9.3; sys_platform == 'linux'",
     "gpiod>=2.2,<3; sys_platform == 'linux'",
     "httpx>=0.28,<1",

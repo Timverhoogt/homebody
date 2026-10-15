@@ -37,6 +37,7 @@ jobs:
           uv pip install \
             "aioesphomeapi>=45.6,<46" \
             aiohttp \
+            "dbus-next==0.2.3" \
             "evdev==1.9.3" \
             fastapi \
             "httpx>=0.28,<1" \
