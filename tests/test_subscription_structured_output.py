@@ -33,6 +33,14 @@ def installed_adapter():
         pytest.skip(f"installed Hermes source not present at {HERMES_SOURCE}")
     if str(HERMES_SOURCE) not in sys.path:
         sys.path.append(str(HERMES_SOURCE))  # after the worktree: never shadows Homebody modules
+    # Full-suite collection imports Homebody's namespace `tools.checks` first. Its cached
+    # namespace predates Hermes' regular tools package, so path discovery alone cannot find
+    # the real adapter's lazy tools.threat_patterns dependency. Extend only that namespace
+    # with the actual installed source; do not stub or replace either project's modules.
+    tools = sys.modules.get("tools")
+    hermes_tools = str(HERMES_SOURCE / "tools")
+    if tools is not None and hasattr(tools, "__path__") and hermes_tools not in tools.__path__:
+        tools.__path__.append(hermes_tools)
     try:
         from agent.auxiliary_client import CodexAuxiliaryClient, _CodexCompletionsAdapter
     except Exception as exc:  # noqa: BLE001 - report the exact missing dependency as a skip reason
