@@ -148,6 +148,16 @@ curl -fsS -H "Authorization: Bearer ***" \
 
 Confirm that the manifest contains no T4, shell, arbitrary-file, or maintenance capability. Test one configured read, one reversible Home Assistant action plus undo, one timer callback, and one draft whose exact phone approval executes once and rejects replay/edits. Keep Home Assistant/provider credentials on the Hermes host. `REACHY_AGENT_REMINDER_CALLBACK_URL` must target Reachy's private settings endpoint and its callback token must match Reachy's bridge bearer. Stop Agent and starting Kids Mode must invalidate in-flight work and pending approvals before speech; `/v1/agent/activity` remains metadata-only.
 
+### Native Workspace verification environment
+
+Native project checks need a durable, isolated host interpreter. Do not configure a
+`verification_commands` executable beneath a prunable scratch cache: a native run may
+complete while verification fails before any check starts. Follow the
+[durable native verification runbook](docs/native-verification.md) for provisioning,
+credential-scrubbed checks and an authorized idle-boundary repair that preserves native
+journal ownership and historical receipts. This is a host-bridge change, not a robot
+wheel update or permission to restart active Kids/voice use.
+
 ### Agent 0.6 Proactive Presence signal
 
 Goal 1 accepts only an identity-free, authenticated local signal. Keep Home Assistant and Reachy credentials on the Hermes host. Configure the companion bridge's private environment file:
