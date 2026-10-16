@@ -34,6 +34,9 @@ class FakeMedia:
     def play_sound(self, path: str) -> None:
         pass
 
+    def stop_playing(self) -> None:
+        self.pushed_audio.clear()
+
     def start_recording(self) -> None:
         pass
 
@@ -109,6 +112,7 @@ def make_runtime() -> HermesVoiceRuntime:
 
     runtime._set_motor_mode = mock_set_motor_mode  # type: ignore[method-assign]
     runtime._read_head_safely_folded = lambda: True  # type: ignore[method-assign]
+    runtime._run_native_sleep = runtime.robot.goto_sleep  # type: ignore[method-assign, attr-defined]
 
     runtime.set_capability_profile("agent", adult_ui_unlocked=True)
     runtime._accept_wake_turn()

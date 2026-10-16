@@ -505,7 +505,9 @@ class PipelineVoiceMixin:
                     )
                 if (
                     not conversation_is_current()
+                    or self.stop_event.is_set()
                     or self._turn_stop_requested()
+                    or self._privacy_requested.is_set()
                     or self._effective_power_mode() in {"meeting", "sleep"}
                 ):
                     break
@@ -523,22 +525,30 @@ class PipelineVoiceMixin:
                 if (
                     not interrupted
                     and client.config.kids_mode_enabled
-                    and not client.config.kids_host_enabled
                     and client.config.kids_activity == "ispy"
-                    and client.last_kids_next_action == "prepare_robot_round"
+                    and (
+                        (not client.config.kids_host_enabled and client.last_kids_next_action == "prepare_robot_round")
+                        or (
+                            client.last_kids_next_action == "prepare_player_view"
+                            and (not client.config.kids_host_enabled or client.last_kids_game_state == "playing")
+                        )
+                    )
                 ):
                     try:
-                        interrupted = self._continue_ispy_reachy_turn(
-                            client,
-                            barge_in=config.barge_in_enabled,
-                        )
+                        if client.last_kids_next_action == "prepare_player_view":
+                            interrupted = self._continue_ispy_player_turn(client, barge_in=config.barge_in_enabled)
+                        else:
+                            client.last_kids_next_action = ""  # consume this response before blocking
+                            interrupted = self._continue_ispy_reachy_turn(client, barge_in=config.barge_in_enabled)
                     except ISpyCancelled:
                         # Stop/End/privacy already owns status and motors; end this turn quietly.
                         _LOGGER.info("I Spy round ended by cancellation")
                         break
                     if (
                         not conversation_is_current()
+                        or self.stop_event.is_set()
                         or self._turn_stop_requested()
+                        or self._privacy_requested.is_set()
                         or self._effective_power_mode() in {"meeting", "sleep"}
                     ):
                         break
@@ -704,6 +714,7 @@ class PipelineVoiceMixin:
         push = getattr(self.robot.media, "push_audio_sample", None)
         if not language_clips or not callable(push):
             return None  # missing/rejected assets or no PCM output: no filler, never live TTS
+        push = self._playback.push_audio_sample
         if refresh is None:
             clips = eligible_clips(language_clips, *voice_proof)
             if not clips:
@@ -790,14 +801,14 @@ class PipelineVoiceMixin:
                 self._motion.speaking()
             if self._spotter is not None:
                 self._spotter.reset()
-            self.robot.media.play_sound(str(path))
+            self._playback.play_sound(str(path))
             deadline = time.monotonic() + duration + 0.15
             while time.monotonic() < deadline and not self.stop_event.is_set():
                 if self._turn_stop_requested() or self._effective_power_mode() in {"meeting", "sleep"}:
                     # Response audio is a file played with play_sound; the streaming buffer flush
                     # alone does not stop it, so replace it with silence like every other cancel path.
                     self._clear_streamed_audio()
-                    self.robot.media.play_sound(str(self.assets / "silence.wav"))
+                    self._playback.play_sound(str(self.assets / "silence.wav"))
                     break
                 if not barge_in or self._spotter is None:
                     time.sleep(0.02)
@@ -809,7 +820,7 @@ class PipelineVoiceMixin:
                 if not keyword:
                     continue
                 interrupted = True
-                self.robot.media.play_sound(str(self.assets / "silence.wav"))
+                self._playback.play_sound(str(self.assets / "silence.wav"))
                 self._spotter.reset()
                 with self._status_lock:
                     self._status.interruptions += 1

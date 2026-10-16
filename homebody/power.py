@@ -13,6 +13,7 @@ import time
 
 import httpx
 
+from .daemon_sleep import DaemonSleepError, run_daemon_sleep
 from .safety_gate import POWER_MODES as _POWER_MODES
 from .wakeword import WAKE_PROMPT as _WAKE_PROMPT
 
@@ -29,6 +30,7 @@ class PowerMixin:
         self._power_mode = "standby"
         self._meeting_until = 0.0
         self._pending_privacy_transitions = 0
+        self._native_sleep_uncertain = False
 
     def set_power_mode(
         self,
@@ -123,18 +125,31 @@ class PowerMixin:
                 return self._fold_head_before_torque_release_unlocked()
             finally:
                 self._safety_fold_active = prior
+                # stop_playing also stops SDK 1.9's shared capture pipeline.
+                # Automatic return-to-Standby folds use this helper directly.
+                if self._effective_power_mode() == "standby" and not self._recording:
+                    self.robot.media.start_recording()
+                    self._recording = True
 
     def _fold_head_before_torque_release_unlocked(self) -> tuple[bool, str]:
         """Fold Reachy into its supported pose before releasing motor torque."""
         with self._motor_transition_lock:
-            if self._head_safely_folded and self._read_head_safely_folded():
-                try:
-                    self._set_motor_mode(False)
-                except RuntimeError as exc:
-                    message = f"Reachy is folded, but disabling motor torque failed: {exc}"
-                    _LOGGER.error(message)
-                    return False, message
-                return True, ""
+            if self._native_sleep_uncertain:
+                return False, "Native sleep outcome is unknown; motor transitions require inspection before restart"
+            # Quiesce the SDK-side producer before the daemon clears its own offsets.
+            # The daemon, not the client, decides whether an already-folded head moves.
+            try:
+                self._playback.suspend()
+                if self._motion is not None:
+                    self._motion.prepare_sleep(self.robot.media.stop_playing)
+                else:
+                    # Absence of a motion helper is not proof that audio stopped.
+                    self.robot.media.stop_playing()
+                    self._playback.confirm_stopped()
+                self._playback_stopped_for_privacy = True
+                self._recording = False  # SDK 1.9 shares a capture/playback pipeline.
+            except Exception as exc:
+                return False, f"Could not stop voice wobbling before native sleep: {exc}"
             self._head_safely_folded = False
             if self._actions is not None:
                 self._actions.cancel(stop_media=False)
@@ -146,25 +161,21 @@ class PowerMixin:
                     except RuntimeError:
                         _LOGGER.exception("Could not preserve torque after movement stop timeout")
                     return False, message
-            if self._playback_stopped_for_privacy:
-                start_playing = getattr(self.robot.media, "start_playing", None)
-                if callable(start_playing):
-                    start_playing()
-                self._playback_stopped_for_privacy = False
             try:
                 self._set_motor_mode(True)
             except RuntimeError as exc:
                 message = f"Could not enable motor torque for safe folding; torque state is unverified: {exc}"
                 _LOGGER.error(message)
                 return False, message
-            goto_sleep = getattr(self.robot, "goto_sleep", None)
-            if not callable(goto_sleep):
-                message = "Reachy SDK sleep movement is unavailable; motors remain enabled to prevent a head drop"
-                _LOGGER.error(message)
-                return False, message
             try:
-                goto_sleep()
+                self._run_native_sleep()
             except Exception as exc:
+                if isinstance(exc, DaemonSleepError) and exc.uncertain:
+                    self._native_sleep_uncertain = True
+                    self._motors_enabled = None
+                    message = "Native sleep outcome is unknown; no further motor command was sent"
+                    _LOGGER.exception(message)
+                    return False, message
                 message = f"Reachy sleep movement failed; motors remain enabled to prevent a head drop: {exc}"
                 _LOGGER.exception("Could not run Reachy's native sleep movement")
                 try:
@@ -190,6 +201,10 @@ class PowerMixin:
             _LOGGER.info("Reachy completed its native sleep movement before torque release")
             return True, ""
 
+    def _run_native_sleep(self) -> None:
+        """Use Reachy Control's daemon routine, including its exact cleanup/motion."""
+        run_daemon_sleep()
+
     def _apply_power_mode(self) -> None:
         """Apply the selected mode without overlapping another motor transition."""
         with self._motor_transition_lock:
@@ -208,7 +223,7 @@ class PowerMixin:
             if self._actions is not None:
                 self._playback_stopped_for_privacy = self._actions.cancel() or self._playback_stopped_for_privacy
             try:
-                self.robot.media.play_sound(str(self.assets / "silence.wav"))
+                self._playback.play_sound(str(self.assets / "silence.wav"))
             except Exception:
                 _LOGGER.debug("No active playback to stop", exc_info=True)
             self._clear_streamed_audio()
@@ -238,18 +253,11 @@ class PowerMixin:
                 last_error=transition_error,
             )
             return
-        if self._playback_stopped_for_privacy:
-            start_playing = getattr(self.robot.media, "start_playing", None)
-            if callable(start_playing):
-                start_playing()
-            self._playback_stopped_for_privacy = False
-        if self._motion is not None:
-            self._motion.resume()
-        if not self._recording:
-            self.robot.media.start_recording()
-            self._recording = True
         if mode == "standby":
             head_folded, transition_error = self._fold_head_before_torque_release()
+            if not self._recording:
+                self.robot.media.start_recording()
+                self._recording = True
             self._set_status(
                 "waiting_for_wake_word",
                 (
@@ -285,6 +293,12 @@ class PowerMixin:
                     last_error=error,
                 )
                 return
+            if self._motion is not None:
+                self._motion.awake()
+            self._resume_playback_after_wake()
+            if not self._recording:
+                self.robot.media.start_recording()
+                self._recording = True
             self._set_status(
                 "waiting_for_wake_word",
                 _WAKE_PROMPT,
@@ -298,13 +312,24 @@ class PowerMixin:
         with self._motor_transition_lock:
             self._set_motor_mode_unlocked(enabled, wake=wake)
 
+    def _resume_playback_after_wake(self) -> None:
+        self._playback.awake()
+        if self._playback_stopped_for_privacy:
+            self._playback.start_playing()
+            self._playback_stopped_for_privacy = False
+
     def _set_motor_mode_unlocked(self, enabled: bool, *, wake: bool = False) -> None:
         if enabled and self.stop_event.is_set() and (wake or not getattr(self, "_safety_fold_active", False)):
             raise RuntimeError("Runtime is stopping; motor enable is blocked")
+        if self._native_sleep_uncertain:
+            raise RuntimeError("Native sleep outcome is unknown; motor transitions are blocked")
         # A second caller can queue Awake using status from before the first wake.
         # Re-read hardware under the lock, rather than trusting that stale app status.
         if enabled and wake and self._motors_enabled is True and not self._head_safely_folded:
             if self._wake_pose_is_ready():
+                if self._motion is not None:
+                    self._motion.awake()
+                self._resume_playback_after_wake()
                 _LOGGER.debug("Reachy is already physically Awake; skipping duplicate wake motion")
                 return
         mode = "enabled" if enabled else "disabled"
@@ -322,6 +347,9 @@ class PowerMixin:
                 self.robot.wake_up()
             except Exception as exc:
                 if self._wake_pose_is_ready():
+                    if self._motion is not None:
+                        self._motion.awake()
+                    self._resume_playback_after_wake()
                     _LOGGER.warning(
                         "Reachy wake call raised after the measured head reached Awake; preserving enabled torque: %s",
                         exc,
@@ -330,6 +358,9 @@ class PowerMixin:
                 message = f"Reachy motor torque was enabled, but the wake motion failed: {exc}"
                 _LOGGER.exception(message)
                 raise RuntimeError(message) from exc
+            if self._motion is not None:
+                self._motion.awake()
+            self._resume_playback_after_wake()
         _LOGGER.info("Reachy motors %s%s", mode, " with wake motion" if wake else "")
 
     def _wake_pose_is_ready(self) -> bool:

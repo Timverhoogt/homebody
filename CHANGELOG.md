@@ -6,7 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.28] — One Owner camera permission for Everyday
+
 - Simplify explicit Everyday camera access to the existing Owner-controlled camera permission. Remove the duplicate voice-camera switch; retain separate viewer/tracking controls, bounded sessions, Stop/privacy cancellation and fail-closed legacy consent handling. Owner sign-in never activates capture or changes permissions.
+- Preserve the accepted native-sleep and visually grounded I Spy changes from 0.5.25 and 0.5.26. No camera, speech, tracking or movement is activated by installation.
+
+## [0.5.26] — Visually grounded I Spy guessing
+
+- Preserve audio cleanup after refused sleep: late SDK pushes remain subject to a real flush, failed cleanup retains quarantine, and wake cannot reopen playback over uncleared output. Distinguish drained calls from a confirmed SDK playback stop.
+- Let Reachy look when the child chooses an object, retain a small moderated set of observed safe objects, and match clues only to that set. Exclude rejected guesses and ask for more clues when nothing fits, rather than inventing an unseen household object.
+- Permit one conditional additional look, not continuous capture or a scan after every clue. Preserve camera consent, bounded motion, ephemeral images, shared-play deadlines and typed-input microphone boundaries.
+- Recover after interrupted handoff speech or Stop during a scan without deleting the still-active game, replaying a consumed view or automatically resuming motion. Preserve End, privacy, stale-result and moderation fences.
+- Generate object names in the selected play language and retain the screened name through each round. Preserve the 0.5.23 waiting-speech fixes, 0.5.24 Everyday tools and 0.5.25 native-sleep playback fences.
+- Requires a coordinated host bridge and robot update. Synthetic model and device tests do not establish real-room visual accuracy or supervised microphone-to-speaker acceptance.
+
+## [0.5.25] — Standard Reachy sleep without app-driven wobbling
+
+- Use the daemon-owned sleep sequence used by Reachy Control for Standby, Meeting and Sleep, rather than the SDK client's separate choreography. Preserve the standard sound, head/antenna targets, conditional repositioning, timing and torque release.
+- Quiesce app playback and remove its local wobbler before native sleep. Fence delayed speech offsets, voice poses, PCM pushes and playback cleanup so they cannot disturb a folded head or restart playback behind the sleep transition.
+- Preserve responsive Stop and existing Kids output quarantine when an SDK audio operation is stuck. Refuse unverified sleep admission or unresolved completion without retrying movement; restore Standby wake detection and reopen app speech only after a confirmed wake.
+- Preserve the 0.5.24 Everyday features, settings, voices, camera consent and managed updater. Offline callback/transport tests and the independent safety review do not replace an owner-supervised sleep/wake check.
+
+
 
 ## [0.5.24] — Expanded Everyday tools and compact permissions
 

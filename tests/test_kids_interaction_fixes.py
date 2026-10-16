@@ -772,7 +772,8 @@ def test_child_guessing_round_ends_after_three_wrong_guesses(monkeypatch: pytest
     third = game.say("een kast")
     assert third["text"].startswith("Goed geprobeerd! Het was de chair.")
     assert "Nu ben jij aan de beurt" in third["text"]
-    assert third["ispy_role"] == "player_picker" and third["ispy_next_action"] == ""
+    assert third["ispy_role"] == "player_picker" and third["ispy_next_action"] == "prepare_player_view"
+    assert third["ispy_phase"] == "awaiting_view" and third["ispy_view_token"] == game.state["ispy_view_token"]
     assert "ispy_target" not in game.state
     assert game.judged == ["een bal", "een tafel", "een kast"]
 
@@ -784,7 +785,8 @@ def test_child_give_up_and_hint_are_not_judged_as_guesses(monkeypatch: pytest.Mo
     assert game.state["ispy_guess_count"] == 0
     give_up = game.say("Ik weet het niet")
     assert give_up["text"].startswith("Dat geeft niet! Het was de chair.")
-    assert give_up["ispy_role"] == "player_picker" and give_up["ispy_next_action"] == ""
+    assert give_up["ispy_role"] == "player_picker" and give_up["ispy_next_action"] == "prepare_player_view"
+    assert give_up["ispy_phase"] == "awaiting_view"
     assert game.judged == []
 
 

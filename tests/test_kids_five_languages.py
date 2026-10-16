@@ -318,10 +318,14 @@ def test_outgoing_vision_schema_survives_the_strict_native_projection(monkeypatc
     assert f"hints_{other}" not in items["properties"]
 
 
-def test_en_nl_keep_the_original_schema_and_unsafe_new_language_hints_are_dropped(monkeypatch):
+def test_en_nl_keep_original_fields_and_unsafe_new_language_hints_are_dropped(monkeypatch):
     module, _bridge = load_bridge(monkeypatch)
-    assert module._ispy_response_schema("en") is module._ISPY_RESPONSE_SCHEMA
-    assert module._ispy_response_schema("nl") is module._ISPY_RESPONSE_SCHEMA
+    original = module._ISPY_TARGET_SCHEMA
+    for language, name in (("en", "English"), ("nl", "Dutch")):
+        target = module._ispy_response_schema(language)["properties"]["candidates"]["items"]
+        assert target["required"] == original["required"]
+        assert set(target["properties"]) == set(original["properties"])
+        assert name in target["properties"]["object_name"]["description"]
     unsafe = {"de": "neben dem Telefon", "fr": "près du téléphone", "it": "vicino al telefono",
               "pt": "ao lado do telemóvel", "es": "junto al teléfono"}
     for language, hint in unsafe.items():
