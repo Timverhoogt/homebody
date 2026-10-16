@@ -8,7 +8,7 @@ from homebody.everyday_runtime import EverydayCallbackScope
 
 
 def test_queued_start_cannot_rebase_after_camera_stop(monkeypatch):
-    r, _ = runtime(everyday_camera_enabled=True)
+    r, _ = runtime(camera_enabled=True)
     captures, queued, delivered = [], [], []
     r._capture_camera_jpeg = lambda **kwargs: captures.append(1) or b"fixture-jpeg"
 

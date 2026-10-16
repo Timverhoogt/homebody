@@ -200,9 +200,7 @@ def test_pipeline_model_selected_capture_or_start_never_captures(transcript):
         bridge.everyday_llm = model
         bridge._everyday_key = lambda: "fixture-only"
         words = [transcript]
-        runtime, client, captures, config, spoken, converse = pipeline_runtime(
-            server, words, camera_enabled=True, everyday_camera_enabled=True
-        )
+        runtime, client, captures, config, spoken, converse = pipeline_runtime(server, words, camera_enabled=True)
         runtime._speaker = SimpleNamespace(read=lambda: {"volume": 24, "verified": True})
         await asyncio.wait_for(asyncio.to_thread(converse), 10)
         assert words == [] and client.turns == [transcript]
@@ -220,9 +218,7 @@ def test_pipeline_model_selected_capture_or_start_never_captures(transcript):
 
 
 def test_pipeline_robot_refuses_model_camera_callbacks_even_if_a_host_dispatches_them():
-    runtime, client, captures = companion_runtime(
-        conversation_mode="pipeline", continuous_conversation=False, everyday_camera_enabled=True
-    )
+    runtime, client, captures = companion_runtime(conversation_mode="pipeline", continuous_conversation=False)
     runtime._motion = None
     config = runtime.config_loader()
     client.config = config
@@ -259,9 +255,7 @@ def test_pipeline_explicit_window_then_one_frame_look_and_tool_free_follow_up():
         bridge.everyday_llm = model
         bridge._everyday_key = lambda: "fixture-only"
         words = ["Turn on the camera for 30 seconds", "Look at this letter", "And what day?"]
-        runtime, client, captures, config, spoken, converse = pipeline_runtime(
-            server, words, camera_enabled=False, everyday_camera_enabled=True
-        )
+        runtime, client, captures, config, spoken, converse = pipeline_runtime(server, words, camera_enabled=True)
         await asyncio.wait_for(asyncio.to_thread(converse), 10)
         assert words == []
         assert model.tool_results()["start_reachy_camera"]["camera_session_active"] is True
@@ -270,7 +264,7 @@ def test_pipeline_explicit_window_then_one_frame_look_and_tool_free_follow_up():
         assert captures == [1, 1] and len(client.looks) == 1 and len(client.follow_ups) == 1
         assert client.turns == ["Turn on the camera for 30 seconds"]
         assert spoken == ["Fixture reply.", client.answer, "Friday at ten, according to what I read."]
-        assert config.camera_enabled is False
+        assert config.camera_enabled is True
 
     run_host(main)
 
@@ -297,7 +291,7 @@ def test_live_model_selected_capture_never_reaches_robot_or_vision(monkeypatch, 
         model = Model([MODEL_CAMERA_BATCH])
         bridge.everyday_llm = model
         bridge._everyday_key = lambda: "fixture-only"
-        runtime, _config, captures = robot_runtime(camera_enabled=True, everyday_camera_enabled=True)
+        runtime, _config, captures = robot_runtime(camera_enabled=True)
         fence = runtime.everyday_tool_fence()
         async with live_server(monkeypatch, bridge, fake):
             events = []
@@ -502,7 +496,7 @@ def test_host_loop_is_tool_free_after_camera_analysis_in_same_batch_and_later_ro
             ]
         )
         dispatched = []
-        runtime, _config, captures = robot_runtime(camera_enabled=True, everyday_camera_enabled=True)
+        runtime, _config, captures = robot_runtime(camera_enabled=True)
         fence = runtime.everyday_tool_fence()
 
         async def executor(name, arguments):

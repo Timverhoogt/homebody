@@ -71,6 +71,7 @@ class CompanionAuthority:
     identity: object
     origin: str
     check: Callable[[], bool] = field(repr=False, compare=False)
+    camera_deadline: float = 0.0
 
     def __call__(self) -> bool:
         return self.check()
@@ -244,17 +245,8 @@ class CompanionMixin:
         return stop_generation, profile
 
     def _look_camera_permitted(self, config: AppConfig) -> bool:
-        if config.camera_enabled:
-            return True
-        lock = getattr(self, "_everyday_lock", None)
-        if lock is None:
-            return False
-        with lock:
-            return bool(
-                config.everyday_camera_enabled
-                and self._capability_profile == "conversation"
-                and self._everyday_camera_until > time.monotonic()
-            )
+        # The retired Everyday flag and a session window cannot override the owner switch.
+        return bool(config.camera_enabled)
 
     def _companion_authority(
         self,
@@ -263,6 +255,17 @@ class CompanionMixin:
     ) -> CompanionAuthority:
         """Freeze the caller's scope now, never later on a worker or after blocking work."""
         camera_generation = getattr(self, "_everyday_camera_generation", 0)
+        camera_deadline = 0.0
+        camera_lock = getattr(self, "_everyday_lock", None)
+        if camera_lock is not None:
+            with camera_lock:
+                camera_generation = getattr(self, "_everyday_camera_generation", 0)
+                window = getattr(self, "_everyday_camera_until", 0.0)
+                if window > time.monotonic():
+                    camera_deadline = window
+        original_deadline = authority.camera_deadline if isinstance(authority, CompanionAuthority) else 0.0
+        if original_deadline:
+            camera_deadline = min(camera_deadline, original_deadline) if camera_deadline else original_deadline
         snapshot = self._companion_snapshot()
         with self._agent_lock:
             agent_generation = self._agent_session_generation
@@ -287,7 +290,8 @@ class CompanionMixin:
             live = self.config_loader()
             if (
                 not self._look_camera_permitted(live)
-                or (not config.camera_enabled and camera_generation != getattr(self, "_everyday_camera_generation", 0))
+                or camera_generation != getattr(self, "_everyday_camera_generation", 0)
+                or (camera_deadline and time.monotonic() >= camera_deadline)
                 or route
                 != (
                     live.camera_enabled,
@@ -313,7 +317,7 @@ class CompanionMixin:
             except Exception:
                 return False
 
-        return CompanionAuthority(identity, origin, current)
+        return CompanionAuthority(identity, origin, current, camera_deadline)
 
     def _companion_result_current(self, result: dict[str, object], authority: CompanionAuthority) -> bool:
         return authority() and result.get("request_token") == self._companion.current_token()
@@ -497,9 +501,11 @@ class CompanionMixin:
             now = time.monotonic()
             self._require_current(ticket, "before retaining its answer")
             context_ttl = LOOK_CONTEXT_TTL_SECONDS
-            if not config.camera_enabled:
-                with self._everyday_lock:
-                    context_ttl = min(context_ttl, max(0.0, self._everyday_camera_until - now))
+            camera_deadline = (
+                ticket.authority.camera_deadline if isinstance(ticket.authority, CompanionAuthority) else 0.0
+            )
+            if camera_deadline:
+                context_ttl = min(context_ttl, max(0.0, camera_deadline - now))
             with self._look_context_lock:
                 # Never acquire Kids/power locks beneath the context lock.
                 if ticket.token != self._companion.current_token():

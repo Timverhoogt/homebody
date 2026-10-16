@@ -1,4 +1,4 @@
-# Companion setup and boundaries (0.5.27)
+# Companion setup and boundaries (0.5.29)
 
 Companion connects presence, deliberate visual help, optional suggestions and quiet recovery. It reuses the existing voice, camera, safety, power and announcement owners; it is not a second always-running reasoning agent. See the [reviewed design](companion-design.md).
 
@@ -17,7 +17,7 @@ Phone, Pipeline, GPT-Live and Realtime converge on one bounded capture. Consent 
 - With local vision enabled, use exactly the configured local model, without cloud image fallback. Its text analysis can enter the selected conversation.
 - Otherwise use the configured host vision route, with provider credentials retained on the host.
 - A fresh explicit request is required for another picture. Bounded follow-ups reuse text without capture or project, household, robot or memory tools. Once visually engaged, unrelated voice actions require Stop and a fresh wake.
-- Existing explicitly started temporary Everyday camera grants remain bounded and revocable. Permission to start a session is not itself an active capture grant. A camera-on command may take one local readiness frame, never analysis or upload; generic model-selected captures are refused. Camera Stop invalidates queued starts using their original camera revision rather than granting fresh authority when a worker begins.
+- One Owner-controlled AI-camera permission permits explicitly requested looks and short sessions; the retired Everyday flag never overrides it. Camera feed and tracking remain separate. An active short session also bounds the original look authority and retained text lifetime; renewal cannot extend old work. Permission alone is not an active capture grant. A camera-on command may take one local readiness frame, never analysis or upload; generic model-selected captures are refused. Camera Stop invalidates queued starts using their original camera revision rather than granting fresh authority when a worker begins.
 
 Authority is bound before blocking work and worker scheduling, then checked through capture, client/request preparation, submission, answer retention and delivery. Phone-private context stays with its admitting owner and surface; another owner or anonymous voice cannot adopt it. Stop, privacy, Kids/profile changes, owner revocation and relevant media/camera-grant changes invalidate pending work. Barge-in supersedes Realtime visual workers, and host continuations remain bound to the original call generation. Already-sent bytes cannot be recalled; late results are discarded rather than spoken or retained. No raw frame is retained in Companion context.
 

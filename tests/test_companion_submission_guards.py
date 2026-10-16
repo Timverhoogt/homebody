@@ -69,12 +69,12 @@ def test_current_request_guard_is_process_local_and_preserves_success():
         assert sent == ["/v1/everyday/look"]
 
 
-def test_companion_honors_an_active_temporary_camera_grant_and_its_revocation():
+def test_companion_honors_an_active_camera_window_and_its_revocation():
     import time
 
     from test_companion import make_runtime
 
-    runtime, client, captures = make_runtime(camera_enabled=False, everyday_camera_enabled=True)
+    runtime, client, captures = make_runtime(camera_enabled=True)
     runtime._everyday_camera_until = time.monotonic() + 60
     try:
         assert runtime.companion_public_status(runtime.config_loader())["camera"]["permitted"] is True
@@ -86,6 +86,6 @@ def test_companion_honors_an_active_temporary_camera_grant_and_its_revocation():
             runtime.follow_up_look("What day?")
         assert client.follow_ups == []
         assert runtime._look_context is None
-        assert runtime.config_loader().camera_enabled is False
+        assert runtime.config_loader().camera_enabled is True
     finally:
         runtime._companion_teardown("test_cleanup")
