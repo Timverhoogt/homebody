@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -532,6 +533,98 @@ class EverydayTools:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=assume)
         return parsed.timestamp()
+
+    # -- deterministic reads (Pipeline and GPT-Live delegations) ---------------------------
+    def fast_intent(self, text: str, *, language: str = "") -> tuple[str, str, dict[str, object]] | None:
+        """Full utterances only. Never normalize away quotes, negation or compound requests."""
+        if language and language not in {"en", "nl", "en-US", "en-GB", "nl-NL"}:
+            return None
+        value = " ".join(text.casefold().split())
+        value = re.sub(r"(?:[?.]? (?:answer briefly|antwoord kort)[.!]?)$", "?", value)
+        catalogs = {
+            "time": {
+                "en": r"(?:what time is it(?: now)?|what is the (?:current )?time)",
+                "nl": r"hoe laat is het(?: nu)?",
+            },
+            "date": {
+                "en": r"(?:what(?: is|'s) the date(?: today)?|what date is it(?: today)?)",
+                "nl": r"(?:welke datum is het(?: vandaag)?|wat is de datum(?: vandaag)?)",
+            },
+            "weather": {
+                "en": r"what is the weather(?: now)?",
+                "nl": r"wat is het weer(?: nu)?",
+            },
+        }
+        for route, languages in catalogs.items():
+            for lang, pattern in languages.items():
+                if re.fullmatch(pattern + r"[?.]?", value):
+                    return route, language[:2] or lang, {}
+        # Exact allowlisted aliases only; no free-form entity capture or aggregate status.
+        for entity in sorted(self._read_entities()):
+            for name in (entity, *self._names_for(entity)):
+                for lang, pattern in (("en", rf"is {re.escape(name.casefold())} (?:on|off)\??"),
+                                      ("nl", rf"(?:is|staat) {re.escape(name.casefold())} (?:aan|uit)\??")):
+                    if (re.fullmatch(pattern, value)
+                            and self.resolve(name, self._read_entities()).get("entity_id") == entity):
+                        return "status", language[:2] or lang, {"names": [name]}
+        return None
+
+    async def fast_answer(
+        self, text: str, *, http: Any, device_id: str, generation: int, language: str = "",
+        kids_live: Callable[[], bool] = lambda: False, is_current: Callable[[], bool] = lambda: True,
+    ) -> dict[str, object] | None:
+        """Read fresh existing tools, never an action, cached result or model-derived fact."""
+        started = time.monotonic()
+        intent = self.fast_intent(text, language=language)
+        if intent is None:
+            return None
+        if not is_current() or kids_live():
+            raise BrokerValidationError("stale_session")
+        route, lang, arguments = intent
+        name = {"time": "get_current_time", "date": "get_current_time",
+                "weather": "get_weather", "status": "home_status"}[route]
+        # Public providers/forecasts still go through the reasoner; this route is HA current-only.
+        if route == "weather" and not self.config.weather_entity:
+            return None
+        data = await self.call(name, arguments, http, device_id=device_id, generation=generation,
+                               budget=TurnBudget(), kids_live=kids_live, is_current=is_current)
+        if not is_current() or kids_live():
+            raise BrokerValidationError("stale_session")
+        if not data.get("ok"):
+            reply = "De bron is niet beschikbaar; niets is bevestigd." if lang == "nl" else (
+                "The source is unavailable; nothing is confirmed.")
+        elif route == "time":
+            reply = ("Het is " if lang == "nl" else "It is ") + str(data["local_time"]) + "."
+        elif route == "date":
+            date = datetime.fromisoformat(str(data["date"]))
+            months = ("januari februari maart april mei juni juli augustus september oktober november december"
+                      if lang == "nl" else
+                      "January February March April May June July August September October November December").split()
+            reply = ("Het is " if lang == "nl" else "It is ") + f"{date.day} {months[date.month - 1]} {date.year}."
+        elif route == "status":
+            entities = data.get("entities")
+            if not isinstance(entities, list) or len(entities) != 1 or entities[0].get("state") not in {"on", "off"}:
+                return None
+            state = str(entities[0]["state"])
+            if lang == "nl":
+                state = {"on": "aan", "off": "uit"}[state]
+            reply = f"{entities[0]['name']}: {state}."
+        else:
+            conditions = {"sunny": ("sunny", "zonnig"), "cloudy": ("cloudy", "bewolkt"),
+                          "partlycloudy": ("partly cloudy", "gedeeltelijk bewolkt"),
+                          "rainy": ("rainy", "regenachtig"), "clear-night": ("clear", "helder")}
+            condition, temperature = data.get("condition"), data.get("temperature")
+            if (data.get("stale") is not False or not isinstance(condition, str) or condition not in conditions
+                    or not isinstance(temperature, (int, float)) or isinstance(temperature, bool)
+                    or not math.isfinite(temperature)
+                    or data.get("temperature_unit") not in {"°C", "°F"}):
+                return None  # leave stale/unsupported data wording to the existing reasoner
+            adjective = conditions[condition][1 if lang == "nl" else 0]
+            reply = ((f"Het is {adjective}, " if lang == "nl" else f"It is {adjective}, ")
+                     + f"{temperature} {data['temperature_unit']}.")
+        return {"text": reply, "tools": [{"name": name, "ok": data.get("ok") is True, "verified": False}],
+                "source": {"kind": "everyday", "provider": "deterministic", "route": route},
+                "timing": {"backend_ms": round((time.monotonic() - started) * 1000, 3)}}
 
     # -- text backend (Pipeline and GPT-Live delegations) ----------------------------------
     async def answer(

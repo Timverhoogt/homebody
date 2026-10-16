@@ -1,0 +1,9 @@
+# Everyday deterministic read fast paths (source candidate)
+
+Applies only to standalone EN/NL Everyday turns with an already-admitted adult conversation lease. Native Workspace and Kids keep their existing paths. Context-bearing turns, ambiguity, compound requests, quoted phrases and unsupported languages continue to the existing narrow reasoner.
+
+Recognized requests: current time/date, current weather from an existing configured Home Assistant weather entity, and exact unambiguous allowlisted single-device on/off status. No write/action shortcuts, new permissions, providers, entity registration or public-weather location disclosure are introduced. Fresh existing tools retain policy checks; cancellation, Kids state and lease currentness are rechecked after awaited reads. Invalid Everyday configuration cannot activate shortcuts. Clock uses the existing configured owner timezone (production Europe/Amsterdam), not the host OS UTC timezone. Categorical route/timing metadata contains no utterance body.
+
+A silent provider-backed candidate probe returned useful clock captions after 3.420 seconds (EN) and 3.942 seconds (NL), compared with archived baseline relay medians 5.141 and 7.211 seconds. These are single candidate samples, not paired repeated confidence estimates. The integrated clock backend took approximately 0.110/0.128 milliseconds. Synthetic output was saved, not played; caption arrival is not audible output. Parent evidence: `/home/timv/.hermes/cache/scratch/homebody-fastpath-performance-v2/performance.json`. The reusable harness is `tools/everyday_fastpath_benchmark.py`.
+
+Source-only until independently reviewed, combined tests pass, and separately authorized deployment. Fast paths do not remove Live speech planning or connection setup and do not accelerate arbitrary Workspace reasoning.

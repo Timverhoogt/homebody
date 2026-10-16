@@ -16,7 +16,7 @@ import stat
 import time
 import uuid
 from collections import deque
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -685,6 +685,20 @@ class ReachyAgentBroker:
             lease = self._leases.get(device_id)
             if lease is not None and lease.generation == generation:
                 lease.tasks.pop(request_id, None)
+
+    def everyday_read_fence(self, device_id: str) -> Callable[[], bool] | None:
+        """Snapshot an already-established adult conversation lease, without granting Agent authority.
+
+        Called on the bridge event loop (no await between snapshot and read). Legacy clients
+        without a lease and native Workspace retain their existing routing, not this shortcut.
+        """
+        lease = self._leases.get(device_id)
+        if lease is None or lease.authorization_state[0] != "conversation":
+            return None
+        state = lease.authorization_state
+        if state[2] or state[3] != "awake" or not state[4] or state[5] or not state[6]:
+            raise BrokerValidationError("stale_session")
+        return lambda: self._leases.get(device_id) is lease
 
     async def assert_current(self, device_id: str, generation: int) -> None:
         async with self._leases_lock:

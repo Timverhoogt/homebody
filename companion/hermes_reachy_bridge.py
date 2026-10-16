@@ -1642,9 +1642,11 @@ class Bridge(NativeWorkspaceRoutes):
         self.agent_runs = AgentRunManager()
         # Everyday: narrow home/weather/time tools on a fast text model, never the Hermes agent.
         self.everyday_error = ""
+        self._everyday_config_valid = True
         try:
             self.everyday = EverydayTools(self.agent_broker, EverydayConfig.from_env())
         except ValueError as exc:
+            self._everyday_config_valid = False
             self.everyday = EverydayTools(self.agent_broker)
             self.everyday_error = f"Everyday configuration is invalid: {exc}"
         try:
@@ -3993,10 +3995,25 @@ class Bridge(NativeWorkspaceRoutes):
         """One Everyday text turn (Pipeline and GPT-Live): fast model plus Everyday tools only."""
         if self.http is None:
             raise BrokerUnavailableError("Bridge HTTP client is not ready")
+        if self.kids_session_live() or not is_current():
+            raise BrokerValidationError("stale_session")
+        # Only standalone requests with an existing Everyday runtime lease are shortcuts.
+        # Context may contain corrections/negation, so leave that whole turn to the reasoner.
+        if (not context and self._everyday_config_valid
+                and self.everyday.fast_intent(text, language=language) is not None):
+            fence = self.agent_broker.everyday_read_fence(device_id)
+            if fence is not None:
+                result = await self.everyday.fast_answer(
+                    text, http=self.http, device_id=device_id, generation=session_generation(session_key),
+                    language=language, kids_live=self.kids_session_live,
+                    is_current=lambda: is_current() and fence(),
+                )
+                if result is not None:
+                    return result
+                if not is_current() or not fence() or self.kids_session_live():
+                    raise BrokerValidationError("stale_session")
         if self.everyday_llm is None:
             raise BrokerUnavailableError(self.everyday_error or "Everyday is not configured on the Hermes host")
-        if self.kids_session_live():
-            raise BrokerValidationError("kids_mode_active")
         request = text if not context else (
             f"Earlier conversation (context only, may be incomplete):\n{context}\n\nCurrent request:\n{text}"
         )
@@ -4097,7 +4114,17 @@ class Bridge(NativeWorkspaceRoutes):
                 return False
             context = workspace_context(config)
             if context is None:
-                return True
+                # Everyday keeps its own conversation generation; a new wake/Stop/privacy
+                # must retire the old socket just as it does for Workspace.
+                everyday_context = config.get("agent_context")
+                if isinstance(everyday_context, dict) and everyday_context.get("capability_profile") == "conversation":
+                    try:
+                        await self.agent_broker.assert_current(
+                            device_id, int(everyday_context.get("session_generation") or 0))
+                        return self.agent_broker.everyday_read_fence(device_id) is not None
+                    except BrokerValidationError:
+                        return False
+                return True  # legacy clients retain their pre-existing transport behavior
             try:
                 await self.agent_broker.assert_current(device_id, int(context.get("session_generation") or 0))
             except BrokerValidationError:
