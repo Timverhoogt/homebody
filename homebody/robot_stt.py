@@ -67,7 +67,16 @@ def default_manifest_path() -> Path:
 
 
 def default_socket_path() -> Path:
-    base = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    # A system service can inherit XDG_RUNTIME_DIR while ProtectHome hides /run/user.
+    # Prefer it only when usable in *this* mount namespace; PrivateTmp remains a safe
+    # fallback parent. _ensure_worker still validates the private child and socket,
+    # and must never fall back around an untrusted existing endpoint.
+    base = os.environ.get("XDG_RUNTIME_DIR")
+    if (
+        not base or not Path(base).is_absolute() or not os.path.isdir(base)
+        or not os.access(base, os.W_OK | os.X_OK)
+    ):
+        base = tempfile.gettempdir()
     return Path(base, f"homebody-robot-stt-{os.getuid()}", "worker.sock")
 
 

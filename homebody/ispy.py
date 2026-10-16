@@ -63,6 +63,10 @@ DISALLOWED_TERMS = {
 }
 
 
+class ISpyCancelled(RuntimeError):
+    """Expected end of stale or fenced I Spy work (Stop/End/privacy/replacement), never a failure."""
+
+
 @dataclass(frozen=True, slots=True)
 class ISpyTarget:
     object_name: str
