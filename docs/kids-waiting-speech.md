@@ -1,4 +1,4 @@
-# Kids waiting speech (unreleased candidate)
+# Kids waiting speech (0.5.23)
 
 During longer silent waits in Kids activities, Reachy can now play one short pre-recorded phrase. It reuses the existing STT acknowledgement catalog, player, voice proof, anti-repeat/cooldown and output quarantine (see [kids-interaction-fixes.md](kids-interaction-fixes.md)). It does not add new audio, live TTS filler or a separate speaker thread.
 
