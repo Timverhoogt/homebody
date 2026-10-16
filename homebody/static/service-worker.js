@@ -1,4 +1,4 @@
-const CACHE_NAME = "homebody-shell-v100";
+const CACHE_NAME = "homebody-shell-v101";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
