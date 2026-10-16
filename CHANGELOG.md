@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.19] — Everyday read fast paths and bounded robot STT prewarming
+
+- Answer standalone English/Dutch Everyday clock/date, existing configured weather and exact allowlisted single-device status requests through existing read-only tools, bound to the original generation and authorization state. Context-bearing or ambiguous turns retain the narrow reasoner; Workspace, Kids and Realtime routing and permissions are unchanged.
+- Prewarm the existing trusted on-robot STT worker only during an admitted endpointed Pipeline/Kids audio turn, reuse inference warmth across turns and languages, and release idle memory after 120 seconds. Stop cancels pending work; privacy, Meeting and Sleep release the worker. No boot/status warming, model downloads, provider changes or new dependencies.
+- Preserve all seven configured Kids languages, selected voices, adult speech engines, enforced tool-free native Workspace discussion, settings and safety boundaries. Synthetic recognition/clock measurements are not supervised microphone, playback, camera or motion acceptance.
+
 ## [0.5.18] — Speech safety, five Kids languages and enforced Workspace discussion
 
 - Correct Python 3.11 Bluetooth-agent teardown so cancellation cannot cancel its own cleanup supervisor. The 0.5.17 draft failed the hosted compatibility gate and was not publicly released or deployed.
