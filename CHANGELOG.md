@@ -6,10 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.24] — Expanded Everyday tools and compact permissions
+
 - Expand Everyday with shared robot-local power, one-shot vision, bounded camera sessions, speaker volume/mute, categorical status and semantic gestures across Pipeline, Realtime and GPT-Live. Keep camera-on-request as a separate owner opt-in; no saved viewer/tracking permission changes or automatic cloud captures.
 - Add RAM-only device-scoped timers/reminders with list/status/cancel, configured public search with sources, verified light brightness and exact already-allowlisted scene activation. Timers remain manageable after a new wake or voice-engine switch; host restart clears them and audible delivery is not presumed.
 - Keep Agent → Everyday compact: selected voice, short summary, one grouped Manage permissions disclosure, and nested technical details. Preserve ownership, Kids/privacy, Stop, current-request and stale-response fences; synchronize the PWA shell to v100.
-- Development candidate only: no release publication, live configuration changes, robot deployment or supervised camera/motion/speech acceptance implied.
+- Preserve the 0.5.23 Kids waiting-speech ownership fixes, existing settings and device allowlists. Automated verification does not imply supervised camera, motion or speech acceptance.
+
+## [0.5.23] — Prerecorded Kids search and reply-wait speech
+
+- Play one short, locally cached and voice-matched phrase during longer I Spy searches, including standalone Start, later rounds and shared Play together selections, replays and switches.
+- Add sparse prerecorded thinking speech during longer spoken Kids reply waits. Preserve existing recognition acknowledgements without doubling up in one turn; keep an eight-second shared cooldown and skip fast waits.
+- Reuse the verified English and Dutch recordings, including Ruth for Dutch. Require a current matching language, voice and model proof; other languages without verified clip bundles remain silent. No live filler synthesis, new voice selection or settings migration.
+- Settle and flush filler before the actual clue or answer, fence delayed proof and playback across Stop, End, switching, expiry, privacy and shutdown, and preserve single-producer output quarantine when an SDK audio push is blocked.
+- Keep adult speech, Calm, typed guesses, camera consent, microphone admission, motion policy and shared-session deadlines unchanged. Automated fake-device and browser checks do not replace supervised speaker/gameplay acceptance.
+
 
 ## [0.5.22] — Clean I Spy cancellation and sandbox-aware robot recognition
 
