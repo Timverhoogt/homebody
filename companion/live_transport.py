@@ -49,6 +49,7 @@ def current_live_turn() -> bool:
     """Original delegation revision shared by host tools as well as local RPCs."""
     return _TURN_CURRENT.get()()
 
+
 LIVE_URL = "wss://api.openai.com/v1/live/sessions"
 LIVE_MODELS = frozenset({"gpt-live-1"})
 LIVE_VOICES = frozenset({"marin", "cedar"})
@@ -111,8 +112,11 @@ class LiveTranscript:
             return
         role = "user" if kind == "session.input_transcript.delta" else "assistant"
         # A revised fragment that spans earlier ones replaces them (correction/dedupe).
-        for key in [k for k, s in self.segments.items()
-                    if s.role == role and start <= s.start_ms and s.end_ms <= end and k != (role, start)]:
+        for key in [
+            k
+            for k, s in self.segments.items()
+            if s.role == role and start <= s.start_ms and s.end_ms <= end and k != (role, start)
+        ]:
             del self.segments[key]
         self.segments[(role, start)] = _Segment(role, start, end, text)
         while len(self.segments) > self.limit:
@@ -163,8 +167,16 @@ async def wait_for_transcript(transcript: LiveTranscript, offset_ms: int, grace:
             return
 
 
+def _never_look(_text: str, *, engaged: bool = False) -> bool:
+    return False
+
+
 @dataclass(slots=True)
 class LiveSessionState:
+    look_request: Callable[..., bool] = _never_look
+    look_timeout: float = 45.0
+    look_engaged: bool = False
+    look_waiters: dict[str, Any] = field(default_factory=dict)
     closed: asyncio.Event = field(default_factory=asyncio.Event)
     seen: set[str] = field(default_factory=set)
     revision: int = 0
@@ -207,6 +219,13 @@ _UNVERIFIED = "The backend could not safely verify a result. Nothing is confirme
 Answer = Callable[[str, str], Awaitable["str | DelegationResult"]]
 
 
+LOOK_RESULT_TIMEOUT_SECONDS = 45.0
+_LOOK_FAILED = "Reachy could not take the requested look right now. Nothing was done."
+
+
+_no_look = _never_look
+
+
 async def serve_live(
     request: web.Request,
     *,
@@ -217,13 +236,23 @@ async def serve_live(
     connect_timeout: float = 10.0,
     started_timeout: float = 15.0,
     transcript_grace: float = TRANSCRIPT_GRACE_SECONDS,
+    look_request: Callable[..., bool] = _no_look,
+    look_timeout: float = LOOK_RESULT_TIMEOUT_SECONDS,
     answer_with_local: Callable[[dict[str, Any], LocalExecutor], Answer] | None = None,
 ) -> web.WebSocketResponse:
     """Relay one robot Live session. ``answer(config)`` returns the narrow backend for its mode;
-    ``allowed(config)`` re-checks Kids/generation/authorization and ends the session when false."""
+    ``allowed(config)`` re-checks Kids/generation/authorization and ends the session when false.
+
+    ``look_request(text, engaged=...)`` is the narrow visual-intent classifier: when the person's own
+    delegated words are a deliberate look request, the robot is asked (``bridge.look_request``) to take
+    one fenced look and answer with text (``client.look_result``). No frame, tool or project session is
+    involved; the text is appended as the delegation result like any other backend reply.
+    """
     client = web.WebSocketResponse(heartbeat=20, max_msg_size=_MAX_MESSAGE_BYTES)
     await client.prepare(request)
     state = LiveSessionState()
+    state.look_request = look_request
+    state.look_timeout = look_timeout
     transcript = LiveTranscript()
     tasks: set[asyncio.Task[None]] = set()
     try:
@@ -244,14 +273,32 @@ async def serve_live(
         if not await allowed(config):
             raise PermissionError("Live session is not allowed in the current state")
         backend = answer(config)
-        await _relay(client, config, key, backend, allowed, state, transcript, tasks, upstream_url,
-                     connect_timeout, started_timeout, timeout, transcript_grace, str(model), str(voice),
-                     answer_with_local)
+        await _relay(
+            client,
+            config,
+            key,
+            backend,
+            allowed,
+            state,
+            transcript,
+            tasks,
+            upstream_url,
+            connect_timeout,
+            started_timeout,
+            timeout,
+            transcript_grace,
+            str(model),
+            str(voice),
+            answer_with_local,
+        )
     except Exception as exc:
         _LOGGER.warning("Live relay ended (%s)", type(exc).__name__)
         if not client.closed:
-            message = ("Live is blocked in the current state" if isinstance(exc, PermissionError)
-                       else "Live transport unavailable or session invalid")
+            message = (
+                "Live is blocked in the current state"
+                if isinstance(exc, PermissionError)
+                else "Live transport unavailable or session invalid"
+            )
             await client.send_json({"type": "bridge.error", "error": message})
     finally:
         state.closed.set()
@@ -264,22 +311,42 @@ async def serve_live(
     return client
 
 
-async def _relay(client, config, key, backend, allowed, state, transcript, tasks, upstream_url,
-                 connect_timeout, started_timeout, timeout, transcript_grace, model, voice,
-                 answer_with_local=None) -> None:
+async def _relay(
+    client,
+    config,
+    key,
+    backend,
+    allowed,
+    state,
+    transcript,
+    tasks,
+    upstream_url,
+    connect_timeout,
+    started_timeout,
+    timeout,
+    transcript_grace,
+    model,
+    voice,
+    answer_with_local=None,
+) -> None:
     send_lock = asyncio.Lock()
     backend_lock = asyncio.Lock()
     carry = AudioCarry()
-    local = LocalToolTransport(config.get("local_tools", [])
-                               if config.get("assistant_mode") == "everyday" else [], client.send_json)
+    local = LocalToolTransport(
+        config.get("local_tools", []) if config.get("assistant_mode") == "everyday" else [], client.send_json
+    )
     active_turn: ContextVar[tuple[int, float]] = ContextVar("live_local_turn")
 
     async def local_execute(name: str, arguments: dict) -> dict:
         revision, deadline = active_turn.get()
+
         def current() -> bool:
             return not state.closed.is_set() and not client.closed and state.revision == revision
+
         if not current() or not await allowed(config):
             raise PermissionError("stale Live operation")
+        if state.look_engaged and name != "stop_reachy_camera":
+            raise PermissionError("looking together is tool-free")
         result = await local.execute(name, arguments, deadline=deadline, current=current)
         if not current() or not await allowed(config):
             raise PermissionError("stale Live result")
@@ -288,8 +355,9 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
     if local.names and answer_with_local is not None:
         backend = answer_with_local(config, local_execute)
     async with ClientSession(timeout=ClientTimeout(total=None, connect=connect_timeout)) as http:
-        async with http.ws_connect(upstream_url, headers={"Authorization": f"Bearer {key}"},
-                                   max_msg_size=_MAX_MESSAGE_BYTES, heartbeat=20) as upstream:
+        async with http.ws_connect(
+            upstream_url, headers={"Authorization": f"Bearer {key}"}, max_msg_size=_MAX_MESSAGE_BYTES, heartbeat=20
+        ) as upstream:
 
             async def send(payload: dict[str, object]) -> bool:
                 async with send_lock:
@@ -298,17 +366,27 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                     await upstream.send_json(payload)
                     return True
 
-            await send(event("session.start", session={
-                "model": model,
-                "instructions": (LIVE_INSTRUCTIONS.replace(
-                    "Camera, robot movement and personal memory are unavailable in this session.",
-                    "Delegate explicit camera, speaker, robot status, power and gesture requests to the client. "
-                    "Never claim an operation succeeded without a delegated result. Personal memory is unavailable.")
-                    if local.names and answer_with_local is not None else LIVE_INSTRUCTIONS),
-                "store": False,
-                "audio": {"format": {"type": "audio/pcm", "rate": 24000}, "output": {"voice": voice}},
-                "delegation": {"type": "client"},
-            }))
+            await send(
+                event(
+                    "session.start",
+                    session={
+                        "model": model,
+                        "instructions": (
+                            LIVE_INSTRUCTIONS.replace(
+                                "Camera, robot movement and personal memory are unavailable in this session.",
+                                "Delegate explicit camera, speaker, robot status, power and gesture requests "
+                                "to the client. Never claim an operation succeeded without a delegated result. "
+                                "Personal memory is unavailable.",
+                            )
+                            if local.names and answer_with_local is not None
+                            else LIVE_INSTRUCTIONS
+                        ),
+                        "store": False,
+                        "audio": {"format": {"type": "audio/pcm", "rate": 24000}, "output": {"voice": voice}},
+                        "delegation": {"type": "client"},
+                    },
+                )
+            )
             started = await upstream.receive(timeout=started_timeout)
             payload = json.loads(started.data) if started.type == WSMsgType.TEXT else {}
             if payload.get("type") != "session.started":
@@ -318,6 +396,30 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
             async def append(kind: str, delegation_id: str | None, content: str) -> None:
                 await send(event(kind, delegation_id=delegation_id, content=utf8_clip(content)))
 
+            async def robot_look(identifier: str, question: str, *, follow_up: bool = False) -> DelegationResult:
+                """Ask the robot for one fenced look; its text answer (or categorical failure) is the result."""
+                future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+                state.look_waiters[identifier] = future
+                # Once visual data can enter this cloud session, no subsequent delegation may
+                # inherit project/home tools. Stop + a fresh wake is the deliberate exit.
+                state.look_engaged = True
+                try:
+                    kind = "bridge.look_follow_up_request" if follow_up else "bridge.look_request"
+                    await client.send_json(
+                        {"type": kind, "delegation_id": identifier, "question": utf8_clip(question, 500)}
+                    )
+                    async with asyncio.timeout(state.look_timeout):
+                        result = await future
+                except TimeoutError as exc:
+                    raise DelegationFailure("look_timeout", _LOOK_FAILED) from exc
+                finally:
+                    state.look_waiters.pop(identifier, None)
+                text = result.get("text")
+                if isinstance(text, str) and text.strip():
+                    state.look_engaged = True
+                    return DelegationResult(utf8_clip(text, 1200), "answered")
+                raise DelegationFailure("look_failed", _LOOK_FAILED)
+
             async def delegate(identifier: str, offset_ms: int, revision: int) -> None:
                 await wait_for_transcript(transcript, offset_ms, transcript_grace)
                 text, context = transcript.request(offset_ms)
@@ -326,13 +428,17 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                     if state.closed.is_set():
                         return
                     if revision != state.revision:
-                        await append("session.thinking.append", identifier,
-                                     "Superseded by a newer request; not executed.")
+                        await append(
+                            "session.thinking.append", identifier, "Superseded by a newer request; not executed."
+                        )
                         await client.send_json({"type": "bridge.delegation", "state": "superseded"})
                         return
                     if not text:
-                        await append("session.commentary.append", identifier,
-                                     "I didn't catch the request completely. Ask the user to repeat it.")
+                        await append(
+                            "session.commentary.append",
+                            identifier,
+                            "I didn't catch the request completely. Ask the user to repeat it.",
+                        )
                         await client.send_json({"type": "bridge.delegation", "state": "clarify"})
                         return
                     await client.send_json({"type": "bridge.delegation", "state": "started"})
@@ -340,12 +446,18 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                     try:
                         if not await allowed(config):
                             raise PermissionError("not allowed")
-                        token = active_turn.set((revision, asyncio.get_running_loop().time()
-                                                 + EVERYDAY_TURN_TIMEOUT_SECONDS))
+                        token = active_turn.set(
+                            (revision, asyncio.get_running_loop().time() + EVERYDAY_TURN_TIMEOUT_SECONDS)
+                        )
                         current_token = _TURN_CURRENT.set(
-                            lambda: not state.closed.is_set() and not client.closed and state.revision == revision)
+                            lambda: not state.closed.is_set() and not client.closed and state.revision == revision
+                        )
                         try:
-                            if local.names and answer_with_local is not None:
+                            if state.look_request(text, engaged=state.look_engaged):
+                                reply = await robot_look(identifier, text)
+                            elif state.look_engaged:
+                                reply = await robot_look(identifier, text, follow_up=True)
+                            elif local.names and answer_with_local is not None:
                                 async with asyncio.timeout(EVERYDAY_TURN_TIMEOUT_SECONDS):
                                     reply = await backend(text, context)
                             else:
@@ -377,8 +489,9 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                     if state.closed.is_set():
                         return  # late result after Stop/privacy: never revive speech
                     if revision != state.revision:
-                        await append("session.thinking.append", identifier,
-                                     "Result for a superseded request: " + result)
+                        await append(
+                            "session.thinking.append", identifier, "Result for a superseded request: " + result
+                        )
                         await client.send_json({"type": "bridge.delegation", "state": "superseded"})
                         return
                     await append("session.commentary.append", identifier, result)
@@ -399,14 +512,22 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                         identifier = delegation.get("id") if isinstance(delegation, dict) else None
                         nested = delegation.get("offset_ms") if isinstance(delegation, dict) else None
                         offset = payload.get("offset_ms", nested)
-                        if (not isinstance(identifier, str) or not identifier or identifier in state.seen
-                                or delegation.get("target") != "client" or type(offset) is not int):
+                        if (
+                            not isinstance(identifier, str)
+                            or not identifier
+                            or identifier in state.seen
+                            or delegation.get("target") != "client"
+                            or type(offset) is not int
+                        ):
                             continue
                         state.seen.add(identifier)
                         state.delegations += 1
                         if state.delegations > MAX_DELEGATIONS:
-                            await append("session.commentary.append", identifier,
-                                         "The task limit for this conversation is reached. Nothing was done.")
+                            await append(
+                                "session.commentary.append",
+                                identifier,
+                                "The task limit for this conversation is reached. Nothing was done.",
+                            )
                             continue
                         state.revision += 1  # a newer request supersedes any not-yet-answered one
                         task = asyncio.create_task(delegate(identifier, offset, state.revision))
@@ -421,8 +542,9 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                         if pcm:
                             await client.send_json({"type": kind, "delta": base64.b64encode(pcm).decode("ascii")})
                     elif kind in _FORWARDED:
-                        await client.send_json({k: payload[k] for k in ("type", "delta", "start_ms", "end_ms")
-                                                if k in payload})
+                        await client.send_json(
+                            {k: payload[k] for k in ("type", "delta", "start_ms", "end_ms") if k in payload}
+                        )
                     elif kind == "session.closed":
                         return
                     elif kind == "error":
@@ -438,6 +560,12 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                     kind = payload.get("type") if isinstance(payload, dict) else None
                     if kind == "session.close":
                         return
+                    if kind == "client.look_result":
+                        identifier = payload.get("delegation_id")
+                        waiter = state.look_waiters.get(identifier) if isinstance(identifier, str) else None
+                        if waiter is not None and not waiter.done():
+                            waiter.set_result({"text": payload.get("text"), "error": payload.get("error")})
+                        continue  # unknown or late results are dropped, never spoken
                     if kind == "everyday.tool_result":
                         if state.closed.is_set() or not await allowed(config):
                             raise PermissionError("stale Live result")

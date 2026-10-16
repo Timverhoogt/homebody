@@ -19,6 +19,7 @@ import httpx
 from . import kids_acknowledgements
 from .audio import AdaptiveEndpointRecorder, EndpointResult, resample_linear
 from .config import AppConfig
+from .everyday_runtime import EverydayCallbackScope
 from .hermes_client import HermesBridgeError, SpeechAudio
 from .ispy import ISpyCancelled
 from .kids_acknowledgements import (
@@ -29,6 +30,7 @@ from .kids_acknowledgements import (
     stage_clips,
 )
 from .kids_acknowledgements import catalog as kids_ack_catalog
+from .look_intent import looks_like_look_request
 from .robot_stt import RobotSttCancelled, RobotSttClient, RobotSttUnavailable
 from .stt_routing import (
     SttInfrastructureError,
@@ -95,8 +97,7 @@ class PipelineVoiceMixin:
             self._invalidate_ispy_input()
         config = initial_config
         # Freeze before blocking work; a later Stop/new wake must not donate its authority.
-        local_fence = (self.everyday_tool_fence()
-                       if callable(getattr(self, "everyday_tool_fence", None)) else None)
+        local_fence = self.everyday_tool_fence() if callable(getattr(self, "everyday_tool_fence", None)) else None
         everyday_context = self.agent_broker_context(explicit_private_intent=False)
         if typed_input is None:
             self._prewarm_robot_stt(config)
@@ -128,8 +129,9 @@ class PipelineVoiceMixin:
                 or self._effective_power_mode() in {"meeting", "sleep"}
             ):
                 return False
-            _LOGGER.info("Kids turn heard nothing usable; listening again (%s/%s)", kids_misses,
-                         _KIDS_EMPTY_TURN_RETRIES)
+            _LOGGER.info(
+                "Kids turn heard nothing usable; listening again (%s/%s)", kids_misses, _KIDS_EMPTY_TURN_RETRIES
+            )
             self._set_status("listening", "Didn't catch that; listening again")
             return True
 
@@ -166,18 +168,17 @@ class PipelineVoiceMixin:
             locality_provider = config.stt_provider
             stt_turns = 0
             self._set_status(
-                "listening", "Wake word accepted", bridge_healthy=True, last_error="",
+                "listening",
+                "Wake word accepted",
+                bridge_healthy=True,
+                last_error="",
                 stt_locality=locality,
             )
             _LOGGER.debug("Hermes bridge health: %s", health.get("status"))
 
             first_turn = True
             turns_started = 0
-            while (
-                not self.stop_event.is_set()
-                and not self._turn_stop_requested()
-                and conversation_is_current()
-            ):
+            while not self.stop_event.is_set() and not self._turn_stop_requested() and conversation_is_current():
                 if self._effective_power_mode() in {"meeting", "sleep"}:
                     break
                 if not first_turn:
@@ -261,7 +262,10 @@ class PipelineVoiceMixin:
 
                     try:
                         stt_result = transcribe_endpoint(
-                            self, client, config, endpoint.samples,
+                            self,
+                            client,
+                            config,
+                            endpoint.samples,
                             is_current=lambda fence=stt_is_current: fence() and conversation_is_current(),
                             session_id=initial_config.kids_session_id if initial_config.kids_mode_enabled else "",
                             generation=stt_generation,
@@ -316,7 +320,9 @@ class PipelineVoiceMixin:
                 ):
                     break
                 if initial_config.kids_host_enabled and self._kids_host_handle_transcript(
-                    initial_config.kids_session_id, transcript, typed=typed_input is not None,
+                    initial_config.kids_session_id,
+                    transcript,
+                    typed=typed_input is not None,
                 ):
                     # The game master answers with its own fixed line and re-opens listening.
                     self._set_status("waiting_for_wake_word", "Game host is responding")
@@ -325,10 +331,15 @@ class PipelineVoiceMixin:
                     break
                 with self._agent_lock:
                     agent_profile_active = self._capability_profile == "agent"
+                visual_help = not client.config.kids_mode_enabled and (
+                    looks_like_look_request(transcript, engaged=self.look_context_live()) or self.look_context_live()
+                )
                 # Name the route actually taken below; Everyday never reaches the full Hermes agent.
-                self._workspace_event(workspace_generation, "user", transcript)
+                if not visual_help:
+                    self._workspace_event(workspace_generation, "user", transcript)
                 self._workspace_event(
-                    workspace_generation, "activity",
+                    workspace_generation,
+                    "activity",
                     "Workspace is responding" if agent_profile_active else "Everyday is responding",
                 )
                 _LOGGER.info("Transcript accepted (%s characters)", len(transcript))
@@ -337,12 +348,21 @@ class PipelineVoiceMixin:
                     "Homebody is working",
                     transcript=transcript,
                     stt_provider=(
-                        "robot" if stt_result is not None and stt_result.processing_location == "robot"
+                        "robot"
+                        if stt_result is not None and stt_result.processing_location == "robot"
                         else client.last_stt_provider
                     ),
                 )
 
-                if agent_profile_active:
+                if visual_help:
+                    if looks_like_look_request(transcript, engaged=self.look_context_live()):
+                        self._set_status("looking", "Looking at what you are showing", transcript=transcript)
+                        response_text = self.voice_look_turn(transcript)
+                    else:
+                        response_text = self.voice_look_follow_up(transcript)
+                    if not response_text:
+                        break
+                elif agent_profile_active:
                     request_id, broker_context = self._begin_agent_request(transcript)
                     try:
                         response_text = client.ask_agent(
@@ -370,10 +390,16 @@ class PipelineVoiceMixin:
                         if not settle_ack():
                             break
                         refresh = getattr(client, "kids_voice_proof", None)
-                        ack_player = self._start_kids_ack(
-                            initial_config, refresh=refresh, stage="think",
-                            delay=kids_acknowledgements.REPLY_WAIT_DELAY_SECONDS,
-                        ) if callable(refresh) else None
+                        ack_player = (
+                            self._start_kids_ack(
+                                initial_config,
+                                refresh=refresh,
+                                stage="think",
+                                delay=kids_acknowledgements.REPLY_WAIT_DELAY_SECONDS,
+                            )
+                            if callable(refresh)
+                            else None
+                        )
                     try:
                         response_text = client.chat(transcript)  # dedicated Kids route, unchanged
                     finally:
@@ -382,10 +408,20 @@ class PipelineVoiceMixin:
                 else:
                     # Everyday: the narrow fast backend, never the full Hermes agent.
                     if local_fence is not None:
+                        # Camera admission is bound to this turn's own recognised words, never the model.
+                        callback_scope = EverydayCallbackScope(transcript=transcript)
                         response_text = client.everyday_turn(
-                            transcript, context=everyday_context, local_tools=self.everyday_local_tools(),
-                            local_executor=lambda name, args, call_id: self.execute_everyday_tool(
-                                name, args, fence=local_fence, call_id=call_id,
+                            transcript,
+                            context=everyday_context,
+                            local_tools=self.everyday_local_tools(),
+                            local_executor=lambda name, args, call_id, scope=callback_scope: (
+                                self.execute_everyday_callback(
+                                    name,
+                                    args,
+                                    scope=scope,
+                                    fence=local_fence,
+                                    call_id=call_id,
+                                )
                             ),
                             is_current=lambda: conversation_is_current() and not self._turn_stop_requested(),
                         )
@@ -400,22 +436,26 @@ class PipelineVoiceMixin:
                     or self._effective_power_mode() in {"meeting", "sleep"}
                 ):
                     break
-                self._workspace_event(workspace_generation, "assistant", response_text)
-                source = getattr(client, "last_answer_source", None) or {}
+                if not visual_help:
+                    self._workspace_event(workspace_generation, "assistant", response_text)
+                source = {} if visual_help else (getattr(client, "last_answer_source", None) or {})
                 if source.get("kind") == "native_hermes":
                     self._workspace_event(
-                        workspace_generation, "activity",
+                        workspace_generation,
+                        "activity",
                         f"Answered in your Hermes session {source.get('session_id', '')} "
                         f"(run {source.get('run_id', '')})",
                     )
                 elif source.get("kind") == "restricted_broker":
                     self._workspace_event(
-                        workspace_generation, "activity",
+                        workspace_generation,
+                        "activity",
                         "Answered by the restricted roadmap reader — not your Hermes session",
                     )
                 elif source.get("kind") == "native_not_ready":
                     self._workspace_event(
-                        workspace_generation, "activity",
+                        workspace_generation,
+                        "activity",
                         "Not sent: your Hermes project session is not open for voice",
                     )
                 self._workspace_event(workspace_generation, "activity", "Preparing the spoken reply")
@@ -515,7 +555,8 @@ class PipelineVoiceMixin:
                     not interrupted
                     and client.config.kids_host_enabled
                     and self._kids_host_after_reply(
-                        client.config.kids_session_id, getattr(client, "last_kids_game_state", ""),
+                        client.config.kids_session_id,
+                        getattr(client, "last_kids_game_state", ""),
                     )
                 ):
                     # A real finished outcome: the host offers two choices instead of continuing.
@@ -553,7 +594,8 @@ class PipelineVoiceMixin:
                     ):
                         break
                 self._workspace_event(
-                    workspace_generation, "activity",
+                    workspace_generation,
+                    "activity",
                     "Reply interrupted" if interrupted else "Voice turn finished",
                 )
                 with self._status_lock:
@@ -570,6 +612,7 @@ class PipelineVoiceMixin:
             raise
         finally:
             settle_ack()
+            self._end_companion_voice()
             set_locality("unknown")  # provenance is per conversation; never left stale
             set_processing("unknown", False)
             self._voice_timings.end()
@@ -632,8 +675,7 @@ class PipelineVoiceMixin:
         def is_current() -> bool:
             with self._conversation_stop_generation_lock:
                 stopped = (
-                    self._conversation_stop_requested.is_set()
-                    or self._conversation_stop_generation != turn_generation
+                    self._conversation_stop_requested.is_set() or self._conversation_stop_generation != turn_generation
                 )
             return (
                 not stopped
@@ -677,8 +719,7 @@ class PipelineVoiceMixin:
         def is_current() -> bool:
             with self._conversation_stop_generation_lock:
                 stopped = (
-                    self._conversation_stop_requested.is_set()
-                    or self._conversation_stop_generation != turn_generation
+                    self._conversation_stop_requested.is_set() or self._conversation_stop_generation != turn_generation
                 )
             return (
                 not stopped
@@ -689,7 +730,12 @@ class PipelineVoiceMixin:
             )
 
         return self._arm_kids_wait_speech(
-            config.language, is_current, voice_proof=voice_proof, refresh=refresh, stage=stage, delay=delay,
+            config.language,
+            is_current,
+            voice_proof=voice_proof,
+            refresh=refresh,
+            stage=stage,
+            delay=delay,
         )
 
     def _arm_kids_wait_speech(

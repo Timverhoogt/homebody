@@ -95,7 +95,7 @@ class FakeVision:
     def __exit__(self, *_exc: object) -> None:
         pass
 
-    def describe(self, jpeg: bytes, question: str) -> dict[str, object]:
+    def describe(self, jpeg: bytes, question: str, *, is_current=None) -> dict[str, object]:
         self.questions.append(question)
         if self.error:
             raise LocalVisionError(self.error)
@@ -187,7 +187,8 @@ def test_realtime_camera_call_sends_a_local_description_instead_of_the_image(mon
 
         def events(self) -> list[RealtimeEvent]:
             if self.sent:
-                runtime.cancel_agent_work("stopped")
+                if self.results:
+                    runtime._request_conversation_stop()
                 return []
             self.sent = True
             item = {
@@ -197,7 +198,13 @@ def test_realtime_camera_call_sends_a_local_description_instead_of_the_image(mon
                 "call_id": "call-1",
                 "arguments": json.dumps({"purpose": "what is on the table"}),
             }
-            return [RealtimeEvent("response.output_item.done", {"item": item})]
+            return [
+                RealtimeEvent(
+                    "conversation.item.input_audio_transcription.completed",
+                    {"transcript": "Look at this table", "item_id": "user-1"},
+                ),
+                RealtimeEvent("response.output_item.done", {"item": item}),
+            ]
 
         def send_tool_result(self, call_id: str, result: dict[str, object], **_kwargs: object) -> None:
             self.results.append((call_id, result))
@@ -226,12 +233,15 @@ def test_realtime_camera_call_sends_a_local_description_instead_of_the_image(mon
     )
     runtime.config_loader = lambda: config  # type: ignore[method-assign]
 
-    runtime._run_realtime_conversation(config)
+    # Holistic companion: the camera call runs through the fenced one-frame look, which the wake loop
+    # always enters while owning the voice slot; the test holds it the same way.
+    with runtime._voice_activity_lock:
+        runtime._run_realtime_conversation(config)
 
-    session = sessions[0]
-    deadline = time.monotonic() + 2.0
-    while not session.results and time.monotonic() < deadline:  # type: ignore[attr-defined]
-        time.sleep(0.01)
+        session = sessions[0]
+        deadline = time.monotonic() + 2.0
+        while not session.results and time.monotonic() < deadline:  # type: ignore[attr-defined]
+            time.sleep(0.01)
     assert session.frames == []  # type: ignore[attr-defined]
     assert session.results == [  # type: ignore[attr-defined]
         (
@@ -239,12 +249,12 @@ def test_realtime_camera_call_sends_a_local_description_instead_of_the_image(mon
             {
                 "ok": True,
                 "image_attached": False,
-                "seen_by": "local vision model on Reachy's computer",
+                "seen_by": "local_vision",
                 "description": "A cup of tea next to a laptop",
             },
         )
     ]
-    assert vision.questions == ["what is on the table"]
+    assert vision.questions == ["Look at this table"]  # the person's words, never model-selected consent
 
 
 def build_client(monkeypatch: pytest.MonkeyPatch, config: AppConfig) -> tuple[Homebody, TestClient, list]:
@@ -378,15 +388,27 @@ def test_vision_test_route_needs_the_current_key_to_probe_a_new_url(monkeypatch:
 
 
 def test_slow_local_vision_does_not_block_the_realtime_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Holistic companion: the Realtime camera call now runs through the fenced one-frame look
+    # (same orchestration as the phone/Pipeline entries), so the slow part is the local vision client.
     runtime = make_realtime_runtime()
     release = threading.Event()
     sent: list[tuple[str, dict[str, object]]] = []
 
-    def slow_describe(question: str, *, config: AppConfig | None = None) -> dict[str, object]:
-        release.wait(timeout=5.0)
-        return {"answer": "A lamp", "model": "m", "latency_ms": 5}
+    class SlowVision:
+        def __enter__(self) -> SlowVision:
+            return self
 
-    runtime.describe_camera_view = slow_describe  # type: ignore[method-assign]
+        def __exit__(self, *_exc: object) -> None:
+            pass
+
+        def describe(self, jpeg: bytes, question: str, *, is_current=None) -> dict[str, object]:
+            release.wait(timeout=5.0)
+            return {"answer": "A lamp", "model": "m", "latency_ms": 5}
+
+    config = AppConfig(local_vision_enabled=True, camera_enabled=True)
+    runtime.config_loader = lambda: config  # type: ignore[method-assign]
+    runtime._new_local_vision_client = lambda _config: SlowVision()  # type: ignore[method-assign]
+    runtime._capture_camera_jpeg = lambda **kwargs: JPEG  # type: ignore[method-assign]
 
     class Session:
         def send_tool_result(self, call_id: str, result: dict[str, object], **_kwargs: object) -> None:
@@ -395,14 +417,18 @@ def test_slow_local_vision_does_not_block_the_realtime_loop(monkeypatch: pytest.
         def send_camera_error(self, call_id: str, message: str) -> None:
             raise AssertionError(message)
 
-    started = time.monotonic()
-    runtime._describe_for_realtime(Session(), "call-1", "what is here", AppConfig(local_vision_enabled=True))  # type: ignore[arg-type]
-    assert time.monotonic() - started < 0.5
-    assert sent == []
-    release.set()
-    deadline = time.monotonic() + 2.0
-    while not sent and time.monotonic() < deadline:
-        time.sleep(0.01)
+    assert runtime._voice_activity_lock.acquire(blocking=False)  # the Realtime turn owns the voice slot
+    try:
+        started = time.monotonic()
+        runtime._describe_for_realtime(Session(), "call-1", "what is here", config)  # type: ignore[arg-type]
+        assert time.monotonic() - started < 0.5
+        assert sent == []
+        release.set()
+        deadline = time.monotonic() + 2.0
+        while not sent and time.monotonic() < deadline:
+            time.sleep(0.01)
+    finally:
+        runtime._voice_activity_lock.release()
     assert sent and sent[0][0] == "call-1" and sent[0][1]["description"] == "A lamp"
 
 

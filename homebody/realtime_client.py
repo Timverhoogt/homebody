@@ -7,6 +7,7 @@ import json
 import logging
 import queue
 import threading
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any
 from urllib.parse import urlparse, urlunparse
@@ -271,27 +272,42 @@ class RealtimeBridgeSession:
         result: dict[str, object],
         *,
         continue_response: bool = True,
+        continuation_call_id: str | None = None,
+        is_current: Callable[[], bool] | None = None,
     ) -> None:
-        """Complete one robot-local function call and optionally continue the response."""
+        """Complete a local call; visual continuations bind to the original bridge call.
+
+        The private top-level continuation key is consumed by Homebody's bridge, not the provider.
+        Generic callers retain their existing unqualified response.create contract.
+        """
+        if is_current is not None and not is_current():
+            return
         if self._socket is None:
             raise RealtimeBridgeError("Realtime session is not connected")
         if not call_id:
             raise RealtimeBridgeError("Robot tool call did not include a call ID")
         try:
-            self._socket.send(
-                json.dumps(
-                    {
-                        "type": "conversation.item.create",
-                        "item": {
-                            "type": "function_call_output",
-                            "call_id": call_id,
-                            "output": json.dumps(result),
-                        },
-                    }
-                )
+            output = json.dumps(
+                {
+                    "type": "conversation.item.create",
+                    "item": {
+                        "type": "function_call_output",
+                        "call_id": call_id,
+                        "output": json.dumps(result),
+                    },
+                }
             )
+            if is_current is not None and not is_current():
+                return
+            self._socket.send(output)
             if continue_response:
-                self._socket.send(json.dumps({"type": "response.create"}))
+                continuation = {"type": "response.create"}
+                if continuation_call_id is not None:
+                    continuation["homebody_tool_call_id"] = continuation_call_id
+                continuation_wire = json.dumps(continuation)
+                if is_current is not None and not is_current():
+                    return
+                self._socket.send(continuation_wire)
         except Exception as exc:
             raise RealtimeBridgeError(f"Could not send robot tool result: {exc}") from exc
 

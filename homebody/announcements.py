@@ -43,6 +43,8 @@ class Announcement:
     repeat: int = 1
     pause_seconds: float = 1.0
     cancellation_generation: int = 0
+    offer_epoch: int = -1
+    source_revision: str = ""
     contextual_offer_token: int = 0
     # Kids Start only: after a fully played greeting/clue, arm this session's first listening turn.
     kids_listen_session_id: str = field(default="", repr=False)
@@ -77,6 +79,9 @@ class AnnouncementsMixin:
         repeat: int = 1,
         pause_seconds: float = 1.0,
         contextual_offer_token: int = 0,
+        cancellation_generation: int | None = None,
+        offer_epoch: int = -1,
+        source_revision: str = "",
         kids_listen_session_id: str = "",
         kids_voice_session_id: str = "",
         kids_speech_lines: tuple[dict[str, str], ...] = (),
@@ -109,6 +114,10 @@ class AnnouncementsMixin:
             raise RuntimeError("Announcement audio is not ready")
         with self._announcement_state_lock:
             generation = self._announcement_cancellation_generation
+            if cancellation_generation is not None and cancellation_generation != generation:
+                raise RuntimeError("Companion response was cancelled")
+            if offer_epoch >= 0 and not self._offer_completion_current(offer_epoch, generation, source_revision):
+                raise RuntimeError("Companion response was cancelled")
             self._voice_activity_generation += 1
             item = Announcement(
                 text=clean_text,
@@ -119,6 +128,8 @@ class AnnouncementsMixin:
                 repeat=int(repeat),
                 pause_seconds=float(pause_seconds),
                 cancellation_generation=generation,
+                offer_epoch=offer_epoch,
+                source_revision=source_revision,
                 contextual_offer_token=contextual_offer_token,
                 kids_listen_session_id=kids_listen_session_id,
                 kids_voice_session_id=kids_voice_session_id,
@@ -187,6 +198,12 @@ class AnnouncementsMixin:
                 self.stop_event.is_set()
                 or item.cancel_event.is_set()
                 or item.cancellation_generation != self._announcement_cancellation_generation
+                or (
+                    item.offer_epoch >= 0
+                    and not self._offer_completion_current(
+                        item.offer_epoch, item.cancellation_generation, item.source_revision
+                    )
+                )
                 or self._announcement_current is not item
             )
 
@@ -234,9 +251,11 @@ class AnnouncementsMixin:
                             owns_voice_activity=True,
                             owns_announcement=True,
                         )
-                        with self._agent_lock:
-                            agent_active = self._capability_profile == "agent"
-                        if reason or not config.contextual_offers_enabled or not agent_active:
+                        project_blocked = False
+                        if self._contextual_offers.current_offer(item.contextual_offer_token).source == "project":
+                            with self._agent_lock:
+                                project_blocked = self._capability_profile != "agent"
+                        if reason or not config.contextual_offers_enabled or project_blocked:
                             blocked_reason = reason or (
                                 "contextual_offers_disabled"
                                 if not config.contextual_offers_enabled

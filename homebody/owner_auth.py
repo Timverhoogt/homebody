@@ -29,6 +29,7 @@ MACHINE_ROUTES = {
     ("GET", "/api/updates/health"),
     ("POST", "/api/presence/signal"),
     ("POST", "/api/initiative/offers"),
+    ("GET", "/api/initiative/source-state"),
     ("POST", "/api/agent/reminder-delivery"),
     ("POST", "/api/camera/snapshot"),
     ("POST", "/api/agent-setup/pair"),
@@ -140,6 +141,14 @@ class OwnerStore:
                 "SELECT id, name, csrf, expires FROM devices WHERE hash=? AND expires>?", (digest(token), time.time())
             ).fetchone()
         return dict(row) if row else None
+
+    def device_active(self, device_id: str) -> bool:
+        """Whether the exact paired device that admitted a request is still valid (not revoked/expired)."""
+        if not device_id or len(device_id) > 64:
+            return False
+        with self.connect() as db:
+            row = db.execute("SELECT 1 FROM devices WHERE id=? AND expires>?", (device_id, time.time())).fetchone()
+        return row is not None
 
     def devices(self) -> list[dict]:
         with self.connect() as db:
@@ -320,7 +329,9 @@ def main() -> None:
         description="Homebody local owner-device provisioning (run as the app user; use --db if $HOME differs)"
     )
     parser.add_argument(
-        "--db", type=Path, default=None,
+        "--db",
+        type=Path,
+        default=None,
         help="owner database path (defaults to $HOME/.local/share/homebody/owner.sqlite3)",
     )
     sub = parser.add_subparsers(dest="command", required=True)

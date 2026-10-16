@@ -97,6 +97,7 @@ class AppConfig:
     initiative_duplicate_window_seconds: float = 300.0
     initiative_dismissal_backoff_seconds: float = 3600.0
     contextual_offers_enabled: bool = False
+    companion_sources_revision: str = ""
     contextual_offer_response_window_seconds: float = 10.0
     shared_physical_context_enabled: bool = False
     presentation_window_seconds: float = 20.0
@@ -185,6 +186,11 @@ class AppConfig:
         self.validate()
 
     def validate(self) -> None:
+        revision = self.companion_sources_revision
+        if not isinstance(revision, str) or (
+            revision and (len(revision) != 32 or any(c not in "0123456789abcdef" for c in revision))
+        ):
+            raise ValueError("companion_sources_revision must be empty or 32 lowercase hex characters")
         parsed = urlparse(self.bridge_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("bridge_url must be an absolute http(s) URL")
@@ -329,6 +335,7 @@ class AppConfig:
 
     def redacted_dict(self) -> dict[str, object]:
         payload = asdict(self)
+        payload.pop("companion_sources_revision", None)
         payload.pop("setup_connection_sha256", None)
         payload.pop("setup_connection_checked_at", None)
         payload.pop("setup_check_id", None)

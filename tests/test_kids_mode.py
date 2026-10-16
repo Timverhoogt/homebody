@@ -226,6 +226,7 @@ def test_ispy_both_picker_roles_use_the_base_motor(monkeypatch: pytest.MonkeyPat
         runtime._kids_generation = 4
         runtime._kids_ends_at = time.monotonic() + profile.duration_minutes * 60
         runtime._kids_session_id = "kids-" + "f" * 32
+
     def confirm_awake(*_args, **_kwargs):
         runtime._power_mode = "awake"
         runtime._motors_enabled = True
@@ -237,8 +238,7 @@ def test_ispy_both_picker_roles_use_the_base_motor(monkeypatch: pytest.MonkeyPat
     search_base_degrees = [round(float(np.degrees(target["body_yaw"]))) for target in robot.targets[:9]]
     assert search_base_degrees == [0, -60, -120, -60, 0, 60, 120, 60, 0]
     assert all(
-        abs(right - left) <= 60
-        for left, right in zip(search_base_degrees, search_base_degrees[1:], strict=False)
+        abs(right - left) <= 60 for left, right in zip(search_base_degrees, search_base_degrees[1:], strict=False)
     )
     assert robot.media.calls == 6  # readiness frame precedes the five search viewpoints
     assert runtime.status()["kids_mode"]["camera_active"] is False  # type: ignore[index]
@@ -628,9 +628,10 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     worker = (STATIC / "service-worker.js").read_text(encoding="utf-8")
     assert "homebody-shell-v" in worker
-    for asset in ("style.css", "camera.js", "main.js"):
-        assert f"/static/{asset}?v=101" in html
-        assert f'"/static/{asset}?v=101"' in worker
+    # Companion card assets advance with the shell revision.
+    for asset in ("style.css", "camera.js", "main.js", "companion.js"):
+        assert f"/static/{asset}?v=102" in html
+        assert f'"/static/{asset}?v=102"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

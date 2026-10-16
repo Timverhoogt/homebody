@@ -13,9 +13,9 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=101">
-  <link rel="stylesheet" href="/static/scene.css?v=101">
-  <link rel="stylesheet" href="/static/onboarding.css?v=101">
+  <link rel="stylesheet" href="/static/style.css?v=102">
+  <link rel="stylesheet" href="/static/scene.css?v=102">
+  <link rel="stylesheet" href="/static/onboarding.css?v=102">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -280,29 +280,96 @@
         <button type="button" id="agent-view-workspace" aria-pressed="false">Conversation &amp; projects</button>
       </div>
       <div id="agent-companion-view">
+      <section id="companion-card" class="card companion-card" aria-labelledby="companion-heading">
+        <div class="section-heading">
+          <div><p class="label">Companion</p><h2 id="companion-heading">Reachy in the room</h2></div>
+          <span id="companion-activity" class="badge">Unknown</span>
+        </div>
+        <dl class="companion-grid">
+          <div><dt>Presence</dt><dd id="companion-presence">Unknown</dd></div>
+          <div><dt>Camera</dt><dd id="companion-camera">Unknown</dd></div>
+          <div><dt>Microphone</dt><dd id="companion-microphone">Unknown</dd></div>
+        </dl>
+        <div class="companion-look">
+          <div class="presence-controls">
+            <label class="checkbox-row"><input type="checkbox" id="presence-enabled" />
+              <span><strong>Notice room presence</strong><small>Use the trusted sensor, without identifying anyone.</small></span></label>
+            <label class="checkbox-row"><input type="checkbox" id="presence-acknowledgement-enabled" />
+              <span><strong>Acknowledge arrivals silently</strong><small>One small head movement when already Awake; never wakes or powers motors.</small></span></label>
+          </div>
+          <p id="presence-message" class="message" role="status" aria-live="polite"></p>
+          <label for="companion-question">Look at this</label>
+          <div class="companion-look-row">
+            <input id="companion-question" type="text" maxlength="500" placeholder="What does this say?" autocomplete="off" />
+            <button type="button" id="companion-look" disabled>Look</button>
+            <button type="button" id="companion-follow-up" class="secondary" disabled>Ask about it</button>
+            <button type="button" id="companion-stop" class="danger">Stop</button>
+          </div>
+          <p id="companion-look-reason" class="muted compact-note">One explicit look takes one picture; no background sampling or upload.</p>
+          <p id="companion-answer" class="quote" hidden></p>
+          <p id="companion-answer-meta" class="muted compact-note" hidden></p>
+        </div>
+        <section id="companion-private-details" hidden aria-label="Private accepted details">
+          <h3>For your eyes only</h3>
+          <p class="muted">Accepted private details stay on this owner screen, never spoken aloud.</p>
+          <ul id="companion-private-list"></ul>
+        </section>
+        <div class="companion-suggestions">
+          <label for="companion-suggestions-level">Suggestions
+            <select id="companion-suggestions-level">
+              <option value="off">Off</option>
+              <option value="gentle">Gentle</option>
+              <option value="more_often">More often</option>
+            </select>
+          </label>
+          <p id="companion-why" class="muted compact-note">Why: not checked yet.</p>
+          <p class="muted compact-note">Off disables unsolicited suggestions only. Conversation, timers and reminders you asked for still work.</p>
+        </div>
+        <details id="companion-details"><summary>Details and source enrollment</summary>
+          <p id="companion-sources-status" class="muted compact-note">Source catalog not loaded yet.</p>
+          <ul id="companion-setup-needed" class="presentation-requirements" aria-label="Host setup still needed"></ul>
+          <div id="companion-enroll" class="companion-enroll" hidden>
+            <p class="muted compact-note">Only already-authorized host identifiers are offered. Enrolling reads that one calendar or entity on the Hermes host; Reachy only receives rendered read-only offers. Nothing is enrolled until you save.</p>
+            <label>Calendar lead-time
+              <select id="companion-calendar"><option value="">None</option></select>
+            </label>
+            <label>Minutes before an event <input id="companion-calendar-lead" type="number" min="1" max="120" value="10" /></label>
+            <label>Calendar details
+              <select id="companion-calendar-disclosure">
+                <option value="private">Private · dashboard only (default)</option>
+                <option value="spoken">Spoken aloud in the room</option>
+              </select>
+            </label>
+            <label>Home Assistant condition
+              <select id="companion-device"><option value="">None</option></select>
+            </label>
+            <label>When its state equals <input id="companion-device-value" type="text" maxlength="32" placeholder="on" /></label>
+            <label>Reachy asks <input id="companion-device-offer" type="text" maxlength="180" placeholder="The washing machine seems finished; would you like to know when it stopped?" /></label>
+            <label>If you say yes, Reachy says <input id="companion-device-accepted" type="text" maxlength="240" placeholder="Okay. The washer reported done just now; nothing else was changed." /></label>
+            <div class="actions">
+              <button type="button" id="companion-enroll-save" class="secondary">Save enrollment</button>
+              <button type="button" id="companion-enroll-clear" class="secondary">Remove all sources</button>
+            </div>
+            <p id="companion-enroll-message" class="message" role="status" aria-live="polite"></p>
+          </div>
+          <ol id="companion-receipts" class="agent-activity"><li>No companion activity yet</li></ol>
+        </details>
+        <p id="companion-message" class="message" role="status" aria-live="polite"></p>
+      </section>
+      <details id="companion-advanced"><summary>Advanced companion controls and diagnostics</summary>
       <section class="card presence-card" aria-labelledby="presence-heading">
         <div class="section-heading">
           <div><p class="label">Presence</p><h2 id="presence-heading">Proactive Presence</h2></div>
           <span id="presence-badge" class="badge">Off</span>
         </div>
         <p class="muted">Reachy can accept trusted local presence signals and acknowledge them with one subtle movement when already Awake.</p>
-        <div class="presence-controls">
-          <label class="checkbox-row">
-            <input type="checkbox" id="presence-enabled" />
-            <span><strong>Notice trusted presence</strong><small>Identity-free, ephemeral state from Home Assistant, local voice, or validated gestures.</small></span>
-          </label>
-          <label class="checkbox-row">
-            <input type="checkbox" id="presence-acknowledgement-enabled" />
-            <span><strong>Silent acknowledgement</strong><small>Small cancellable head pose only. Never wakes Reachy or enables motors.</small></span>
-          </label>
-        </div>
+
         <div class="presence-status-grid">
           <div><span class="label">State</span><strong id="presence-level">Away</strong></div>
           <div><span class="label">Latest source</span><strong id="presence-source">None</strong></div>
           <div><span class="label">Last outcome</span><strong id="presence-outcome">Disabled</strong></div>
         </div>
         <p class="presence-boundary"><span aria-hidden="true">●</span> Silent acknowledgement only · no proactive speech</p>
-        <p id="presence-message" class="message" role="status" aria-live="polite"></p>
       </section>
 
       <section class="card initiative-card" aria-labelledby="initiative-heading">
@@ -404,6 +471,7 @@
         <p class="muted presentation-help">If Reachy notices a stable presented change, it may ask one bounded offer. Saying Yes only tells you to wake Reachy and explicitly ask it to look; that later request uses the existing one-frame cloud-vision path.</p>
         <p id="presentation-message" class="message" role="status" aria-live="polite"></p>
       </section>
+      </details>
 
       </div>
       <div id="agent-workspace-view" hidden>
@@ -1257,20 +1325,21 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=101"></script>
-  <script src="/static/scene.js?v=101"></script>
-  <script src="/static/motion.js?v=101"></script>
-  <script src="/static/onboarding.js?v=101"></script>
-  <script src="/static/owner.js?v=101"></script>
+  <script src="/static/notifications.js?v=102"></script>
+  <script src="/static/scene.js?v=102"></script>
+  <script src="/static/motion.js?v=102"></script>
+  <script src="/static/onboarding.js?v=102"></script>
+  <script src="/static/owner.js?v=102"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=101"></script>
-  <script src="/static/agent-connection.js?v=101"></script>
-  <script src="/static/native-workspace.js?v=101"></script>
-  <script src="/static/workspace.js?v=101"></script>
-  <script src="/static/ispy-input.js?v=101"></script>
-  <script src="/static/main.js?v=101"></script>
-  <script src="/static/updates.js?v=101"></script>
-  <script src="/static/volume.js?v=101"></script>
-  <script src="/static/assistant-modes.js?v=101"></script>
+  <script src="/static/camera.js?v=102"></script>
+  <script src="/static/agent-connection.js?v=102"></script>
+  <script src="/static/native-workspace.js?v=102"></script>
+  <script src="/static/workspace.js?v=102"></script>
+  <script src="/static/ispy-input.js?v=102"></script>
+  <script src="/static/companion.js?v=102"></script>
+  <script src="/static/main.js?v=102"></script>
+  <script src="/static/updates.js?v=102"></script>
+  <script src="/static/volume.js?v=102"></script>
+  <script src="/static/assistant-modes.js?v=102"></script>
 </body>
 </html>

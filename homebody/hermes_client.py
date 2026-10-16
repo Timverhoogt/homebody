@@ -14,6 +14,7 @@ import httpx
 
 from .config import AppConfig
 from .ispy import ISpyTarget, validate_ispy_target
+from .request_authority import Current, guarded_json_post, install_request_guard
 
 _LOGGER = logging.getLogger(__name__)
 # The bridge bounds one Kids chat turn at 25 s (stages included) and fixed-speech approval by a 6 s
@@ -70,6 +71,7 @@ class HermesBridgeClient:
         self.config = config
         self._client = client or httpx.Client(timeout=httpx.Timeout(90.0, connect=10.0), follow_redirects=False)
         self._owns_client = client is None
+        install_request_guard(self._client)
         self._session_id = self._new_session_id()
         self._last_turn_at = 0.0
         self.last_stt_provider = ""
@@ -411,7 +413,8 @@ class HermesBridgeClient:
         if action not in {"read", "show", "bind", "prepare", "approve", "stop", "cancel", "repositories"}:
             raise ValueError("unsupported native Workspace action")
         response = self._client.post(
-            f"{self.config.bridge_url}/v1/agent/native/{action}", headers=self._headers(),
+            f"{self.config.bridge_url}/v1/agent/native/{action}",
+            headers=self._headers(),
             json={**({"context": asdict(context)} if context is not None else {}), **fields},
         )
         self._raise_for_error(response, "Native Workspace")
@@ -577,25 +580,116 @@ class HermesBridgeClient:
         self.last_answer_source = {k: str(v)[:200] for k, v in source.items() if isinstance(v, str)}
         return text
 
+    def look(
+        self, frame: bytes, question: str, *, session_id: str = "", is_current: Current = None
+    ) -> dict[str, object]:
+        """Send exactly one explicitly requested frame for a bounded answer; the host chooses no fallback."""
+        if not frame or len(frame) > 1_000_000:
+            raise HermesBridgeError("Look frame bounds were not met")
+        response = guarded_json_post(
+            self._client,
+            f"{self.config.bridge_url}/v1/everyday/look",
+            headers=self._headers(),
+            current=is_current,
+            json={
+                "question": " ".join(question.split())[:500],
+                "frame_jpeg": base64.b64encode(frame).decode("ascii"),
+                "session_id": session_id[:96],
+                "language": self.config.language,
+            },
+            timeout=httpx.Timeout(45.0, connect=10.0),
+        )
+        self._raise_for_error(response, "Look")
+        payload = response.json()
+        text = str(payload.get("text") or "").strip() if isinstance(payload, dict) else ""
+        if not text:
+            raise HermesBridgeError("Hermes returned an empty look answer")
+        return {
+            "text": text[:1200],
+            "model": str(payload.get("model") or "")[:200],
+            "processing": str(payload.get("processing") or "unknown")[:64],
+        }
+
+    def look_follow_up(self, analysis: str, question: str, *, is_current: Current = None) -> str:
+        """Tool-free host answer about an earlier look's text analysis; no image, no tools, no memory."""
+        response = guarded_json_post(
+            self._client,
+            f"{self.config.bridge_url}/v1/everyday/look/follow-up",
+            headers=self._headers(),
+            current=is_current,
+            json={
+                "analysis": " ".join(analysis.split())[:1200],
+                "question": " ".join(question.split())[:500],
+                "language": self.config.language,
+            },
+            timeout=httpx.Timeout(30.0, connect=10.0),
+        )
+        self._raise_for_error(response, "Look follow-up")
+        payload = response.json()
+        text = str(payload.get("text") or "").strip() if isinstance(payload, dict) else ""
+        if not text or (isinstance(payload, dict) and payload.get("tool_free") is not True):
+            raise HermesBridgeError("Hermes returned an invalid look follow-up")
+        return text[:1200]
+
+    def companion_sources(self) -> dict[str, object]:
+        """Host-owned source catalog and current enrollment (exact IDs and friendly labels only)."""
+        response = self._client.get(
+            f"{self.config.bridge_url}/v1/companion/sources", headers=self._headers(), timeout=10.0
+        )
+        self._raise_for_error(response, "Companion sources")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise HermesBridgeError("Hermes returned an invalid companion source catalog")
+        return payload
+
+    def enroll_companion_sources(self, enrollment: dict[str, object]) -> dict[str, object]:
+        """Write the host-owned enrollment (validated on the host); returns the resulting catalog."""
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/companion/sources",
+            headers=self._headers(),
+            json=enrollment,
+            timeout=10.0,
+        )
+        self._raise_for_error(response, "Companion source enrollment")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise HermesBridgeError("Hermes returned an invalid companion enrollment result")
+        return payload
+
     def everyday_turn(
-        self, transcript: str, *, context: AgentBrokerContext | None = None,
-        local_tools: list[str] | None = None, local_executor=None, is_current=lambda: True,
+        self,
+        transcript: str,
+        *,
+        context: AgentBrokerContext | None = None,
+        local_tools: list[str] | None = None,
+        local_executor=None,
+        is_current=lambda: True,
     ) -> str:
         """Fast Everyday turn on the host's narrow backend; never the full Hermes agent."""
         self._rotate_session_if_stale()
         if local_executor is not None and context is not None:
             from .everyday_client import everyday_session
+
             text = everyday_session(
-                self.config, transcript, session_id=self._session_id, context=context,
-                local_tools=local_tools or [], executor=local_executor, is_current=is_current,
+                self.config,
+                transcript,
+                session_id=self._session_id,
+                context=context,
+                local_tools=local_tools or [],
+                executor=local_executor,
+                is_current=is_current,
             )
             self.last_answer_source = {"kind": "everyday"}
             return text
         response = self._client.post(
             f"{self.config.bridge_url}/v1/everyday/turn",
             headers=self._headers(),
-            json={"text": transcript, "language": self.config.language, "session_id": self._session_id,
-                  **({"agent_context": asdict(context)} if context is not None else {})},
+            json={
+                "text": transcript,
+                "language": self.config.language,
+                "session_id": self._session_id,
+                **({"agent_context": asdict(context)} if context is not None else {}),
+            },
             timeout=httpx.Timeout(30.0, connect=10.0),
         )
         self._raise_for_error(response, "Everyday response")
@@ -610,9 +704,14 @@ class HermesBridgeClient:
         if not jpeg or len(jpeg) > 1_000_000 or not isinstance(purpose, str) or not 1 <= len(purpose) <= 300:
             raise HermesBridgeError("Everyday vision input exceeded its bounds")
         response = self._client.post(
-            f"{self.config.bridge_url}/v1/everyday/vision", headers=self._headers(),
-            json={"image": base64.b64encode(jpeg).decode("ascii"), "purpose": purpose,
-                  "agent_context": asdict(context)}, timeout=httpx.Timeout(15.0, connect=5.0),
+            f"{self.config.bridge_url}/v1/everyday/vision",
+            headers=self._headers(),
+            json={
+                "image": base64.b64encode(jpeg).decode("ascii"),
+                "purpose": purpose,
+                "agent_context": asdict(context),
+            },
+            timeout=httpx.Timeout(15.0, connect=5.0),
         )
         self._raise_for_error(response, "Everyday vision")
         payload = response.json()

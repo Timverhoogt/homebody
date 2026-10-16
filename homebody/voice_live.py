@@ -11,9 +11,11 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 
 from .audio import resample_linear
 from .config import AppConfig
+from .everyday_runtime import EverydayCallbackScope
 from .kids_acknowledgements import output_quarantined
 from .live_client import LiveBridgeSession
 from .realtime_client import RealtimeBridgeError
@@ -36,8 +38,14 @@ class LiveVoiceMixin:
         if output_quarantined(self):
             return  # direct entry: same common audio-quarantine gate as the dispatcher
         local_closed = threading.Event()
-        original_fence = (self.everyday_tool_fence(local_closed)
-                          if callable(getattr(self, "everyday_tool_fence", None)) else None)
+        original_fence = (
+            self.everyday_tool_fence(local_closed) if callable(getattr(self, "everyday_tool_fence", None)) else None
+        )
+        look_authority = (
+            self._companion_authority("voice", lambda: not local_closed.is_set() and not self._turn_stop_requested())
+            if original_fence is not None
+            else None
+        )
         broker_context = self.agent_broker_context(explicit_private_intent=False)
         agent_request_id = ""
         if broker_context.capability_profile == "agent":
@@ -51,8 +59,9 @@ class LiveVoiceMixin:
         try:
             self._play_asset("listening.wav")
             self._discard_audio(0.34)
-            self._set_status("connecting_realtime", "Opening GPT-Live preview session", bridge_healthy=True,
-                             last_error="")
+            self._set_status(
+                "connecting_realtime", "Opening GPT-Live preview session", bridge_healthy=True, last_error=""
+            )
             session.start()
             pending = session.wait_started()
             timings.mark("session_ready")
@@ -62,11 +71,20 @@ class LiveVoiceMixin:
             self._set_status("listening", "GPT-Live session active")
             if self._motion is not None:
                 self._motion.listening()
-            self._live_loop(config, session, pending, mode, workspace_generation, original_fence=original_fence)
+            self._live_loop(
+                config,
+                session,
+                pending,
+                mode,
+                workspace_generation,
+                original_fence=original_fence,
+                look_authority=look_authority,
+            )
             completed = True
         finally:
             # Local Stop wins: flush the speaker before any cloud finalization can fail or stall.
             local_closed.set()
+            self._end_companion_voice()
             self._clear_streamed_audio()
             session.close()
             timings.end()
@@ -74,17 +92,80 @@ class LiveVoiceMixin:
             if agent_request_id:
                 self._finish_agent_request(agent_request_id, broker_context.session_generation, succeeded=completed)
 
-    def _live_loop(self, config, session, pending, mode, workspace_generation, *, original_fence=None) -> None:
+    def _start_live_look(
+        self,
+        session: LiveBridgeSession,
+        delegation_id: str,
+        question: str,
+        *,
+        follow_up: bool = False,
+        authority: Callable[[], bool] | None = None,
+    ) -> None:
+        from .companion import CompanionAuthority, LookCancelled
+
+        if not delegation_id or not question:
+            return
+        original_authority = self._companion_authority("voice", authority)
+        guard = CompanionAuthority(
+            original_authority.identity,
+            "voice",
+            lambda: not self._turn_stop_requested() and original_authority(),
+        )
+        if not guard():
+            return
+        self._set_status("looking", "Looking at what you are showing")
+
+        def run() -> None:
+            if not guard():
+                return  # A queued worker cannot adopt a Stop or a later wake's authority.
+            try:
+                operation = self.follow_up_look if follow_up else self.look_at_this
+                seen = operation(question, origin="voice", authority=guard)
+            except LookCancelled:
+                return  # Stop/privacy/Kids/profile won: silent
+            except (RuntimeError, ValueError) as exc:
+                _LOGGER.info("Live look could not be answered (%s)", type(exc).__name__)
+                if not guard():
+                    return
+                try:
+                    session.send_look_result(delegation_id, error="look_failed")
+                except Exception:
+                    _LOGGER.debug("Could not report the Live look failure", exc_info=True)
+                return
+            if not self._companion_result_current(seen, guard):
+                return
+            try:
+                session.send_look_result(delegation_id, text=str(seen["answer"]))
+            except Exception:
+                _LOGGER.debug("Could not deliver the Live look answer", exc_info=True)
+
+        import threading
+
+        threading.Thread(target=run, name="reachy-live-look", daemon=True).start()
+
+    def _live_loop(
+        self, config, session, pending, mode, workspace_generation, *, original_fence=None, look_authority=None
+    ) -> None:
         closed = original_fence.cancelled if original_fence is not None else threading.Event()
+        if look_authority is None and callable(getattr(self, "everyday_tool_fence", None)):
+            # Direct loop entry must freeze its scope before the first blocking microphone read too.
+            look_authority = self._companion_authority(
+                "voice", lambda: not closed.is_set() and not self._turn_stop_requested()
+            )
         fence = original_fence if mode == "everyday" else None
         try:
-            self._live_loop_with_tools(config, session, pending, mode, workspace_generation, closed, fence)
+            self._live_loop_with_tools(
+                config, session, pending, mode, workspace_generation, closed, fence, look_authority
+            )
         finally:
             closed.set()
 
-    def _live_loop_with_tools(self, config, session, pending, mode, workspace_generation, closed, fence) -> None:
+    def _live_loop_with_tools(
+        self, config, session, pending, mode, workspace_generation, closed, fence, look_authority
+    ) -> None:
         timings = self._voice_timings
         seen_local = set()
+        visual = threading.Event()
         playback = RealtimePlayback()
         speaking = False
         heard: list[str] = []
@@ -99,10 +180,14 @@ class LiveVoiceMixin:
                 _LOGGER.info("Live conversation closed after inactivity timeout")
                 return
             frame = self._read_16k_frame()
+            if self._turn_stop_requested() or self._privacy_requested.is_set() or self.stop_event.is_set():
+                return
             if frame is not None and (config.barge_in_enabled or not playback.audible(now)):
                 session.send_audio(resample_linear(frame, 16000, 24000))
             events, pending = pending + session.events(), []
             for event in events:
+                if self._turn_stop_requested() or self._privacy_requested.is_set() or self.stop_event.is_set():
+                    return
                 kind, payload = event.type, event.payload
                 if kind == "bridge.error":
                     raise RealtimeBridgeError(str(payload.get("error") or "Live session failed"))
@@ -110,20 +195,32 @@ class LiveVoiceMixin:
                     return
                 if kind == "everyday.tool_call":
                     identifier = payload.get("call_id")
-                    if (fence is None or not isinstance(identifier, str) or not 1 <= len(identifier) <= 128
-                            or identifier in seen_local or len(seen_local) >= 128):
+                    if (
+                        fence is None
+                        or not isinstance(identifier, str)
+                        or not 1 <= len(identifier) <= 128
+                        or identifier in seen_local
+                        or len(seen_local) >= 128
+                    ):
                         raise RealtimeBridgeError("Invalid or replayed Everyday action")
                     seen_local.add(identifier)
+                    # Camera admission comes from this turn's own transcript, never the model's choice;
+                    # once a look's analysis entered this session, no callback is dispatched or delivered.
                     self.launch_everyday_tool(
-                        payload.get("name"), payload.get("arguments"), fence=fence, call_id=identifier,
+                        payload.get("name"),
+                        payload.get("arguments"),
+                        fence=fence,
+                        call_id=identifier,
                         deliver=lambda result, call_id=identifier: session.send_everyday_result(call_id, result),
                         is_current=lambda: not closed.is_set() and not self._turn_stop_requested(),
+                        scope=EverydayCallbackScope(transcript="".join(heard), visual=visual),
                     )
                 elif kind == "session.input_transcript.delta":
                     last_activity = time.monotonic()
                     heard.append(str(payload.get("delta") or ""))
-                    self._set_status("thinking", "Listening", transcript="".join(heard)[-240:].strip(),
-                                     stt_provider="openai-live")
+                    self._set_status(
+                        "thinking", "Listening", transcript="".join(heard)[-240:].strip(), stt_provider="openai-live"
+                    )
                 elif kind == "session.output_transcript.delta":
                     said.append(str(payload.get("delta") or ""))
                     self._set_status("speaking", "GPT-Live is speaking", response_preview="".join(said)[-240:])
@@ -136,6 +233,18 @@ class LiveVoiceMixin:
                         timings.mark("tool_result")  # backend returned; only "answered" is a verified reply
                         if state == "not_ready":
                             self._set_status("thinking", "Project session not open")
+                elif kind in {"bridge.look_request", "bridge.look_follow_up_request"}:
+                    # The host recognised a deliberate spoken look request in this turn's own words.
+                    # The look runs through the same fenced orchestration as the phone entry, off this
+                    # loop so audio and Stop stay responsive; only text goes back, never a frame.
+                    visual.set()
+                    self._start_live_look(
+                        session,
+                        str(payload.get("delegation_id") or ""),
+                        str(payload.get("question") or ""),
+                        follow_up=kind == "bridge.look_follow_up_request",
+                        authority=look_authority,
+                    )
                 elif kind == "session.output_audio.delta":
                     audio = session.audio_samples(event)
                     if not audio.size:

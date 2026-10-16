@@ -85,9 +85,7 @@ def test_safe_awake_presence_queues_cancellable_action_then_obeys_cooldown() -> 
 
     queued = runtime.observe_presence(signal())
 
-    assert actions.queued == [
-        ("acknowledge_presence", {"direction_degrees": 18.0}, True, True)
-    ]
+    assert actions.queued == [("acknowledge_presence", {"direction_degrees": 18.0}, True, True)]
     assert queued["last_outcome"] == "acknowledgement_queued"
     assert queued["acknowledgements"] == 0
     assert runtime._presence_action_active.is_set()
@@ -103,7 +101,11 @@ def test_safe_awake_presence_queues_cancellable_action_then_obeys_cooldown() -> 
     assert motion.resume_calls == 1
     assert completed["last_outcome"] == "acknowledged_silently"
     assert completed["acknowledgements"] == 1
-    assert second["last_outcome"] == "cooldown"
+    # Holistic companion design: a re-sent occupied state is not a second arrival, so it is
+    # suppressed as "already_present" before the cooldown is even consulted (no motion either way).
+    assert second["last_outcome"] == "already_present"
+    assert runtime.observe_presence(PresenceObservation(source="home_assistant", occupied=False))["level"] == "away"
+    assert runtime.observe_presence(signal())["last_outcome"] == "cooldown"
     assert second["speech_enabled"] is False
     assert len(actions.queued) == 1
 
@@ -197,6 +199,11 @@ def contextual_offer() -> ContextualOffer:
     )
 
 
+def present(runtime: HermesVoiceRuntime) -> None:
+    # Holistic companion design: unsolicited offers need reliable evidence that someone is there.
+    runtime.observe_presence(PresenceObservation(source="home_assistant", occupied=True), allow_acknowledgement=False)
+
+
 def test_goal_3_queues_one_offer_and_commits_budget_without_action() -> None:
     runtime, _motion, actions = make_runtime(
         initiative_policy_enabled=True,
@@ -206,6 +213,7 @@ def test_goal_3_queues_one_offer_and_commits_budget_without_action() -> None:
     )
     runtime._capability_profile = "agent"
     runtime._announcement_worker = object()  # type: ignore[assignment]
+    present(runtime)
 
     result = runtime.submit_contextual_offer(contextual_offer())
     announcement = runtime._announcement_queue.get_nowait()
@@ -231,6 +239,7 @@ def test_goal_3_phone_yes_is_single_use_and_only_queues_read_only_speech() -> No
     )
     runtime._capability_profile = "agent"
     runtime._announcement_worker = object()  # type: ignore[assignment]
+    present(runtime)
     submitted = runtime.submit_contextual_offer(contextual_offer())
     runtime._announcement_queue.get_nowait()
     token = submitted["token"]
@@ -275,6 +284,7 @@ def test_disabling_goal_3_cancels_pending_offer_without_clearing_other_announcem
     )
     runtime._capability_profile = "agent"
     runtime._announcement_worker = object()  # type: ignore[assignment]
+    present(runtime)
     submitted = runtime.submit_contextual_offer(contextual_offer())
     runtime.queue_announcement("Keep this normal announcement", behavior="voice_only")
 

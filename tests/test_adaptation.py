@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from test_initiative import Clock, settings
-from test_presence_runtime import contextual_offer, make_runtime
+from test_presence_runtime import contextual_offer, make_runtime, present
 
 from homebody.adaptation import HALF_LIFE_SECONDS, SNOOZE_SECONDS, PreferenceLedger
 from homebody.initiative import InitiativeCandidate, InitiativePolicy
@@ -166,7 +166,13 @@ def test_ledger_persists_only_counters_and_survives_corruption(tmp_path: Path) -
     stored = json.loads(path.read_text())
     assert set(stored) == {"calendar", "presence"}
     assert set(stored["calendar"]) == {
-        "welcomed", "dismissed", "snoozed", "band_dismissals", "snoozed_until", "disabled", "updated_at"
+        "welcomed",
+        "dismissed",
+        "snoozed",
+        "band_dismissals",
+        "snoozed_until",
+        "disabled",
+        "updated_at",
     }
     reloaded = ledger(clock, path)
     assert reloaded.suppression_reason("presence") == "category_disabled"
@@ -188,6 +194,7 @@ def test_runtime_offer_responses_feed_the_ledger_and_later_adds_no_dismissal_bac
     )
     runtime._capability_profile = "agent"
     runtime._announcement_worker = object()  # type: ignore[assignment]
+    present(runtime)  # holistic companion: unsolicited offers need present occupancy
 
     def offer_and_answer(answer: str) -> None:
         submitted = runtime.submit_contextual_offer(contextual_offer())

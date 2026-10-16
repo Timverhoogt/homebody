@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .config import AppConfig
+from .look_intent import requests_camera_session
 
 
 def local_specs() -> list[dict]:
@@ -56,11 +57,41 @@ def configured_local_tools(config: AppConfig) -> list[str]:
     return names
 
 
+GENERIC_CAPTURE_REFUSAL = (
+    "Model-selected camera captures are refused; nothing was captured. "
+    "Ask Reachy directly, for example 'look at this', for one fresh look."
+)
+
+
+@dataclass
+class EverydayCallbackScope:
+    """What the person's own words admitted for model-selected callbacks in one voice session.
+
+    Model tool choice, arguments or purpose are never camera consent. ``transcript`` is the
+    actual current user transcript; ``visual`` is set once image analysis entered the model
+    conversation, after which no further household/status/robot callback is dispatched.
+    """
+
+    transcript: str = ""
+    visual: threading.Event | None = field(default=None, compare=False)
+
+    def refusal(self, name: object) -> str:
+        if self.visual is not None and self.visual.is_set() and name != "stop_reachy_camera":
+            return "Looking together is tool-free; Stop and wake again for other help"
+        if name == "capture_reachy_camera":
+            return GENERIC_CAPTURE_REFUSAL
+        if name == "start_reachy_camera" and not requests_camera_session(self.transcript):
+            return "Ask explicitly to turn the camera on; nothing was started or captured."
+        return ""
+
+
 @dataclass(frozen=True)
 class EverydayFence:
     stop_generation: int
     agent_generation: int
     cancelled: threading.Event | None = field(default=None, compare=False, hash=False)
+    # Camera Stop invalidates old camera requests, without retiring unrelated tools.
+    camera_generation: int = field(default=0, compare=False)
 
 
 class _ActionCancellation:
@@ -87,6 +118,9 @@ class EverydayRuntimeMixin:
         with self._everyday_lock:
             self._everyday_camera_until = 0.0
             self._everyday_camera_generation += 1
+        teardown = getattr(self, "_companion_teardown", None)
+        if callable(teardown):
+            teardown("camera_session_stopped")
 
     def _revoke_everyday_actions(self) -> None:
         with self._everyday_lock:
@@ -101,7 +135,9 @@ class EverydayRuntimeMixin:
             stop = self._conversation_stop_generation
         with self._agent_lock:
             agent = self._agent_session_generation
-        return EverydayFence(stop, agent, cancelled)
+        with self._everyday_lock:
+            camera = self._everyday_camera_generation
+        return EverydayFence(stop, agent, cancelled, camera)
 
     def _require_everyday_current(self, fence: EverydayFence) -> AppConfig:
         if (
@@ -228,7 +264,7 @@ class EverydayRuntimeMixin:
                 }
             if name in {"start_reachy_camera", "capture_reachy_camera"}:
                 with self._everyday_lock:
-                    camera_generation = self._everyday_camera_generation
+                    camera_generation = fence.camera_generation
                     camera_deadline = self._everyday_camera_until
                     if camera_deadline <= time.monotonic():
                         camera_deadline = 0.0  # A fresh explicit one-shot look does not need a window.
@@ -251,6 +287,8 @@ class EverydayRuntimeMixin:
                 with self._everyday_lock:
                     self._everyday_camera_busy += 1
                 try:
+                    # For start this is only a local readiness probe: the frame is dropped on the robot,
+                    # never analysed or uploaded. Voice callbacks reach here via execute_everyday_callback.
                     jpeg = self._capture_camera_jpeg(adult_current=current)
                     current()
                     with self._status_lock:
@@ -363,6 +401,26 @@ class EverydayRuntimeMixin:
             with self._everyday_lock:
                 self._everyday_pending.discard(cancelled)
 
+    def execute_everyday_callback(
+        self,
+        name: str,
+        arguments: object,
+        *,
+        scope: EverydayCallbackScope,
+        fence: EverydayFence | None = None,
+        call_id: str = "",
+    ) -> dict[str, object]:
+        """Admit one model-selected callback against the person's own words before any device work.
+
+        Explicit visual help is the Companion look route in every engine; a model-selected
+        capture never reaches the camera here, and starting the temporary window needs the
+        person to have asked for it in this transcript.
+        """
+        refusal = scope.refusal(name)
+        if refusal:
+            return {"ok": False, "verified": False, "error": refusal}
+        return self.execute_everyday_tool(name, arguments, fence=fence, call_id=call_id)
+
     def launch_everyday_tool(
         self,
         name: str,
@@ -372,11 +430,19 @@ class EverydayRuntimeMixin:
         call_id: str,
         deliver: Callable[[dict[str, object]], None],
         is_current: Callable[[], bool],
+        scope: EverydayCallbackScope | None = None,
     ) -> threading.Thread | None:
         """Keep camera/network/movement work off the live microphone pump."""
+        # Without the caller's actual transcript no camera callback is ever admitted.
+        scope = scope if scope is not None else EverydayCallbackScope()
+        refusal = scope.refusal(name)
+        if refusal:
+            if is_current():
+                deliver({"ok": False, "verified": False, "error": refusal})
+            return None
         if name in {"get_reachy_status", "stop_reachy_camera"}:
             if is_current():
-                result = self.execute_everyday_tool(name, args, fence=fence, call_id=call_id)
+                result = self.execute_everyday_callback(name, args, scope=scope, fence=fence, call_id=call_id)
                 if is_current():
                     deliver(result)
             return None
@@ -389,7 +455,7 @@ class EverydayRuntimeMixin:
             try:
                 if not is_current():
                     return
-                result = self.execute_everyday_tool(name, args, fence=fence, call_id=call_id)
+                result = self.execute_everyday_callback(name, args, scope=scope, fence=fence, call_id=call_id)
                 if is_current():
                     deliver(result)
             finally:
