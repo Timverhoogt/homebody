@@ -509,9 +509,20 @@ class HermesBridgeClient:
         self.last_answer_source = {k: str(v)[:200] for k, v in source.items() if isinstance(v, str)}
         return text
 
-    def everyday_turn(self, transcript: str, *, context: AgentBrokerContext | None = None) -> str:
+    def everyday_turn(
+        self, transcript: str, *, context: AgentBrokerContext | None = None,
+        local_tools: list[str] | None = None, local_executor=None, is_current=lambda: True,
+    ) -> str:
         """Fast Everyday turn on the host's narrow backend; never the full Hermes agent."""
         self._rotate_session_if_stale()
+        if local_executor is not None and context is not None:
+            from .everyday_client import everyday_session
+            text = everyday_session(
+                self.config, transcript, session_id=self._session_id, context=context,
+                local_tools=local_tools or [], executor=local_executor, is_current=is_current,
+            )
+            self.last_answer_source = {"kind": "everyday"}
+            return text
         response = self._client.post(
             f"{self.config.bridge_url}/v1/everyday/turn",
             headers=self._headers(),
@@ -526,6 +537,21 @@ class HermesBridgeClient:
             raise HermesBridgeError("Everyday returned an empty response")
         self.last_answer_source = {"kind": "everyday"}
         return text
+
+    def everyday_vision(self, jpeg: bytes, purpose: str, *, context: AgentBrokerContext) -> str:
+        if not jpeg or len(jpeg) > 1_000_000 or not isinstance(purpose, str) or not 1 <= len(purpose) <= 300:
+            raise HermesBridgeError("Everyday vision input exceeded its bounds")
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/everyday/vision", headers=self._headers(),
+            json={"image": base64.b64encode(jpeg).decode("ascii"), "purpose": purpose,
+                  "agent_context": asdict(context)}, timeout=httpx.Timeout(15.0, connect=5.0),
+        )
+        self._raise_for_error(response, "Everyday vision")
+        payload = response.json()
+        text = payload.get("text") if isinstance(payload, dict) else None
+        if not isinstance(text, str) or not text.strip():
+            raise HermesBridgeError("Everyday vision returned no answer")
+        return text[:4000].strip()
 
     def everyday_capabilities(self) -> dict[str, object]:
         response = self._client.get(
