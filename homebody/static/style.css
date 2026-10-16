@@ -609,6 +609,26 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .presence-status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
 .presence-status-grid > div { min-width: 0; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--paper-2); }
 .presence-status-grid strong { display: block; margin-top: 4px; overflow-wrap: anywhere; font-size: .86rem; }
+.companion-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0 0; }
+.companion-grid > div { min-width: 0; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--paper-2); }
+.companion-grid dt { font-size: .68rem; color: var(--muted); font-family: var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+.companion-grid dd { margin: 4px 0 0; font-size: .86rem; font-weight: 600; overflow-wrap: anywhere; }
+.companion-look { margin-top: 14px; }
+.companion-card button { min-height: 48px; }
+#companion-advanced > summary { min-height: 48px; display: flex; align-items: center; cursor: pointer; }
+.companion-look-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; }
+.companion-look-row input { min-width: 0; }
+.companion-suggestions { margin-top: 14px; }
+.companion-suggestions label { display: flex; align-items: center; gap: 10px; }
+#companion-answer { margin: 10px 0 0; white-space: pre-wrap; }
+.companion-enroll { display: grid; gap: 10px; margin: 12px 0; }
+.companion-enroll label { display: grid; gap: 4px; font-size: .86rem; }
+.companion-enroll input, .companion-enroll select { min-width: 0; }
+@media (max-width: 520px) {
+  .companion-grid { grid-template-columns: 1fr; }
+  .companion-look-row { grid-template-columns: 1fr 1fr; }
+  .companion-look-row input { grid-column: 1 / -1; }
+}
 .presence-boundary { margin: 12px 0 0; color: var(--muted); font-family: var(--mono); font-size: .68rem; font-weight: 500; letter-spacing: .04em; }
 .presence-boundary span { margin-right: 6px; color: var(--ok); font-size: .58rem; vertical-align: 1px; }
 .initiative-primary-controls { display: grid; grid-template-columns: 1.5fr 1fr; gap: 10px; margin-top: 16px; align-items: stretch; }

@@ -213,9 +213,7 @@ def test_spoken_contextual_offer_accepts_one_bounded_yes_without_agent_action() 
 
 def test_shutdown_cancellation_prevents_post_shutdown_restore(monkeypatch: pytest.MonkeyPatch) -> None:
     stop_event = threading.Event()
-    runtime = HermesVoiceRuntime(
-        FakeRobot(), stop_event, config_loader=lambda: AppConfig(api_key="test-key")
-    )
+    runtime = HermesVoiceRuntime(FakeRobot(), stop_event, config_loader=lambda: AppConfig(api_key="test-key"))
     runtime._audio_ready = True
     synthesis_started = threading.Event()
     release_synthesis = threading.Event()
@@ -259,18 +257,14 @@ def test_shutdown_cancellation_prevents_post_shutdown_restore(monkeypatch: pytes
 
 def test_long_announcement_duration_is_not_truncated_to_short_voice_limit(tmp_path: Path) -> None:
     missing_audio = tmp_path / "missing.mp3"
-    duration = HermesVoiceRuntime._announcement_audio_duration(
-        missing_audio, fallback_text="x" * 15_000
-    )
+    duration = HermesVoiceRuntime._announcement_audio_duration(missing_audio, fallback_text="x" * 15_000)
 
     assert duration > 1_000
 
 
 def test_wake_and_return_restoration_preserves_following_queue(monkeypatch: pytest.MonkeyPatch) -> None:
     stop_event = threading.Event()
-    runtime = HermesVoiceRuntime(
-        FakeRobot(), stop_event, config_loader=lambda: AppConfig(api_key="test-key")
-    )
+    runtime = HermesVoiceRuntime(FakeRobot(), stop_event, config_loader=lambda: AppConfig(api_key="test-key"))
     runtime._audio_ready = True
     played: list[str] = []
 
@@ -356,9 +350,7 @@ def test_worker_synthesizes_once_and_repeats_serially(monkeypatch: pytest.Monkey
 
 def test_privacy_transition_wins_over_wake_and_return(monkeypatch: pytest.MonkeyPatch) -> None:
     stop_event = threading.Event()
-    runtime = HermesVoiceRuntime(
-        FakeRobot(), stop_event, config_loader=lambda: AppConfig(api_key="test-key")
-    )
+    runtime = HermesVoiceRuntime(FakeRobot(), stop_event, config_loader=lambda: AppConfig(api_key="test-key"))
     runtime._audio_ready = True
 
     class FakeClient:
@@ -432,9 +424,11 @@ def test_announcement_ui_exposes_full_tts_controls_and_private_routes() -> None:
     assert 'fetch("/api/announcements/stop"' in main
     assert "homebody-announcement-draft" in main
     assert "window.sessionStorage" in main
-    assert "window.localStorage.setItem(\"homebody-announcement-draft\"" not in main
+    assert 'window.localStorage.setItem("homebody-announcement-draft"' not in main
     assert 'id="announcement-live"' in html
     assert 'role="alert"' in html
     assert "Voice only · do not change power state" in html
     assert "homebody-shell-v" in worker
-    assert "/static/main.js?v=99" in html
+    # Asset/cache revision advanced together with the Companion card (companion.js) in v100.
+    assert "/static/main.js?v=100" in html
+    assert "/static/companion.js?v=100" in html

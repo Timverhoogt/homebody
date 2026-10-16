@@ -34,6 +34,12 @@ def test_presence_state_exposes_only_sanitized_bounded_fields() -> None:
         "direction_degrees": 22.2,
         "confidence": 0.877,
         "observed_seconds_ago": 0,
+        # Holistic companion design: source health is reported separately from occupancy.
+        "occupancy": "present",
+        "source_health": "fresh",
+        "source_seen_seconds_ago": 0,
+        "source_unavailable_reason": "",
+        "stale_after_seconds": 45,
         "last_outcome": "observed",
         "acknowledged_seconds_ago": None,
         "acknowledgements": 0,
@@ -106,9 +112,7 @@ def test_disabled_status_hides_latest_presence_observation() -> None:
 
 def test_away_signal_clears_direction_and_suppresses_acknowledgement() -> None:
     state = PresenceState(clock=Clock())
-    state.observe(
-        PresenceObservation(source="home_assistant", occupied=True, direction_degrees=-30.0)
-    )
+    state.observe(PresenceObservation(source="home_assistant", occupied=True, direction_degrees=-30.0))
     state.observe(PresenceObservation(source="home_assistant", occupied=False))
 
     payload = state.public_status(enabled=True)

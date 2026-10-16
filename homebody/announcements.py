@@ -234,9 +234,11 @@ class AnnouncementsMixin:
                             owns_voice_activity=True,
                             owns_announcement=True,
                         )
-                        with self._agent_lock:
-                            agent_active = self._capability_profile == "agent"
-                        if reason or not config.contextual_offers_enabled or not agent_active:
+                        project_blocked = False
+                        if self._contextual_offers.current_offer(item.contextual_offer_token).source == "project":
+                            with self._agent_lock:
+                                project_blocked = self._capability_profile != "agent"
+                        if reason or not config.contextual_offers_enabled or project_blocked:
                             blocked_reason = reason or (
                                 "contextual_offers_disabled"
                                 if not config.contextual_offers_enabled

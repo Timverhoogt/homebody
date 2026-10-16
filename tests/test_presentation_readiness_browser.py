@@ -12,6 +12,13 @@ from test_assistant_modes_browser import ui  # noqa: F401  (shared real-page fix
 SHOTS = Path(__file__).resolve().parents[1] / ".artifacts" / "browser-screens" / "workspace-live-repair"
 
 
+@pytest.fixture(autouse=True)
+def open_legacy_companion_diagnostics(request):
+    # These cases test the retained advanced detector, not the new primary one-look flow.
+    page, *_ = request.getfixturevalue("ui")
+    page.evaluate("document.getElementById('companion-advanced').open = true")
+
+
 def needs(page):
     return page.eval_on_selector_all("#presentation-requirements li", "rows => rows.map(r => r.dataset.need)")
 
@@ -28,11 +35,17 @@ def quiesce(page):
 
 def user_reported_state(state):
     """Shared physical context on (20 s), everything else at its default; Hermes reachable."""
-    state["config"].update(shared_physical_context_enabled=True, presentation_window_seconds=20,
-                           proactive_presence_enabled=False, camera_enabled=False,
-                           initiative_policy_enabled=False, contextual_offers_enabled=False)
-    state["runtime"].update(power_mode="standby", motors_enabled=False,
-                            shared_physical_context={"state": "disabled", "reason": "none"})
+    state["config"].update(
+        shared_physical_context_enabled=True,
+        presentation_window_seconds=20,
+        proactive_presence_enabled=False,
+        camera_enabled=False,
+        initiative_policy_enabled=False,
+        contextual_offers_enabled=False,
+    )
+    state["runtime"].update(
+        power_mode="standby", motors_enabled=False, shared_physical_context={"state": "disabled", "reason": "none"}
+    )
 
 
 @pytest.mark.parametrize("width", [390, 1440])

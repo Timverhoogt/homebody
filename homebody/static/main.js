@@ -926,6 +926,7 @@ function updateStatus(payload, sequence = statusSequence) {
     state, powerMode: runtime.power_mode || "", kidsActive: kidsActive || kidsLocked, offline: sceneOffline, sttLocality,
   }));
   window.HomebodyWorkspace?.update(runtime);
+  window.HomebodyCompanion?.update(payload);
   window.HomebodyVolume?.update(runtime);
   window.HomebodyNotifications.setSuppressed("kids", kidsLocked);
   const agent = runtime.agent || {};
@@ -1429,6 +1430,7 @@ async function refreshStatus() {
     statusRefreshHealthy = false;
     window.HomebodyWorkspace?.reset("Reachy is unreachable; conversation hidden.");
     window.HomebodyAgentConnection?.offline();
+    window.HomebodyCompanion?.offline();
     window.HomebodyVolume?.offline();
     window.HomebodyAssistantModes?.offline();
     if (window.ReachyCamera?.isActive()) {

@@ -23,6 +23,7 @@ from .safety_gate import CAMERA_CAPTURE_POLICY, GESTURE_POLICY
 # Keep the runtime logger name so existing log filters still match these lines.
 _LOGGER = logging.getLogger("homebody.runtime")
 
+
 def doa_yaw_degrees(angle_radians: float) -> float:
     """Convert XVF3800 DOA coordinates to a conservative Reachy head yaw."""
     yaw = -(math.degrees(angle_radians) - 90.0) * 0.8
@@ -90,7 +91,12 @@ class VisionMixin:
         _LOGGER.info("Local vision answered in %s ms with %s", result["latency_ms"], result["model"])
         return result
 
-    def _capture_camera_jpeg(self, *, kids_generation: int | None = None) -> bytes:
+    def _capture_camera_jpeg(
+        self,
+        *,
+        kids_generation: int | None = None,
+        is_current: Callable[[], bool] | None = None,
+    ) -> bytes:
         media = getattr(self.robot, "media", None)
         capture = getattr(media, "get_frame_jpeg", None)
         if not callable(capture):
@@ -98,6 +104,10 @@ class VisionMixin:
 
         def assert_allowed() -> None:
             if self.stop_event.is_set():
+                raise RuntimeError("Camera capture was cancelled")
+            if is_current is not None and not is_current():
+                # The original request (Stop generation, owner, profile, permission) no longer holds:
+                # no frame is read, even while waiting for the camera or its reconnect.
                 raise RuntimeError("Camera capture was cancelled")
             if kids_generation is None:
                 self._assert_camera_allowed()
@@ -302,8 +312,9 @@ class VisionMixin:
             # The daemon runs the tracker; returning here proves only that the command was sent.
             _LOGGER.info("Local face tracking %s", "requested (daemon-side, unconfirmed)" if enabled else "disabled")
             if cache is not None and cache != "verified":
-                _LOGGER.warning("Pinned face model not verified in this app's cache (%s); see face-tracking docs",
-                                cache)
+                _LOGGER.warning(
+                    "Pinned face model not verified in this app's cache (%s); see face-tracking docs", cache
+                )
         except Exception as exc:
             self._face_tracking_active = False
             with self._status_lock:

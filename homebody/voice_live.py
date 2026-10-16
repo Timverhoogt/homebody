@@ -47,8 +47,9 @@ class LiveVoiceMixin:
         try:
             self._play_asset("listening.wav")
             self._discard_audio(0.34)
-            self._set_status("connecting_realtime", "Opening GPT-Live preview session", bridge_healthy=True,
-                             last_error="")
+            self._set_status(
+                "connecting_realtime", "Opening GPT-Live preview session", bridge_healthy=True, last_error=""
+            )
             session.start()
             pending = session.wait_started()
             timings.mark("session_ready")
@@ -62,12 +63,54 @@ class LiveVoiceMixin:
             completed = True
         finally:
             # Local Stop wins: flush the speaker before any cloud finalization can fail or stall.
+            self._end_companion_voice()
             self._clear_streamed_audio()
             session.close()
             timings.end()
             self._workspace_event(workspace_generation, "activity", "Live voice session ended")
             if agent_request_id:
                 self._finish_agent_request(agent_request_id, broker_context.session_generation, succeeded=completed)
+
+    def _start_live_look(
+        self,
+        session: LiveBridgeSession,
+        delegation_id: str,
+        question: str,
+        *,
+        follow_up: bool = False,
+    ) -> None:
+        from .companion import LookCancelled
+
+        if not delegation_id or not question:
+            return
+        authority = self._companion_authority("voice")
+        self._set_status("looking", "Looking at what you are showing")
+
+        def run() -> None:
+            try:
+                operation = self.follow_up_look if follow_up else self.look_at_this
+                seen = operation(question, origin="voice", authority=authority)
+            except LookCancelled:
+                return  # Stop/privacy/Kids/profile won: silent
+            except (RuntimeError, ValueError) as exc:
+                _LOGGER.info("Live look could not be answered (%s)", type(exc).__name__)
+                if not authority():
+                    return
+                try:
+                    session.send_look_result(delegation_id, error="look_failed")
+                except Exception:
+                    _LOGGER.debug("Could not report the Live look failure", exc_info=True)
+                return
+            if not self._companion_result_current(seen, authority):
+                return
+            try:
+                session.send_look_result(delegation_id, text=str(seen["answer"]))
+            except Exception:
+                _LOGGER.debug("Could not deliver the Live look answer", exc_info=True)
+
+        import threading
+
+        threading.Thread(target=run, name="reachy-live-look", daemon=True).start()
 
     def _live_loop(self, config, session, pending, mode, workspace_generation) -> None:
         timings = self._voice_timings
@@ -97,8 +140,9 @@ class LiveVoiceMixin:
                 if kind == "session.input_transcript.delta":
                     last_activity = time.monotonic()
                     heard.append(str(payload.get("delta") or ""))
-                    self._set_status("thinking", "Listening", transcript="".join(heard)[-240:].strip(),
-                                     stt_provider="openai-live")
+                    self._set_status(
+                        "thinking", "Listening", transcript="".join(heard)[-240:].strip(), stt_provider="openai-live"
+                    )
                 elif kind == "session.output_transcript.delta":
                     said.append(str(payload.get("delta") or ""))
                     self._set_status("speaking", "GPT-Live is speaking", response_preview="".join(said)[-240:])
@@ -111,6 +155,16 @@ class LiveVoiceMixin:
                         timings.mark("tool_result")  # backend returned; only "answered" is a verified reply
                         if state == "not_ready":
                             self._set_status("thinking", "Project session not open")
+                elif kind in {"bridge.look_request", "bridge.look_follow_up_request"}:
+                    # The host recognised a deliberate spoken look request in this turn's own words.
+                    # The look runs through the same fenced orchestration as the phone entry, off this
+                    # loop so audio and Stop stay responsive; only text goes back, never a frame.
+                    self._start_live_look(
+                        session,
+                        str(payload.get("delegation_id") or ""),
+                        str(payload.get("question") or ""),
+                        follow_up=kind == "bridge.look_follow_up_request",
+                    )
                 elif kind == "session.output_audio.delta":
                     audio = session.audio_samples(event)
                     if not audio.size:

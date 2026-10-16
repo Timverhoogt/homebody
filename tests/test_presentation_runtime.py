@@ -108,7 +108,11 @@ def test_repeated_presented_change_queues_one_bounded_offer(monkeypatch) -> None
     assert len(offers) == 1
     assert offers[0].source == "presentation"
     assert offers[0].topic == "presented_context"
-    assert "say Hey Hermes" in offers[0].accepted_text
+    # Holistic companion design: Yes finishes the help with one direct look (see
+    # test_companion.py::test_presentation_yes_finishes_help_with_one_direct_look), instead of
+    # instructing the owner to wake Reachy and ask again.
+    assert "say Hey Hermes" not in offers[0].accepted_text
+    assert offers[0].accepted_text == "Okay, one look."
     assert target._observe_presentation_frame(generation, jpeg(220)) is False
     assert len(offers) == 1
 

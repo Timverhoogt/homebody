@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Holistic companion (development branch; not deployed, published or physically accepted)
+
+- Presence reports occupancy and source health separately: heartbeats and bridge-loss reports keep healthy stationary occupancy "present", show "unknown" when the sensor bridge is silent, and never turn a reconnect into a second arrival. Only an arrival may trigger the silent acknowledgement; Standby never gains motors.
+- Direct visual help: one deliberate "Look at this" (phone card, explicit spoken request in Everyday Pipeline, Live via a bounded host request/result protocol, or Realtime's camera tool) takes exactly one frame on the configured route (local vision or Hermes host; no fallback) and answers. Every look is a ticket bound to the original Stop generation, profile, camera permission, voice ownership and (phone) owner session, re-validated after lock, capture, inference and before the answer is kept; Stop/privacy/Kids/profile/owner revocation discard late results and clear private RAM. Follow-ups use a structurally tool-free host route so text read from an object can never reach tools.
+- Companion card in Everyday with truthful activity/presence/camera/mic state, Look, Stop, Suggestions Off/Gentle/More often, "Why", receipts and host-backed source enrollment (exact already-authorized identifiers only). Page-side fences discard held replies after owner loss, Stop, privacy, offline, Kids or profile change. Static assets advanced to v100.
+- Opt-in sources on the Hermes host: at most one Home Assistant condition and one calendar lead-time source; delivery-aware, hashed-fingerprint lifecycle (no repeat of a delivered moment, no loss of a suppressed one, no replay of expired ones, enrollment drift clears memory); calendar details private by default and never spoken to an anonymous Yes; owner-zone clock times; offer texts must describe read-only help. Unsolicited offers need present occupancy; project offers keep Agent authority; requested reminders keep bypassing initiative budgets. See `docs/companion-implementation.md` for scope, receipts and remaining enrollment/provider/TTS/deployment/physical gates.
+
 ## [0.5.21] — Owner-authorized shutdown over Tailnet
 
 - Correct the legacy desktop-refusal test to spy on the current helper boundary, install the independent scipy oracle in hosted CI, and isolate HTTPS shutdown fixtures from mocked PWA installation. The 0.5.20 draft failed hosted test gates and was not published or deployed.

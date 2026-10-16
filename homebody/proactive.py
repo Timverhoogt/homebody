@@ -34,6 +34,7 @@ from .stt_routing import SttInfrastructureError, SttTurnCancelled, transcribe_en
 # Keep the runtime logger name so existing log filters still match these lines.
 _LOGGER = logging.getLogger("homebody.runtime")
 
+
 class ProactiveMixin:
     """Silent presence, initiative budgets, one-question contextual offers, and presentation windows."""
 
@@ -231,13 +232,15 @@ class ProactiveMixin:
             self._presentation_expires_at = 0.0
             self._presentation_gate = None
             self._presentation_stop_requested.set()
+        # Legacy presentation entry, mapped intentionally: Yes now finishes the help with one direct look
+        # (same orchestration as the phone/voice entry) instead of asking the owner to wake Reachy again.
         offer = ContextualOffer(
             source="presentation",
             topic="presented_context",
             confidence=0.95,
             fingerprint=f"presentation-{generation}",
-            text="I can see you are showing me something; would you like help looking at or reading it?",
-            accepted_text="Okay—say Hey Hermes and ask me to look at what you are showing me.",
+            text="I can see you are showing me something; would you like me to take one look at it?",
+            accepted_text="Okay, one look.",
         )
         try:
             result = self.submit_contextual_offer(offer)
@@ -285,21 +288,41 @@ class ProactiveMixin:
             return "motion_disabled"
         return ""
 
+    def mark_presence_unavailable(self, source: str, reason: str) -> dict[str, object]:
+        """The trusted source cannot read occupancy: show unknown, never invent empty or an arrival."""
+        config = self.config_loader()
+        if not config.proactive_presence_enabled:
+            return self._presence.public_status(enabled=False)
+        self._presence.mark_unavailable(source, reason)  # type: ignore[arg-type]
+        return self._presence.public_status(enabled=True)
+
     def observe_presence(
         self,
         observation: PresenceObservation,
         *,
         allow_acknowledgement: bool = True,
+        heartbeat: bool = False,
     ) -> dict[str, object]:
-        """Record one bounded signal and optionally perform one safe, silent acknowledgement."""
+        """Record one bounded signal and optionally perform one safe, silent acknowledgement.
+
+        Only an arrival (empty/unknown -> occupied) may acknowledge. Heartbeats and re-sent
+        occupied states (bridge reconnects) refresh source health and never queue motion.
+        """
         config = self.config_loader()
         if not config.proactive_presence_enabled:
             self._presence.clear("disabled")
             return self._presence.public_status(enabled=False)
-        self._presence.observe(observation)
+        transition = self._presence.observe(observation, heartbeat=heartbeat)
+        if transition == "heartbeat":
+            return self._presence.public_status(enabled=True)
         if not observation.occupied:
             if config.initiative_policy_enabled:
                 self._evaluate_presence_initiative(observation, config, "away")
+            return self._presence.public_status(enabled=True)
+        if transition != "arrived" and allow_acknowledgement:
+            self._presence.record_suppression("already_present")
+            if config.initiative_policy_enabled:
+                self._evaluate_presence_initiative(observation, config, "already_present")
             return self._presence.public_status(enabled=True)
         if not allow_acknowledgement:
             self._presence.record_suppression(f"observed_{observation.source}")
@@ -426,13 +449,25 @@ class ProactiveMixin:
     def submit_contextual_offer(self, offer: ContextualOffer) -> dict[str, object]:
         """Evaluate and queue one read-only spoken offer from trusted structured context."""
         config = self.config_loader()
-        with self._agent_lock:
-            agent_active = self._capability_profile == "agent"
+        # Companion offers are ordinary adult behaviour: Everyday is enough. They never grant
+        # Workspace/project authority; Yes only reads prepared text or takes one explicit look.
+        # Project-sourced offers carry project material and keep their explicit Agent-profile authority.
         suppression_reason = self._presence_suppression_reason(config)
+        with self._status_lock:
+            if self._status.announcement_last_error:
+                suppression_reason = suppression_reason or "voice_unavailable"
         if not config.contextual_offers_enabled:
             suppression_reason = suppression_reason or "contextual_offers_disabled"
-        elif not agent_active:
-            suppression_reason = suppression_reason or "agent_profile_inactive"
+        elif offer.source == "project":
+            with self._agent_lock:
+                agent_active = self._capability_profile == "agent"
+            if not agent_active:
+                suppression_reason = suppression_reason or "agent_profile_inactive"
+        if not suppression_reason and config.proactive_presence_enabled:
+            # Unsolicited speech needs reliable evidence that someone is there to hear it.
+            occupancy = str(self._presence.public_status(enabled=True)["occupancy"])
+            if occupancy != "present":
+                suppression_reason = "room_empty" if occupancy == "empty" else "occupancy_unknown"
         decision = self._initiative.evaluate(
             InitiativeCandidate(
                 topic=offer.topic,
@@ -485,11 +520,73 @@ class ProactiveMixin:
         if response == "yes":
             self._initiative.record_welcomed(offer.topic, category=offer.source)
             self.queue_announcement(str(result["accepted_text"]), behavior="voice_only")
+            if offer.private_detail:
+                # An anonymous spoken "yes" is not owner identity: details go to the owner dashboard only.
+                self._remember_private_detail(offer.source, offer.private_detail)
+            if offer.source == "presentation":
+                self._schedule_presentation_help(token)
         elif response == "later":
             self._initiative.record_snoozed(offer.source)
         else:
             self._initiative.record_dismissal(offer.topic, self._initiative_settings(config), category=offer.source)
         return {"ok": True, "token": token, "response": response, "action_executed": False}
+
+    def _schedule_presentation_help(self, token: int) -> None:
+        """Bind the accepted legacy presentation offer to its original generation before any background work."""
+        stop_generation, profile = self._companion_snapshot()
+        ticket = self._companion.admit(
+            "offer_help", origin="offer", stop_generation=stop_generation, capability_profile=profile
+        )
+        threading.Thread(
+            target=self._finish_presentation_help,
+            args=(ticket, token),
+            name="reachy-presentation-look",
+            daemon=True,
+        ).start()
+
+    def _finish_presentation_help(self, ticket: object, token: int) -> None:
+        """Complete an accepted presentation offer with one direct look, only while that acceptance is current.
+
+        Cancellation (Stop, privacy, Kids, profile change, owner loss) stays silent: no late answer and
+        no failure announcement. The voice slot may still be owned by the offer's own announcement
+        worker, so admission is retried briefly instead of running concurrently with it.
+        """
+        from .companion import LookCancelled
+
+        deadline = time.monotonic() + 10.0
+        answer = ""
+        failure = ""
+        while True:
+            if not self._companion_ticket_current(ticket):  # type: ignore[arg-type]
+                return
+            try:
+                seen = self.look_at_this("What am I being shown? Read any visible text.", origin="offer")
+                answer = str(seen["answer"])
+                break
+            except LookCancelled:
+                return
+            except (RuntimeError, ValueError) as exc:
+                if "busy with a voice interaction" in str(exc) and time.monotonic() < deadline:
+                    time.sleep(0.2)
+                    continue
+                failure = str(exc)
+                break
+        # look_at_this admitted its own newer ticket; the acceptance ticket is now stale by design,
+        # so re-check the acceptance's own authorities (Stop generation, privacy, power, profile).
+        stop_generation, profile = self._companion_snapshot()
+        if (
+            stop_generation != ticket.stop_generation  # type: ignore[attr-defined]
+            or profile != ticket.capability_profile  # type: ignore[attr-defined]
+            or self._privacy_requested.is_set()
+            or self._effective_power_mode() in {"meeting", "sleep"}
+            or self.stop_event.is_set()
+        ):
+            return
+        text = answer or f"I couldn't look just now: {failure}"
+        try:
+            self.queue_announcement(text[:1200], behavior="voice_only")
+        except (RuntimeError, ValueError):
+            _LOGGER.info("Presentation look answer could not be queued for speech", exc_info=True)
 
     def set_initiative_category_disabled(self, category: str, disabled: bool) -> list[dict[str, object]]:
         """Owner control: turn one initiative category off or back on."""
@@ -548,14 +645,13 @@ class ProactiveMixin:
         )
         endpoint = self._record_utterance(
             response_config,
-            should_stop=lambda: self._announcement_item_cancelled(item)
-            or self._privacy_requested.is_set()
-            or self._effective_power_mode() != "awake",
+            should_stop=lambda: (
+                self._announcement_item_cancelled(item)
+                or self._privacy_requested.is_set()
+                or self._effective_power_mode() != "awake"
+            ),
         )
-        if (
-            not endpoint.speech_detected
-            or endpoint.samples.size == 0
-        ):
+        if not endpoint.speech_detected or endpoint.samples.size == 0:
             self._contextual_offers.finish_listening(token)
             return
         if (
@@ -582,8 +678,13 @@ class ProactiveMixin:
         try:
             # Same routing helper as Pipeline turns: robot, robot->local host once, or host.
             transcript = transcribe_endpoint(
-                self, client, config, endpoint.samples,
-                is_current=offer_is_current, session_id="", generation=generation,
+                self,
+                client,
+                config,
+                endpoint.samples,
+                is_current=offer_is_current,
+                session_id="",
+                generation=generation,
             ).text
         except (SttTurnCancelled, SttInfrastructureError):
             self._contextual_offers.cancel(token, "cancelled")

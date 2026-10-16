@@ -13,9 +13,7 @@ from typing import Literal
 OfferSource = Literal["calendar", "reminder", "timer", "home_assistant", "weather", "project", "presentation"]
 OfferResponse = Literal["yes", "no", "later", "unknown"]
 
-_SOURCES = frozenset(
-    {"calendar", "reminder", "timer", "home_assistant", "weather", "project", "presentation"}
-)
+_SOURCES = frozenset({"calendar", "reminder", "timer", "home_assistant", "weather", "project", "presentation"})
 _TOPIC_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,47}$")
 _FINGERPRINT_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 _URL_RE = re.compile(r"(?:https?://|www\.)", re.IGNORECASE)
@@ -58,6 +56,8 @@ class ContextualOffer:
     fingerprint: str
     text: str
     accepted_text: str
+    # Sensitive detail for the owner dashboard only. It is never spoken and never enters public status.
+    private_detail: str = ""
 
     def __post_init__(self) -> None:
         if self.source not in _SOURCES:
@@ -82,6 +82,11 @@ class ContextualOffer:
         )
         object.__setattr__(self, "text", clean_text)
         object.__setattr__(self, "accepted_text", clean_accepted)
+        if self.private_detail:
+            clean_private = _clean_text(self.private_detail, field_name="Contextual offer private detail", maximum=240)
+            if clean_private in clean_text or clean_private in clean_accepted:
+                raise ValueError("Contextual offer private detail must not appear in spoken text")
+            object.__setattr__(self, "private_detail", clean_private)
 
     @property
     def explanation(self) -> str:

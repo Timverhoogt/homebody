@@ -7,6 +7,7 @@ import logging
 import secrets
 import socket
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -35,7 +36,7 @@ from .bluetooth import BluetoothGamepadService
 from .config import AppConfig, config_transaction, default_config_path, load_config, merge_config, save_config
 from .contextual_offers import ContextualOffer
 from .gpio_buttons import ButtonEvent, ButtonName, GpioButtonService
-from .hermes_client import HermesBridgeClient
+from .hermes_client import HermesBridgeClient, HermesBridgeError
 from .kids_mode import LANGUAGE_NAMES, SESSION_VOICE_LANGUAGES, KidsProfile
 from .kids_runtime import ISpyInputUnavailable, valid_kids_voice_proof
 from .local_vision import LocalVisionClient, LocalVisionError
@@ -176,6 +177,11 @@ class PresenceSignalRequest(BaseModel):
     attentive: StrictBool = False
     direction_degrees: float | None = Field(default=None, ge=-60, le=60)
     confidence: float = Field(default=1.0, ge=0, le=1)
+    # Source health, separate from occupancy transitions: a heartbeat says "still this state";
+    # unavailable says "I cannot read the sensor" (occupancy becomes unknown, never empty).
+    heartbeat: StrictBool = False
+    unavailable: StrictBool = False
+    unavailable_reason: str = Field(default="", max_length=64, pattern=r"^[A-Za-z0-9_ .:-]*$")
 
     @field_validator("direction_degrees", "confidence", mode="before")
     @classmethod
@@ -198,6 +204,7 @@ class ContextualOfferRequest(BaseModel):
     fingerprint: str = Field(pattern=r"^[A-Za-z0-9_.:-]{1,64}$")
     text: str = Field(min_length=1, max_length=180)
     accepted_text: str = Field(min_length=1, max_length=240)
+    private_detail: str = Field(default="", max_length=240)
 
     @field_validator("confidence", mode="before")
     @classmethod
@@ -212,6 +219,46 @@ class ContextualOfferResponseRequest(BaseModel):
 
     token: int = Field(ge=1)
     response: Literal["yes", "no", "later"]
+
+
+class CompanionLookRequest(BaseModel):
+    """One explicit visual request from the owner's phone; it authorizes exactly one capture."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=500)
+
+
+class CompanionHomeAssistantEnrollment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,31}$")
+    label: str = Field(min_length=1, max_length=48)
+    entity_id: str = Field(pattern=r"^[a-z_]+\.[a-z0-9_]+$")
+    condition: Literal["state_equals"] = "state_equals"
+    value: str = Field(min_length=1, max_length=32)
+    offer_text: str = Field(min_length=1, max_length=180)
+    accepted_text: str = Field(min_length=1, max_length=240)
+    min_interval_seconds: int = Field(default=3600, ge=300, le=86400)
+
+
+class CompanionCalendarEnrollment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,31}$")
+    label: str = Field(min_length=1, max_length=48)
+    calendar_entity_id: str = Field(pattern=r"^calendar\.[a-z0-9_]+$")
+    lead_minutes: int = Field(default=10, ge=1, le=120)
+    disclosure: Literal["private", "spoken"] = "private"
+
+
+class CompanionEnrollmentRequest(BaseModel):
+    """Owner-selected sources (at most one of each); the host validates against its own allowlists."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    home_assistant: list[CompanionHomeAssistantEnrollment] = Field(default_factory=list, max_length=1)
+    calendar: list[CompanionCalendarEnrollment] = Field(default_factory=list, max_length=1)
 
 
 InitiativeCategory = Literal[
@@ -440,7 +487,9 @@ class Homebody(ReachyMiniApp):
         self._register_settings_routes()
         if self.settings_app is not None:
             register_onboarding(
-                self.settings_app, load=lambda: load_config(), save=lambda config: save_config(config),
+                self.settings_app,
+                load=lambda: load_config(),
+                save=lambda config: save_config(config),
                 bridge_factory=lambda config, **kwargs: HermesBridgeClient(config, **kwargs),
             )
             register_updates(self.settings_app, lambda: self._runtime, default_config_path().parent / "updates")
@@ -619,15 +668,21 @@ class Homebody(ReachyMiniApp):
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
             try:
-                presence = self._runtime.observe_presence(
-                    PresenceObservation(
-                        source=signal.source,
-                        occupied=bool(signal.occupied),
-                        attentive=bool(signal.attentive),
-                        direction_degrees=signal.direction_degrees,
-                        confidence=signal.confidence,
+                if signal.unavailable:
+                    presence = self._runtime.mark_presence_unavailable(
+                        signal.source, signal.unavailable_reason or "source_unavailable"
                     )
-                )
+                else:
+                    presence = self._runtime.observe_presence(
+                        PresenceObservation(
+                            source=signal.source,
+                            occupied=bool(signal.occupied),
+                            attentive=bool(signal.attentive),
+                            direction_degrees=signal.direction_degrees,
+                            confidence=signal.confidence,
+                        ),
+                        heartbeat=bool(signal.heartbeat),
+                    )
             except (ValueError, RuntimeError) as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
             return {"ok": True, "presence": presence}
@@ -653,6 +708,7 @@ class Homebody(ReachyMiniApp):
                         fingerprint=request.fingerprint,
                         text=request.text,
                         accepted_text=request.accepted_text,
+                        private_detail=request.private_detail,
                     )
                 )
             except ValueError as exc:
@@ -723,6 +779,126 @@ class Homebody(ReachyMiniApp):
                 "presentation": self._runtime.stop_presentation_window("user_stopped"),
             }
 
+        def _companion_runtime() -> object:
+            # Owner pairing + CSRF come from the owner middleware; Kids lock is enforced here too so a
+            # bare runtime stub in tests cannot bypass it.
+            if self._runtime is None:
+                raise HTTPException(status_code=409, detail="Voice runtime has not started")
+            if getattr(self._runtime, "kids_controls_locked", False):
+                raise HTTPException(status_code=423, detail="Looking is unavailable while Kids Mode is active")
+            return self._runtime
+
+        def _owner_authority(request: Request) -> Callable[[], bool]:
+            """Bind the exact paired device that admitted this request; revocation mid-look fails closed.
+
+            A newly paired device is a different id, so it can never adopt an older request's result.
+            """
+            owner = getattr(request.state, "owner", None) or {}
+            device_id = str(owner.get("id") or "")
+            store = self.settings_app.state.owner_store
+
+            class BoundOwnerSession:
+                identity = device_id
+
+                def __call__(self) -> bool:
+                    return bool(device_id) and store.device_active(device_id)
+
+            return BoundOwnerSession()
+
+        @self.settings_app.post("/api/companion/look")
+        def companion_look(request: CompanionLookRequest, http_request: Request) -> dict[str, object]:
+            runtime = _companion_runtime()
+            authority = _owner_authority(http_request)
+            try:
+                result = runtime.look_at_this(  # type: ignore[attr-defined]
+                    request.question, origin="phone", authority=authority
+                )
+            except (ValueError, RuntimeError) as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            if not authority():
+                raise HTTPException(status_code=409, detail="Owner session ended; the answer was discarded")
+            return result
+
+        @self.settings_app.post("/api/companion/look/follow-up")
+        def companion_look_follow_up(request: CompanionLookRequest, http_request: Request) -> dict[str, object]:
+            runtime = _companion_runtime()
+            authority = _owner_authority(http_request)
+            try:
+                result = runtime.follow_up_look(  # type: ignore[attr-defined]
+                    request.question, origin="phone", authority=authority
+                )
+            except (ValueError, RuntimeError) as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            if not authority():
+                raise HTTPException(status_code=409, detail="Owner session ended; the answer was discarded")
+            return result
+
+        @self.settings_app.get("/api/companion/sources")
+        def companion_sources() -> dict[str, object]:
+            # Host-owned catalog of already-authorized identifiers; the robot never holds HA credentials.
+            _companion_runtime()
+            config = load_config()
+            if not config.configured:
+                return {
+                    "ok": True,
+                    "available": False,
+                    "setup_needed": ["Connect the Hermes bridge in Settings first."],
+                    "devices": [],
+                    "calendars": [],
+                    "enrollment": {"enabled": False},
+                }
+            client = HermesBridgeClient(config)
+            try:
+                return {"ok": True, **client.companion_sources()}
+            except HermesBridgeError as exc:
+                detail = str(exc)
+                if "404" in detail or "405" in detail:
+                    return {
+                        "ok": True,
+                        "available": False,
+                        "setup_needed": ["Update the Hermes host bridge; it has no companion source catalog yet."],
+                        "devices": [],
+                        "calendars": [],
+                        "enrollment": {"enabled": False},
+                    }
+                raise HTTPException(
+                    status_code=502, detail="The Hermes host did not answer the source catalog"
+                ) from exc
+            finally:
+                client.close()
+
+        @self.settings_app.post("/api/companion/sources")
+        def companion_sources_enroll(request: CompanionEnrollmentRequest) -> dict[str, object]:
+            runtime = _companion_runtime()
+            cancel = getattr(runtime, "cancel_contextual_offer", None)
+            if callable(cancel):
+                cancel("sources_changed")
+            config = load_config()
+            if not config.configured:
+                raise HTTPException(status_code=409, detail="Connect the Hermes bridge in Settings first")
+            client = HermesBridgeClient(config)
+            try:
+                result = client.enroll_companion_sources(request.model_dump())
+                if callable(cancel):
+                    cancel("sources_changed")
+                return {"ok": True, **result}
+            except HermesBridgeError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)[:200]) from exc
+            finally:
+                client.close()
+
+        @self.settings_app.post("/api/companion/stop")
+        def companion_stop() -> dict[str, object]:
+            if self._runtime is None:
+                raise HTTPException(status_code=409, detail="Voice runtime has not started")
+            # Stop stays reachable under Kids lock; it only cancels the companion interaction.
+            return self._runtime.companion_stop()  # type: ignore[attr-defined]
+
+        @self.settings_app.get("/api/companion/status")
+        def companion_status() -> dict[str, object]:
+            runtime = _companion_runtime()
+            return {"ok": True, **runtime.companion_owner_status()}  # type: ignore[attr-defined]
+
         @self.settings_app.post("/api/settings")
         def update_settings(update: SettingsUpdate) -> dict[str, object]:
             try:
@@ -739,6 +915,18 @@ class Homebody(ReachyMiniApp):
                 _LOGGER.error("Could not save Homebody settings: %s", exc)
                 raise HTTPException(status_code=500, detail="Settings could not be saved on Reachy") from exc
             _LOGGER.info("Homebody settings updated at %s (secret values redacted)", path)
+            media_fields = (
+                "camera_enabled",
+                "local_vision_enabled",
+                "local_vision_url",
+                "local_vision_model",
+                "bridge_url",
+                "api_key",
+            )
+            if self._runtime is not None and any(getattr(current, k) != getattr(merged, k) for k in media_fields):
+                teardown = getattr(self._runtime, "_companion_teardown", None)
+                if callable(teardown):
+                    teardown("media_settings_changed")
             if self._runtime is not None:
                 # Start, stop or move the hosted-agent listener; outside run() nothing listens.
                 self._agent_listener.sync(merged)
@@ -777,11 +965,16 @@ class Homebody(ReachyMiniApp):
                     update.profile, adult_ui_unlocked=True, park_native=update.preserve_work
                 )
                 with config_transaction():
-                    save_config(merge_config(load_config(), {
-                        "capability_profile": update.profile,
-                        "assistant_mode": "workspace" if update.profile == "agent" else "everyday",
-                        "assistant_mode_notice": "",
-                    }))
+                    save_config(
+                        merge_config(
+                            load_config(),
+                            {
+                                "capability_profile": update.profile,
+                                "assistant_mode": "workspace" if update.profile == "agent" else "everyday",
+                                "assistant_mode_notice": "",
+                            },
+                        )
+                    )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except RuntimeError as exc:
@@ -855,7 +1048,10 @@ class Homebody(ReachyMiniApp):
             return self._runtime
 
         install_native_workspace_routes(
-            self.settings_app, workspace_runtime, load_config, lambda config: HermesBridgeClient(config),
+            self.settings_app,
+            workspace_runtime,
+            load_config,
+            lambda config: HermesBridgeClient(config),
         )
 
         def workspace_payload(action: str) -> JSONResponse:
@@ -1217,15 +1413,16 @@ class Homebody(ReachyMiniApp):
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
             # The on-robot provider is local to Reachy, never a bridge-offered route.
             stt = [
-                item for item in options.get("stt") or []
-                if not (isinstance(item, dict) and item.get("id") == "robot")
+                item for item in options.get("stt") or [] if not (isinstance(item, dict) and item.get("id") == "robot")
             ]
-            stt.append({
-                "id": "robot",
-                "label": "On Reachy (on-device)",
-                "models": [],
-                "provisioned": RobotSttClient().provisioned(),
-            })
+            stt.append(
+                {
+                    "id": "robot",
+                    "label": "On Reachy (on-device)",
+                    "models": [],
+                    "provisioned": RobotSttClient().provisioned(),
+                }
+            )
             return {**options, "stt": stt}
 
         @self.settings_app.post("/api/camera/test")
@@ -1567,7 +1764,8 @@ class Homebody(ReachyMiniApp):
                 if not valid_kids_voice_proof(proofs.get(request.language) if isinstance(proofs, dict) else None):
                     name = LANGUAGE_NAMES[request.language]
                     raise HTTPException(
-                        status_code=409, detail=f"Kids Mode {name} voice is not configured on the Hermes host",
+                        status_code=409,
+                        detail=f"Kids Mode {name} voice is not configured on the Hermes host",
                     )
             try:
                 profile = KidsProfile(**request.model_dump())
@@ -1600,7 +1798,8 @@ class Homebody(ReachyMiniApp):
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
             try:
                 kids_mode = self._runtime.kids_host_select(
-                    request.activity, camera_consent=request.camera_consent,
+                    request.activity,
+                    camera_consent=request.camera_consent,
                 )
                 return {"ok": True, "kids_mode": kids_mode}
             except ValueError as exc:
@@ -1888,8 +2087,9 @@ class Homebody(ReachyMiniApp):
             try:
                 return host_shutdown.request("CHECK")
             except host_shutdown.ShutdownRefused as exc:
-                raise HTTPException(status_code=503, detail=str(exc),
-                                    headers={"X-Homebody-Shutdown": "refused"}) from exc
+                raise HTTPException(
+                    status_code=503, detail=str(exc), headers={"X-Homebody-Shutdown": "refused"}
+                ) from exc
 
         @self.settings_app.post("/api/shutdown", status_code=202)
         def shutdown(request: ConfirmationRequest) -> dict[str, object]:
@@ -1906,8 +2106,9 @@ class Homebody(ReachyMiniApp):
             try:
                 host_shutdown.request("CHECK")
             except host_shutdown.ShutdownRefused as exc:
-                raise HTTPException(status_code=503, detail=str(exc),
-                                    headers={"X-Homebody-Shutdown": "refused"}) from exc
+                raise HTTPException(
+                    status_code=503, detail=str(exc), headers={"X-Homebody-Shutdown": "refused"}
+                ) from exc
             if self._runtime is None or not self._runtime.control_ready:
                 raise HTTPException(status_code=409, detail="Runtime not ready; shutdown was not scheduled")
             try:
@@ -1917,8 +2118,9 @@ class Homebody(ReachyMiniApp):
             try:
                 receipt = host_shutdown.request("SCHEDULE")
             except host_shutdown.ShutdownRefused as exc:
-                raise HTTPException(status_code=503, detail=str(exc),
-                                    headers={"X-Homebody-Shutdown": "refused"}) from exc
+                raise HTTPException(
+                    status_code=503, detail=str(exc), headers={"X-Homebody-Shutdown": "refused"}
+                ) from exc
             except host_shutdown.ShutdownUnknown as exc:
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
             return {"ok": True, **receipt}

@@ -20,6 +20,7 @@ from .audio import (
     mono_float32,
     resample_linear,
 )
+from .companion import CompanionMixin
 from .config import AppConfig, load_config
 from .hermes_client import HermesBridgeClient
 from .home_assistant import HermesHomeAssistantProvider, HomeAssistantBridge
@@ -194,6 +195,7 @@ class HermesVoiceRuntime(
     KidsModeMixin,
     AnnouncementsMixin,
     ManualControlMixin,
+    CompanionMixin,
     ProactiveMixin,
     AgentSessionMixin,
     VoiceWorkspaceMixin,
@@ -253,6 +255,7 @@ class HermesVoiceRuntime(
         self._init_announcement_state()
         self._voice_activity_generation = 0
         self._init_proactive_state()
+        self._init_companion_state()
         self._audio_ready = False
         self._runtime_started = False
         self._control_ready = threading.Event()
@@ -264,6 +267,7 @@ class HermesVoiceRuntime(
         self._voice_workspace = VoiceWorkspace()
         self._voice_timings = VoiceTimings()
         from .speaker_volume import SpeakerVolume
+
         self._speaker = SpeakerVolume()
 
     def speaker_volume(self) -> dict[str, object]:
@@ -282,7 +286,11 @@ class HermesVoiceRuntime(
             raise RuntimeError("Reachy is private or in Meeting/Sleep; agent speaker changes are unavailable")
 
     def set_speaker_volume(
-        self, *, volume: int | None = None, muted: bool | None = None, agent: bool = False,
+        self,
+        *,
+        volume: int | None = None,
+        muted: bool | None = None,
+        agent: bool = False,
     ) -> dict[str, object]:
         # Serialize with Kids/power/update admission. This only touches the playback
         # mixer: it never starts media, a voice turn, a test sound or a motor transition.
@@ -300,6 +308,11 @@ class HermesVoiceRuntime(
             self._conversation_stop_generation += 1
             self._conversation_stop_requested.set()
             generation = self._conversation_stop_generation
+        teardown = getattr(self, "_companion_teardown", None)
+        if callable(teardown):
+            # Stop/privacy/power/Kids/profile all pass here: held look/offer callbacks bound to older
+            # generations are rejected and private look/offer text leaves RAM.
+            teardown("stop")
         client = getattr(self, "_robot_stt", None)
         cancel = getattr(client, "cancel", None)
         if callable(cancel):
@@ -321,6 +334,7 @@ class HermesVoiceRuntime(
             if generation is None:
                 generation = self._turn_stop_generation
             return generation != self._conversation_stop_generation
+
     def privacy_active(self) -> bool:
         """True while privacy mode holds the microphone and camera off (read by agent access)."""
         return self._privacy_requested.is_set()
@@ -358,6 +372,7 @@ class HermesVoiceRuntime(
             enabled=config.initiative_policy_enabled and config.contextual_offers_enabled
         )
         payload["shared_physical_context"] = self._presentation_public_status(config)
+        payload["companion"] = self.companion_public_status(config)
         with self._agent_lock:
             payload["agent"] = self._agent_status_unlocked()
         with self._kids_lock:
@@ -389,8 +404,9 @@ class HermesVoiceRuntime(
                     # Only a safe categorical enum; never a provider, model, path or error.
                     "stt_locality": locality if locality in {"local", "cloud"} else "unknown",
                     "stt_processing_location": (
-                        location if (location := payload.get("stt_processing_location"))
-                        in {"robot", "host", "cloud"} else "unknown"
+                        location
+                        if (location := payload.get("stt_processing_location")) in {"robot", "host", "cloud"}
+                        else "unknown"
                     ),
                     "stt_processing_verified": payload.get("stt_processing_verified") is True,
                     "power_mode": payload.get("power_mode", "standby"),
@@ -467,9 +483,7 @@ class HermesVoiceRuntime(
             self._presence_action_active.clear()
             succeeded = result.get("ok") is True
             reason = (
-                "acknowledgement_cancelled"
-                if result.get("error") == "Robot action was cancelled"
-                else "motion_failed"
+                "acknowledgement_cancelled" if result.get("error") == "Robot action was cancelled" else "motion_failed"
             )
             self._presence.complete_acknowledgement(succeeded=succeeded, reason=reason)
             if (
@@ -713,9 +727,7 @@ class HermesVoiceRuntime(
             self._expire_turn_error()
             self._set_status("waiting_for_wake_word", detail)
             # A parent's Kids Start opens the first turn once its greeting has finished playing.
-            first_listen = (
-                self._take_kids_first_listen(config.kids_session_id) if config.kids_mode_enabled else None
-            )
+            first_listen = self._take_kids_first_listen(config.kids_session_id) if config.kids_mode_enabled else None
             keyword = "kids_start" if first_listen is not None else ""
             if not keyword:
                 frame = self._read_16k_frame()

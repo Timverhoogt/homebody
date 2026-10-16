@@ -22,6 +22,7 @@ from .safety_gate import POWER_MODES as _POWER_MODES
 # Keep the runtime logger name so existing log filters still match these lines.
 _LOGGER = logging.getLogger("homebody.runtime")
 
+
 @dataclass(slots=True)
 class RealtimePlayback:
     """Track audio that may still be buffered after generation has finished."""
@@ -204,20 +205,31 @@ class RealtimeVoiceMixin:
         is described on a worker thread and the answer is sent whenever it arrives.
         """
 
+        from .companion import LookCancelled
+
+        authority = self._companion_authority("voice")
+
         def describe() -> None:
+            # Same fenced orchestration as the phone and Pipeline entries: the tool call is admitted
+            # under this voice turn's ownership and original Stop generation; one capture, no frame
+            # is ever attached to the Realtime session, and a cancelled look stays silent.
             try:
-                seen = self.describe_camera_view(question, config=config)
-            except Exception as exc:
-                message = str(exc)
-                _LOGGER.warning("Local vision could not answer the camera call: %s", message)
-                with self._status_lock:
-                    self._status.camera_last_error = message
-                try:
-                    session.send_camera_error(call_id, message)
-                except Exception:
-                    _LOGGER.debug("Could not report the local vision error for %s", call_id, exc_info=True)
+                seen = self.look_at_this(question, origin="voice", authority=authority)
+            except LookCancelled:
                 return
-            if self._effective_power_mode() in {"meeting", "sleep"}:
+            except Exception as exc:
+                category = "blocked" if isinstance(exc, (RuntimeError, ValueError)) else type(exc).__name__
+                _LOGGER.warning("Camera call could not be answered (%s)", category)
+                with self._status_lock:
+                    self._status.camera_last_error = str(exc)[:200]
+                if not authority():
+                    return
+                try:
+                    session.send_camera_error(call_id, "Reachy could not take the requested look right now")
+                except Exception:
+                    _LOGGER.debug("Could not report the look failure for %s", call_id, exc_info=True)
+                return
+            if not self._companion_result_current(seen, authority):
                 # Privacy was requested while the model was looking; drop the description.
                 return
             try:
@@ -226,12 +238,12 @@ class RealtimeVoiceMixin:
                     {
                         "ok": True,
                         "image_attached": False,
-                        "seen_by": "local vision model on Reachy's computer",
+                        "seen_by": str(seen.get("processing") or "unknown"),
                         "description": seen["answer"],
                     },
                 )
             except Exception:
-                _LOGGER.exception("Could not deliver the local vision answer for %s", call_id)
+                _LOGGER.exception("Could not deliver the look answer for %s", call_id)
 
         threading.Thread(target=describe, name="realtime-local-vision", daemon=True).start()
 
@@ -241,6 +253,9 @@ class RealtimeVoiceMixin:
             return
         if output_quarantined(self):
             return  # direct entry: same common audio-quarantine gate as the dispatcher
+        from .companion import LOOK_CONTEXT_TTL_SECONDS
+        from .look_intent import looks_like_look_request
+
         broker_context = self.agent_broker_context(explicit_private_intent=False)
         agent_request_id = ""
         if broker_context.capability_profile == "agent":
@@ -271,6 +286,14 @@ class RealtimeVoiceMixin:
         handled_power_call_ids: set[str] = set()
         active_response_id = ""
         interrupted_response_ids: set[str] = set()
+        spoken_text = ""
+        spoken_revision = 0
+        captured_revision = -1
+        visual_deadline = 0.0
+        deferred_camera = []
+        deferred_deadline = 0.0
+        input_item_id = ""
+        spoken_item_id = ""
         try:
             self._play_asset("listening.wav")
             self._discard_audio(0.34)
@@ -297,6 +320,8 @@ class RealtimeVoiceMixin:
         session_completed = False
         try:
             while not self.stop_event.is_set() and not self._turn_stop_requested():
+                if visual_deadline and time.monotonic() >= visual_deadline:
+                    break  # visual data never outlives the bounded native session
                 if self._effective_power_mode() in {"meeting", "sleep"}:
                     break
                 if time.monotonic() - last_activity >= config.conversation_timeout_seconds:
@@ -307,7 +332,19 @@ class RealtimeVoiceMixin:
                 if frame is not None:
                     session.send_audio(resample_linear(frame, 16000, 24000))
 
-                for event in session.events():
+                events = list(session.events())
+                if deferred_camera and time.monotonic() >= deferred_deadline:
+                    for held in deferred_camera:
+                        identifier = completed_camera_call_id(held.type, held.payload)
+                        handled_camera_call_ids.add(identifier)
+                        session.send_camera_error(identifier, "A current explicit spoken look could not be verified")
+                    deferred_camera = []
+                if spoken_text and deferred_camera:
+                    events.extend(deferred_camera)
+                    deferred_camera = []
+                for event in events:
+                    if self._turn_stop_requested() or self._privacy_requested.is_set():
+                        break
                     kind = event.type
                     payload = event.payload
                     event_response_id = realtime_response_id(kind, payload)
@@ -336,11 +373,16 @@ class RealtimeVoiceMixin:
                         continue
                     if kind == "input_audio_buffer.speech_stopped":
                         timings.mark("provider_speech_end")
-                    elif kind == "response.output_item.done" and (payload.get("item") or {}).get(
-                        "type"
-                    ) == "function_call":
+                    elif (
+                        kind == "response.output_item.done"
+                        and (payload.get("item") or {}).get("type") == "function_call"
+                    ):
                         timings.mark("tool_requested")
                     if kind == "input_audio_buffer.speech_started":
+                        spoken_text = ""
+                        for held in deferred_camera:
+                            handled_camera_call_ids.add(completed_camera_call_id(held.type, held.payload))
+                        deferred_camera = []
                         now = time.monotonic()
                         last_activity = now
                         transcript_parts.clear()
@@ -348,7 +390,9 @@ class RealtimeVoiceMixin:
                             interrupted_response_ids.add(active_response_id)
                         if speaking or playback.audible(now):
                             self._workspace_event(
-                                workspace_generation, "activity", "Reply interrupted; listening again",
+                                workspace_generation,
+                                "activity",
+                                "Reply interrupted; listening again",
                             )
                             played_ms = playback.played_ms(now)
                             self._clear_streamed_audio()
@@ -366,6 +410,10 @@ class RealtimeVoiceMixin:
                         self._set_status("listening", "Listening to interruption")
                         if self._motion is not None:
                             self._motion.listening()
+                    elif kind == "input_audio_buffer.committed":
+                        input_item_id = str(payload.get("item_id") or "")
+                        if input_item_id != spoken_item_id:
+                            spoken_text = ""
                     elif kind in {
                         "conversation.item.input_audio_transcription.delta",
                         "conversation.item.input_audio_transcription.completed",
@@ -377,8 +425,21 @@ class RealtimeVoiceMixin:
                             else:
                                 transcript_parts = [text]
                             if kind.endswith(".completed"):
+                                spoken_item_id = str(payload.get("item_id") or "")
+                                if input_item_id and spoken_item_id != input_item_id:
+                                    continue  # an earlier utterance grants no current camera consent
+                                spoken_text = text
+                                spoken_revision += 1
+                                if visual_deadline and not looks_like_look_request(text, engaged=True):
+                                    try:
+                                        self._take_follow_up(text)
+                                    except RuntimeError:
+                                        self._request_conversation_stop()
+                                        break
                                 self._workspace_event(
-                                    workspace_generation, "user", text,
+                                    workspace_generation,
+                                    "user",
+                                    text,
                                     key=str(payload.get("item_id") or ""),
                                 )
                             self._set_status(
@@ -392,7 +453,15 @@ class RealtimeVoiceMixin:
                     power_call = completed_power_mode_call(kind, payload)
                     if power_call is not None and power_call.call_id not in handled_power_call_ids:
                         handled_power_call_ids.add(power_call.call_id)
-                        if config.power_tools_enabled:
+                        if visual_deadline:
+                            session.send_tool_result(
+                                power_call.call_id,
+                                {
+                                    "ok": False,
+                                    "error": "Looking together is tool-free; Stop and wake again for other help",
+                                },
+                            )
+                        elif config.power_tools_enabled:
                             self._handle_power_mode_call(session, power_call)
                         else:
                             session.send_tool_result(
@@ -400,26 +469,32 @@ class RealtimeVoiceMixin:
                                 {"ok": False, "error": "Power tools are disabled for this session"},
                             )
                     elif camera_call_id and camera_call_id not in handled_camera_call_ids:
+                        if not spoken_text:
+                            if not deferred_camera:
+                                deferred_deadline = time.monotonic() + 3.0
+                            if len(deferred_camera) < 8:
+                                deferred_camera.append(event)
+                            else:
+                                handled_camera_call_ids.add(camera_call_id)
+                                session.send_camera_error(camera_call_id, "Too many pending camera requests")
+                            continue  # transcription may complete after tool selection; never guess consent
                         handled_camera_call_ids.add(camera_call_id)
+                        if spoken_revision == captured_revision or not looks_like_look_request(
+                            spoken_text, engaged=self.look_context_live()
+                        ):
+                            session.send_camera_error(camera_call_id, "Ask explicitly for one look or a fresh look")
+                            continue
+                        captured_revision = spoken_revision
+                        visual_deadline = time.monotonic() + LOOK_CONTEXT_TTL_SECONDS
                         self._set_status("looking", "Capturing one on-demand camera frame")
                         try:
                             if not config.camera_enabled:
                                 raise RuntimeError("Camera access is disabled in Reachy settings")
                             if self._effective_power_mode() in {"meeting", "sleep"}:
                                 raise RuntimeError("Camera capture is blocked in the current privacy mode")
-                            if config.local_vision_enabled:
-                                # The frame is answered on this computer; only the text goes to the model.
-                                self._set_status("looking", "Asking the local vision model")
-                                question = camera_call_purpose(payload) or "Describe what you see."
-                                self._describe_for_realtime(session, camera_call_id, question, config)
-                            else:
-                                jpeg = self._capture_camera_jpeg()
-                                session.send_camera_frame(camera_call_id, jpeg)
-                                with self._status_lock:
-                                    self._status.camera_captures += 1
-                                    self._status.camera_last_error = ""
-                                _LOGGER.info("Sent on-demand Reachy camera frame: %s bytes", len(jpeg))
-                                self._set_status("thinking", "Hermes is looking at the fresh camera frame")
+                            # Both configured routes use the same original-authority orchestration.
+                            # Only bounded analysis reaches Realtime, never image bytes or model-selected consent.
+                            self._describe_for_realtime(session, camera_call_id, spoken_text, config)
                         except Exception as exc:
                             message = str(exc)
                             _LOGGER.exception("Could not provide Reachy camera frame")
@@ -429,7 +504,12 @@ class RealtimeVoiceMixin:
                             self._set_status("thinking", "Camera capture failed; Hermes is responding")
                     elif robot_call is not None and robot_call.call_id not in handled_robot_call_ids:
                         handled_robot_call_ids.add(robot_call.call_id)
-                        if not config.robot_tools_enabled:
+                        if visual_deadline:
+                            result: dict[str, object] = {
+                                "ok": False,
+                                "error": "Physical tools are unavailable while looking together",
+                            }
+                        elif not config.robot_tools_enabled:
                             result: dict[str, object] = {
                                 "ok": False,
                                 "error": "Robot tools are disabled in Reachy settings",
@@ -508,7 +588,8 @@ class RealtimeVoiceMixin:
                         )
                     elif kind in {"response.output_audio_transcript.done", "response.audio_transcript.done"}:
                         self._workspace_event(
-                            workspace_generation, "assistant",
+                            workspace_generation,
+                            "assistant",
                             str(payload.get("transcript") or "".join(response_parts)),
                             key=event_response_id or active_response_id,
                         )
@@ -517,7 +598,9 @@ class RealtimeVoiceMixin:
                             response = payload.get("response") or {}
                             if isinstance(response, dict) and response.get("status") == "completed":
                                 self._workspace_event(
-                                    workspace_generation, "assistant", "".join(response_parts),
+                                    workspace_generation,
+                                    "assistant",
+                                    "".join(response_parts),
                                     key=event_response_id or active_response_id,
                                 )
                             if not event_response_id or event_response_id == active_response_id:
@@ -542,6 +625,7 @@ class RealtimeVoiceMixin:
             session_completed = True
         finally:
             # Local Stop wins: flush the speaker before the (possibly slow) socket close.
+            self._end_companion_voice()
             self._clear_streamed_audio()
             session.close()
             timings.end()
