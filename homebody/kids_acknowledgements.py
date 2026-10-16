@@ -266,13 +266,12 @@ class KidsAckPlayer:
 
     SDK limits, stated honestly: ``push_audio_sample``/``clear_player`` are opaque SDK calls and
     Python cannot forcibly cancel a thread blocked inside one. Therefore no lock is ever held
-    across them; ``inflight`` is True from just before a push until that push has returned AND any
-    required post-cancel flush has run. ``settle`` returns after a bounded join; if a push is still
-    in flight it returns False and the caller must treat audio output as quarantined (no answer
-    speech, re-listen or new stream/announcement) until ``inflight`` clears. A chunk admitted after
-    cancellation is flushed by the producer before ``inflight`` clears, so the flush can never cut
-    newer approved speech: none may start while the producer is quarantined. Whether audio was
-    admitted is tracked from actual push calls, never inferred only from an estimated deadline.
+    across them; ``inflight`` covers pushes, every outstanding clear, and admitted producer threads
+    that can still perform a late clear after settlement. A bounded join does not discharge an
+    outstanding flush obligation. A failed clear leaves output quarantined for runtime recovery.
+    ``settle`` returns after a bounded join plus its own opaque clear; if producer work survives it
+    returns False and the caller must keep output quarantined (no answer, re-listen or announcement).
+    No newer audio is admitted until the old push, pending watcher and all clears are quiescent.
     """
 
     def __init__(self, *, clips, selector, push, clear, is_current, resample, output_rate, clock, delay=None):
@@ -289,6 +288,8 @@ class KidsAckPlayer:
         self._settled = threading.Event()
         self._lock = threading.Lock()  # guards state only; never held across SDK calls
         self._inflight = False
+        self._clears_inflight = 0  # every opaque clear, including the queued-audio watcher
+        self._clear_failed = False  # unknown output state fails closed until runtime recovery
         self._admitted = False  # at least one push was entered (its audio may be queued)
         self.queued_until = 0.0  # estimate only, used solely to keep watching for cancellation
         self.first_enqueue_at: float | None = None
@@ -298,7 +299,24 @@ class KidsAckPlayer:
     @property
     def inflight(self) -> bool:
         with self._lock:
-            return self._inflight
+            return bool(
+                self._inflight or self._clears_inflight or self._clear_failed
+                or (self._settled.is_set() and self._admitted and self._thread.is_alive())
+            )
+
+    def _clear_output(self) -> None:
+        """Keep quarantine until this exact clear returns; never hold a lock across the SDK."""
+        with self._lock:
+            self._clears_inflight += 1
+        try:
+            self._clear()
+        except Exception:
+            with self._lock:
+                self._clear_failed = True
+            _LOGGER.warning("Kids filler audio clear failed; output remains quarantined")
+        finally:
+            with self._lock:
+                self._clears_inflight -= 1
 
     @property
     def running(self) -> bool:
@@ -354,7 +372,7 @@ class KidsAckPlayer:
                 if cancelled_after:
                     # A chunk admitted after Stop/End/privacy/replacement/expiry/settle is flushed
                     # while still marked in flight, so nothing newer can be playing yet.
-                    self._clear()
+                    self._clear_output()
                 with self._lock:
                     now = self._clock()
                     self.queued_until = max(self.queued_until, now) + chunk.size / float(self._output_rate)
@@ -368,7 +386,7 @@ class KidsAckPlayer:
             if not watching:
                 return
             if not self._is_current():
-                self._clear()
+                self._clear_output()
                 return
             self._settled.wait(0.02)
 
@@ -390,11 +408,13 @@ class KidsAckPlayer:
         if self._thread.is_alive() and self._thread is not threading.current_thread():
             self._thread.join(timeout=SETTLE_JOIN_SECONDS)
         with self._lock:
-            admitted, inflight = self._admitted, self._inflight
+            admitted = self._admitted
         if admitted:
             # Decided from actual pushes, not from an estimated deadline.
-            self._clear()
-        return not inflight
+            self._clear_output()
+        # Re-read after our clear: another producer clear or pending watcher may still survive
+        # the bounded join. Its complete obligation, not just a sampled push, owns quarantine.
+        return not self.inflight
 
 
 _catalog_lock = threading.Lock()

@@ -209,3 +209,64 @@ def test_stop_while_waiting_for_previous_voice_owner_never_starts_search(monkeyp
         worker.join(3)
     assert not worker.is_alive() and errors
     assert searches == [] and h.media.pushes() == []
+
+
+@pytest.mark.parametrize("kind", ["initial", "hosted"])
+def test_outstanding_cancel_clear_stays_quarantined_after_search_settle(monkeypatch, tmp_path, kind):
+    h, release, worker, errors = held_search(monkeypatch, tmp_path, kind)
+    runtime = h.runtime
+    first_clear_entered, old_clear_release = threading.Event(), threading.Event()
+    answer_entered, answer_release = threading.Event(), threading.Event()
+    clear_lock = threading.Lock()
+    clear_count = 0
+    bad_clears = []
+
+    def clear():
+        nonlocal clear_count
+        with clear_lock:
+            clear_count += 1
+            index = clear_count
+        if index == 1:  # cancellation watcher: opaque SDK clear remains outstanding
+            first_clear_entered.set()
+            assert old_clear_release.wait(5)
+            if answer_entered.is_set() and not answer_release.is_set():
+                bad_clears.append("old clear completed during newer answer")
+        h.media.events.append(("clear", time.monotonic(), 0))
+
+    def answer(*_a, **_k):
+        answer_entered.set()
+        assert answer_release.wait(3)
+        return False
+
+    h.media.audio.clear_player = clear
+    runtime._play_kids_stream = answer
+    runtime._kids_host_handle_transcript = lambda *_a, **_k: False
+    runtime._kids_host_after_reply = lambda *_a, **_k: False
+    newer = None
+    try:
+        runtime._request_conversation_stop()
+        assert first_clear_entered.wait(2)
+        release.set()  # settle's second clear returns, but the first is still held
+        worker.join(2)
+        assert not worker.is_alive() and clear_count >= 2
+        runtime._accept_wake_turn()
+        cfg = runtime._kids_voice_config(h.config)
+        newer = threading.Thread(target=runtime._run_selected_voice_conversation, args=(cfg, "button"), daemon=True)
+        newer.start()
+        answer_entered.wait(0.8)
+        old_clear_release.set()
+        assert wait_for(lambda: not runtime._kids_ack_producer.running, 2)
+        assert not bad_clears, "bounded settle released quarantine while an old SDK clear survived"
+        assert not answer_entered.is_set(), "newer speech admitted during an outstanding clear"
+        assert not acks.output_quarantined(runtime)
+        answer_release.set()
+        runtime._run_selected_voice_conversation(runtime._kids_voice_config(h.config), "button")
+        assert answer_entered.is_set()  # a deliberately later turn succeeds after the clear is done
+    finally:
+        release.set()
+        old_clear_release.set()
+        answer_release.set()
+        worker.join(3)
+        if newer is not None:
+            newer.join(3)
+    assert not errors
