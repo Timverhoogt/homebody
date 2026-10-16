@@ -89,11 +89,41 @@ def wait_dead(pid: int, timeout: float = 5.0) -> bool:
             os.kill(pid, 0)
         except ProcessLookupError:
             return True
-        if Path(f"/proc/{pid}/stat").exists() and Path(f"/proc/{pid}/stat").read_text().split()[2] == "Z":
+        try:
+            zombie = Path(f"/proc/{pid}/stat").read_text().split()[2] == "Z"
+        except (FileNotFoundError, ProcessLookupError):
+            # Reaped between kill(0) and proc read. Confirm via kill(0) next iteration,
+            # never treat a zombie or merely missing proc entry as successful reaping.
+            continue
+        if zombie:
             time.sleep(0.05)  # zombie until reaped by the client's reaper thread
             continue
         time.sleep(0.05)
     return False
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError, ProcessLookupError])
+def test_wait_dead_confirms_reaping_after_proc_read_race(monkeypatch, error):
+    calls = []
+    def kill(pid, signal):
+        calls.append((pid, signal))
+        if len(calls) == 2:
+            raise ProcessLookupError
+    def disappeared(path, *args, **kwargs):
+        raise error
+    monkeypatch.setattr(os, "kill", kill)
+    monkeypatch.setattr(Path, "read_text", disappeared)
+    assert wait_dead(123)
+    assert calls == [(123, 0), (123, 0)]
+
+
+def test_wait_dead_does_not_accept_an_unreaped_zombie(monkeypatch):
+    ticks = iter([0.0, 0.0, 2.0])
+    monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(os, "kill", lambda pid, signal: None)
+    monkeypatch.setattr(Path, "read_text", lambda path: "123 (fake) Z")
+    assert not wait_dead(123, timeout=1.0)
 
 
 def test_round_trip_echoes_turn_and_is_immutable(short_dir):
