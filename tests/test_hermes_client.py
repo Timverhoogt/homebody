@@ -60,6 +60,30 @@ def test_error_does_not_put_api_key_in_exception() -> None:
     assert "401" in str(error.value)
 
 
+def test_everyday_original_context_transport_and_legacy_compatibility() -> None:
+    from dataclasses import asdict
+
+    from homebody.hermes_client import AgentBrokerContext
+
+    original = AgentBrokerContext(
+        capability_profile="conversation", adult_ui_unlocked=False, kids_mode_active=False,
+        power_mode="awake", privacy_enabled=True, emergency_stop_active=False,
+        robot_available=True, session_generation=27, requested_session_generation=27,
+        explicit_private_intent=False,
+    )
+    seen = []
+    def handler(request):
+        assert request.url.path == "/v1/everyday/turn"
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"text": "fixture"})
+    client = make_client(handler)
+    assert client.everyday_turn("What time is it?", context=original) == "fixture"
+    assert seen[-1]["agent_context"] == asdict(original)
+    assert client.everyday_turn("What time is it?") == "fixture"
+    assert "agent_context" not in seen[-1]
+    client.close()
+
+
 def test_model_discovery() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/models"

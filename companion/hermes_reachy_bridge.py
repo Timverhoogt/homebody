@@ -3990,6 +3990,7 @@ class Bridge(NativeWorkspaceRoutes):
         session_key: str,
         language: str = "",
         context: str = "",
+        original_context: BrokerContext | None = None,
         is_current: Callable[[], bool] = lambda: True,
     ) -> dict[str, object]:
         """One Everyday text turn (Pipeline and GPT-Live): fast model plus Everyday tools only."""
@@ -3997,16 +3998,22 @@ class Bridge(NativeWorkspaceRoutes):
             raise BrokerUnavailableError("Bridge HTTP client is not ready")
         if self.kids_session_live() or not is_current():
             raise BrokerValidationError("stale_session")
-        # Only standalone requests with an existing Everyday runtime lease are shortcuts.
+        # The original immutable context is authority; session_key is only reasoner state.
+        # Never let an unbound legacy request borrow the current device lease.
+        fence = (self.agent_broker.everyday_read_fence(device_id, original_context)
+                 if original_context is not None else None)
+        def current() -> bool:
+            return is_current() and (fence is None or fence())
+        if not current():
+            raise BrokerValidationError("stale_session")
         # Context may contain corrections/negation, so leave that whole turn to the reasoner.
-        if (not context and self._everyday_config_valid
+        if (fence is not None and not context and self._everyday_config_valid
                 and self.everyday.fast_intent(text, language=language) is not None):
-            fence = self.agent_broker.everyday_read_fence(device_id)
-            if fence is not None:
+            if original_context is not None:
                 result = await self.everyday.fast_answer(
-                    text, http=self.http, device_id=device_id, generation=session_generation(session_key),
+                    text, http=self.http, device_id=device_id, generation=original_context.session_generation,
                     language=language, kids_live=self.kids_session_live,
-                    is_current=lambda: is_current() and fence(),
+                    is_current=current,
                 )
                 if result is not None:
                     return result
@@ -4026,7 +4033,7 @@ class Bridge(NativeWorkspaceRoutes):
             generation=session_generation(session_key),
             language=language,
             kids_live=self.kids_session_live,
-            is_current=is_current,
+            is_current=current,
         )
 
     async def everyday_turn(self, request: web.Request) -> web.Response:
@@ -4035,9 +4042,9 @@ class Bridge(NativeWorkspaceRoutes):
         try:
             payload = await request.json()
             if not isinstance(payload, dict) or "text" not in payload or set(payload) - {
-                "text", "language", "session_id",
+                "text", "language", "session_id", "agent_context",
             }:
-                raise BrokerValidationError("Everyday turn must contain text, language and session_id only")
+                raise BrokerValidationError("Everyday turn contains unsupported fields")
             text = str(payload.get("text") or "").strip()
             if not text or len(text) > 2_000:
                 raise BrokerValidationError("text must be 1-2000 characters")
@@ -4046,6 +4053,8 @@ class Bridge(NativeWorkspaceRoutes):
                 device_id=device_id,
                 session_key=f"{device_id}:{str(payload.get('session_id') or '')[:96]}",
                 language=str(payload.get("language") or "")[:12],
+                original_context=(BrokerContext.parse(payload["agent_context"])
+                                  if "agent_context" in payload else None),
             )
         except BrokerValidationError as exc:
             raise web.HTTPForbidden(text=str(exc)) from exc
@@ -4119,9 +4128,8 @@ class Bridge(NativeWorkspaceRoutes):
                 everyday_context = config.get("agent_context")
                 if isinstance(everyday_context, dict) and everyday_context.get("capability_profile") == "conversation":
                     try:
-                        await self.agent_broker.assert_current(
-                            device_id, int(everyday_context.get("session_generation") or 0))
-                        return self.agent_broker.everyday_read_fence(device_id) is not None
+                        original = BrokerContext.parse(everyday_context)
+                        return self.agent_broker.everyday_read_fence(device_id, original) is not None
                     except BrokerValidationError:
                         return False
                 return True  # legacy clients retain their pre-existing transport behavior
@@ -4134,10 +4142,14 @@ class Bridge(NativeWorkspaceRoutes):
         def answer(config: dict[str, Any]) -> Callable[[str, str], Awaitable[str]]:
             context = workspace_context(config)
             language = str(config.get("language") or "")[:12]
+            # Freeze at callback creation, before the provider/lease can advance.
+            raw_context = config.get("agent_context")
+            original = BrokerContext.parse(raw_context) if isinstance(raw_context, dict) else None
 
             async def everyday(text: str, earlier: str) -> str:
                 result = await self.everyday_answer(
                     text, device_id=device_id, session_key=session_key, language=language, context=earlier,
+                    original_context=original,
                 )
                 return str(result["text"])
 

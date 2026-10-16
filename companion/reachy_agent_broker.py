@@ -686,14 +686,20 @@ class ReachyAgentBroker:
             if lease is not None and lease.generation == generation:
                 lease.tasks.pop(request_id, None)
 
-    def everyday_read_fence(self, device_id: str) -> Callable[[], bool] | None:
-        """Snapshot an already-established adult conversation lease, without granting Agent authority.
+    def everyday_read_fence(
+        self, device_id: str, original: BrokerContext,
+    ) -> Callable[[], bool] | None:
+        """Fence the caller's immutable original context, never borrow a newer lease.
 
-        Called on the bridge event loop (no await between snapshot and read). Legacy clients
-        without a lease and native Workspace retain their existing routing, not this shortcut.
+        Called on the bridge event loop without an await before the snapshot. Unbound
+        legacy requests cannot call this shortcut; Workspace keeps its existing route.
         """
         lease = self._leases.get(device_id)
-        if lease is None or lease.authorization_state[0] != "conversation":
+        if (lease is None or lease.generation != original.session_generation
+                or original.requested_session_generation != original.session_generation
+                or lease.authorization_state != self._authorization_state(original)):
+            raise BrokerValidationError("stale_session")
+        if original.capability_profile != "conversation":
             return None
         state = lease.authorization_state
         if state[2] or state[3] != "awake" or not state[4] or state[5] or not state[6]:

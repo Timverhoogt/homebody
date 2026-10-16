@@ -509,13 +509,14 @@ class HermesBridgeClient:
         self.last_answer_source = {k: str(v)[:200] for k, v in source.items() if isinstance(v, str)}
         return text
 
-    def everyday_turn(self, transcript: str) -> str:
+    def everyday_turn(self, transcript: str, *, context: AgentBrokerContext | None = None) -> str:
         """Fast Everyday turn on the host's narrow backend; never the full Hermes agent."""
         self._rotate_session_if_stale()
         response = self._client.post(
             f"{self.config.bridge_url}/v1/everyday/turn",
             headers=self._headers(),
-            json={"text": transcript, "language": self.config.language, "session_id": self._session_id},
+            json={"text": transcript, "language": self.config.language, "session_id": self._session_id,
+                  **({"agent_context": asdict(context)} if context is not None else {})},
             timeout=httpx.Timeout(30.0, connect=10.0),
         )
         self._raise_for_error(response, "Everyday response")

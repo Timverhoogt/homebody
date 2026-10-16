@@ -86,6 +86,8 @@ class PipelineVoiceMixin:
         ):
             self._invalidate_ispy_input()
         config = initial_config
+        # Freeze before blocking work; a later Stop/new wake must not donate its authority.
+        everyday_context = self.agent_broker_context(explicit_private_intent=False)
         if typed_input is None:
             self._prewarm_robot_stt(config)
         client = self._new_bridge_client(config)
@@ -355,7 +357,7 @@ class PipelineVoiceMixin:
                     response_text = client.chat(transcript)  # dedicated Kids route, unchanged
                 else:
                     # Everyday: the narrow fast backend, never the full Hermes agent.
-                    response_text = client.everyday_turn(transcript)
+                    response_text = client.everyday_turn(transcript, context=everyday_context)
                 self._voice_timings.mark("tool_result")  # backend text returned (not "heard")
                 if (
                     not conversation_is_current()

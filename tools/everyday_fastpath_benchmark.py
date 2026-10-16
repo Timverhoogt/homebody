@@ -79,7 +79,8 @@ async def run(args):
                 for language, text in (('en', 'What time is it?'), ('nl', 'Hoe laat is het nu?')):
                     start = time.monotonic()
                     response = await client.post('/v1/everyday/turn', headers=headers,
-                                                 json={'text': text, 'language': language, 'session_id': clock_kind})
+                                                 json={'text': text, 'language': language, 'session_id': clock_kind,
+                                                       'agent_context': context()})
                     result = await response.json()
                     assert response.status == 200 and result['source']['route'] == 'time'
                     if clock_kind == 'fixture':
