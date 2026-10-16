@@ -49,6 +49,7 @@ def current_live_turn() -> bool:
     """Original delegation revision shared by host tools as well as local RPCs."""
     return _TURN_CURRENT.get()()
 
+
 LIVE_URL = "wss://api.openai.com/v1/live/sessions"
 LIVE_MODELS = frozenset({"gpt-live-1"})
 LIVE_VOICES = frozenset({"marin", "cedar"})
@@ -272,9 +273,24 @@ async def serve_live(
         if not await allowed(config):
             raise PermissionError("Live session is not allowed in the current state")
         backend = answer(config)
-        await _relay(client, config, key, backend, allowed, state, transcript, tasks, upstream_url,
-                     connect_timeout, started_timeout, timeout, transcript_grace, str(model), str(voice),
-                     answer_with_local)
+        await _relay(
+            client,
+            config,
+            key,
+            backend,
+            allowed,
+            state,
+            transcript,
+            tasks,
+            upstream_url,
+            connect_timeout,
+            started_timeout,
+            timeout,
+            transcript_grace,
+            str(model),
+            str(voice),
+            answer_with_local,
+        )
     except Exception as exc:
         _LOGGER.warning("Live relay ended (%s)", type(exc).__name__)
         if not client.closed:
@@ -295,22 +311,42 @@ async def serve_live(
     return client
 
 
-async def _relay(client, config, key, backend, allowed, state, transcript, tasks, upstream_url,
-                 connect_timeout, started_timeout, timeout, transcript_grace, model, voice,
-                 answer_with_local=None) -> None:
+async def _relay(
+    client,
+    config,
+    key,
+    backend,
+    allowed,
+    state,
+    transcript,
+    tasks,
+    upstream_url,
+    connect_timeout,
+    started_timeout,
+    timeout,
+    transcript_grace,
+    model,
+    voice,
+    answer_with_local=None,
+) -> None:
     send_lock = asyncio.Lock()
     backend_lock = asyncio.Lock()
     carry = AudioCarry()
-    local = LocalToolTransport(config.get("local_tools", [])
-                               if config.get("assistant_mode") == "everyday" else [], client.send_json)
+    local = LocalToolTransport(
+        config.get("local_tools", []) if config.get("assistant_mode") == "everyday" else [], client.send_json
+    )
     active_turn: ContextVar[tuple[int, float]] = ContextVar("live_local_turn")
 
     async def local_execute(name: str, arguments: dict) -> dict:
         revision, deadline = active_turn.get()
+
         def current() -> bool:
             return not state.closed.is_set() and not client.closed and state.revision == revision
+
         if not current() or not await allowed(config):
             raise PermissionError("stale Live operation")
+        if state.look_engaged and name != "stop_reachy_camera":
+            raise PermissionError("looking together is tool-free")
         result = await local.execute(name, arguments, deadline=deadline, current=current)
         if not current() or not await allowed(config):
             raise PermissionError("stale Live result")
@@ -330,17 +366,27 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                     await upstream.send_json(payload)
                     return True
 
-            await send(event("session.start", session={
-                "model": model,
-                "instructions": (LIVE_INSTRUCTIONS.replace(
-                    "Camera, robot movement and personal memory are unavailable in this session.",
-                    "Delegate explicit camera, speaker, robot status, power and gesture requests to the client. "
-                    "Never claim an operation succeeded without a delegated result. Personal memory is unavailable.")
-                    if local.names and answer_with_local is not None else LIVE_INSTRUCTIONS),
-                "store": False,
-                "audio": {"format": {"type": "audio/pcm", "rate": 24000}, "output": {"voice": voice}},
-                "delegation": {"type": "client"},
-            }))
+            await send(
+                event(
+                    "session.start",
+                    session={
+                        "model": model,
+                        "instructions": (
+                            LIVE_INSTRUCTIONS.replace(
+                                "Camera, robot movement and personal memory are unavailable in this session.",
+                                "Delegate explicit camera, speaker, robot status, power and gesture requests "
+                                "to the client. Never claim an operation succeeded without a delegated result. "
+                                "Personal memory is unavailable.",
+                            )
+                            if local.names and answer_with_local is not None
+                            else LIVE_INSTRUCTIONS
+                        ),
+                        "store": False,
+                        "audio": {"format": {"type": "audio/pcm", "rate": 24000}, "output": {"voice": voice}},
+                        "delegation": {"type": "client"},
+                    },
+                )
+            )
             started = await upstream.receive(timeout=started_timeout)
             payload = json.loads(started.data) if started.type == WSMsgType.TEXT else {}
             if payload.get("type") != "session.started":
@@ -400,10 +446,12 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                     try:
                         if not await allowed(config):
                             raise PermissionError("not allowed")
-                        token = active_turn.set((revision, asyncio.get_running_loop().time()
-                                                 + EVERYDAY_TURN_TIMEOUT_SECONDS))
+                        token = active_turn.set(
+                            (revision, asyncio.get_running_loop().time() + EVERYDAY_TURN_TIMEOUT_SECONDS)
+                        )
                         current_token = _TURN_CURRENT.set(
-                            lambda: not state.closed.is_set() and not client.closed and state.revision == revision)
+                            lambda: not state.closed.is_set() and not client.closed and state.revision == revision
+                        )
                         try:
                             if state.look_request(text, engaged=state.look_engaged):
                                 reply = await robot_look(identifier, text)

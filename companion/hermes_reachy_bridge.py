@@ -1200,7 +1200,11 @@ def _ispy_same_spot(first: dict[str, Any], second: dict[str, Any]) -> bool:
 
 
 def _ispy_candidate_pool(
-    payload: object, *, frame_count: int, language: str = "", allow_empty: bool = False,
+    payload: object,
+    *,
+    frame_count: int,
+    language: str = "",
+    allow_empty: bool = False,
 ) -> list[dict[str, Any]]:
     """Validate the complete schema-bounded pool, then deduplicate eligible objects.
 
@@ -1240,10 +1244,12 @@ def _ispy_candidate_pool(
 
 def _ispy_candidate_moderation_text(option: dict[str, Any]) -> str:
     """Screen every retained string, including every available localized hint."""
-    return " ".join([
-        *(str(option[key]) for key in ("object_name", "category", "location", "colour")),
-        *(str(hint) for key, values in option.items() if key.startswith("hints_") for hint in values),
-    ])
+    return " ".join(
+        [
+            *(str(option[key]) for key in ("object_name", "category", "location", "colour")),
+            *(str(hint) for key, values in option.items() if key.startswith("hints_") for hint in values),
+        ]
+    )
 
 
 def _ispy_pool_diagnostics(result: object) -> str:
@@ -3231,15 +3237,19 @@ class Bridge(NativeWorkspaceRoutes):
         def require_turn() -> None:
             self._require_current_kids_turn(session_id, owner_session)
             if (
-                owner_session.get("_turn_token") is not turn_token or self._kids_epoch(session_id) != epoch
+                owner_session.get("_turn_token") is not turn_token
+                or self._kids_epoch(session_id) != epoch
                 or owner_session.get("profile") != fingerprint
-                or (activity == "ispy" and (
-                    owner_session.get("ispy_role") != snapshot.get("ispy_role")
-                    or owner_session.get("ispy_player_phase") != snapshot.get("ispy_player_phase")
-                    or owner_session.get("ispy_view_token") != snapshot.get("ispy_view_token")
-                    or owner_session.get("ispy_target") is not snapshot.get("ispy_target")
-                    or owner_session.get("ispy_player_candidates") is not snapshot.get("ispy_player_candidates")
-                ))
+                or (
+                    activity == "ispy"
+                    and (
+                        owner_session.get("ispy_role") != snapshot.get("ispy_role")
+                        or owner_session.get("ispy_player_phase") != snapshot.get("ispy_player_phase")
+                        or owner_session.get("ispy_view_token") != snapshot.get("ispy_view_token")
+                        or owner_session.get("ispy_target") is not snapshot.get("ispy_target")
+                        or owner_session.get("ispy_player_candidates") is not snapshot.get("ispy_player_candidates")
+                    )
+                )
             ):
                 raise web.HTTPConflict(text="Kids Mode turn was superseded")
 
@@ -3327,15 +3337,17 @@ class Bridge(NativeWorkspaceRoutes):
                 if complete:
                     child_session.pop("ispy_target", None)
                     child_session.pop("ispy_hints_given", None)
-                    child_session.update({
-                        "ispy_role": "player_picker",
-                        "ispy_player_phase": "awaiting_view",
-                        "ispy_player_clues": [],
-                        "ispy_player_guesses": [],
-                        "ispy_player_candidates": [],
-                        "ispy_player_scans": 0,
-                        "ispy_view_token": uuid.uuid4().hex,
-                    })
+                    child_session.update(
+                        {
+                            "ispy_role": "player_picker",
+                            "ispy_player_phase": "awaiting_view",
+                            "ispy_player_clues": [],
+                            "ispy_player_guesses": [],
+                            "ispy_player_candidates": [],
+                            "ispy_player_scans": 0,
+                            "ispy_view_token": uuid.uuid4().hex,
+                        }
+                    )
                     ispy_role = "player_picker"
                     ispy_next_action = "prepare_player_view"
                     answer += _kids_copy(language, "ispy_your_turn") + " " + _kids_copy(language, "ispy_player_look")
@@ -3345,9 +3357,8 @@ class Bridge(NativeWorkspaceRoutes):
                 guesses = [str(item) for item in child_session.get("ispy_player_guesses") or []][-6:]
                 intent = _ispy_intent(text, language)
                 if (
-                    intent == "give_up" and phase in {
-                        "awaiting_view", "awaiting_clue", "awaiting_confirmation", "awaiting_reveal"
-                    }
+                    intent == "give_up"
+                    and phase in {"awaiting_view", "awaiting_clue", "awaiting_confirmation", "awaiting_reveal"}
                 ) or (intent != "answer" and phase == "awaiting_reveal"):
                     # End this player round without a reveal and without starting a camera search.
                     child_session["ispy_role"] = "reachy_pending"
@@ -3452,8 +3463,11 @@ class Bridge(NativeWorkspaceRoutes):
                 ispy_next_action = ""
             if ispy_role != "player_picker":
                 for key in (
-                    "ispy_player_candidates", "ispy_view_token", "ispy_view_inflight",
-                    "ispy_player_scans", "ispy_last_view_token",
+                    "ispy_player_candidates",
+                    "ispy_view_token",
+                    "ispy_view_inflight",
+                    "ispy_player_scans",
+                    "ispy_last_view_token",
                 ):
                     child_session.pop(key, None)
         else:
@@ -3552,11 +3566,13 @@ class Bridge(NativeWorkspaceRoutes):
                 if ispy_role == "reachy_picker"
                 else str(child_session.get("ispy_player_phase") or "complete")
             )
-            response_payload.update({
-                "ispy_role": ispy_role,
-                "ispy_phase": ispy_phase,
-                "ispy_next_action": ispy_next_action,
-            })
+            response_payload.update(
+                {
+                    "ispy_role": ispy_role,
+                    "ispy_phase": ispy_phase,
+                    "ispy_next_action": ispy_next_action,
+                }
+            )
             if ispy_next_action == "prepare_player_view":
                 response_payload["ispy_view_token"] = child_session["ispy_view_token"]
         if hosted:
@@ -3615,7 +3631,11 @@ class Bridge(NativeWorkspaceRoutes):
         try:
             payload = await request.json()
             if not isinstance(payload, dict) or set(payload) != {
-                "session_id", "age_band", "language", "view_token", "frames_jpeg"
+                "session_id",
+                "age_band",
+                "language",
+                "view_token",
+                "frames_jpeg",
             }:
                 raise ValueError
             session_id, age_band, language, view_token = (
@@ -3624,13 +3644,16 @@ class Bridge(NativeWorkspaceRoutes):
             if (
                 not all(isinstance(item, str) for item in (session_id, age_band, language, view_token))
                 or _KIDS_SESSION_ID_RE.fullmatch(session_id) is None
-                or age_band not in _KIDS_AGE_BANDS or language not in _KIDS_LANGUAGES
+                or age_band not in _KIDS_AGE_BANDS
+                or language not in _KIDS_LANGUAGES
                 or re.fullmatch(r"[0-9a-f]{32}", view_token) is None
             ):
                 raise ValueError
             encoded = payload["frames_jpeg"]
-            if not isinstance(encoded, list) or len(encoded) != 5 or any(
-                not isinstance(value, str) or not 0 < len(value) <= 2_000_000 for value in encoded
+            if (
+                not isinstance(encoded, list)
+                or len(encoded) != 5
+                or any(not isinstance(value, str) or not 0 < len(value) <= 2_000_000 for value in encoded)
             ):
                 raise ValueError
         except Exception as exc:
@@ -3638,7 +3661,8 @@ class Bridge(NativeWorkspaceRoutes):
         self.kids_session_live()
         child_session = self._kids_sessions.get(session_id)
         if (
-            session_id not in self._kids_live or child_session is None
+            session_id not in self._kids_live
+            or child_session is None
             or tuple(child_session.get("profile", ())[:3]) != (age_band, "ispy", language)
             or self._kids_profile_conflicts(session_id, (age_band, "ispy", language))
             or time.monotonic() - float(child_session.get("updated_at", 0)) > _KIDS_HISTORY_TTL_SECONDS
@@ -3665,8 +3689,14 @@ class Bridge(NativeWorkspaceRoutes):
         self._ispy_selections[session_id] = token
         try:
             return await self._choose_ispy_target(
-                session_id, token, age_band, language, frames, openai_key,
-                observation=child_session, view_token=view_token,
+                session_id,
+                token,
+                age_band,
+                language,
+                frames,
+                openai_key,
+                observation=child_session,
+                view_token=view_token,
             )
         finally:
             frames.clear()
@@ -3723,36 +3753,51 @@ class Bridge(NativeWorkspaceRoutes):
         require_current()
         frame_count = len(frames)
         forbidden = ", ".join(sorted(_ISPY_DISALLOWED_TERMS))
-        content: list[dict[str, object]] = [{
-            "type": "text",
-            "text": (
-                f"List at most {_ISPY_MAX_CANDIDATES} different child-safe household objects, each visible clearly "
-                "and consistently in at least two supplied frames. Each candidate must be a different physical "
-                "object: never list the same object twice under another name. Mix kinds, sizes and colours where "
-                "the room allows, but only list objects that truly qualify; fewer candidates is fine. Never list "
-                "a person, face, body, clothing, screen, document, medicine, weapon, private/sensitive, "
-                "reflective, tiny, or unstable item. Return the exact strict candidates schema. "
-                + ("Return an empty candidates list if no safe objects qualify. " if observation is not None else "")
-                + f"Write object_name in {_KIDS_LANGUAGE_NAMES[language]}, the child's selected language. "
-                "Use the ordinary child-friendly name in that language, not an untranslated or bilingual "
-                "label; it is stored and spoken verbatim in correct-answer and reveal sentences. "
-                "Write category and location in the same session language. Keep JSON keys unchanged. Colour must be "
-                "one of red, orange, yellow, green, blue, purple, pink, brown, black, white, grey. Set stable "
-                "true, visible_frame_count between 2 and the supplied frame count, and confidence from 0.78 to "
-                "1.0. bbox is normalized [x,y,width,height], fully inside the image, width and height at least "
-                "0.12, with area from 0.025 to 0.65. Provide 1-2 short child-safe hints in English and Dutch"
-                + (
-                    f", and in {_KIDS_LANGUAGE_NAMES[language]} as hints_{language}"
-                    if language in _KIDS_SESSION_VOICE_LANGUAGES else ""
-                )
-                + ". Do not use any forbidden word in any candidate string, even as nearby context: "
-                f"{forbidden}. Use a generic safe location instead. Age band {age_band}; language {language}."
-            ),
-        }]
-        content.extend({
-            "type": "image_url",
-            "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(frame).decode('ascii')}", "detail": "low"},
-        } for frame in frames)
+        content: list[dict[str, object]] = [
+            {
+                "type": "text",
+                "text": (
+                    f"List at most {_ISPY_MAX_CANDIDATES} different child-safe household objects, "
+                    "each visible clearly "
+                    "and consistently in at least two supplied frames. Each candidate must be a different physical "
+                    "object: never list the same object twice under another name. Mix kinds, sizes and colours where "
+                    "the room allows, but only list objects that truly qualify; fewer candidates is fine. Never list "
+                    "a person, face, body, clothing, screen, document, medicine, weapon, private/sensitive, "
+                    "reflective, tiny, or unstable item. Return the exact strict candidates schema. "
+                    + (
+                        "Return an empty candidates list if no safe objects qualify. "
+                        if observation is not None
+                        else ""
+                    )
+                    + f"Write object_name in {_KIDS_LANGUAGE_NAMES[language]}, the child's selected language. "
+                    "Use the ordinary child-friendly name in that language, not an untranslated or bilingual "
+                    "label; it is stored and spoken verbatim in correct-answer and reveal sentences. "
+                    "Write category and location in the same session language. Keep JSON keys unchanged. "
+                    "Colour must be "
+                    "one of red, orange, yellow, green, blue, purple, pink, brown, black, white, grey. Set stable "
+                    "true, visible_frame_count between 2 and the supplied frame count, and confidence from 0.78 to "
+                    "1.0. bbox is normalized [x,y,width,height], fully inside the image, width and height at least "
+                    "0.12, with area from 0.025 to 0.65. Provide 1-2 short child-safe hints in English and Dutch"
+                    + (
+                        f", and in {_KIDS_LANGUAGE_NAMES[language]} as hints_{language}"
+                        if language in _KIDS_SESSION_VOICE_LANGUAGES
+                        else ""
+                    )
+                    + ". Do not use any forbidden word in any candidate string, even as nearby context: "
+                    f"{forbidden}. Use a generic safe location instead. Age band {age_band}; language {language}."
+                ),
+            }
+        ]
+        content.extend(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{base64.b64encode(frame).decode('ascii')}",
+                    "detail": "low",
+                },
+            }
+            for frame in frames
+        )
         vision_url, vision_headers, vision_body = _ispy_vision_request(self.llm, self._llm_key())
         async with self.http.post(
             vision_url,
@@ -3763,7 +3808,8 @@ class Bridge(NativeWorkspaceRoutes):
                 "response_format": {
                     "type": "json_schema",
                     "json_schema": {
-                        "name": "kids_ispy_candidates", "strict": True,
+                        "name": "kids_ispy_candidates",
+                        "strict": True,
                         "schema": _ispy_response_schema(language, allow_empty=observation is not None),
                     },
                 },
@@ -3779,7 +3825,10 @@ class Bridge(NativeWorkspaceRoutes):
         try:
             raw_pool = json.loads(result["choices"][0]["message"]["content"])
             pool = _ispy_candidate_pool(
-                raw_pool, frame_count=frame_count, language=language, allow_empty=observation is not None,
+                raw_pool,
+                frame_count=frame_count,
+                language=language,
+                allow_empty=observation is not None,
             )
         except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
             # Provider 200 is not schema acceptance. Log shape metadata only, never candidate text.
@@ -3849,15 +3898,17 @@ class Bridge(NativeWorkspaceRoutes):
         key = _ispy_object_key(str(target["object_name"]))
         prior = [item for item in child_session.get("ispy_recent") or [] if item != key]
         child_session.pop("_turn_token", None)  # a new target also supersedes chats admitted during vision
-        child_session.update({
-            "ispy_recent": [key, *prior][:_ISPY_RECENT_LIMIT],
-            "ispy_target": target,
-            "ispy_role": "reachy_picker",
-            "ispy_guess_count": 0,
-            "ispy_hints_given": 0,
-            "history": [],
-            "updated_at": time.monotonic(),
-        })
+        child_session.update(
+            {
+                "ispy_recent": [key, *prior][:_ISPY_RECENT_LIMIT],
+                "ispy_target": target,
+                "ispy_role": "reachy_picker",
+                "ispy_guess_count": 0,
+                "ispy_hints_given": 0,
+                "history": [],
+                "updated_at": time.monotonic(),
+            }
+        )
         for key in (
             "ispy_player_phase",
             "ispy_player_clues",
@@ -4060,7 +4111,8 @@ class Bridge(NativeWorkspaceRoutes):
             payload = await request.json()
             session_id = str(payload.get("session_id") or "")
             if _KIDS_SESSION_ID_RE.fullmatch(session_id) is None or set(payload) not in (
-                {"session_id"}, {"session_id", "view_token"},
+                {"session_id"},
+                {"session_id", "view_token"},
             ):
                 raise ValueError
         except Exception as exc:
@@ -4073,7 +4125,8 @@ class Bridge(NativeWorkspaceRoutes):
             self.kids_session_live()
             child_session = self._kids_sessions.get(session_id)
             if (
-                session_id not in self._kids_live or child_session is None
+                session_id not in self._kids_live
+                or child_session is None
                 or child_session.get("ispy_role") != "player_picker"
                 or view_token != (child_session.get("ispy_view_token") or child_session.get("ispy_last_view_token"))
             ):
@@ -4088,7 +4141,8 @@ class Bridge(NativeWorkspaceRoutes):
             child_session["ispy_player_phase"] = "awaiting_clue"
             child_session["updated_at"] = time.monotonic()
             return web.json_response(
-                {"cancelled": True, "view_token": view_token}, headers={"Cache-Control": "no-store"},
+                {"cancelled": True, "view_token": view_token},
+                headers={"Cache-Control": "no-store"},
             )
         self._bump_kids_epoch(session_id)  # held approvals/clues from before the cancel are refused
         self._kids_sessions.pop(session_id, None)
@@ -5089,6 +5143,8 @@ class Bridge(NativeWorkspaceRoutes):
             kids_live=self.kids_session_live,
             is_current=current,
             allow_host_extensions=fence is not None,
+            # Camera consent is only ever the current request's own words, never earlier context.
+            consent_text=text,
             **local_options,
         )
 

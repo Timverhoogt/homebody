@@ -19,6 +19,7 @@ import httpx
 from . import kids_acknowledgements
 from .audio import AdaptiveEndpointRecorder, EndpointResult, resample_linear
 from .config import AppConfig
+from .everyday_runtime import EverydayCallbackScope
 from .hermes_client import HermesBridgeError, SpeechAudio
 from .ispy import ISpyCancelled
 from .kids_acknowledgements import (
@@ -96,8 +97,7 @@ class PipelineVoiceMixin:
             self._invalidate_ispy_input()
         config = initial_config
         # Freeze before blocking work; a later Stop/new wake must not donate its authority.
-        local_fence = (self.everyday_tool_fence()
-                       if callable(getattr(self, "everyday_tool_fence", None)) else None)
+        local_fence = self.everyday_tool_fence() if callable(getattr(self, "everyday_tool_fence", None)) else None
         everyday_context = self.agent_broker_context(explicit_private_intent=False)
         if typed_input is None:
             self._prewarm_robot_stt(config)
@@ -390,10 +390,16 @@ class PipelineVoiceMixin:
                         if not settle_ack():
                             break
                         refresh = getattr(client, "kids_voice_proof", None)
-                        ack_player = self._start_kids_ack(
-                            initial_config, refresh=refresh, stage="think",
-                            delay=kids_acknowledgements.REPLY_WAIT_DELAY_SECONDS,
-                        ) if callable(refresh) else None
+                        ack_player = (
+                            self._start_kids_ack(
+                                initial_config,
+                                refresh=refresh,
+                                stage="think",
+                                delay=kids_acknowledgements.REPLY_WAIT_DELAY_SECONDS,
+                            )
+                            if callable(refresh)
+                            else None
+                        )
                     try:
                         response_text = client.chat(transcript)  # dedicated Kids route, unchanged
                     finally:
@@ -402,10 +408,20 @@ class PipelineVoiceMixin:
                 else:
                     # Everyday: the narrow fast backend, never the full Hermes agent.
                     if local_fence is not None:
+                        # Camera admission is bound to this turn's own recognised words, never the model.
+                        callback_scope = EverydayCallbackScope(transcript=transcript)
                         response_text = client.everyday_turn(
-                            transcript, context=everyday_context, local_tools=self.everyday_local_tools(),
-                            local_executor=lambda name, args, call_id: self.execute_everyday_tool(
-                                name, args, fence=local_fence, call_id=call_id,
+                            transcript,
+                            context=everyday_context,
+                            local_tools=self.everyday_local_tools(),
+                            local_executor=lambda name, args, call_id, scope=callback_scope: (
+                                self.execute_everyday_callback(
+                                    name,
+                                    args,
+                                    scope=scope,
+                                    fence=local_fence,
+                                    call_id=call_id,
+                                )
                             ),
                             is_current=lambda: conversation_is_current() and not self._turn_stop_requested(),
                         )
@@ -714,7 +730,12 @@ class PipelineVoiceMixin:
             )
 
         return self._arm_kids_wait_speech(
-            config.language, is_current, voice_proof=voice_proof, refresh=refresh, stage=stage, delay=delay,
+            config.language,
+            is_current,
+            voice_proof=voice_proof,
+            refresh=refresh,
+            stage=stage,
+            delay=delay,
         )
 
     def _arm_kids_wait_speech(

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from .audio import resample_linear
 from .config import AppConfig
-from .everyday_runtime import completed_everyday_call
+from .everyday_runtime import EverydayCallbackScope, completed_everyday_call
 from .kids_acknowledgements import output_quarantined
 from .realtime_client import RealtimeBridgeError, RealtimeBridgeSession
 from .robot_tools import completed_robot_tool_call
@@ -554,6 +554,8 @@ class RealtimeVoiceMixin:
                             call_id=call_id,
                             deliver=lambda result, identifier=call_id: session.send_tool_result(identifier, result),
                             is_current=local_current,
+                            # Only the current input item's own words can admit a camera callback.
+                            scope=EverydayCallbackScope(transcript=spoken_text),
                         )
                     elif power_call is not None and power_call.call_id not in handled_power_call_ids:
                         handled_power_call_ids.add(power_call.call_id)
@@ -599,7 +601,8 @@ class RealtimeVoiceMixin:
 
                         self._set_status("looking", "Capturing one on-demand camera frame")
                         try:
-                            if not config.camera_enabled:
+                            # General access, or an explicitly started temporary window; never saved.
+                            if not self._look_camera_permitted(config):
                                 raise RuntimeError("Camera access is disabled in Reachy settings")
                             if self._effective_power_mode() in {"meeting", "sleep"}:
                                 raise RuntimeError("Camera capture is blocked in the current privacy mode")

@@ -51,19 +51,51 @@ _LOOK_RE = re.compile(_LEAD_RE + "(?:" + "|".join(_EN_PATTERNS + _NL_PATTERNS) +
 _ENGAGED_RE = re.compile(_LEAD_RE + "(?:" + "|".join(_ENGAGED_PATTERNS) + ")", re.IGNORECASE)
 
 
+# Arming the owner-opted-in temporary camera window. It never captures or uploads by itself.
+_DURATION = (
+    r"(?: (?:for|voor) (?:\d{1,3}|a|one|two|half a|een|twee|half) (?:seconds?|minutes?|seconden|minuten|minuut))?"
+)
+_SESSION_PATTERNS = (
+    r"(?:turn|switch) (?:on (?:the|your) camera|(?:the|your) camera on)" + _DURATION,
+    r"(?:start|enable|open) (?:the|your) camera" + _DURATION,
+    r"camera on" + _DURATION,
+    r"(?:zet|doe) (?:de|je) camera(?: even| eens)? aan" + _DURATION,
+    r"(?:start|open) (?:de|je) camera" + _DURATION,
+    r"camera aan" + _DURATION,
+)
+_SESSION_RE = re.compile(_LEAD_RE + "(?:" + "|".join(_SESSION_PATTERNS) + r")\s*$", re.IGNORECASE)
+
+
+def _clean(text: str) -> str:
+    raw = str(text or "")
+    if _QUOTE_RE.search(raw):
+        return ""
+    clean = _SPACE_RE.sub(" ", re.sub(r"[?!.,;:]+$", "", raw.strip())).strip()
+    if not clean or len(clean) > 160:
+        return ""
+    if _NEGATION_RE.search(clean) or _META_RE.search(clean) or _NON_PHYSICAL_RE.search(clean):
+        return ""
+    return clean
+
+
 def looks_like_look_request(text: str, *, engaged: bool = False) -> bool:
     """True only for a deliberate request to look at / read a physical thing being shown.
 
     ``engaged`` enables the short "and this one" refresh only while a look is already live.
     """
-    raw = str(text or "")
-    if _QUOTE_RE.search(raw):
-        return False
-    clean = _SPACE_RE.sub(" ", re.sub(r"[?!.,;:]+$", "", raw.strip())).strip()
-    if not clean or len(clean) > 160:
-        return False
-    if _NEGATION_RE.search(clean) or _META_RE.search(clean) or _NON_PHYSICAL_RE.search(clean):
+    clean = _clean(text)
+    if not clean:
         return False
     if _LOOK_RE.match(clean):
         return True
     return bool(engaged and _ENGAGED_RE.match(clean))
+
+
+def requests_camera_session(text: str) -> bool:
+    """True only when the person's own words ask to switch the temporary camera window on.
+
+    Same quote/negation/meta guards as a look. This is never consent for a capture: a frame is
+    only taken for a separate explicit look request.
+    """
+    clean = _clean(text)
+    return bool(clean and _SESSION_RE.match(clean))

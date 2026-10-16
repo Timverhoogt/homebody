@@ -28,8 +28,9 @@ def make_runtime():
 
 
 class Session:
-    def __init__(self, runtime, engine, name="get_reachy_volume", mutate_start=False):
+    def __init__(self, runtime, engine, name="get_reachy_volume", mutate_start=False, transcript=""):
         self.runtime, self.engine, self.name = runtime, engine, name
+        self.transcript = transcript
         self.started = time.monotonic()
         self.emitted = False
         self.closed = False
@@ -54,6 +55,9 @@ class Session:
     def send_everyday_result(self, identifier, result):
         self.results.append((identifier, result))
 
+    def send_camera_error(self, identifier, message):
+        self.results.append((identifier, {"ok": False, "error": message}))
+
     def events(self):
         if self.results or time.monotonic() - self.started > 2:
             self.runtime._request_conversation_stop()
@@ -61,12 +65,18 @@ class Session:
         if self.emitted:
             return []
         self.emitted = True
-        args = {"purpose": "Read this label"} if self.name == "capture_reachy_camera" else {}
+        args = {
+            "capture_reachy_camera": {"purpose": "Read this label"},
+            "start_reachy_camera": {"duration_seconds": 30},
+        }.get(self.name, {})
         if self.engine == "live":
             event = RealtimeEvent(
                 "everyday.tool_call",
                 {"type": "everyday.tool_call", "call_id": "tool-one", "name": self.name, "arguments": args},
             )
+            if self.transcript:
+                heard = RealtimeEvent("session.input_transcript.delta", {"delta": self.transcript})
+                return [heard, event]
         else:
             event = RealtimeEvent(
                 "response.output_item.done",
@@ -122,7 +132,8 @@ def test_connection_delay_cannot_donate_new_wake_authority(engine):
 def test_slow_camera_tool_does_not_block_live_microphone_and_stop_cancels_upload():
     r, config = make_runtime()
     config.camera_enabled = True
-    session = Session(r, "live", name="capture_reachy_camera")
+    # A model-selected capture never reaches the camera; an explicitly requested window start does.
+    session = Session(r, "live", name="start_reachy_camera", transcript="Turn on the camera for 30 seconds")
     r._new_live_session = lambda *a, **k: session
     entered, release = threading.Event(), threading.Event()
 
@@ -145,3 +156,25 @@ def test_slow_camera_tool_does_not_block_live_microphone_and_stop_cancels_upload
     r._run_live_conversation(config)
     assert entered.is_set() and session.audio_frames >= 4 and session.closed
     assert not session.results  # no stale result delivered after Stop
+    assert not r.everyday_local_capabilities()["activity"]["camera_session_active"]
+
+
+@pytest.mark.parametrize("engine", ["live", "realtime"])
+def test_model_selected_capture_is_refused_without_a_frame(engine):
+    r, config = make_runtime()
+    config.camera_enabled = True
+    session = Session(r, engine, name="capture_reachy_camera", transcript="Do not look at this letter")
+    setattr(r, f"_new_{engine}_session", lambda *a, **k: session)
+    r._capture_camera_jpeg = lambda **kw: pytest.fail("model tool choice is not camera consent")
+    r._everyday_describe_frame = lambda *a, **k: pytest.fail("no analysis")
+
+    def read():
+        time.sleep(0.005)
+        return np.zeros(160, dtype=np.float32)
+
+    r._read_16k_frame = read
+    getattr(r, f"_run_{engine}_conversation")(config)
+    assert session.closed and r._status.camera_captures == 0
+    if engine == "live":
+        assert session.results[0][0] == "tool-one" and session.results[0][1]["ok"] is False
+        assert "nothing was captured" in session.results[0][1]["error"]

@@ -17,6 +17,7 @@ from test_everyday_local_transport import VALID, run_host
 from test_everyday_workspace_bridge import ctx
 
 from homebody.config import AppConfig
+from homebody.everyday_runtime import EverydayCallbackScope
 from homebody.hermes_client import AgentBrokerContext, HermesBridgeClient
 from homebody.runtime import HermesVoiceRuntime
 
@@ -76,6 +77,11 @@ def test_real_robot_client_and_host_roundtrip(name, args):
                     message = {"content": "The fixture image is white."}
                 elif body["messages"][-1]["role"] == "tool":
                     result = json.loads(content)
+                    if name == "capture_reachy_camera" and not result.get("camera_session_active"):
+                        # An open window is not consent for a model-selected capture.
+                        assert result["ok"] is False and "nothing was captured" in result["error"]
+                        message = {"content": "Verified fixture reply."}
+                        return {"choices": [{"message": message}]}
                     assert result["ok"] is True
                     if name == "capture_reachy_camera" and result.get("camera_session_active"):
                         message = {
@@ -111,16 +117,23 @@ def test_real_robot_client_and_host_roundtrip(name, args):
         bridge.everyday_llm = Provider()
         bridge._everyday_key = lambda: "fixture-only"
         fence = runtime.everyday_tool_fence()
+        # Camera callbacks are admitted by the person's own words, exactly like the Pipeline turn.
+        transcript = (
+            "turn on the camera for 30 seconds"
+            if name in {"start_reachy_camera", "capture_reachy_camera"}
+            else "perform the explicit fixture action"
+        )
+        scope = EverydayCallbackScope(transcript=transcript)
 
         def request():
             client = HermesBridgeClient(config)
             try:
                 return client.everyday_turn(
-                    "perform the explicit fixture action",
+                    transcript,
                     context=AgentBrokerContext(**ctx(27, "conversation")),
                     local_tools=runtime.everyday_local_tools(),
-                    local_executor=lambda tool, arguments, identifier: runtime.execute_everyday_tool(
-                        tool, arguments, call_id=identifier, fence=fence
+                    local_executor=lambda tool, arguments, identifier: runtime.execute_everyday_callback(
+                        tool, arguments, scope=scope, call_id=identifier, fence=fence
                     ),
                     is_current=lambda: not runtime._turn_stop_requested(),
                 )
@@ -130,9 +143,13 @@ def test_real_robot_client_and_host_roundtrip(name, args):
         answer = await asyncio.wait_for(asyncio.to_thread(request), 5)
         assert answer == ("" if name == "set_reachy_power_mode" else "Verified fixture reply.")
         if name in {"start_reachy_camera", "capture_reachy_camera"}:
-            assert len(captures) == (2 if name == "capture_reachy_camera" else 1) and not config.camera_enabled
+            # Only the start's local readiness probe; the model-selected capture takes no frame.
+            assert len(captures) == 1 and not config.camera_enabled
         if name == "capture_reachy_camera":
-            assert len(requests) == 4  # start, capture, no-tools vision, grounded final text
+            assert len(requests) == 3  # start, refused capture, final text; no image request
+            assert not any(
+                isinstance(message.get("content"), list) for body in requests for message in body["messages"]
+            )
         if name in {"move_reachy_head", "express_reachy_emotion", "dance_reachy"}:
             assert applied == [(name, args)]
         assert not bridge.agent_broker.actions._scheduled_tasks

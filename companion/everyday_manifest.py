@@ -45,9 +45,9 @@ _SPECS = [
     ),
     _spec(
         "capture_reachy_camera",
-        "On explicit request, look once using a fresh frame. If general camera access is off, first call "
-        "start_reachy_camera for a brief window (30 seconds when no duration was requested). "
-        "Never monitor or capture speculatively.",
+        "Dedicated one-frame visual help requires the current user's explicit look request. "
+        "Ordinary Everyday model callbacks cannot authorize capture: ask the person to say 'look at this'. "
+        "Never infer consent from purpose, capture speculatively, or monitor.",
         {"purpose": {"type": "string", "minLength": 1, "maxLength": 300}},
         ["purpose"],
     ),
@@ -143,8 +143,9 @@ def validate_local_arguments(name: str, arguments: object) -> dict[str, Any]:
             raise ValueError("invalid local argument choice")
         if expected is int and not field["minimum"] <= value <= field["maximum"]:
             raise ValueError("local argument out of range")
-        if expected is str and (not value.strip() or len(value) < field.get("minLength", 0)
-                                or len(value) > field.get("maxLength", 300)):
+        if expected is str and (
+            not value.strip() or len(value) < field.get("minLength", 0) or len(value) > field.get("maxLength", 300)
+        ):
             raise ValueError("invalid local argument length")
     return dict(arguments)
 

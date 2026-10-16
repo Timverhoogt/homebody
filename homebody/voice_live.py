@@ -15,6 +15,7 @@ from collections.abc import Callable
 
 from .audio import resample_linear
 from .config import AppConfig
+from .everyday_runtime import EverydayCallbackScope
 from .kids_acknowledgements import output_quarantined
 from .live_client import LiveBridgeSession
 from .realtime_client import RealtimeBridgeError
@@ -164,6 +165,7 @@ class LiveVoiceMixin:
     ) -> None:
         timings = self._voice_timings
         seen_local = set()
+        visual = threading.Event()
         playback = RealtimePlayback()
         speaking = False
         heard: list[str] = []
@@ -202,6 +204,8 @@ class LiveVoiceMixin:
                     ):
                         raise RealtimeBridgeError("Invalid or replayed Everyday action")
                     seen_local.add(identifier)
+                    # Camera admission comes from this turn's own transcript, never the model's choice;
+                    # once a look's analysis entered this session, no callback is dispatched or delivered.
                     self.launch_everyday_tool(
                         payload.get("name"),
                         payload.get("arguments"),
@@ -209,6 +213,7 @@ class LiveVoiceMixin:
                         call_id=identifier,
                         deliver=lambda result, call_id=identifier: session.send_everyday_result(call_id, result),
                         is_current=lambda: not closed.is_set() and not self._turn_stop_requested(),
+                        scope=EverydayCallbackScope(transcript="".join(heard), visual=visual),
                     )
                 elif kind == "session.input_transcript.delta":
                     last_activity = time.monotonic()
@@ -232,6 +237,7 @@ class LiveVoiceMixin:
                     # The host recognised a deliberate spoken look request in this turn's own words.
                     # The look runs through the same fenced orchestration as the phone entry, off this
                     # loop so audio and Stop stay responsive; only text goes back, never a frame.
+                    visual.set()
                     self._start_live_look(
                         session,
                         str(payload.get("delegation_id") or ""),
