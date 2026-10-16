@@ -139,6 +139,7 @@ class PowerMixin:
             # Quiesce the SDK-side producer before the daemon clears its own offsets.
             # The daemon, not the client, decides whether an already-folded head moves.
             try:
+                self._playback.suspend()
                 if self._motion is not None:
                     self._motion.prepare_sleep(self.robot.media.stop_playing)
                     self._playback_stopped_for_privacy = True
@@ -218,7 +219,7 @@ class PowerMixin:
             if self._actions is not None:
                 self._playback_stopped_for_privacy = self._actions.cancel() or self._playback_stopped_for_privacy
             try:
-                self.robot.media.play_sound(str(self.assets / "silence.wav"))
+                self._playback.play_sound(str(self.assets / "silence.wav"))
             except Exception:
                 _LOGGER.debug("No active playback to stop", exc_info=True)
             self._clear_streamed_audio()
@@ -248,11 +249,6 @@ class PowerMixin:
                 last_error=transition_error,
             )
             return
-        if self._playback_stopped_for_privacy:
-            start_playing = getattr(self.robot.media, "start_playing", None)
-            if callable(start_playing):
-                start_playing()
-            self._playback_stopped_for_privacy = False
         if mode == "standby":
             head_folded, transition_error = self._fold_head_before_torque_release()
             if not self._recording:
@@ -295,6 +291,7 @@ class PowerMixin:
                 return
             if self._motion is not None:
                 self._motion.awake()
+            self._resume_playback_after_wake()
             if not self._recording:
                 self.robot.media.start_recording()
                 self._recording = True
@@ -311,6 +308,12 @@ class PowerMixin:
         with self._motor_transition_lock:
             self._set_motor_mode_unlocked(enabled, wake=wake)
 
+    def _resume_playback_after_wake(self) -> None:
+        self._playback.awake()
+        if self._playback_stopped_for_privacy:
+            self._playback.start_playing()
+            self._playback_stopped_for_privacy = False
+
     def _set_motor_mode_unlocked(self, enabled: bool, *, wake: bool = False) -> None:
         if enabled and self.stop_event.is_set() and (wake or not getattr(self, "_safety_fold_active", False)):
             raise RuntimeError("Runtime is stopping; motor enable is blocked")
@@ -322,6 +325,7 @@ class PowerMixin:
             if self._wake_pose_is_ready():
                 if self._motion is not None:
                     self._motion.awake()
+                self._resume_playback_after_wake()
                 _LOGGER.debug("Reachy is already physically Awake; skipping duplicate wake motion")
                 return
         mode = "enabled" if enabled else "disabled"
@@ -341,6 +345,7 @@ class PowerMixin:
                 if self._wake_pose_is_ready():
                     if self._motion is not None:
                         self._motion.awake()
+                    self._resume_playback_after_wake()
                     _LOGGER.warning(
                         "Reachy wake call raised after the measured head reached Awake; preserving enabled torque: %s",
                         exc,
@@ -351,6 +356,7 @@ class PowerMixin:
                 raise RuntimeError(message) from exc
             if self._motion is not None:
                 self._motion.awake()
+            self._resume_playback_after_wake()
         _LOGGER.info("Reachy motors %s%s", mode, " with wake motion" if wake else "")
 
     def _wake_pose_is_ready(self) -> bool:

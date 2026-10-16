@@ -32,7 +32,9 @@ def make_runtime(monkeypatch):
         ),
     )
     runtime = HermesVoiceRuntime(robot, threading.Event())
-    runtime._motion = VoiceMotion(robot)
+    robot.media.enable_wobbling = lambda callback: events.append("wobble-on")
+    robot.client = SimpleNamespace(send_command=lambda command: None)
+    runtime._motion = VoiceMotion(robot, playback=runtime._playback)
     runtime._read_head_safely_folded = lambda: True
     monkeypatch.setattr(power, "run_daemon_sleep", lambda: events.append("daemon-sleep"))
 
@@ -84,7 +86,7 @@ def test_direct_wake_word_motor_path_releases_motion_fence_only_after_wake(monke
     rt, events = make_runtime(monkeypatch)
     rt.set_power_mode("standby")
     rt._set_motor_mode(True, wake=True)
-    assert events[-1] == "wake"
+    assert events.index("wake") < events.index("playback-start")
     rt._motion.speaking()
     assert events[-1] == "wobble-on"
 

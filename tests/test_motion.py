@@ -1,7 +1,7 @@
 """Tests for Reachy's voice-state motion cues."""
 
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 # Keep this unit test independent from Reachy's hardware SDK and its native
 # media dependencies.
@@ -19,6 +19,18 @@ class FakeRobot:
         self.targets: list[dict[str, object]] = []
         self.wobbling = False
         self.wobbling_events: list[bool] = []
+        self.offset_callbacks = []
+        self.offset_commands = []
+        self.media = SimpleNamespace(enable_wobbling=self._enable_callback)
+        self.client = SimpleNamespace(send_command=self._send_command)
+
+    def _enable_callback(self, callback):
+        self.offset_callbacks.append(callback)
+        self.enable_wobbling()
+
+    def _send_command(self, command):
+        if hasattr(command, "offsets"):
+            self.offset_commands.append(command.offsets)
 
     def goto_target(self, **kwargs: object) -> None:
         self.targets.append(kwargs)

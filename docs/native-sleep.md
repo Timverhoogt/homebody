@@ -6,9 +6,14 @@ call the Python SDK client's separate `ReachyMini.goto_sleep()` choreography.
 
 ## Sequence and ownership
 
-1. Fence Homebody's voice-state poses and wobbling against late callbacks.
+1. Fence Homebody's voice-state poses, offset emissions and every app audio
+   producer/cleanup against late callbacks. Offset callbacks carry their
+   registration generation, so an old GLib callback cannot revive after a wake.
 2. Stop app playback before disabling its SDK-side wobbler. SDK 1.9's audio
    callback must not have its wobbler removed during playback.
+   Drain admitted media calls with a bounded wait before stopping pipelines;
+   refuse sleep if a quarantined SDK push/clear is still pending. Ordinary Stop
+   and clear remain responsive while an SDK push is quarantined.
 3. Cancel/wait for app actions and enable torque for a controlled fold.
 4. Subscribe to daemon move updates, then submit exactly one
    `POST /api/move/play/goto_sleep`. Wait for that exact move UUID's
@@ -23,6 +28,10 @@ call the Python SDK client's separate `ReachyMini.goto_sleep()` choreography.
 A late voice cue or action's `resume()` cannot release the power fence. Only a
 confirmed new wake does that. Stopping playback in SDK 1.9 also stops its shared
 capture pipeline, so automatic return-to-Standby restores capture explicitly.
+Late Live/Realtime finalizers cannot call SDK `clear_player()` behind this
+fence, because that method restarts the playback pipeline. Speaking uses the
+SDK's public local-wobbler API with an app-owned serialized offset callback,
+while retaining the SDK's daemon-wobbling command for normal awake speech.
 
 ## Failure behavior
 

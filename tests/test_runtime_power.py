@@ -774,7 +774,7 @@ def test_doa_angle_is_converted_to_reachy_yaw_with_deadband_and_clamp() -> None:
     assert doa_yaw_degrees(0.0) == 60.0
 
 
-def test_privacy_action_cancel_restarts_playback_on_standby() -> None:
+def test_privacy_action_cancel_keeps_playback_blocked_until_awake() -> None:
     class Actions:
         pending_count = 0
 
@@ -792,6 +792,9 @@ def test_privacy_action_cancel_restarts_playback_on_standby() -> None:
     runtime.set_power_mode("sleep")
     runtime.set_power_mode("standby")
 
+    assert robot.media.playing_starts == 0
+    assert runtime._playback.blocked is True
+    runtime.set_power_mode("awake")
     assert robot.media.playing_starts == 1
 
 

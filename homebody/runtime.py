@@ -27,6 +27,7 @@ from .kids_acknowledgements import output_quarantined
 from .kids_runtime import KidsModeMixin
 from .manual_control import ManualControlMixin
 from .motion import VoiceMotion
+from .playback_gate import PlaybackGate
 from .power import PowerMixin
 from .presence import PresenceObservation
 from .proactive import ProactiveMixin
@@ -220,6 +221,7 @@ class HermesVoiceRuntime(
         # tooling keep them in memory.
         self._preferences_path = preferences_path
         self.robot = robot
+        self._playback = PlaybackGate(lambda: self.robot.media)
         self.stop_event = stop_event
         self.config_loader = config_loader
         self.assets = assets_directory or Path(__file__).resolve().parent / "assets"
@@ -529,7 +531,7 @@ class HermesVoiceRuntime(
             self._control_ready.clear()
             self._set_status("starting", "Preparing the local wake-word model")
             config = self.config_loader()
-            self._motion = VoiceMotion(self.robot, enabled=config.motion_enabled)
+            self._motion = VoiceMotion(self.robot, enabled=config.motion_enabled, playback=self._playback)
             self._actions = ReachyRobotActions(
                 self.robot,
                 self.stop_event,
@@ -852,10 +854,7 @@ class HermesVoiceRuntime(
 
     def _clear_streamed_audio(self) -> None:
         """Flush Realtime appsrc output without stopping microphone capture."""
-        audio = getattr(self.robot.media, "audio", None)
-        clear = getattr(audio, "clear_player", None)
-        if callable(clear):
-            clear()
+        self._playback.clear()
 
     def _read_16k_frame(self) -> np.ndarray | None:
         raw = self.robot.media.get_audio_sample()
@@ -875,7 +874,7 @@ class HermesVoiceRuntime(
             return
         path = self.assets / name
         if path.exists():
-            self.robot.media.play_sound(str(path))
+            self._playback.play_sound(str(path))
 
     def _signal_error(self) -> None:
         self._play_asset("error.wav")

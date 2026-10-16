@@ -693,6 +693,7 @@ class PipelineVoiceMixin:
         push = getattr(self.robot.media, "push_audio_sample", None)
         if not language_clips or not callable(push):
             return None  # missing/rejected assets or no PCM output: no filler, never live TTS
+        push = self._playback.push_audio_sample
         if refresh is None:
             clips = eligible_clips(language_clips, *voice_proof)
             if not clips:
@@ -779,14 +780,14 @@ class PipelineVoiceMixin:
                 self._motion.speaking()
             if self._spotter is not None:
                 self._spotter.reset()
-            self.robot.media.play_sound(str(path))
+            self._playback.play_sound(str(path))
             deadline = time.monotonic() + duration + 0.15
             while time.monotonic() < deadline and not self.stop_event.is_set():
                 if self._turn_stop_requested() or self._effective_power_mode() in {"meeting", "sleep"}:
                     # Response audio is a file played with play_sound; the streaming buffer flush
                     # alone does not stop it, so replace it with silence like every other cancel path.
                     self._clear_streamed_audio()
-                    self.robot.media.play_sound(str(self.assets / "silence.wav"))
+                    self._playback.play_sound(str(self.assets / "silence.wav"))
                     break
                 if not barge_in or self._spotter is None:
                     time.sleep(0.02)
@@ -798,7 +799,7 @@ class PipelineVoiceMixin:
                 if not keyword:
                     continue
                 interrupted = True
-                self.robot.media.play_sound(str(self.assets / "silence.wav"))
+                self._playback.play_sound(str(self.assets / "silence.wav"))
                 self._spotter.reset()
                 with self._status_lock:
                     self._status.interruptions += 1
