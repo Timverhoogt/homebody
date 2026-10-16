@@ -213,3 +213,65 @@ def test_sources_disabled_until_enrolled_then_one_offer_per_moment(bridge, tmp_p
     assert len(asyncio.run(instance._poll_sources_once())) == 1
     # Only the exact enrolled entity and calendar are read; nothing else on the host is touched.
     assert all("washer_done" in url or "calendar.family" in url for url in instance.http.gets)
+
+
+def test_source_removal_serializes_with_inflight_delivery_and_needs_no_ha_setup(bridge, tmp_path, monkeypatch):
+    module, instance = bridge
+    enrollment = tmp_path / "sources.json"
+    document = {
+        "home_assistant": [
+            {
+                "id": "washer",
+                "label": "Washer",
+                "entity_id": "binary_sensor.washer_done",
+                "condition": "state_equals",
+                "value": "on",
+                "offer_text": "The washer is finished; would you like its status?",
+                "accepted_text": "The washer reports done. Nothing was changed.",
+                "min_interval_seconds": 1800,
+            }
+        ],
+        "calendar": [],
+    }
+    enrollment.write_text(json.dumps(document))
+    instance._sources_path = str(enrollment)
+    instance._offer_url = "https://reachy.local/api/initiative/offers"
+    instance.http.states["binary_sensor.washer_done"] = {
+        "state": "on",
+        "last_changed": "2026-10-16T14:00:00+02:00",
+    }
+
+    async def scenario():
+        started, release = asyncio.Event(), asyncio.Event()
+        original_post = instance.http.post
+
+        class HeldResponse(Response):
+            async def __aenter__(self):
+                started.set()
+                await release.wait()
+                return self
+
+        def held_post(url, **kwargs):
+            original_post(url, **kwargs)
+            assert kwargs["timeout"].total == 5
+            return HeldResponse(200, {"ok": True, "queued": True})
+
+        instance.http.post = held_post
+        poll = asyncio.create_task(instance._poll_sources_once())
+        await asyncio.wait_for(started.wait(), timeout=2)
+        # Removal remains permitted after credentials or catalog setup disappear.
+        monkeypatch.setattr(module, "_resolve_secret", lambda *_args: "")
+        remove = asyncio.create_task(
+            instance.companion_sources_enroll(FakeRequest({"home_assistant": [], "calendar": []}))
+        )
+        await asyncio.sleep(0)
+        assert not remove.done()
+        assert json.loads(enrollment.read_text())["home_assistant"]
+        release.set()
+        delivered, response = await asyncio.wait_for(asyncio.gather(poll, remove), timeout=2)
+        assert delivered and response.status == 200
+        assert json.loads(enrollment.read_text()) == {"home_assistant": [], "calendar": []}
+        assert await instance._poll_sources_once() == []
+        assert len(instance.http.posts) == 1
+
+    asyncio.run(scenario())

@@ -128,6 +128,7 @@ def transcribe_endpoint(
         raise SttTurnCancelled("stale failure")  # never surfaces in a switched or ended game
     if config.stt_robot_fallback != "host":
         raise SttInfrastructureError(category)
+    _LOGGER.warning("Robot STT unavailable (%s); checking configured local host fallback", category)
     # Fallback, at most once: only a host whose own health confirms local STT is asked, and the
     # actual receipt must agree; a contradictory receipt is discarded rather than used.
     try:

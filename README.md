@@ -6,7 +6,7 @@
 
 **Homebody gives Reachy Mini a home:** a voice companion for everyday questions, explicitly selected project work, and supervised games and stories. The local app owns the body, dashboard, power and privacy controls; an optional private bridge connects speech providers and scoped host capabilities.
 
-[**Explore the app page ↗**](https://huggingface.co/spaces/Timbo89/reachy_mini_homebody) · [Hardware](docs/hardware-setups.md) · [Setup](docs/agent-setup.md) · [Security](SECURITY.md) · [Contribute](CONTRIBUTING.md)
+[**Explore the app page ↗**](https://huggingface.co/spaces/Timbo89/reachy_mini_homebody) · [Hardware](docs/hardware-setups.md) · [Setup](docs/agent-setup.md) · [Models and speech routing](docs/model-stack.md) · [Security](SECURITY.md) · [Contribute](CONTRIBUTING.md)
 
 > **Early alpha.** Reference deployment is not broad hardware or production acceptance. The original Lite + Raspberry Pi 4 reference is retained; the current Lite + Jetson host has app, camera, Home Assistant, power, speaker and managed-update reference deployment. Each installation still needs supervised wake/fold, camera/privacy, speech and acoustic interruption checks. Local GPU vision, accelerated gestures, GPIO and controller support are not blanket verified on Jetson.
 >

@@ -17,10 +17,11 @@ from dataclasses import replace
 
 import numpy as np
 
+from . import kids_acknowledgements
 from .audio import resample_linear
 from .config import AppConfig
 from .hermes_client import HermesBridgeClient, HermesBridgeError
-from .ispy import ISpyTarget
+from .ispy import ISpyCancelled, ISpyTarget
 from .kids_acknowledgements import AckSelector
 from .kids_game_master import (
     MAX_CHOICE_REPROMPTS,
@@ -96,7 +97,8 @@ class KidsModeMixin:
         # one sampled right after Start, so any later Stop, End, privacy or Standby invalidates it.
         self._kids_first_listen: tuple[str, int, int, float] | None = None
         self._kids_ack_selector = AckSelector()
-        self._kids_ack_producer = None  # latest filler producer; quarantines audio while a push is blocked
+        self._kids_ack_producer = None  # latest filler producer; quarantines blocked SDK pushes
+        self._kids_search_audio_owner: object | None = None  # search owns its final flush, not just clip PCM
         self._kids_start_stop_generation = -1
         # Game master (host) state: categorical only, reset by every Start and End.
         self._kids_host_phase = ""
@@ -267,6 +269,7 @@ class KidsModeMixin:
             # later Stop/End/Standby/privacy bumps the generation past it; it is never refreshed.
             receipt = self._request_conversation_stop()
             self._kids_start_stop_generation = receipt if isinstance(receipt, int) else -1
+            start_stop_generation = self._kids_start_stop_generation
         if replaced_session_id:
             self._notify_bridge_kids_session_async(replaced_session_id, active=False)
         self._notify_bridge_kids_session_async(started_session_id, active=True)
@@ -287,7 +290,7 @@ class KidsModeMixin:
             lines = ({"kind": "host", "key": "lobby", "a": first, "b": second},)
         elif profile.activity == "ispy":
             try:
-                ispy_target = self._prepare_ispy_round(generation, profile)
+                ispy_target = self._prepare_owned_ispy_search(generation, profile, start_stop_generation)
             except Exception as exc:
                 _LOGGER.warning("I Spy start failed (%s): %s", type(exc).__name__, exc)
                 if self._kids_callback_is_current(generation):
@@ -343,6 +346,7 @@ class KidsModeMixin:
         profile: KidsProfile,
         *,
         client: HermesBridgeClient | None = None,
+        turn_bound: bool = False,
     ) -> ISpyTarget:
         """Run one consented, cancellable search; frames exist only on this stack."""
         if not profile.camera_consent:
@@ -367,28 +371,29 @@ class KidsModeMixin:
             raise RuntimeError("I Spy search motion is unavailable")
         with self._kids_lock:
             if not self._kids_callback_is_current(generation):
-                raise RuntimeError("I Spy search was cancelled")
+                raise ISpyCancelled("I Spy search was cancelled")
             self._kids_camera_active = True
         try:
             # Discard a consent-bound readiness frame before enabling torque or searching.
-            self._capture_camera_jpeg(kids_generation=generation)
+            self._capture_camera_jpeg(kids_generation=generation, turn_bound=turn_bound)
             with self._motor_transition_lock:
                 with self._kids_lock:
                     if (
                         not self._kids_callback_is_current(generation)
                         or self.stop_event.is_set()
+                        or (turn_bound and self._turn_stop_requested())
                         or self._privacy_requested.is_set()
                         or self._effective_power_mode() in {"meeting", "sleep"}
                     ):
-                        raise RuntimeError("I Spy search was cancelled before wake")
+                        raise ISpyCancelled("I Spy search was cancelled before wake")
                     self._kids_ispy_motion_started = True
                 self.set_power_mode("awake", cancel_announcements=False)
-                self._assert_ispy_current(generation)
+                self._assert_ispy_current(generation, turn_bound=turn_bound)
                 if self._motors_enabled is not True or self._head_safely_folded:
                     raise RuntimeError("I Spy requires a successful Awake transition")
                 previous_body_yaw = 0.0
                 for body_yaw, capture in scan_route:
-                    self._assert_ispy_current(generation)
+                    self._assert_ispy_current(generation, turn_bound=turn_bound)
                     angular_distance = abs(body_yaw - previous_body_yaw)
                     goto_target(
                         head=self._ispy_head_target(body_yaw, -5.0),
@@ -399,12 +404,12 @@ class KidsModeMixin:
                     )
                     previous_body_yaw = body_yaw
                     if capture:
-                        frames.append(self._capture_camera_jpeg(kids_generation=generation))
+                        frames.append(self._capture_camera_jpeg(kids_generation=generation, turn_bound=turn_bound))
                 with self._kids_lock:
                     if self._kids_generation == generation:
                         self._kids_camera_active = False
                 for body_yaw in return_route:
-                    self._assert_ispy_current(generation)
+                    self._assert_ispy_current(generation, turn_bound=turn_bound)
                     angular_distance = abs(body_yaw - previous_body_yaw)
                     goto_target(
                         head=self._ispy_head_target(body_yaw, -5.0 if body_yaw else 0.0),
@@ -417,10 +422,10 @@ class KidsModeMixin:
             with self._kids_lock:
                 if self._kids_generation == generation:
                     self._kids_camera_active = False
-            self._assert_ispy_current(generation)
+            self._assert_ispy_current(generation, turn_bound=turn_bound)
             if client is None:
                 client = self._new_bridge_client(self.config_loader())
-            self._assert_ispy_current(generation)
+            self._assert_ispy_current(generation, turn_bound=turn_bound)
             self._set_status("thinking", "Choosing a safe I Spy object")
             target = client.select_ispy_target(
                 frames,
@@ -429,13 +434,13 @@ class KidsModeMixin:
                 language=profile.language,
             )
             try:
-                self._assert_ispy_current(generation)
-            except RuntimeError:
+                self._assert_ispy_current(generation, turn_bound=turn_bound)
+            except ISpyCancelled:
                 try:
                     client.cancel_ispy_session(session_id)
                 except Exception:
                     _LOGGER.warning("Could not delete a cancelled I Spy bridge session")
-                raise RuntimeError("I Spy search was cancelled") from None
+                raise ISpyCancelled("I Spy search was cancelled") from None
             with self._kids_lock:
                 self._kids_ispy_player_motion_index = 0
             return target
@@ -499,33 +504,137 @@ class KidsModeMixin:
                 or profile.activity != "ispy"
                 or client.config.kids_session_id != session_id
             ):
-                raise RuntimeError("I Spy turn continuation is stale")
+                raise ISpyCancelled("I Spy turn continuation is stale")
+        waiting = None
         try:
-            self._prepare_ispy_round(generation, profile, client=client)
-            if not self._kids_callback_is_current(generation):
-                raise RuntimeError("I Spy turn continuation was cancelled")
+            self._assert_ispy_current(generation, turn_bound=True)
+            # One delayed "Let's see." while the search/clue is still pending; turn-bound fence.
+            refresh = getattr(client, "kids_voice_proof", None)
+            waiting = self._start_kids_ack(
+                client.config, refresh=refresh, stage="see",
+                delay=kids_acknowledgements.SEARCH_WAIT_DELAY_SECONDS,
+            ) if callable(refresh) else None
+            self._prepare_ispy_round(generation, profile, client=client, turn_bound=True)
+            self._assert_ispy_current(generation, turn_bound=True)
             clue = client.ispy_clue(session_id)
-            if not self._kids_callback_is_current(generation):
-                raise RuntimeError("I Spy clue was cancelled")
+            if waiting is not None:
+                waiting.wait_finished()
+                waiting.settle()  # quiesce before the clue; a blocked push keeps output quarantined
+                waiting = None
+            self._assert_ispy_current(generation, turn_bound=True)
             self._set_status(
                 "speaking",
                 "Streaming the next I Spy colour clue",
                 tts_provider="elevenlabs-flash-stream",
             )
             return self._play_kids_stream(client, clue, barge_in=barge_in)
-        except Exception:
+        except ISpyCancelled:
+            # Cancellation also covers Stop/privacy before the Kids generation advances.
+            raise
+        except Exception as exc:
+            # Ownership is the generation, not the error: once Stop/End/replacement moved it on,
+            # this round's failure belongs to nobody and must not stop, fold or report anything.
+            try:
+                self._assert_ispy_current(generation, turn_bound=True)
+            except ISpyCancelled:
+                raise ISpyCancelled("I Spy round ended after its session") from exc
             self.stop_kids_mode(reason="ispy_round_failed", fold=True, expected_generation=generation)
             raise
+        finally:
+            if waiting is not None:
+                waiting.settle()
 
-    def _assert_ispy_current(self, generation: int) -> None:
+    def _prepare_owned_ispy_search(
+        self, generation: int, profile: KidsProfile, stop_generation: int,
+    ) -> ISpyTarget:
+        """Own the voice channel through the search's final flush, not only its PCM pushes.
+
+        Admission's motor/Kids locks have already been released. Wait cancellably for any older
+        voice owner, then reserve the common direct-entry gate as well as the serialization lock.
+        Queued filler and even an exited filler thread retain a future clear until this scope ends.
+        A stuck push remains protected by the ordinary producer quarantine after scope release.
+        """
+        def current() -> bool:
+            with self._conversation_stop_generation_lock:
+                stopped = stop_generation >= 0 and self._conversation_stop_generation != stop_generation
+            return (
+                not stopped and self._kids_callback_is_current(generation)
+                and not self.stop_event.is_set() and not self._privacy_requested.is_set()
+                and self._effective_power_mode() not in {"meeting", "sleep"}
+            )
+
+        while not self._voice_activity_lock.acquire(timeout=0.05):
+            if not current():
+                raise ISpyCancelled("I Spy search voice admission was cancelled")
+        owner = object()
+        try:
+            if not current():
+                raise ISpyCancelled("I Spy search voice admission was cancelled")
+            self._kids_search_audio_owner = owner
+            waiting = self._start_initial_search_wait(
+                generation, profile, stop_generation, search_owner=owner,
+            )
+            try:
+                return self._prepare_ispy_round(generation, profile)
+            finally:
+                if waiting is not None:
+                    waiting.wait_finished()
+                    waiting.settle()  # final flush while no newer voice/listener can be admitted
+        finally:
+            if getattr(self, "_kids_search_audio_owner", None) is owner:
+                self._kids_search_audio_owner = None
+            self._voice_activity_lock.release()
+
+    def _start_initial_search_wait(
+        self, generation: int, profile: KidsProfile, start_stop_generation: int, *,
+        search_owner: object | None = None,
+    ):
+        """Arm one delayed "Let's see." for a Start or game-master I Spy search; None when ineligible.
+
+        Start/transition itself raised the conversation stop flag (and Awake later clears it), so
+        this fence deliberately ignores the flag and instead binds the immutable Kids generation plus
+        that admission's own stop receipt: any later Stop/End/replacement/expiry/privacy/sleep/shutdown
+        wins. It never opens the microphone, touches motors or camera, or holds their locks.
+        """
+        if start_stop_generation < 0:
+            return None
+
+        def is_current() -> bool:
+            with self._conversation_stop_generation_lock:
+                stopped = self._conversation_stop_generation != start_stop_generation
+            return (
+                not stopped
+                and self._kids_callback_is_current(generation)
+                and not self.stop_event.is_set()
+                and not self._privacy_requested.is_set()
+                and self._effective_power_mode() not in {"meeting", "sleep"}
+            )
+
+        def refresh() -> object:
+            # Fresh proof of exactly this session language's Kids voice, read off every lock.
+            client = self._new_bridge_client(self.config_loader())
+            try:
+                return client.kids_voice_proof(
+                    language=profile.language, timeout=_KIDS_VOICE_ADMISSION_TIMEOUT_SECONDS,
+                )
+            finally:
+                client.close()
+
+        return self._arm_kids_wait_speech(
+            profile.language, is_current, refresh=refresh, stage="see",
+            delay=kids_acknowledgements.SEARCH_WAIT_DELAY_SECONDS, search_owner=search_owner,
+        )
+
+    def _assert_ispy_current(self, generation: int, *, turn_bound: bool = False) -> None:
         """Revalidate after every blocking boundary, including before provider handoff."""
         if (
             not self._kids_callback_is_current(generation)
             or self.stop_event.is_set()
+            or (turn_bound and self._turn_stop_requested())
             or self._privacy_requested.is_set()
             or self._effective_power_mode() in {"meeting", "sleep"}
         ):
-            raise RuntimeError("I Spy search was cancelled")
+            raise ISpyCancelled("I Spy search was cancelled")
 
     def _kids_callback_is_current(self, generation: int) -> bool:
         with self._kids_lock:
@@ -952,6 +1061,8 @@ class KidsModeMixin:
             self._rearm_kids_timers(generation)
             receipt = self._request_conversation_stop()
             self._kids_start_stop_generation = receipt if isinstance(receipt, int) else -1
+            # This transition's own receipt, taken under admission: the search wait binds to it.
+            transition_stop_generation = self._kids_start_stop_generation
             if old_ispy and callable(cancel_move):
                 try:
                     cancel_move()
@@ -969,7 +1080,7 @@ class KidsModeMixin:
         intro = host_line(profile.language, "start", a=activity)
         if activity == "ispy":
             try:
-                target = self._prepare_ispy_round(generation, profile)
+                target = self._prepare_owned_ispy_search(generation, profile, transition_stop_generation)
             except Exception as exc:
                 _LOGGER.warning("Hosted I Spy round failed (%s)", type(exc).__name__)
                 if self._kids_callback_is_current(generation):

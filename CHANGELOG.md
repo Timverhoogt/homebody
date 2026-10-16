@@ -6,12 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Holistic companion (development branch; not deployed, published or physically accepted)
+## [0.5.24] — Consented companion presence, visual help and opt-in sources
 
 - Presence reports occupancy and source health separately: heartbeats and bridge-loss reports keep healthy stationary occupancy "present", show "unknown" when the sensor bridge is silent, and never turn a reconnect into a second arrival. Only an arrival may trigger the silent acknowledgement; Standby never gains motors.
 - Direct visual help: one deliberate "Look at this" (phone card, explicit spoken request in Everyday Pipeline, Live via a bounded host request/result protocol, or Realtime's camera tool) takes exactly one frame on the configured route (local vision or Hermes host; no fallback) and answers. Every look is a ticket bound to the original Stop generation, profile, camera permission, voice ownership and (phone) owner session, re-validated after lock, capture, inference and before the answer is kept; Stop/privacy/Kids/profile/owner revocation discard late results and clear private RAM. Follow-ups use a structurally tool-free host route so text read from an object can never reach tools.
 - Companion card in Everyday with truthful activity/presence/camera/mic state, Look, Stop, Suggestions Off/Gentle/More often, "Why", receipts and host-backed source enrollment (exact already-authorized identifiers only). Page-side fences discard held replies after owner loss, Stop, privacy, offline, Kids or profile change. Static assets advanced to v100.
 - Opt-in sources on the Hermes host: at most one Home Assistant condition and one calendar lead-time source; delivery-aware, hashed-fingerprint lifecycle (no repeat of a delivered moment, no loss of a suppressed one, no replay of expired ones, enrollment drift clears memory); calendar details private by default and never spoken to an anonymous Yes; owner-zone clock times; offer texts must describe read-only help. Unsolicited offers need present occupancy; project offers keep Agent authority; requested reminders keep bypassing initiative budgets. See `docs/companion-implementation.md` for scope, receipts and remaining enrollment/provider/TTS/deployment/physical gates.
+
+## [0.5.23] — Prerecorded Kids search and reply-wait speech
+
+- Play one short, locally cached and voice-matched phrase during longer I Spy searches, including standalone Start, later rounds and shared Play together selections, replays and switches.
+- Add sparse prerecorded thinking speech during longer spoken Kids reply waits. Preserve existing recognition acknowledgements without doubling up in one turn; keep an eight-second shared cooldown and skip fast waits.
+- Reuse the verified English and Dutch recordings, including Ruth for Dutch. Require a current matching language, voice and model proof; other languages without verified clip bundles remain silent. No live filler synthesis, new voice selection or settings migration.
+- Settle and flush filler before the actual clue or answer, fence delayed proof and playback across Stop, End, switching, expiry, privacy and shutdown, and preserve single-producer output quarantine when an SDK audio push is blocked.
+- Keep adult speech, Calm, typed guesses, camera consent, microphone admission, motion policy and shared-session deadlines unchanged. Automated fake-device and browser checks do not replace supervised speaker/gameplay acceptance.
+
+## [0.5.22] — Clean I Spy cancellation and sandbox-aware robot recognition
+
+- Treat End, Stop, privacy and superseded I Spy continuation work as expected cancellation instead of a voice failure. Preserve current-session camera/provider failures and prevent late work from tearing down a replacement session.
+- Bind continuation search and capture to the original voice turn's Stop checks while preserving initial Start admission and all camera-consent, power and generation checks.
+- Recover on-robot recognition when a hardened service hides its inherited runtime socket directory. Select an accessible runtime parent or the private temporary directory without weakening socket ownership, permissions, worker identity or service hardening.
+- Make configured local-host recognition fallback visible through categorical diagnostics without logging audio or transcript contents. Preserve selected models, languages, voices and fallback policy.
+- Verified with cancellation and recognition regressions plus isolated synthetic GPU decoding on a Jetson. Synthetic recognition timings are not full conversational latency or supervised child-speech acceptance.
 
 ## [0.5.21] — Owner-authorized shutdown over Tailnet
 
