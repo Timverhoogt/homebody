@@ -345,10 +345,10 @@ class RobotSttClient:
         cancelled: Callable[[], bool],
     ) -> RobotReceipt:
         """Recognize one in-RAM utterance for an immutable turn snapshot; raise on any failure."""
-        if self._closed:
-            raise RobotSttUnavailable("closed")
         if language not in {"en", "nl", "es", "de", "fr", "it", "pt", "auto"}:
             raise ValueError("Unsupported robot STT language")
+        if self._closed:
+            raise RobotSttUnavailable("closed")
         pcm = np.nan_to_num(np.asarray(samples, dtype=np.float32).ravel(), nan=0.0, posinf=1.0, neginf=-1.0)
         if pcm.size > MAX_SAMPLES:
             raise RobotSttUnavailable("too_large")
