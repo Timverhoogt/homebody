@@ -18,7 +18,7 @@ def snapshot(**changes):
                 "permissions": {
                     "power": True,
                     "movement": False,
-                    "camera": False,
+                    "camera": True,
                     "camera_on_request": True,
                     "volume": True,
                 },
@@ -76,7 +76,7 @@ def test_compact_permissions_geometry_and_navigation(ui, width, scheme, scale):
         page.screenshot(path=str(SHOTS / f"page-{width}-{scheme}.png"), full_page=True)
     page.locator("#everyday-permissions > summary").click()
     assert "movement: off" in page.locator("#everyday-robot-permissions").inner_text()
-    assert "Temporary camera by voice: allowed" in page.locator("#everyday-camera-permission").inner_text()
+    assert "Camera access: allowed" in page.locator("#everyday-camera-permission").inner_text()
     assert "Public lookup: unavailable" in page.locator("#everyday-search").inner_text()
     page.locator("#everyday-technical-details > summary").click()
     assert "desk light" in page.locator("#everyday-device-ids").inner_text()
@@ -85,7 +85,7 @@ def test_compact_permissions_geometry_and_navigation(ui, width, scheme, scale):
         "#everyday-permissions > summary",
         "#everyday-technical-details > summary",
         "[data-everyday-setting=robot_tools_enabled]",
-        "[data-everyday-setting=everyday_camera_enabled]",
+        "[data-everyday-setting=camera_enabled]",
     ]
     for selector in targets:
         target = page.locator(selector)
@@ -102,12 +102,13 @@ def test_compact_permissions_geometry_and_navigation(ui, width, scheme, scale):
         style=".topbar, .tabs { visibility: hidden !important; }",
     )
     before = len(posts)
-    page.click("[data-everyday-setting=everyday_camera_enabled]")
-    checkbox = page.locator("#everyday_camera_enabled")
+    page.click("[data-everyday-setting=camera_enabled]")
+    checkbox = page.locator("#camera_enabled")
     assert checkbox.is_visible() and not checkbox.is_checked()
-    assert page.evaluate("document.activeElement.id") == "everyday_camera_enabled"
+    assert page.evaluate("document.activeElement.id") == "camera_enabled"
     assert checkbox.locator("..").bounding_box()["height"] >= 48
-    assert page.locator("#everyday_camera_enabled").count() == 1
+    assert page.locator("#camera_enabled").count() == 1
+    assert page.locator("#everyday_camera_enabled").count() == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert len(posts) == before and not errors
 
@@ -121,7 +122,7 @@ def test_old_unknown_and_malformed_fields_do_not_invent_permissions(ui):
     malformed = snapshot(
         groups={"public_lookup": {"available": "yes", "status": "future"}},
         local={
-            "permissions": {"camera_on_request": "yes", "movement": 1},
+            "permissions": {"camera": "yes", "movement": 1},
             "activity": {"camera_session_active": "true"},
             "tools": "not-an-array",
         },
@@ -129,7 +130,7 @@ def test_old_unknown_and_malformed_fields_do_not_invent_permissions(ui):
     )
     refresh(page, state, malformed)
     assert "movement: not reported" in page.locator("#everyday-robot-permissions").text_content()
-    assert "Temporary camera by voice: not reported" in page.locator("#everyday-camera-permission").text_content()
+    assert "Camera access: not reported" in page.locator("#everyday-camera-permission").text_content()
     assert "not reported by the host" in page.locator("#everyday-search").text_content()
     assert "undefined" not in page.locator("#everyday-card").text_content()
     assert not posts and not errors
@@ -142,7 +143,7 @@ def test_temporary_session_expiry_is_not_persistent_camera_or_voice_activity(ui)
     body["local"]["activity"] = {"camera_session_active": True, "camera_remaining_seconds": 1}
     refresh(page, state, body)
     wait_text(page, "#everyday-camera-activity", "Temporary camera active")
-    assert "General camera permission: off" in page.locator("#everyday-camera-permission").text_content()
+    assert "Camera access: allowed" in page.locator("#everyday-camera-permission").text_content()
     wait_text(page, "#everyday-camera-activity", "expired")
     assert "active" not in page.locator("#everyday-camera-activity").text_content()
     body["local"]["activity"] = {"camera_session_active": True, "camera_remaining_seconds": None}
@@ -191,7 +192,7 @@ def test_private_copies_and_held_permissions_cannot_return_after_teardown(ui, tr
     page.wait_for_timeout(100)
     raw = page.locator("#everyday-card").text_content()  # includes hidden/nested copies
     assert "private-model-name" not in raw and "private-room-device" not in raw
-    assert "Temporary camera by voice: allowed" not in raw
+    assert "Camera access: allowed" not in raw
     assert page.locator("#everyday-card").is_hidden()
     assert page.locator("#everyday-permissions").get_attribute("open") is None
     stored = page.evaluate("JSON.stringify({local:{...localStorage},session:{...sessionStorage}})")
@@ -238,19 +239,20 @@ def test_late_active_camera_snapshot_cannot_extend_its_reported_expiry(ui):
     assert not posts and not errors
 
 
-def test_camera_checkbox_uses_existing_settings_save_without_enabling_persistent_camera(ui):
+def test_single_camera_permission_uses_existing_settings_without_activating_viewer_or_tracking(ui):
     page, state, posts, errors = ui
-    state["config"].update(everyday_camera_enabled=False, camera_enabled=False)
+    state["config"].update(camera_enabled=False)
     page.click("#tab-agent")
     refresh(page, state, snapshot())
     page.locator("#everyday-permissions > summary").click()
-    page.click("[data-everyday-setting=everyday_camera_enabled]")
-    assert not page.locator("#everyday_camera_enabled").is_checked()
-    page.check("#everyday_camera_enabled")
+    page.click("[data-everyday-setting=camera_enabled]")
+    assert not page.locator("#camera_enabled").is_checked()
+    page.check("#camera_enabled")
     page.locator("#settings-form button[type=submit]").first.click()
     wait_text(page, "#form-message", "Saved")
     saved = [body for path, body in posts if path == "/api/settings"][-1]
-    assert saved["everyday_camera_enabled"] is True
-    assert saved["camera_enabled"] is False
+    assert saved["camera_enabled"] is True
+    assert "everyday_camera_enabled" not in saved
+    assert not saved["camera_feed_enabled"] and not saved["face_tracking_enabled"]
     assert all(path == "/api/settings" for path, _ in posts)
     assert not errors

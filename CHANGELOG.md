@@ -6,14 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.5.27] — Consented companion presence, visual help and opt-in sources
+## [0.5.29] — Consented companion presence, visual help and opt-in sources
 
 - Presence reports occupancy and source health separately: heartbeats and bridge-loss reports keep healthy stationary occupancy "present", show "unknown" when the sensor bridge is silent, and never turn a reconnect into a second arrival. Only an arrival may trigger the silent acknowledgement; Standby never gains motors.
 - Direct visual help: one deliberate "Look at this" (phone card, explicit spoken request in Everyday Pipeline, Live via a bounded host request/result protocol, or Realtime's camera tool) takes exactly one frame on the configured route (local vision or Hermes host; no fallback) and answers. Every look is a ticket bound to the original Stop generation, profile, camera permission, voice ownership and (phone) owner session, re-validated after lock, capture, inference and before the answer is kept; Stop/privacy/Kids/profile/owner revocation discard late results and clear private RAM. Follow-ups use a structurally tool-free host route so text read from an object can never reach tools.
-- Companion card in Everyday with truthful activity/presence/camera/mic state, Look, Stop, Suggestions Off/Gentle/More often, "Why", receipts and host-backed source enrollment (exact already-authorized identifiers only). Page-side fences discard held replies after owner loss, Stop, privacy, offline, Kids or profile change. Static assets advanced to v101.
+- Companion card in Everyday with truthful activity/presence/camera/mic state, Look, Stop, Suggestions Off/Gentle/More often, "Why", receipts and host-backed source enrollment (exact already-authorized identifiers only). Page-side fences discard held replies after owner loss, Stop, privacy, offline, Kids or profile change. Static assets advanced to v102.
 - Opt-in sources on the Hermes host: at most one Home Assistant condition and one calendar lead-time source; delivery-aware, hashed-fingerprint lifecycle (no repeat of a delivered moment, no loss of a suppressed one, no replay of expired ones, enrollment drift clears memory); calendar details private by default and never spoken to an anonymous Yes; owner-zone clock times; offer texts must describe read-only help. Unsolicited offers need present occupancy; project offers keep Agent authority; requested reminders keep bypassing initiative budgets. See `docs/companion-implementation.md` for scope, receipts and remaining enrollment/provider/TTS/deployment/physical gates.
 
 - Preserve original request authority through HTTP preparation and visual barge-in. Durable source revisions reject delayed deliveries after removal; accepted replies and owner-private details retain their original Stop scope. New sources remain unenrolled, and existing power, media and voice settings are preserved.
+
+## [0.5.28] — One Owner camera permission for Everyday
+
+- Simplify explicit Everyday camera access to the existing Owner-controlled camera permission. Remove the duplicate voice-camera switch; retain separate viewer/tracking controls, bounded sessions, Stop/privacy cancellation and fail-closed legacy consent handling. Owner sign-in never activates capture or changes permissions.
+- Preserve the accepted native-sleep and visually grounded I Spy changes from 0.5.25 and 0.5.26. No camera, speech, tracking or movement is activated by installation.
+
 
 ## [0.5.26] — Visually grounded I Spy guessing
 
@@ -30,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Quiesce app playback and remove its local wobbler before native sleep. Fence delayed speech offsets, voice poses, PCM pushes and playback cleanup so they cannot disturb a folded head or restart playback behind the sleep transition.
 - Preserve responsive Stop and existing Kids output quarantine when an SDK audio operation is stuck. Refuse unverified sleep admission or unresolved completion without retrying movement; restore Standby wake detection and reopen app speech only after a confirmed wake.
 - Preserve the 0.5.24 Everyday features, settings, voices, camera consent and managed updater. Offline callback/transport tests and the independent safety review do not replace an owner-supervised sleep/wake check.
+
 
 
 ## [0.5.24] — Expanded Everyday tools and compact permissions

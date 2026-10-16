@@ -90,7 +90,6 @@ class SettingsUpdate(BaseModel):
     motion_enabled: bool | None = None
     barge_in_enabled: bool | None = None
     camera_enabled: bool | None = None
-    everyday_camera_enabled: bool | None = None
     camera_feed_enabled: bool | None = None
     camera_controls_enabled: bool | None = None
     camera_controls_handedness: Literal["left", "right"] | None = None
@@ -957,9 +956,7 @@ class Homebody(ReachyMiniApp):
                 revoke_camera_control = getattr(self._runtime, "revoke_camera_control", None)
                 if callable(revoke_camera_control):
                     revoke_camera_control()
-            if self._runtime is not None and (
-                not merged.everyday_camera_enabled or (current.camera_enabled and not merged.camera_enabled)
-            ):
+            if self._runtime is not None and not merged.camera_enabled:
                 revoke_everyday_camera = getattr(self._runtime, "revoke_everyday_camera", None)
                 if callable(revoke_everyday_camera):
                     revoke_everyday_camera()

@@ -28,13 +28,13 @@ def test_camera_request_permission_defaults_off_and_does_not_follow_feed():
     r, c = runtime(camera_feed_enabled=True)
     assert "start_reachy_camera" not in r.everyday_local_tools()
     assert "capture_reachy_camera" not in r.everyday_local_tools()
-    c.everyday_camera_enabled = True
+    c.camera_enabled = True
     assert {"start_reachy_camera", "capture_reachy_camera"} <= set(r.everyday_local_tools())
-    assert not c.camera_enabled
+    assert c.camera_enabled
 
 
 def test_camera_window_is_bounded_and_does_not_change_saved_permission(monkeypatch):
-    r, c = runtime(everyday_camera_enabled=True)
+    r, c = runtime(camera_enabled=True)
     now = [100.0]
     monkeypatch.setattr("homebody.everyday_runtime.time.monotonic", lambda: now[0])
     captures = []
@@ -42,20 +42,20 @@ def test_camera_window_is_bounded_and_does_not_change_saved_permission(monkeypat
     result = r.execute_everyday_tool("start_reachy_camera", {"duration_seconds": 30})
     assert result["ok"] and result["camera_session_active"]
     assert len(captures) == 1
-    assert not c.camera_enabled and not c.camera_feed_enabled and not c.face_tracking_enabled
+    assert c.camera_enabled and not c.camera_feed_enabled and not c.face_tracking_enabled
     now[0] += 31
     assert not r.everyday_local_capabilities()["activity"]["camera_session_active"]
 
 
 @pytest.mark.parametrize("duration", [True, 4, 121, 5.5, "30"])
 def test_camera_invalid_duration_never_captures(duration):
-    r, _ = runtime(everyday_camera_enabled=True)
+    r, _ = runtime(camera_enabled=True)
     r._capture_camera_jpeg = lambda **kw: pytest.fail("no capture")
     assert not r.execute_everyday_tool("start_reachy_camera", {"duration_seconds": duration})["ok"]
 
 
 def test_stop_revokes_session_and_original_fence_cannot_restart():
-    r, _ = runtime(everyday_camera_enabled=True)
+    r, _ = runtime(camera_enabled=True)
     r._capture_camera_jpeg = lambda **kw: b"jpeg"
     fence = r.everyday_tool_fence()
     assert r.execute_everyday_tool("start_reachy_camera", {"duration_seconds": 30}, fence=fence)["ok"]
@@ -67,7 +67,7 @@ def test_stop_revokes_session_and_original_fence_cannot_restart():
 
 @pytest.mark.parametrize("block", ["kids", "locked", "privacy", "sleep", "workspace", "not_ready"])
 def test_runtime_admission_not_just_schema(block):
-    r, _ = runtime(everyday_camera_enabled=True)
+    r, _ = runtime(camera_enabled=True)
     if block == "kids":
         r._kids_active = True
     elif block == "locked":
@@ -101,7 +101,7 @@ def test_volume_strictness_replay_and_readback():
 
 
 def test_camera_held_result_dropped_before_vision_after_stop():
-    r, _ = runtime(everyday_camera_enabled=True, camera_enabled=True)
+    r, _ = runtime(camera_enabled=True)
     entered, release = threading.Event(), threading.Event()
 
     def capture(**kw):
@@ -134,7 +134,7 @@ def test_status_is_categorical_not_entire_runtime_or_private_history():
 
 
 def test_camera_off_wins_while_an_explicit_look_is_capturing():
-    r, _ = runtime(everyday_camera_enabled=True, camera_enabled=True)
+    r, _ = runtime(camera_enabled=True)
     entered, release = threading.Event(), threading.Event()
 
     def capture(**kw):
@@ -156,8 +156,8 @@ def test_camera_off_wins_while_an_explicit_look_is_capturing():
     assert not thread.is_alive() and result[0]["ok"] is False
 
 
-def test_camera_window_gates_capture_before_start_after_expiry_and_after_stop(monkeypatch):
-    r, _ = runtime(everyday_camera_enabled=True)
+def test_fresh_explicit_looks_do_not_require_or_reopen_a_camera_window(monkeypatch):
+    r, _ = runtime(camera_enabled=True)
     now = [100.0]
     monkeypatch.setattr("homebody.everyday_runtime.time.monotonic", lambda: now[0])
     captures = []
@@ -167,15 +167,17 @@ def test_camera_window_gates_capture_before_start_after_expiry_and_after_stop(mo
     def look():
         return r.execute_everyday_tool("capture_reachy_camera", {"purpose": "read"})
 
-    assert look()["ok"] is False and not captures
+    assert look()["ok"] is True
+    assert not r.everyday_local_capabilities()["activity"]["camera_session_active"]
     assert r.execute_everyday_tool("start_reachy_camera", {"duration_seconds": 5})["ok"]
     assert look()["ok"] is True
     now[0] += 6
-    assert look()["ok"] is False
+    assert look()["ok"] is True  # Fresh request, not continuation of the expired window.
     assert r.execute_everyday_tool("start_reachy_camera", {"duration_seconds": 5})["ok"]
     assert r.execute_everyday_tool("stop_reachy_camera", {})["ok"]
-    assert look()["ok"] is False
-    assert len(captures) == 3
+    assert look()["ok"] is True  # Stop cancels old work, not future explicitly authorized looks.
+    assert not r.everyday_local_capabilities()["activity"]["camera_session_active"]
+    assert len(captures) == 6
 
 
 def test_power_uses_existing_handler_and_returns_actual_confirmation():

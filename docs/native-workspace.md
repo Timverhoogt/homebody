@@ -24,6 +24,8 @@ Public accepted messages and explicit lifecycle/tool facts are displayed; hidden
 
 Ready-to-test requires native completion plus successful fixed checks and artifact hashes, tied to the exact run and session. Owner testing is still needed. Worker prose alone cannot create readiness. Receipts are available under Verification evidence.
 
+Keep verifier interpreters and dependencies in a durable host environment, never a temporary directory or prunable agent cache. For provisioning, empty failed receipts, and journal-preserving repairs, see [durable native verification](native-verification.md).
+
 Display bodies and approval drafts remain bounded RAM-only. The private atomic journal contains configuration identity, bindings, run identifiers/status, hashes and verification receipts, not conversation or request bodies. An ordinary new wake preserves native work; Stop, Clear, Kids, privacy, profile or explicit power teardown revoke it. Remote Stop is a request, not a guarantee of immediate quiescence when disconnected. No new camera, microphone or motor authority is granted.
 
 ## Validation and deployment boundary

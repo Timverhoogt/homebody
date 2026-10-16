@@ -29,7 +29,7 @@ def test_real_robot_client_and_host_roundtrip(name, args):
             bridge_url=str(server.make_url("/")).rstrip("/"),
             api_key="bridge-secret",
             instance_id="reachy-1",
-            everyday_camera_enabled=True,
+            camera_enabled=True,
         )
         runtime = HermesVoiceRuntime(
             SimpleNamespace(media=SimpleNamespace()), threading.Event(), config_loader=lambda: config
@@ -144,7 +144,7 @@ def test_real_robot_client_and_host_roundtrip(name, args):
         assert answer == ("" if name == "set_reachy_power_mode" else "Verified fixture reply.")
         if name in {"start_reachy_camera", "capture_reachy_camera"}:
             # Only the start's local readiness probe; the model-selected capture takes no frame.
-            assert len(captures) == 1 and not config.camera_enabled
+            assert len(captures) == 1 and config.camera_enabled
         if name == "capture_reachy_camera":
             assert len(requests) == 3  # start, refused capture, final text; no image request
             assert not any(

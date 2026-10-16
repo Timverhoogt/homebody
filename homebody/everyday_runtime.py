@@ -50,10 +50,8 @@ def configured_local_tools(config: AppConfig) -> list[str]:
     names = ["get_reachy_status", "get_reachy_volume", "set_reachy_volume", "stop_reachy_camera"]
     if config.power_tools_enabled:
         names.append("set_reachy_power_mode")
-    if config.camera_enabled or config.everyday_camera_enabled:
-        names.append("capture_reachy_camera")
-    if config.everyday_camera_enabled:
-        names.append("start_reachy_camera")
+    if config.camera_enabled:
+        names += ["capture_reachy_camera", "start_reachy_camera"]
     if config.robot_tools_enabled:
         names += ["move_reachy_head", "express_reachy_emotion", "dance_reachy"]
     return names
@@ -169,14 +167,14 @@ class EverydayRuntimeMixin:
         with self._everyday_lock:
             remaining = max(0.0, self._everyday_camera_until - time.monotonic())
             busy = self._everyday_camera_busy > 0
-        if not config.everyday_camera_enabled or self._privacy_requested.is_set():
+        if not config.camera_enabled or self._privacy_requested.is_set():
             remaining = 0.0
         return {
             "tools": self.everyday_local_tools(),
             "permissions": {
                 "power": config.power_tools_enabled,
                 "camera": config.camera_enabled,
-                "camera_on_request": config.everyday_camera_enabled,
+                "camera_on_request": config.camera_enabled,  # Older UI compatibility, not a second permission.
                 "movement": config.robot_tools_enabled,
                 "volume": True,
             },
@@ -268,7 +266,8 @@ class EverydayRuntimeMixin:
                 with self._everyday_lock:
                     camera_generation = fence.camera_generation
                     camera_deadline = self._everyday_camera_until
-                general_camera_permission = config.camera_enabled
+                    if camera_deadline <= time.monotonic():
+                        camera_deadline = 0.0  # A fresh explicit one-shot look does not need a window.
 
                 def current() -> None:
                     latest = self._require_everyday_current(fence)
@@ -279,12 +278,10 @@ class EverydayRuntimeMixin:
                             raise RuntimeError("Camera request was stopped")
                         if (
                             name == "capture_reachy_camera"
-                            and not (general_camera_permission and latest.camera_enabled)
-                            and (not latest.everyday_camera_enabled or camera_deadline <= time.monotonic())
+                            and camera_deadline > 0
+                            and camera_deadline <= time.monotonic()
                         ):
-                            raise RuntimeError(
-                                "Start a temporary camera session before looking; the window is off or expired"
-                            )
+                            raise RuntimeError("The original camera session expired; ask for a new look")
 
                 current()
                 with self._everyday_lock:

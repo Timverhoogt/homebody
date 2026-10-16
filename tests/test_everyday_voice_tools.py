@@ -14,7 +14,7 @@ from homebody.runtime import HermesVoiceRuntime
 
 
 def make_runtime():
-    config = AppConfig(everyday_camera_enabled=True)
+    config = AppConfig(camera_enabled=True)
     r = HermesVoiceRuntime(SimpleNamespace(media=SimpleNamespace()), threading.Event(), config_loader=lambda: config)
     r._control_ready.set()
     r._power_mode = "awake"

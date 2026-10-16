@@ -8,7 +8,7 @@ const APP_SHELL = [
   "/static/motion.js?v=101",
   "/static/gstwebrtc-api.js",
   "/static/camera.js?v=101",
-  "/static/companion.js?v=101",
+  "/static/companion.js?v=102",
   "/static/main.js?v=101",
   "/static/ispy-input.js?v=101",
   "/static/workspace.js?v=101",

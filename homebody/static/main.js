@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 const fields = [
   "bridge_url", "api_key", "model", "conversation_mode", "language", "stt_provider", "stt_model", "stt_robot_fallback",
   "tts_provider", "tts_model", "tts_voice", "continuous_conversation",
-  "motion_enabled", "barge_in_enabled", "camera_enabled", "everyday_camera_enabled", "camera_feed_enabled", "camera_controls_enabled", "camera_controls_handedness", "face_tracking_enabled", "face_tracking_weight",
+  "motion_enabled", "barge_in_enabled", "camera_enabled", "camera_feed_enabled", "camera_controls_enabled", "camera_controls_handedness", "face_tracking_enabled", "face_tracking_weight",
   "doa_enabled", "robot_tools_enabled", "home_assistant_enabled", "home_assistant_controls_enabled",
   "home_assistant_camera_enabled", "home_assistant_assist_enabled", "home_assistant_port",
   "realtime_model", "realtime_voice", "realtime_reasoning_effort", "realtime_semantic_eagerness",

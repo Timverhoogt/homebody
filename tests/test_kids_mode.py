@@ -628,7 +628,7 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     worker = (STATIC / "service-worker.js").read_text(encoding="utf-8")
     assert "homebody-shell-v" in worker
-    # v100: Companion card assets (companion.js) advanced the shell revision together.
+    # Companion card assets advance with the shell revision.
     for asset in ("style.css", "camera.js", "main.js", "companion.js"):
         assert f"/static/{asset}?v=101" in html
         assert f'"/static/{asset}?v=101"' in worker
