@@ -312,10 +312,10 @@ class PowerMixin:
             self._set_motor_mode_unlocked(enabled, wake=wake)
 
     def _set_motor_mode_unlocked(self, enabled: bool, *, wake: bool = False) -> None:
-        if self._native_sleep_uncertain:
-            raise RuntimeError("Native sleep outcome is unknown; motor transitions are blocked")
         if enabled and self.stop_event.is_set() and (wake or not getattr(self, "_safety_fold_active", False)):
             raise RuntimeError("Runtime is stopping; motor enable is blocked")
+        if self._native_sleep_uncertain:
+            raise RuntimeError("Native sleep outcome is unknown; motor transitions are blocked")
         # A second caller can queue Awake using status from before the first wake.
         # Re-read hardware under the lock, rather than trusting that stale app status.
         if enabled and wake and self._motors_enabled is True and not self._head_safely_folded:
