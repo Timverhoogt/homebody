@@ -96,6 +96,8 @@ class PipelineVoiceMixin:
             self._invalidate_ispy_input()
         config = initial_config
         # Freeze before blocking work; a later Stop/new wake must not donate its authority.
+        local_fence = (self.everyday_tool_fence()
+                       if callable(getattr(self, "everyday_tool_fence", None)) else None)
         everyday_context = self.agent_broker_context(explicit_private_intent=False)
         if typed_input is None:
             self._prewarm_robot_stt(config)
@@ -398,7 +400,17 @@ class PipelineVoiceMixin:
                         if ack_player is not None:
                             ack_player.wait_finished()
                 else:
-                    response_text = client.everyday_turn(transcript, context=everyday_context)
+                    # Everyday: the narrow fast backend, never the full Hermes agent.
+                    if local_fence is not None:
+                        response_text = client.everyday_turn(
+                            transcript, context=everyday_context, local_tools=self.everyday_local_tools(),
+                            local_executor=lambda name, args, call_id: self.execute_everyday_tool(
+                                name, args, fence=local_fence, call_id=call_id,
+                            ),
+                            is_current=lambda: conversation_is_current() and not self._turn_stop_requested(),
+                        )
+                    else:
+                        response_text = client.everyday_turn(transcript, context=everyday_context)
                 self._voice_timings.mark("tool_result")  # backend text returned (not "heard")
                 if (
                     not conversation_is_current()

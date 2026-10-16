@@ -98,6 +98,7 @@ class VisionMixin:
         kids_generation: int | None = None,
         turn_bound: bool = False,
         is_current: Callable[[], bool] | None = None,
+        adult_current: Callable[[], None] | None = None,
     ) -> bytes:
         media = getattr(self.robot, "media", None)
         capture = getattr(media, "get_frame_jpeg", None)
@@ -112,6 +113,8 @@ class VisionMixin:
                 raise RuntimeError("Camera capture was cancelled")
             if kids_generation is None:
                 self._assert_camera_allowed()
+                if adult_current is not None:
+                    adult_current()
                 return
             if turn_bound and self._turn_stop_requested():
                 raise ISpyCancelled("I Spy camera capture was stopped")

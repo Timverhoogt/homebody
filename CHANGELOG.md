@@ -6,12 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.5.24] — Consented companion presence, visual help and opt-in sources
+### Pending — Consented companion presence, visual help and opt-in sources
 
 - Presence reports occupancy and source health separately: heartbeats and bridge-loss reports keep healthy stationary occupancy "present", show "unknown" when the sensor bridge is silent, and never turn a reconnect into a second arrival. Only an arrival may trigger the silent acknowledgement; Standby never gains motors.
 - Direct visual help: one deliberate "Look at this" (phone card, explicit spoken request in Everyday Pipeline, Live via a bounded host request/result protocol, or Realtime's camera tool) takes exactly one frame on the configured route (local vision or Hermes host; no fallback) and answers. Every look is a ticket bound to the original Stop generation, profile, camera permission, voice ownership and (phone) owner session, re-validated after lock, capture, inference and before the answer is kept; Stop/privacy/Kids/profile/owner revocation discard late results and clear private RAM. Follow-ups use a structurally tool-free host route so text read from an object can never reach tools.
 - Companion card in Everyday with truthful activity/presence/camera/mic state, Look, Stop, Suggestions Off/Gentle/More often, "Why", receipts and host-backed source enrollment (exact already-authorized identifiers only). Page-side fences discard held replies after owner loss, Stop, privacy, offline, Kids or profile change. Static assets advanced to v100.
 - Opt-in sources on the Hermes host: at most one Home Assistant condition and one calendar lead-time source; delivery-aware, hashed-fingerprint lifecycle (no repeat of a delivered moment, no loss of a suppressed one, no replay of expired ones, enrollment drift clears memory); calendar details private by default and never spoken to an anonymous Yes; owner-zone clock times; offer texts must describe read-only help. Unsolicited offers need present occupancy; project offers keep Agent authority; requested reminders keep bypassing initiative budgets. See `docs/companion-implementation.md` for scope, receipts and remaining enrollment/provider/TTS/deployment/physical gates.
+
+## [0.5.24] — Expanded Everyday tools and compact permissions
+
+- Expand Everyday with shared robot-local power, one-shot vision, bounded camera sessions, speaker volume/mute, categorical status and semantic gestures across Pipeline, Realtime and GPT-Live. Keep camera-on-request as a separate owner opt-in; no saved viewer/tracking permission changes or automatic cloud captures.
+- Add RAM-only device-scoped timers/reminders with list/status/cancel, configured public search with sources, verified light brightness and exact already-allowlisted scene activation. Timers remain manageable after a new wake or voice-engine switch; host restart clears them and audible delivery is not presumed.
+- Keep Agent → Everyday compact: selected voice, short summary, one grouped Manage permissions disclosure, and nested technical details. Preserve ownership, Kids/privacy, Stop, current-request and stale-response fences; synchronize the PWA shell to v100.
+- Preserve the 0.5.23 Kids waiting-speech ownership fixes, existing settings and device allowlists. Automated verification does not imply supervised camera, motion or speech acceptance.
 
 ## [0.5.23] — Prerecorded Kids search and reply-wait speech
 
@@ -20,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Reuse the verified English and Dutch recordings, including Ruth for Dutch. Require a current matching language, voice and model proof; other languages without verified clip bundles remain silent. No live filler synthesis, new voice selection or settings migration.
 - Settle and flush filler before the actual clue or answer, fence delayed proof and playback across Stop, End, switching, expiry, privacy and shutdown, and preserve single-producer output quarantine when an SDK audio push is blocked.
 - Keep adult speech, Calm, typed guesses, camera consent, microphone admission, motion policy and shared-session deadlines unchanged. Automated fake-device and browser checks do not replace supervised speaker/gameplay acceptance.
+
 
 ## [0.5.22] — Clean I Spy cancellation and sandbox-aware robot recognition
 

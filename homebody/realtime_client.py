@@ -15,6 +15,7 @@ import numpy as np
 from websockets.sync.client import ClientConnection, connect
 
 from .config import AppConfig
+from .everyday_runtime import configured_local_tools
 from .hermes_client import AgentBrokerContext
 
 _LOGGER = logging.getLogger(__name__)
@@ -87,6 +88,9 @@ class RealtimeBridgeSession:
                         "reasoning_effort": self.config.realtime_reasoning_effort,
                         "semantic_eagerness": self.config.realtime_semantic_eagerness,
                         "assistant_mode": self.assistant_mode,
+                        "local_tools": (
+                            configured_local_tools(self.config) if self.assistant_mode == "everyday" else []
+                        ),
                         "camera_enabled": self.config.camera_enabled,
                         "robot_tools_enabled": self.config.robot_tools_enabled,
                         "agent_tools_enabled": self.config.agent_tools_enabled,

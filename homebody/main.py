@@ -89,6 +89,7 @@ class SettingsUpdate(BaseModel):
     motion_enabled: bool | None = None
     barge_in_enabled: bool | None = None
     camera_enabled: bool | None = None
+    everyday_camera_enabled: bool | None = None
     camera_feed_enabled: bool | None = None
     camera_controls_enabled: bool | None = None
     camera_controls_handedness: Literal["left", "right"] | None = None
@@ -934,6 +935,12 @@ class Homebody(ReachyMiniApp):
                 revoke_camera_control = getattr(self._runtime, "revoke_camera_control", None)
                 if callable(revoke_camera_control):
                     revoke_camera_control()
+            if self._runtime is not None and (
+                not merged.everyday_camera_enabled or (current.camera_enabled and not merged.camera_enabled)
+            ):
+                revoke_everyday_camera = getattr(self._runtime, "revoke_everyday_camera", None)
+                if callable(revoke_everyday_camera):
+                    revoke_everyday_camera()
             if self._runtime is not None and not merged.contextual_offers_enabled:
                 cancel_contextual_offer = getattr(self._runtime, "cancel_contextual_offer", None)
                 if callable(cancel_contextual_offer):
@@ -1013,6 +1020,10 @@ class Homebody(ReachyMiniApp):
                 raise HTTPException(status_code=502, detail="Everyday status is unavailable from the bridge") from exc
             finally:
                 client.close()
+            if self._runtime is not None:
+                local = getattr(self._runtime, "everyday_local_capabilities", None)
+                if callable(local):
+                    payload["local"] = local()
             return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
         @self.settings_app.get("/api/agent/workspace/native-badge")

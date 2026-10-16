@@ -596,7 +596,20 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .workspace-clear-confirm p { margin: 0; line-height: 1.5; }
 .workspace-clear-confirm .workspace-toolbar { margin-bottom: 0; }
 .warning-note { border-left: 3px solid var(--warn); padding-left: 10px; }
-.everyday-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 16px 0 8px; }
+.everyday-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; margin: 16px 0 8px; }
+.everyday-card .section-heading { flex-wrap: wrap; gap: 12px; }
+.everyday-card .section-heading > div, .everyday-facts > div { min-width: 0; }
+.everyday-card p { overflow-wrap: anywhere; line-height: 1.55; }
+.everyday-card .badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.everyday-voice-fact dd { font-weight: 600; }
+.everyday-permission-groups { display: grid; gap: 16px; margin-top: 16px; }
+.everyday-permission-groups section + section { border-top: 1px solid var(--line); padding-top: 16px; }
+.everyday-permission-groups h3 { margin: 0; font-size: 1rem; }
+.everyday-permission-groups p { margin: 8px 0; }
+.everyday-permission-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.everyday-permission-links button { min-width: 0; min-height: 48px; height: auto; padding: 12px 16px; white-space: normal; overflow-wrap: anywhere; }
+#everyday-permissions > summary, #everyday-technical-details > summary { min-height: 48px; padding-block: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+#everyday-message { margin-top: 16px; }
 .everyday-facts dt { font-family: var(--mono); font-size: .64rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .everyday-facts dd { margin: 4px 0 0; overflow-wrap: anywhere; }
 .presence-card, .initiative-card, .presentation-card, .agent-run-sheet { border-top-width: 3px; }

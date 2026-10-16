@@ -9,6 +9,7 @@ test: with barge-in disabled the microphone is not streamed while Reachy is audi
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 from .audio import resample_linear
@@ -24,7 +25,7 @@ _MAX_QUEUED_SECONDS = 30.0
 
 
 class LiveVoiceMixin:
-    """Run GPT-Live conversations; no camera, movement or memory tools are exposed to Live."""
+    """Run GPT-Live conversations with bounded Everyday local tools; never private memory."""
 
     def _new_live_session(self, *args: object, **kwargs: object) -> LiveBridgeSession:
         return LiveBridgeSession(*args, **kwargs)  # type: ignore[arg-type]
@@ -34,6 +35,9 @@ class LiveVoiceMixin:
             return
         if output_quarantined(self):
             return  # direct entry: same common audio-quarantine gate as the dispatcher
+        local_closed = threading.Event()
+        original_fence = (self.everyday_tool_fence(local_closed)
+                          if callable(getattr(self, "everyday_tool_fence", None)) else None)
         broker_context = self.agent_broker_context(explicit_private_intent=False)
         agent_request_id = ""
         if broker_context.capability_profile == "agent":
@@ -59,10 +63,11 @@ class LiveVoiceMixin:
             self._set_status("listening", "GPT-Live session active")
             if self._motion is not None:
                 self._motion.listening()
-            self._live_loop(config, session, pending, mode, workspace_generation)
+            self._live_loop(config, session, pending, mode, workspace_generation, original_fence=original_fence)
             completed = True
         finally:
             # Local Stop wins: flush the speaker before any cloud finalization can fail or stall.
+            local_closed.set()
             self._end_companion_voice()
             self._clear_streamed_audio()
             session.close()
@@ -112,8 +117,17 @@ class LiveVoiceMixin:
 
         threading.Thread(target=run, name="reachy-live-look", daemon=True).start()
 
-    def _live_loop(self, config, session, pending, mode, workspace_generation) -> None:
+    def _live_loop(self, config, session, pending, mode, workspace_generation, *, original_fence=None) -> None:
+        closed = original_fence.cancelled if original_fence is not None else threading.Event()
+        fence = original_fence if mode == "everyday" else None
+        try:
+            self._live_loop_with_tools(config, session, pending, mode, workspace_generation, closed, fence)
+        finally:
+            closed.set()
+
+    def _live_loop_with_tools(self, config, session, pending, mode, workspace_generation, closed, fence) -> None:
         timings = self._voice_timings
+        seen_local = set()
         playback = RealtimePlayback()
         speaking = False
         heard: list[str] = []
@@ -137,7 +151,18 @@ class LiveVoiceMixin:
                     raise RealtimeBridgeError(str(payload.get("error") or "Live session failed"))
                 if kind == "session.closed":
                     return
-                if kind == "session.input_transcript.delta":
+                if kind == "everyday.tool_call":
+                    identifier = payload.get("call_id")
+                    if (fence is None or not isinstance(identifier, str) or not 1 <= len(identifier) <= 128
+                            or identifier in seen_local or len(seen_local) >= 128):
+                        raise RealtimeBridgeError("Invalid or replayed Everyday action")
+                    seen_local.add(identifier)
+                    self.launch_everyday_tool(
+                        payload.get("name"), payload.get("arguments"), fence=fence, call_id=identifier,
+                        deliver=lambda result, call_id=identifier: session.send_everyday_result(call_id, result),
+                        is_current=lambda: not closed.is_set() and not self._turn_stop_requested(),
+                    )
+                elif kind == "session.input_transcript.delta":
                     last_activity = time.monotonic()
                     heard.append(str(payload.get("delta") or ""))
                     self._set_status(

@@ -143,7 +143,7 @@ def test_pipeline_wake_session_completes_first_turn_after_agent_generation_chang
             calls.append("transcribe")
             return "hello"
 
-        def everyday_turn(self, transcript: str, *, context=None) -> str:
+        def everyday_turn(self, transcript: str, *, context=None, **local_tools) -> str:
             # Adult conversation-profile turns use the narrow Everyday route, never full Hermes chat.
             calls.append("everyday_turn")
             return "Hi there"

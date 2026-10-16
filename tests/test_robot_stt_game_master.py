@@ -249,7 +249,8 @@ def test_adult_pipeline_turn_autodetects_and_saved_engine_is_untouched(host) -> 
     config = AppConfig(api_key="k", conversation_mode="live", stt_provider="robot", language="nl",
                        continuous_conversation=False)
     runtime._new_bridge_client = lambda cfg: SimpleNamespace(  # type: ignore[method-assign]
-        config=cfg, last_stt_provider="", health=lambda: {}, everyday_turn=lambda text, *, context=None: "Noon.",
+        config=cfg, last_stt_provider="", health=lambda: {},
+        everyday_turn=lambda text, *, context=None, **local_tools: "Noon.",
         synthesize=lambda text: (_ for _ in ()).throw(RuntimeError("stop after STT")), close=lambda: None,
     )
     try:

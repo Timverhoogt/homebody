@@ -5,6 +5,9 @@
   let generation = 0, ownerAllowed = false, blocked = true, capabilities = null;
   let lastCapabilitiesAt = 0, lastBadgeAt = 0, stopping = false;
   let voiceConfig = {};
+  let capabilitiesSequence = 0, cameraDeadline = 0, cameraTimer = null;
+  const CAPABILITY_FIELDS = ['everyday-summary', 'everyday-camera-activity', 'everyday-robot-permissions',
+    'everyday-camera-permission', 'everyday-household', 'everyday-information', 'everyday-search'];
   // Only a status reply names the mode; pending switches, offline and owner loss never claim one.
   let confirmedMode = '', switchingTo = '', kidsHidden = false, unknownReason = 'Waiting for Reachy to confirm.';
   // 'unknown' = no answer yet, 'uncertain' = the status check failed; both keep the global Stop reachable.
@@ -93,6 +96,9 @@
   function reset(message) {
     generation += 1;
     capabilities = null; lastCapabilitiesAt = 0; lastBadgeAt = 0;
+    clearCapabilityDetails();
+    $('everyday-permissions').open = false;
+    $('everyday-technical-details').open = false;
     text('everyday-badge', 'Unavailable');
     $('everyday-badge').dataset.status = 'failed';
     voiceConfig = {};
@@ -110,30 +116,102 @@
       ? `OpenAI Realtime · ${voiceConfig.realtime_model || 'model not reported'}`
       : mode === 'live' ? `OpenAI GPT-Live · ${voiceConfig.live_model || 'model not reported'}`
         : mode === 'pipeline' ? 'Pipeline · speech → text → speech' : 'Not reported by Reachy');
-    text('everyday-voice-note', mode === 'realtime'
-      ? 'Selected in Settings. Realtime handles conversation and calls home tools directly; the text backend below is not your voice model.'
-      : mode === 'live' ? 'Selected in Settings. GPT-Live handles listening and speech; its tool requests use the separate text backend below.'
-        : 'Selected in Settings. Pipeline transcribes your speech, uses the text backend, then generates speech.');
+    text('everyday-voice-note', 'Saved selection only · not proof of an active or ready voice session.');
   }
 
-  function renderCapabilities(body) {
+  function clearCapabilityDetails() {
+    clearInterval(cameraTimer); cameraTimer = null; cameraDeadline = 0;
+    CAPABILITY_FIELDS.forEach(id => text(id, 'Not reported.'));
+  }
+
+  const permission = value => value === true ? 'allowed' : value === false ? 'off' : 'not reported';
+  const names = value => Array.isArray(value) ? value.filter(item => typeof item === 'string') : [];
+  // Only explicit booleans or known status categories establish readiness; unknown versions stay unknown.
+  function groupState(group) {
+    if (typeof group === 'boolean') return group ? 'available' : 'unavailable';
+    if (!group || typeof group !== 'object') return 'not reported';
+    for (const key of ['available', 'ready', 'enabled', 'configured']) {
+      if (typeof group[key] === 'boolean') return group[key]
+        ? key === 'configured' ? 'configured · not verified live' : 'available'
+        : key === 'configured' ? 'not configured' : 'unavailable';
+    }
+    if (['ready', 'available'].includes(group.status)) return 'available';
+    if (['unavailable', 'disabled', 'not_configured'].includes(group.status)) return 'unavailable';
+    return 'not reported';
+  }
+
+  function renderPermissions(body, requestedAt) {
+    clearCapabilityDetails();
+    const local = body.local || {}, permissions = local.permissions || {};
+    const tools = new Set([...names(body.tools), ...names(local.tools)]);
+    const groups = body.groups && typeof body.groups === 'object' ? body.groups : {};
+    text('everyday-robot-permissions', `Power requests: ${permission(permissions.power)} · movement: ${permission(permissions.movement)} · speaker volume: ${permission(permissions.volume)}.`);
+    text('everyday-camera-permission', `Temporary camera by voice: ${permission(permissions.camera_on_request)}. General camera permission: ${permission(permissions.camera)}. Neither means the camera is running.`);
+    const home = tools.has('home_control') || tools.has('home_status') || names(body.devices?.controls).length || names(body.devices?.status).length;
+    const timers = groupState(groups.timers);
+    const lookup = groupState(groups.public_lookup ?? groups.search);
+    const timersKnown = timers.startsWith('configured') || timers === 'available';
+    const lookupKnown = lookup.startsWith('configured') || lookup === 'available';
+    const delivery = groups.timers?.scope === 'adult_device_ram'
+      ? ' Across voice wakes; host restart clears them. Audible delivery unverified.'
+      : groups.timers?.scope === 'conversation_session' ? ' Session-only; audible delivery unverified.' : '';
+    text('everyday-household', `${home ? 'Only permitted home devices' : 'No home devices reported'} · timers & reminders: ${timers}.${delivery}`);
+    const weather = !!body.weather?.source, clock = body.time_source === 'hermes_host_clock';
+    text('everyday-information', `Weather: ${weather ? 'source configured' : 'not configured'} · current time: ${clock ? 'host clock' : 'not reported'}. General explanations use the selected voice route.`);
+    text('everyday-search', `Public lookup: ${lookup}${lookupKnown ? ' · public queries leave your home' : lookup === 'not reported' ? ' by the host' : ''}.`);
+    const summary = ['General explanations'];
+    if (tools.has('get_reachy_status')) summary.push('robot status');
+    if (home) summary.push('permitted home devices');
+    if (timersKnown) summary.push('timers & reminders');
+    if (weather || clock) summary.push(weather && clock ? 'weather & time' : weather ? 'weather' : 'current time');
+    if (lookupKnown) summary.push('public lookup');
+    text('everyday-summary', `${summary.join(' · ')}. No project tools or agent memory.`);
+    const activity = local.activity || {};
+    if (activity.camera_session_active === false) {
+      text('everyday-camera-activity', 'No temporary camera session reported.');
+    } else if (activity.camera_session_active === true) {
+      const seconds = activity.camera_remaining_seconds;
+      if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0 && seconds <= 120) {
+        // Network delay cannot renew an already-expired reported window.
+        cameraDeadline = requestedAt + seconds * 1000;
+        const token = generation;
+        const tick = () => {
+          if (blocked || token !== generation) return;
+          const remaining = Math.max(0, Math.ceil((cameraDeadline - performance.now()) / 1000));
+          text('everyday-camera-activity', remaining > 0
+            ? `Temporary camera active · up to ${remaining}s remaining. Not the dashboard viewer.`
+            : 'Temporary camera window expired · awaiting fresh status.');
+          if (!remaining) { clearInterval(cameraTimer); cameraTimer = null; }
+        };
+        tick();
+        if (cameraDeadline > performance.now()) cameraTimer = setInterval(tick, 1000);
+      } else {
+        text('everyday-camera-activity', 'Temporary camera session status unconfirmed · expiry not reported.');
+      }
+    } else {
+      text('everyday-camera-activity', 'Temporary camera session status not reported.');
+    }
+  }
+
+  function renderCapabilities(body, requestedAt) {
     capabilities = body;
     const provider = body.text_provider;
-    text('everyday-model', provider ? `${provider.model} · ${provider.label} (${provider.region})` : 'Not configured');
+    text('everyday-model', provider ? `${provider.model || 'Model not reported'} · ${provider.label || 'Provider not reported'} (${provider.region || 'region not reported'})` : 'Not configured');
     const weather = body.weather || {};
     text('everyday-weather', weather.source
-      ? `${weather.label}${weather.location_leaves_home ? ' · your configured location is sent to this provider' : ' · retrieved through your home system'}`
+      ? `${weather.label || 'Configured weather source'}${weather.location_leaves_home === true ? ' · your configured location is sent to this provider' : weather.location_leaves_home === false ? ' · retrieved through your home system' : ' · location sharing not reported'}`
       : 'No weather source configured · Everyday will say so instead of guessing');
     text('everyday-time', body.time_source === 'hermes_host_clock' ? 'Hermes host clock' : 'Unavailable');
-    const controls = body.devices?.controls || [], status = body.devices?.status || [];
+    const controls = names(body.devices?.controls), status = names(body.devices?.status);
     text('everyday-devices', controls.length || status.length
       ? `${controls.length} permitted control${controls.length === 1 ? '' : 's'} · ${status.length} status source${status.length === 1 ? '' : 's'}`
       : 'None shared with Everyday');
     text('everyday-device-ids', `Control: ${controls.join(', ') || 'none'}\nStatus: ${status.join(', ') || 'none'}`);
     renderVoice();
-    text('everyday-badge', body.available ? 'Tools ready' : 'Unavailable');
-    $('everyday-badge').dataset.status = body.available ? 'completed' : 'failed';
-    text('everyday-message', body.available
+    renderPermissions(body, requestedAt);
+    text('everyday-badge', body.available === true ? 'Tools ready' : 'Unavailable');
+    $('everyday-badge').dataset.status = body.available === true ? 'completed' : 'failed';
+    text('everyday-message', body.available === true
       ? 'Names and providers are set on the Hermes host; keys and coordinates never reach this page.'
       : `Everyday is unavailable: ${String(body.error || 'not configured on the Hermes host')}`);
   }
@@ -151,12 +229,15 @@
   }
 
   async function refreshCapabilities() {
-    const token = generation;
+    const token = generation, sequence = ++capabilitiesSequence, requestedAt = performance.now();
     try {
       const body = await getJson('/api/everyday/capabilities', token);
-      if (body && token === generation && !blocked) renderCapabilities(body);
+      if (body && token === generation && sequence === capabilitiesSequence && !blocked) renderCapabilities(body, requestedAt);
     } catch (error) {
-      if (token !== generation || blocked) return;
+      if (token !== generation || sequence !== capabilitiesSequence || blocked) return;
+      capabilities = null;
+      clearCapabilityDetails();
+      ['everyday-model', 'everyday-weather', 'everyday-time', 'everyday-devices', 'everyday-device-ids'].forEach(id => text(id, '—'));
       text('everyday-badge', 'Unavailable');
       $('everyday-badge').dataset.status = 'failed';
       text('everyday-message', `Everyday status is unavailable: ${String(error.message || error)}`);
@@ -210,7 +291,7 @@
     voiceConfig = payload?.config || {};
     renderVoice();
     const now = Date.now();
-    if (wasBlocked || now - lastCapabilitiesAt > 60000) { lastCapabilitiesAt = now; refreshCapabilities(); }
+    if (wasBlocked || now - lastCapabilitiesAt > (cameraTimer ? 5000 : 15000)) { lastCapabilitiesAt = now; refreshCapabilities(); }
     if (wasBlocked || now - lastBadgeAt > 5000) { lastBadgeAt = now; refreshBadge(); }
   }
 
@@ -247,6 +328,13 @@
       unconfirmed('Owner session ended. Pair an owner device to see the mode.');
     }
   }
+
+  document.querySelectorAll('[data-everyday-setting]').forEach(button => {
+    button.addEventListener('click', () => {
+      if (blocked || window.HomebodyOwner?.isOwner() !== true) return;
+      goToControl({ tab: 'settings', id: button.dataset.everydaySetting });
+    });
+  });
 
   $('workspace-mode-open').addEventListener('click', () => window.HomebodyWorkspace?.show());
 

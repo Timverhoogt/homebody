@@ -9,7 +9,7 @@ checked before either.
 | Entered by | Default; Agent tab → Everyday | Agent tab → Workspace (adult, paired owner) |
 | Backend | Host Everyday tools + fast text model | Bound native Hermes session (if enabled) or the restricted broker |
 | Can see | Current turn, allowlisted HA state, configured weather, host clock | Selected project roadmap, native session history |
-| Cannot | Hermes agent, memory, notes, projects, coding, camera via Live, any fallback | Run work without exact phone approval |
+| Cannot | Hermes agent, private memory, notes, projects, coding or unrestricted fallback | Run work without exact phone approval |
 
 ## Everyday (host side)
 
@@ -22,14 +22,58 @@ except names/labels in `/v1/everyday/capabilities`.
 | `REACHY_EVERYDAY_MODEL` | Defaults: `gpt-4.1-mini` (OpenAI), `openai/gpt-4.1-mini` (OpenRouter). Other routers must set it |
 | `REACHY_EVERYDAY_URL` | Optional OpenAI-compatible `/v1` URL override |
 | `OPENROUTER_API_KEY` / `OPENAI_API_KEY` | Resolved on the host only, by preset key name |
-| `REACHY_AGENT_HA_ALLOWLIST` / `REACHY_AGENT_HA_ACTION_ALLOWLIST` | Existing allowlists, reused unchanged. Everyday controls only `light.*`/`switch.*` `turn_on`/`turn_off` and verifies the new state; locks, covers, alarms and climate are refused |
+| `REACHY_AGENT_HA_ALLOWLIST` / `REACHY_AGENT_HA_ACTION_ALLOWLIST` | Existing allowlists, reused unchanged. On/off for lights and switches; brightness for permitted lights; scenes only with an exact existing `scene.*` → `turn_on` entry. Locks, covers, alarms and climate stay refused. |
 | `REACHY_EVERYDAY_ALIASES` | `{"light.desk": ["desk light"]}` spoken names for allowlisted entities only; ambiguous or unknown names are returned for the model to ask about |
 | `REACHY_EVERYDAY_WEATHER_ENTITY` | Preferred: a Home Assistant `weather.*` entity (state + `weather.get_forecasts`). Freshness is reported; data older than 3 h is marked stale |
 | `REACHY_EVERYDAY_WEATHER_PROVIDER=open-meteo` + `REACHY_EVERYDAY_WEATHER_LATLON=lat,lon` | Optional public provider; the rounded coordinates are sent to api.open-meteo.com and the UI discloses that. No auto-geolocation |
 | `REACHY_EVERYDAY_TIMEZONE` | IANA zone for the host-clock time tool (default: host local time) |
+| `REACHY_AGENT_REMINDER_CALLBACK_URL` / `REACHY_AGENT_REMINDER_CALLBACK_TOKEN` | Existing authenticated robot reminder-delivery callback; scheduling is unavailable without it. No callbacks are provisioned by this implementation. |
+| `REACHY_EVERYDAY_SEARCH_PROVIDER=brave` / `REACHY_EVERYDAY_SEARCH_API_KEY` | Optional public snippet search at the fixed Brave HTTPS endpoint. Queries leave the host. No redirects, arbitrary URL fetches, private retrieval or automatic credential copying. |
 
 Budgets per user request: three tool calls, one device change, call ids executed at most once,
 HA 4 s (+2 s verification), weather 3 s, text turn 20 s. Kids Mode blocks every tool.
+
+Timers run for up to one day, reminders up to 30 days. They are scoped to the adult device
+in host RAM, so another wake or voice engine can inspect/cancel them, but another device
+cannot. Fresh original-context authority is still required for every admitted operation.
+Host restart clears schedules; Meeting/Sleep/privacy/Kids may block spoken delivery.
+Creation verifies scheduling, not audible completion. Scene verification confirms a new
+activation timestamp, not the resulting state of every member. Brightness/scenes have no
+automatic undo. Search returns bounded source URLs, snippets and retrieval timestamps;
+provider configuration is not proof of live provider access.
+
+## Expanded Everyday robot tools (development candidate)
+
+Everyday now has one canonical local tool schema in `companion/everyday_manifest.py` and a
+single robot executor in `homebody/everyday_runtime.py`. Pipeline, Realtime and GPT-Live
+use the same power, status, volume, camera and semantic-movement handlers. This source
+candidate is not a deployed release or physical voice/camera acceptance.
+
+- **Power:** Standby, Awake, timed Meeting and Sleep use the existing serialized safe-fold
+  handler. Standby/Meeting/Sleep end the conversation; Sleep cannot be woken by voice.
+- **Status and speaker:** categorical microphone-recording, motor and power status; verified
+  playback-only volume/mute, never microphone mixer changes or a test sound.
+- **Look once:** one fresh frame, a specific question, then discard. Local vision is preferred
+  when configured; otherwise the explicitly requested frame goes through the host's narrow
+  Everyday vision endpoint. Images and visible text are untrusted data, not instructions.
+- **Camera session:** the owner must opt into **Camera on request** (`everyday_camera_enabled`,
+  default false). A spoken Start validates a fresh frame, then opens an app capture window
+  for 5–120 seconds. There is no automatic capture loop, cloud upload, tracking or recording.
+  Camera off, Stop, permission revocation and lifecycle changes invalidate pending frames.
+  This is app capture access, **not physical power control of the daemon-owned shared camera**.
+  Saved general-camera, viewer, tracking and movement settings are not changed by a voice tool.
+- **Movement:** existing bounded head direction, recorded emotion and dance actions, with
+  original voice-session cancellation checked by the action worker before moving.
+
+The Everyday card stays compact: selected voice engine and a short capability summary,
+one **Manage permissions** disclosure with grouped readiness/activity, and technical provider
+and entity details inside that disclosure. It does not render a switch for every tool.
+Camera consent reuses Settings and stays off until the paired owner explicitly saves it.
+
+Robot callbacks carry one-shot call IDs and the original stop/profile generation. Local
+camera/network/action work does not block the Live/Realtime microphone pump. Expired,
+superseded, replayed, private, Kids and Workspace calls fail closed; there is no shell,
+raw motor API, credential access or full-Hermes fallback.
 
 ## Workspace native discussion
 
@@ -77,14 +121,17 @@ late replies from the previous mode are dropped; the server's 423 checks are unc
 
 ## Voice engines
 
-- **Pipeline**: STT → text → TTS. Everyday turns use `/v1/everyday/turn`.
+- **Pipeline**: STT → text → TTS. New Everyday turns use authenticated
+  `/v1/everyday/session` with bounded local callback/result events. `/v1/everyday/turn`
+  remains the text-only compatibility endpoint for older clients.
 - **Realtime**: `gpt-realtime-2.1` or `-mini`; Everyday sessions get only Everyday, power and robot
   tools (no `ask_hermes`); tool calls run on the host.
 - **GPT-Live preview**: `/v1/live` relays to `wss://api.openai.com/v1/live/sessions` with
   `store:false` and client delegation. The bridge rebuilds each delegated request from transcript
   deltas (corrections, late delivery grace, task revisions), answers with
   `session.commentary.append` (≤480 UTF-8 bytes) and records superseded results as
-  `session.thinking.append`. No camera, movement or memory tools. **Echo cancellation and physical
+  `session.thinking.append`. Everyday robot callbacks stay on the robot↔bridge socket and
+  are never forwarded as provider protocol events. No private memory tools. **Echo cancellation and physical
   barge-in are unverified**; with barge-in off the microphone is not streamed while Reachy speaks.
 
 ## Timing

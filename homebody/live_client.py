@@ -17,6 +17,7 @@ from urllib.parse import urlparse, urlunparse
 import numpy as np
 from websockets.sync.client import connect
 
+from .everyday_runtime import configured_local_tools
 from .realtime_client import RealtimeBridgeError, RealtimeBridgeSession, RealtimeEvent
 
 _START_TIMEOUT_SECONDS = 15.0
@@ -49,19 +50,16 @@ class LiveBridgeSession(RealtimeBridgeSession):
                 ping_interval=20,
                 max_size=2 * 1024 * 1024,
             )
-            self._socket.send(
-                json.dumps(
-                    {
-                        "type": "session.start",
-                        "model": self.config.live_model,
-                        "voice": self.config.live_voice,
-                        "timeout_seconds": self.config.live_session_timeout_seconds,
-                        "assistant_mode": self.assistant_mode,
-                        "language": self.config.language,
-                        "agent_context": asdict(self.agent_context) if self.agent_context is not None else {},
-                    }
-                )
-            )
+            self._socket.send(json.dumps({
+                "type": "session.start",
+                "model": self.config.live_model,
+                "voice": self.config.live_voice,
+                "timeout_seconds": self.config.live_session_timeout_seconds,
+                "assistant_mode": self.assistant_mode,
+                "local_tools": configured_local_tools(self.config) if self.assistant_mode == "everyday" else [],
+                "language": self.config.language,
+                "agent_context": asdict(self.agent_context) if self.agent_context is not None else {},
+            }))
         except Exception as exc:
             self.close()
             raise RealtimeBridgeError(f"Could not open Live session: {exc}") from exc
@@ -134,6 +132,14 @@ class LiveBridgeSession(RealtimeBridgeSession):
         cut = len(data) - (len(data) % 2)
         self._carry = data[cut:]
         return np.frombuffer(data[:cut], dtype="<i2").astype(np.float32) / 32768.0
+
+    def send_everyday_result(self, call_id: str, result: dict[str, object]) -> None:
+        if self._socket is None or self._closed.is_set():
+            return
+        payload = json.dumps({"type": "everyday.tool_result", "call_id": call_id, "result": result})
+        if len(payload.encode()) > 16_000:
+            raise RealtimeBridgeError("Everyday tool result exceeded its bound")
+        self._socket.send(payload)
 
     def close(self) -> None:
         self._closed.set()

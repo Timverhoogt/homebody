@@ -75,6 +75,8 @@ class AppConfig:
     motion_enabled: bool = True
     barge_in_enabled: bool = True
     camera_enabled: bool = False
+    # Owner opt-in for explicit, bounded Everyday looks; never enables tracking or a feed.
+    everyday_camera_enabled: bool = False
     camera_feed_enabled: bool = False
     camera_controls_enabled: bool = False
     camera_controls_handedness: str = "right"
