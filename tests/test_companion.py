@@ -62,14 +62,16 @@ class FakeLookClient:
         self.closed = 0
         self.config = SimpleNamespace(kids_mode_enabled=False)
 
-    def look(self, frame: bytes, question: str, *, session_id: str = "") -> dict[str, object]:
+    def look(self, frame: bytes, question: str, *, session_id: str = "", is_current=None) -> dict[str, object]:
+        assert is_current is None or is_current()
         self.looks.append((len(frame), question))
         self.release.wait(5)
         if self.fail_with is not None:
             raise self.fail_with
         return {"text": self.answer, "model": "fake-vision", "processing": "host_provider"}
 
-    def look_follow_up(self, analysis: str, question: str) -> str:
+    def look_follow_up(self, analysis: str, question: str, *, is_current=None) -> str:
+        assert is_current is None or is_current()
         self.follow_ups.append((analysis, question))
         return "Friday at ten, according to what I read."
 
@@ -388,7 +390,7 @@ def test_local_vision_when_configured_keeps_frame_local_and_never_falls_back(mon
         def __exit__(self, *_exc: object) -> None:
             return None
 
-        def describe(self, frame: bytes, question: str) -> dict[str, object]:
+        def describe(self, frame: bytes, question: str, *, is_current=None) -> dict[str, object]:
             seen.append(question)
             raise __import__("homebody.local_vision", fromlist=["LocalVisionError"]).LocalVisionError("Jetson offline")
 

@@ -7,6 +7,7 @@ import logging
 import secrets
 import socket
 import threading
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
@@ -206,6 +207,7 @@ class ContextualOfferRequest(BaseModel):
     text: str = Field(min_length=1, max_length=180)
     accepted_text: str = Field(min_length=1, max_length=240)
     private_detail: str = Field(default="", max_length=240)
+    source_revision: str = Field(default="", pattern=r"^(?:|[a-f0-9]{32})$")
 
     @field_validator("confidence", mode="before")
     @classmethod
@@ -688,6 +690,13 @@ class Homebody(ReachyMiniApp):
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
             return {"ok": True, "presence": presence}
 
+        @self.settings_app.get("/api/initiative/source-state")
+        def companion_source_state(authorization: str = Header(default="")) -> dict[str, str]:
+            config = load_config()
+            if not config.api_key or not secrets.compare_digest(authorization, f"Bearer {config.api_key}"):
+                raise HTTPException(status_code=401, detail="Unauthorized")
+            return {"source_revision": config.companion_sources_revision}
+
         @self.settings_app.post("/api/initiative/offers")
         def contextual_offer(
             request: ContextualOfferRequest,
@@ -700,6 +709,12 @@ class Homebody(ReachyMiniApp):
                 raise HTTPException(status_code=401, detail="Unauthorized")
             if self._runtime is None:
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
+            if request.source in {"home_assistant", "calendar"} and (
+                not request.source_revision or request.source_revision != config.companion_sources_revision
+            ):
+                raise HTTPException(
+                    status_code=409, detail="Source enrollment changed; re-save sources from the owner dashboard"
+                )
             try:
                 return self._runtime.submit_contextual_offer(
                     ContextualOffer(
@@ -710,6 +725,7 @@ class Homebody(ReachyMiniApp):
                         text=request.text,
                         accepted_text=request.accepted_text,
                         private_detail=request.private_detail,
+                        source_revision=request.source_revision,
                     )
                 )
             except ValueError as exc:
@@ -872,14 +888,20 @@ class Homebody(ReachyMiniApp):
         def companion_sources_enroll(request: CompanionEnrollmentRequest) -> dict[str, object]:
             runtime = _companion_runtime()
             cancel = getattr(runtime, "cancel_contextual_offer", None)
-            if callable(cancel):
-                cancel("sources_changed")
             config = load_config()
             if not config.configured:
                 raise HTTPException(status_code=409, detail="Connect the Hermes bridge in Settings first")
+            # Durable local revocation precedes the network call, including ambiguous/time-out delivery.
+            config = merge_config(config, {"companion_sources_revision": uuid.uuid4().hex})
+            save_config(config)
+            runtime._companion_teardown("sources_changed")
+            if callable(cancel):
+                cancel("sources_changed")
             client = HermesBridgeClient(config)
             try:
-                result = client.enroll_companion_sources(request.model_dump())
+                result = client.enroll_companion_sources(
+                    {**request.model_dump(), "source_revision": config.companion_sources_revision}
+                )
                 if callable(cancel):
                     cancel("sources_changed")
                 return {"ok": True, **result}

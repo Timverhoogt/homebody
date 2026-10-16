@@ -89,6 +89,9 @@ class EverydayRuntimeMixin:
         with self._everyday_lock:
             self._everyday_camera_until = 0.0
             self._everyday_camera_generation += 1
+        teardown = getattr(self, "_companion_teardown", None)
+        if callable(teardown):
+            teardown("camera_session_stopped")
 
     def _revoke_everyday_actions(self) -> None:
         with self._everyday_lock:

@@ -229,6 +229,8 @@ class CompanionMixin:
         self._look_last_failure = ""
         self._look_last_failure_token = 0
         self._camera_in_use = False
+        self._private_details_lock = threading.RLock()
+        self._offer_epoch = 0
         self._private_details: list[dict[str, object]] = []
         self._companion_timers: list[threading.Timer] = []
 
@@ -241,12 +243,26 @@ class CompanionMixin:
             profile = str(self._capability_profile)
         return stop_generation, profile
 
+    def _look_camera_permitted(self, config: AppConfig) -> bool:
+        if config.camera_enabled:
+            return True
+        lock = getattr(self, "_everyday_lock", None)
+        if lock is None:
+            return False
+        with lock:
+            return bool(
+                config.everyday_camera_enabled
+                and self._capability_profile == "conversation"
+                and self._everyday_camera_until > time.monotonic()
+            )
+
     def _companion_authority(
         self,
         origin: str,
         authority: Callable[[], bool] | None = None,
     ) -> CompanionAuthority:
         """Freeze the caller's scope now, never later on a worker or after blocking work."""
+        camera_generation = getattr(self, "_everyday_camera_generation", 0)
         snapshot = self._companion_snapshot()
         with self._agent_lock:
             agent_generation = self._agent_session_generation
@@ -269,13 +285,18 @@ class CompanionMixin:
                 if agent_generation != self._agent_session_generation:
                     return False
             live = self.config_loader()
-            if not live.camera_enabled or route != (
-                live.camera_enabled,
-                live.local_vision_enabled,
-                live.local_vision_url,
-                live.local_vision_model,
-                live.bridge_url,
-                live.api_key,
+            if (
+                not self._look_camera_permitted(live)
+                or (not config.camera_enabled and camera_generation != getattr(self, "_everyday_camera_generation", 0))
+                or route
+                != (
+                    live.camera_enabled,
+                    live.local_vision_enabled,
+                    live.local_vision_url,
+                    live.local_vision_model,
+                    live.bridge_url,
+                    live.api_key,
+                )
             ):
                 return False
             if self.stop_event.is_set() or self._privacy_requested.is_set():
@@ -285,7 +306,7 @@ class CompanionMixin:
             with self._kids_lock:
                 if self._kids_active or self._kids_locked:
                     return False
-            if origin == "voice" and not self._voice_activity_lock.locked():
+            if origin == "voice" and (not self._voice_activity_lock.locked() or self._turn_stop_requested()):
                 return False
             try:
                 return authority is None or bool(authority())
@@ -311,7 +332,7 @@ class CompanionMixin:
             return False
         if ticket.kind == "look":
             live_config = self.config_loader()
-            if not live_config.camera_enabled:
+            if not self._look_camera_permitted(live_config):
                 return False
             with self._kids_lock:
                 if self._kids_active or self._kids_locked:
@@ -336,7 +357,7 @@ class CompanionMixin:
     def _look_block_reason(self, config: AppConfig) -> str:
         if self.stop_event.is_set():
             return "Reachy is stopping"
-        if not config.camera_enabled:
+        if not self._look_camera_permitted(config):
             return "Camera access is disabled in Reachy settings"
         with self._kids_lock:
             if self._kids_active or self._kids_locked:
@@ -369,7 +390,9 @@ class CompanionMixin:
         self._companion.invalidate(reason)
         with self._look_context_lock:
             self._look_context = None
-        self._private_details = []
+        with self._private_details_lock:
+            self._offer_epoch += 1
+            self._private_details = []
         for timer in self._companion_timers:
             timer.cancel()
         self._companion_timers = []
@@ -447,7 +470,12 @@ class CompanionMixin:
                     self._look_context = None  # a new look replaces earlier analysis
             self._camera_in_use = True
             try:
-                jpeg = self._capture_camera_jpeg(is_current=lambda: self._companion_ticket_current(ticket))
+                jpeg = self._capture_camera_jpeg(
+                    is_current=lambda: self._companion_ticket_current(ticket),
+                    adult_current=(lambda: self._require_current(ticket, "during temporary camera capture"))
+                    if not config.camera_enabled
+                    else None,
+                )
             finally:
                 self._camera_in_use = False
             with self._status_lock:
@@ -459,7 +487,7 @@ class CompanionMixin:
                 jpeg = b""
                 raise LookCancelled("Look was cancelled before analysis")
             try:
-                result = self._analyze_look(jpeg, question, config)
+                result = self._analyze_look(jpeg, question, config, ticket=ticket)
             finally:
                 jpeg = b""
             self._require_current(ticket, "after analysis; the answer was discarded")
@@ -468,13 +496,18 @@ class CompanionMixin:
                 raise RuntimeError("The vision model returned an empty answer")
             now = time.monotonic()
             self._require_current(ticket, "before retaining its answer")
+            context_ttl = LOOK_CONTEXT_TTL_SECONDS
+            if not config.camera_enabled:
+                with self._everyday_lock:
+                    context_ttl = min(context_ttl, max(0.0, self._everyday_camera_until - now))
             with self._look_context_lock:
                 # Never acquire Kids/power locks beneath the context lock.
                 if ticket.token != self._companion.current_token():
                     raise LookCancelled("Look was cancelled before its answer could be kept")
                 self._look_context = LookContext.create(question, answer, ticket_token=ticket.token, now=now)
                 self._look_context.authority = ticket.authority
-            self._schedule_companion_timer(LOOK_CONTEXT_TTL_SECONDS, lambda: self._expire_look_context(ticket.token))
+                self._look_context.expires_at = min(self._look_context.expires_at, now + context_ttl)
+            self._schedule_companion_timer(context_ttl, lambda: self._expire_look_context(ticket.token))
             self._companion.finish(ticket, "answered")
             self._require_current(ticket, "before returning its answer")
             self._look_last_failure = ""
@@ -503,12 +536,15 @@ class CompanionMixin:
                 raise
             raise RuntimeError(f"Look failed ({category})") from exc
 
-    def _analyze_look(self, jpeg: bytes, question: str, config: AppConfig) -> dict[str, object]:
+    def _analyze_look(
+        self, jpeg: bytes, question: str, config: AppConfig, *, ticket: CompanionTicket
+    ) -> dict[str, object]:
         """Exactly the configured route: local vision keeps the frame local; otherwise the bridge. No fallback."""
         if config.local_vision_enabled:
             try:
                 with self._new_local_vision_client(config) as client:
-                    seen = client.describe(jpeg, question)
+                    self._require_current(ticket, "after local client preparation")
+                    seen = client.describe(jpeg, question, is_current=lambda: self._companion_ticket_current(ticket))
             except LocalVisionError as exc:
                 with self._status_lock:
                     self._status.local_vision_last_error = str(exc)
@@ -519,7 +555,13 @@ class CompanionMixin:
             return {"answer": seen.get("answer"), "model": seen.get("model"), "processing": "local_vision"}
         client = self._new_bridge_client(config)
         try:
-            seen = client.look(jpeg, question, session_id=f"look-{self._companion.current_token()}")
+            self._require_current(ticket, "after bridge client preparation")
+            seen = client.look(
+                jpeg,
+                question,
+                session_id=f"look-{ticket.token}",
+                is_current=lambda: self._companion_ticket_current(ticket),
+            )
         finally:
             client.close()
         return {"answer": seen.get("text"), "model": seen.get("model"), "processing": seen.get("processing")}
@@ -582,7 +624,12 @@ class CompanionMixin:
             self._require_current(ticket, "before the text follow-up")
             client = self._new_bridge_client(config)
             try:
-                answer = client.look_follow_up(analysis, clean)
+                self._require_current(ticket, "after follow-up client preparation")
+                answer = client.look_follow_up(
+                    analysis,
+                    clean,
+                    is_current=lambda: self._companion_ticket_current(ticket) and original(),
+                )
             except Exception as exc:
                 self._companion.finish(ticket, "failed")
                 raise RuntimeError("The visual follow-up provider is unavailable") from exc
@@ -654,34 +701,67 @@ class CompanionMixin:
             stopped.append("offer")
         return {"ok": True, "stopped": stopped}
 
-    def _remember_private_detail(self, source: str, detail: str) -> None:
+    def _offer_completion_current(self, epoch: int, generation: int, source_revision: str = "") -> bool:
+        return (
+            self._offer_epoch == epoch
+            and self._announcement_cancellation_generation == generation
+            and not self.stop_event.is_set()
+            and not self._privacy_requested.is_set()
+            and (not source_revision or source_revision == self.config_loader().companion_sources_revision)
+        )
+
+    def _remember_private_detail(
+        self,
+        source: str,
+        detail: str,
+        *,
+        offer_epoch: int | None = None,
+        cancellation_generation: int | None = None,
+        source_revision: str = "",
+    ) -> bool:
         clean = " ".join(detail.split())[:240]
         if not clean:
-            return
-        now = time.monotonic()
-        expires_at = now + PRIVATE_DETAIL_TTL_SECONDS
-        self._private_details = [item for item in self._private_details if float(item["expires_at"]) > now][-3:]
-        self._private_details.append({"source": source, "detail": clean, "expires_at": expires_at})
+            return False
+        with self._announcement_state_lock:
+            generation = (
+                self._announcement_cancellation_generation
+                if cancellation_generation is None
+                else cancellation_generation
+            )
+            with self._private_details_lock:
+                epoch = self._offer_epoch if offer_epoch is None else offer_epoch
+                if not self._offer_completion_current(epoch, generation, source_revision):
+                    return False
+                now = time.monotonic()
+                self._private_details = [item for item in self._private_details if float(item["expires_at"]) > now][
+                    -3:
+                ]
+                self._private_details.append(
+                    {"source": source, "detail": clean, "expires_at": now + PRIVATE_DETAIL_TTL_SECONDS}
+                )
         self._schedule_companion_timer(PRIVATE_DETAIL_TTL_SECONDS, lambda: self._expire_private_details())
+        return True
 
     def _expire_private_details(self) -> None:
         now = time.monotonic()
-        self._private_details = [item for item in self._private_details if float(item["expires_at"]) > now]
+        with self._private_details_lock:
+            self._private_details = [item for item in self._private_details if float(item["expires_at"]) > now]
 
     def companion_owner_status(self) -> dict[str, object]:
-        """Owner-only: private details accepted for dashboard delivery (never spoken, never in /api/status)."""
+        """Owner-only details; snapshot under the same lock used by revocation."""
         self._expire_private_details()
         now = time.monotonic()
-        return {
-            "private_details": [
-                {
-                    "source": item["source"],
-                    "detail": item["detail"],
-                    "seconds_remaining": max(0, int(float(item["expires_at"]) - now)),
-                }
-                for item in self._private_details
-            ],
-        }
+        with self._private_details_lock:
+            return {
+                "private_details": [
+                    {
+                        "source": item["source"],
+                        "detail": item["detail"],
+                        "seconds_remaining": max(0, int(float(item["expires_at"]) - now)),
+                    }
+                    for item in self._private_details
+                ]
+            }
 
     def companion_public_status(self, config: AppConfig) -> dict[str, object]:
         now = time.monotonic()
@@ -723,7 +803,7 @@ class CompanionMixin:
         return {
             "activity": activity,
             "presence": {"occupancy": presence["occupancy"], "source_health": presence["source_health"]},
-            "camera": {"permitted": bool(config.camera_enabled), "in_use": bool(self._camera_in_use)},
+            "camera": {"permitted": self._look_camera_permitted(config), "in_use": bool(self._camera_in_use)},
             "microphone": {
                 "permitted": (
                     not self._privacy_requested.is_set() and self._effective_power_mode() not in {"meeting", "sleep"}

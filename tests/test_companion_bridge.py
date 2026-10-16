@@ -56,6 +56,7 @@ class FakeHttp:
         }
         self.vision_status = 200
         self.fail_get = False
+        self.source_revision = "f" * 32
 
     def post(self, url: str, *, json: dict[str, object], **_kwargs: object) -> Response:
         self.posts.append((url, json))
@@ -67,6 +68,8 @@ class FakeHttp:
         self.gets.append(url)
         if self.fail_get:
             raise RuntimeError("connection refused")
+        if url.endswith("/api/initiative/source-state"):
+            return Response(200, {"source_revision": self.source_revision})
         for key, value in self.states.items():
             if url.endswith(f"/api/states/{key}"):
                 return Response(200, value)
@@ -179,6 +182,7 @@ def test_sources_disabled_until_enrolled_then_one_offer_per_moment(bridge, tmp_p
     enrollment.write_text(
         json.dumps(
             {
+                "source_revision": "f" * 32,
                 "home_assistant": [
                     {
                         "id": "washer",
@@ -212,13 +216,16 @@ def test_sources_disabled_until_enrolled_then_one_offer_per_moment(bridge, tmp_p
     instance.http.states["binary_sensor.washer_done"] = {"state": "on", "last_changed": "2026-10-16T18:00:00+02:00"}
     assert len(asyncio.run(instance._poll_sources_once())) == 1
     # Only the exact enrolled entity and calendar are read; nothing else on the host is touched.
-    assert all("washer_done" in url or "calendar.family" in url for url in instance.http.gets)
+    assert all(
+        "washer_done" in url or "calendar.family" in url or url.endswith("/source-state") for url in instance.http.gets
+    )
 
 
 def test_source_removal_serializes_with_inflight_delivery_and_needs_no_ha_setup(bridge, tmp_path, monkeypatch):
     module, instance = bridge
     enrollment = tmp_path / "sources.json"
     document = {
+        "source_revision": "f" * 32,
         "home_assistant": [
             {
                 "id": "washer",
@@ -262,7 +269,9 @@ def test_source_removal_serializes_with_inflight_delivery_and_needs_no_ha_setup(
         # Removal remains permitted after credentials or catalog setup disappear.
         monkeypatch.setattr(module, "_resolve_secret", lambda *_args: "")
         remove = asyncio.create_task(
-            instance.companion_sources_enroll(FakeRequest({"home_assistant": [], "calendar": []}))
+            instance.companion_sources_enroll(
+                FakeRequest({"home_assistant": [], "calendar": [], "source_revision": "e" * 32})
+            )
         )
         await asyncio.sleep(0)
         assert not remove.done()
@@ -270,7 +279,11 @@ def test_source_removal_serializes_with_inflight_delivery_and_needs_no_ha_setup(
         release.set()
         delivered, response = await asyncio.wait_for(asyncio.gather(poll, remove), timeout=2)
         assert delivered and response.status == 200
-        assert json.loads(enrollment.read_text()) == {"home_assistant": [], "calendar": []}
+        assert json.loads(enrollment.read_text()) == {
+            "home_assistant": [],
+            "calendar": [],
+            "source_revision": "e" * 32,
+        }
         assert await instance._poll_sources_once() == []
         assert len(instance.http.posts) == 1
 

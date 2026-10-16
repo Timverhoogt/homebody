@@ -448,7 +448,12 @@ class ProactiveMixin:
 
     def submit_contextual_offer(self, offer: ContextualOffer) -> dict[str, object]:
         """Evaluate and queue one read-only spoken offer from trusted structured context."""
+        with self._announcement_state_lock:
+            generation = self._announcement_cancellation_generation
+            epoch = self._offer_epoch
         config = self.config_loader()
+        if offer.source_revision and offer.source_revision != config.companion_sources_revision:
+            raise RuntimeError("Source enrollment changed")
         # Companion offers are ordinary adult behaviour: Everyday is enough. They never grant
         # Workspace/project authority; Yes only reads prepared text or takes one explicit look.
         # Project-sourced offers carry project material and keep their explicit Agent-profile authority.
@@ -496,6 +501,9 @@ class ProactiveMixin:
                 offer.text,
                 behavior="voice_only",
                 contextual_offer_token=token,
+                cancellation_generation=generation,
+                offer_epoch=epoch,
+                source_revision=offer.source_revision,
             )
         except Exception:
             if token:
@@ -514,37 +522,100 @@ class ProactiveMixin:
 
     def respond_to_contextual_offer(self, token: int, response: str) -> dict[str, object]:
         """Record one exact phone/voice response without performing a consequential action."""
-        result = self._contextual_offers.respond(token, response)
+        with self._announcement_state_lock:
+            generation = self._announcement_cancellation_generation
+            epoch = self._offer_epoch
         offer = self._contextual_offers.current_offer(token)
+        result = self._contextual_offers.respond(token, response)
         config = self.config_loader()
         if response == "yes":
             self._initiative.record_welcomed(offer.topic, category=offer.source)
-            self.queue_announcement(str(result["accepted_text"]), behavior="voice_only")
+            if not self._offer_completion_current(epoch, generation, offer.source_revision):
+                return {"ok": True, "token": token, "response": response, "cancelled": True, "action_executed": False}
+            try:
+                self.queue_announcement(
+                    str(result["accepted_text"]),
+                    behavior="voice_only",
+                    cancellation_generation=generation,
+                    offer_epoch=epoch,
+                    source_revision=offer.source_revision,
+                )
+            except RuntimeError:
+                if not self._offer_completion_current(epoch, generation, offer.source_revision):
+                    return {
+                        "ok": True,
+                        "token": token,
+                        "response": response,
+                        "cancelled": True,
+                        "action_executed": False,
+                    }
+                raise
             if offer.private_detail:
                 # An anonymous spoken "yes" is not owner identity: details go to the owner dashboard only.
-                self._remember_private_detail(offer.source, offer.private_detail)
-            if offer.source == "presentation":
-                self._schedule_presentation_help(token)
+                self._remember_private_detail(
+                    offer.source,
+                    offer.private_detail,
+                    offer_epoch=epoch,
+                    cancellation_generation=generation,
+                    source_revision=offer.source_revision,
+                )
+            if offer.source == "presentation" and self._offer_completion_current(
+                epoch, generation, offer.source_revision
+            ):
+                self._schedule_presentation_help(
+                    token,
+                    offer_epoch=epoch,
+                    cancellation_generation=generation,
+                    source_revision=offer.source_revision,
+                )
         elif response == "later":
             self._initiative.record_snoozed(offer.source)
         else:
             self._initiative.record_dismissal(offer.topic, self._initiative_settings(config), category=offer.source)
         return {"ok": True, "token": token, "response": response, "action_executed": False}
 
-    def _schedule_presentation_help(self, token: int) -> None:
+    def _schedule_presentation_help(
+        self,
+        token: int,
+        *,
+        offer_epoch: int | None = None,
+        cancellation_generation: int | None = None,
+        source_revision: str = "",
+    ) -> None:
         """Bind the accepted legacy presentation offer to its original generation before any background work."""
+        epoch = self._offer_epoch if offer_epoch is None else offer_epoch
+        generation = (
+            self._announcement_cancellation_generation if cancellation_generation is None else cancellation_generation
+        )
+        authority = self._companion_authority(
+            "offer",
+            lambda: self._offer_completion_current(epoch, generation, source_revision),
+        )
+        if not authority():
+            return
         stop_generation, profile = self._companion_snapshot()
         ticket = self._companion.admit(
-            "offer_help", origin="offer", stop_generation=stop_generation, capability_profile=profile
+            "offer_help",
+            origin="offer",
+            stop_generation=stop_generation,
+            capability_profile=profile,
+            authority=authority,
         )
         threading.Thread(
             target=self._finish_presentation_help,
-            args=(ticket, token),
+            args=(ticket, token, epoch, generation, source_revision),
             name="reachy-presentation-look",
             daemon=True,
         ).start()
 
-    def _finish_presentation_help(self, ticket: object, token: int) -> None:
+    def _finish_presentation_help(
+        self,
+        ticket: object,
+        token: int,
+        epoch: int,
+        generation: int,
+        source_revision: str,
+    ) -> None:
         """Complete an accepted presentation offer with one direct look, only while that acceptance is current.
 
         Cancellation (Stop, privacy, Kids, profile change, owner loss) stays silent: no late answer and
@@ -560,7 +631,11 @@ class ProactiveMixin:
             if not self._companion_ticket_current(ticket):  # type: ignore[arg-type]
                 return
             try:
-                seen = self.look_at_this("What am I being shown? Read any visible text.", origin="offer")
+                seen = self.look_at_this(
+                    "What am I being shown? Read any visible text.",
+                    origin="offer",
+                    authority=ticket.authority,
+                )
                 answer = str(seen["answer"])
                 break
             except LookCancelled:
@@ -575,7 +650,9 @@ class ProactiveMixin:
         # so re-check the acceptance's own authorities (Stop generation, privacy, power, profile).
         stop_generation, profile = self._companion_snapshot()
         if (
-            stop_generation != ticket.stop_generation  # type: ignore[attr-defined]
+            not self._offer_completion_current(epoch, generation, source_revision)
+            or not ticket.authority()
+            or stop_generation != ticket.stop_generation  # type: ignore[attr-defined]
             or profile != ticket.capability_profile  # type: ignore[attr-defined]
             or self._privacy_requested.is_set()
             or self._effective_power_mode() in {"meeting", "sleep"}
@@ -584,7 +661,13 @@ class ProactiveMixin:
             return
         text = answer or f"I couldn't look just now: {failure}"
         try:
-            self.queue_announcement(text[:1200], behavior="voice_only")
+            self.queue_announcement(
+                text[:1200],
+                behavior="voice_only",
+                cancellation_generation=generation,
+                offer_epoch=epoch,
+                source_revision=source_revision,
+            )
         except (RuntimeError, ValueError):
             _LOGGER.info("Presentation look answer could not be queued for speech", exc_info=True)
 

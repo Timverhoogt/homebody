@@ -58,8 +58,11 @@ class ContextualOffer:
     accepted_text: str
     # Sensitive detail for the owner dashboard only. It is never spoken and never enters public status.
     private_detail: str = ""
+    source_revision: str = ""
 
     def __post_init__(self) -> None:
+        if self.source_revision and not re.fullmatch(r"[a-f0-9]{32}", self.source_revision):
+            raise ValueError("Source revision must be 32 lowercase hex characters")
         if self.source not in _SOURCES:
             raise ValueError("Unsupported contextual offer source")
         if not _TOPIC_RE.fullmatch(self.topic):

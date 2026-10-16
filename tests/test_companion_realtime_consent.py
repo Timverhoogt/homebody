@@ -84,9 +84,10 @@ def test_native_camera_needs_one_fresh_explicit_request_per_capture(case, expect
         start=lambda: None, close=lambda: None, events=events, send_camera_error=lambda *a: errors.append(a)
     )
 
-    def describe(_session, identifier, question, _config):
+    def describe(_session, identifier, question, _config, *, authority, is_current):
         # Real one-frame orchestration. Thread scheduling/Stop fences have separate held-worker tests.
-        descriptions.append((identifier, runtime.look_at_this(question, origin="voice")))
+        assert is_current()
+        descriptions.append((identifier, runtime.look_at_this(question, origin="voice", authority=authority)))
 
     runtime._describe_for_realtime = describe
     with runtime._voice_activity_lock:

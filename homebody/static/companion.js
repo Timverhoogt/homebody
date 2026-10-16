@@ -366,7 +366,8 @@
 
   async function saveEnrollment(clear) {
     if (!ownerActive || enrollPending || !(catalog?.available || (clear && catalog?.removal_available))) return;
-    const generation = actionGeneration;
+    const generation = ++actionGeneration;
+    clearPrivate();
     const body = { home_assistant: [], calendar: [] };
     if (!clear) {
       const calendarId = byId("companion-calendar").value;

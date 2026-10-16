@@ -63,6 +63,7 @@ class CalendarSource:
 class Enrollment:
     home_assistant: tuple[HomeAssistantSource, ...] = ()
     calendar: tuple[CalendarSource, ...] = ()
+    source_revision: str = ""
 
     @property
     def enabled(self) -> bool:
@@ -100,7 +101,11 @@ class Enrollment:
     def document(self) -> dict[str, object]:
         """Exactly what is written to the host-owned enrollment file."""
         summary = self.public_summary()
-        return {"home_assistant": summary["home_assistant"], "calendar": summary["calendar"]}
+        return {
+            "home_assistant": summary["home_assistant"],
+            "calendar": summary["calendar"],
+            **({"source_revision": self.source_revision} if self.source_revision else {}),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,9 +207,12 @@ def _parse_calendar(raw: dict[str, Any]) -> CalendarSource:
 def parse_enrollment(document: object) -> Enrollment:
     if not isinstance(document, dict):
         raise EnrollmentError("Enrollment must be a JSON object with 'home_assistant' and/or 'calendar' lists")
-    unknown = set(document) - {"home_assistant", "calendar"}
+    unknown = set(document) - {"home_assistant", "calendar", "source_revision"}
     if unknown:
         raise EnrollmentError(f"Unknown enrollment keys: {', '.join(sorted(unknown))}")
+    revision = document.get("source_revision", "")
+    if not isinstance(revision, str) or (revision and not re.fullmatch(r"[a-f0-9]{32}", revision)):
+        raise EnrollmentError("source_revision must be empty or 32 lowercase hex characters")
     ha_raw = document.get("home_assistant", [])
     cal_raw = document.get("calendar", [])
     if not isinstance(ha_raw, list) or not isinstance(cal_raw, list):
@@ -215,7 +223,7 @@ def parse_enrollment(document: object) -> Enrollment:
     calendar = tuple(_parse_calendar(item) for item in cal_raw if isinstance(item, dict))
     if len(home_assistant) != len(ha_raw) or len(calendar) != len(cal_raw):
         raise EnrollmentError("Each enrolled source must be a JSON object")
-    return Enrollment(home_assistant=home_assistant, calendar=calendar)
+    return Enrollment(home_assistant=home_assistant, calendar=calendar, source_revision=revision)
 
 
 def load_enrollment(path: str | Path | None) -> Enrollment:

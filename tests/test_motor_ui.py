@@ -69,7 +69,7 @@ def test_robot_tab_offers_precision_pose_and_base_controls() -> None:
     assert 'aria-label="Move head up on Z axis"' in html
     assert 'aria-label="Rotate base left"' in html
     assert 'role="group" aria-label="Current measured head and base pose"' in html
-    assert "nudge_reachy: \"Precision pose\"" in main
+    assert 'nudge_reachy: "Precision pose"' in main
 
 
 def test_motor_ui_serializes_power_transitions_and_reports_confirmed_state() -> None:
@@ -88,19 +88,19 @@ def test_motor_ui_serializes_power_transitions_and_reports_confirmed_state() -> 
     assert "Awake was not confirmed by the robot runtime" in main
     assert "Safe folded Standby was not confirmed by the robot runtime" in main
     assert 'move_reachy_head: "Look direction"' in main
-    assert 'runtime.motors_enabled' in main
-    assert 'runtime.head_safely_folded' in main
+    assert "runtime.motors_enabled" in main
+    assert "runtime.head_safely_folded" in main
     assert "Remote controls disabled until live status returns" in main
     assert 'button.closest("#panel-robot")' in main
-    assert 'button.dataset.confirm && !window.confirm(button.dataset.confirm)' in main
+    assert "button.dataset.confirm && !window.confirm(button.dataset.confirm)" in main
     assert 'dPad.addEventListener("keydown"' in main
-    assert 'button.dataset.power === powerMode' in main
+    assert "button.dataset.power === powerMode" in main
     assert ".motor-command-bar" in style
     assert ".motor-safety-actions" in style
     assert 'data-action-busy="true"' in style
     assert "position: fixed" in style
     assert 'data-action-busy="false"' in html
-    assert 'homebody-shell-v' in worker
-    assert '/static/style.css?v=100' in html
-    assert '/static/camera.js?v=100' in html
-    assert '/static/main.js?v=100' in html
+    assert "homebody-shell-v" in worker
+    assert "/static/style.css?v=101" in html
+    assert "/static/camera.js?v=101" in html
+    assert "/static/main.js?v=101" in html

@@ -14,6 +14,8 @@ from typing import Any
 
 import httpx
 
+from .request_authority import Current, guarded_json_post, install_request_guard
+
 MAX_ANSWER_CHARS = 1200
 MAX_JPEG_BYTES = 1_000_000
 
@@ -40,6 +42,7 @@ class LocalVisionClient:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._client = httpx.Client(timeout=timeout, transport=transport)
+        install_request_guard(self._client)
 
     def close(self) -> None:
         self._client.close()
@@ -50,7 +53,7 @@ class LocalVisionClient:
     def __exit__(self, *_exc: object) -> None:
         self.close()
 
-    def describe(self, jpeg: bytes, question: str) -> dict[str, object]:
+    def describe(self, jpeg: bytes, question: str, *, is_current: Current = None) -> dict[str, object]:
         """Return ``{"answer", "model", "latency_ms"}`` for one JPEG frame."""
         if not jpeg or len(jpeg) > MAX_JPEG_BYTES:
             raise LocalVisionError("Camera frame must be between 1 byte and 1 MB")
@@ -72,7 +75,7 @@ class LocalVisionClient:
             ],
         }
         started = time.monotonic()
-        body = self._post_json("/chat/completions", payload)
+        body = self._post_json("/chat/completions", payload, is_current=is_current)
         answer = _message_text(body)
         if not answer:
             raise LocalVisionError("The local vision model returned an empty answer")
@@ -92,9 +95,9 @@ class LocalVisionClient:
             raise LocalVisionError(f"Local vision server is not reachable: {_short(exc)}") from exc
         return {"reachable": True, "model": self._model, "model_listed": self._model in listed, "models": listed[:20]}
 
-    def _post_json(self, path: str, payload: dict[str, object]) -> dict[str, Any]:
+    def _post_json(self, path: str, payload: dict[str, object], *, is_current: Current = None) -> dict[str, Any]:
         try:
-            response = self._client.post(f"{self._base_url}{path}", json=payload)
+            response = guarded_json_post(self._client, f"{self._base_url}{path}", current=is_current, json=payload)
         except httpx.HTTPError as exc:
             raise LocalVisionError(f"Local vision server is not reachable: {_short(exc)}") from exc
         if response.status_code >= 400:

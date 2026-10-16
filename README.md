@@ -28,6 +28,12 @@ Native Workspace preserves the selected Hermes session's identity and history. T
 
 <a id="supported-setups"></a>
 
+## Companion: notice, help, then go quiet
+
+The Everyday **Companion** card brings presence, deliberate **Look at this**, Stop and opt-in suggestions together. One explicit look captures one frame on the selected local-vision or host route; bounded follow-ups reuse its text without another picture or household/project tools. Stop, privacy, permission changes and owner revocation discard pending results. Temporary Everyday camera grants remain bounded and revocable.
+
+Suggestions stay silent until you choose a source and enable the relevant policy. Source enrollment uses only host-authorized identifiers; calendar details are private on the owner dashboard by default, not read aloud to an anonymous “yes”. Occupancy is not identity or attention, and no source enrollment grants device control. Existing settings and Kids protections remain in force. See [Companion setup and boundaries](docs/companion-implementation.md).
+
 ## What can I expect?
 
 Start with the local robot, then add connected capabilities deliberately.

@@ -95,7 +95,7 @@ class FakeVision:
     def __exit__(self, *_exc: object) -> None:
         pass
 
-    def describe(self, jpeg: bytes, question: str) -> dict[str, object]:
+    def describe(self, jpeg: bytes, question: str, *, is_current=None) -> dict[str, object]:
         self.questions.append(question)
         if self.error:
             raise LocalVisionError(self.error)
@@ -401,7 +401,7 @@ def test_slow_local_vision_does_not_block_the_realtime_loop(monkeypatch: pytest.
         def __exit__(self, *_exc: object) -> None:
             pass
 
-        def describe(self, jpeg: bytes, question: str) -> dict[str, object]:
+        def describe(self, jpeg: bytes, question: str, *, is_current=None) -> dict[str, object]:
             release.wait(timeout=5.0)
             return {"answer": "A lamp", "model": "m", "latency_ms": 5}
 

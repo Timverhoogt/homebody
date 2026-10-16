@@ -29,6 +29,7 @@ MACHINE_ROUTES = {
     ("GET", "/api/updates/health"),
     ("POST", "/api/presence/signal"),
     ("POST", "/api/initiative/offers"),
+    ("GET", "/api/initiative/source-state"),
     ("POST", "/api/agent/reminder-delivery"),
     ("POST", "/api/camera/snapshot"),
     ("POST", "/api/agent-setup/pair"),
