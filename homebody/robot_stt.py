@@ -109,6 +109,24 @@ class RobotSttClient:
         self._failed_until = 0.0
         self._turns = itertools.count(1)
         self._closed = False
+        self._epoch = 0
+        self._warming = threading.Event()
+        self._manifest_signature = None
+
+    def _signature(self):
+        manifest = read_manifest(self._manifest_path)
+        paths = [self._manifest_path, *(Path(manifest[k]["path"]) for k in ("library", "model"))]
+        return (json.dumps(manifest, sort_keys=True), tuple(
+            (p.stat().st_ino, p.stat().st_size, p.stat().st_mtime_ns, p.stat().st_ctime_ns)
+            for p in paths
+        ))
+
+    def cancel(self, *, release: bool = False) -> None:
+        """Invalidate pending work immediately; optionally release an idle model for privacy."""
+        with self._process_lock:
+            self._epoch += 1
+        if release or self._admission.locked():
+            self._kill_owned()
 
     def _default_argv(self, socket_path: Path, manifest_path: Path) -> list[str]:
         return [
@@ -158,6 +176,16 @@ class RobotSttClient:
         threading.Thread(target=reap, name="robot-stt-reap", daemon=True).start()
 
     def _ensure_worker(self, cancelled: Callable[[], bool]) -> subprocess.Popen:
+        if cancelled():
+            raise RobotSttCancelled("cancelled before load")
+        try:
+            signature = self._signature()
+        except (ProvisioningError, OSError):
+            self._kill_owned()
+            raise RobotSttUnavailable("unprovisioned") from None
+        if self._manifest_signature is not None and signature != self._manifest_signature:
+            self._kill_owned()
+            raise RobotSttUnavailable("provisioning_changed")
         with self._process_lock:
             if self._closed:
                 raise RobotSttUnavailable("closed")
@@ -189,6 +217,11 @@ class RobotSttClient:
             raise RobotSttUnavailable("spawn_failed") from None
         with self._process_lock:
             self._process = process
+            self._manifest_signature = signature
+            closed = self._closed
+        if closed or cancelled():
+            self._kill_owned()
+            raise RobotSttCancelled("cancelled during spawn")
         deadline = self._clock() + self._load_timeout
         while True:
             if cancelled():
@@ -228,6 +261,47 @@ class RobotSttClient:
         return sock
 
     # ---- requests ----
+
+    def prewarm(self, *, cancelled: Callable[[], bool]) -> dict[str, object] | None:
+        """Single-flight bounded load + one synthetic decode, never capture/upload/fallback.
+
+        A real first turn waits for this admission instead of starting a second worker.
+        Subsequent warmups are idempotent in the worker, including across languages.
+        """
+        with self._process_lock:
+            if not self._admission.acquire(blocking=False):
+                return None
+            self._warming.set()
+            epoch = self._epoch
+        def stale() -> bool:
+            return cancelled() or self._epoch != epoch or self._closed
+        try:
+            process = self._ensure_worker(stale)
+            with self._connect(process) as sock:
+                if stale():
+                    raise RobotSttCancelled("cancelled before warmup")
+                sock.sendall(b'{"v":1,"op":"warmup"}\n')
+                reply = json.loads(self._read_reply(sock, stale, self._clock() + self._decode_timeout))
+            if stale():
+                raise RobotSttCancelled("cancelled after warmup")
+            if (not isinstance(reply, dict) or reply.get("v") != PROTOCOL_VERSION
+                    or reply.get("status") != "ok" or reply.get("inference_warm") is not True):
+                raise RobotSttUnavailable("protocol")
+            return reply
+        except UntrustedEndpointError:
+            self._kill_owned()
+            raise RobotSttUnavailable("untrusted_endpoint") from None
+        except RobotSttCancelled:
+            self._kill_owned()
+            raise
+        except (RobotSttUnavailable, OSError, ValueError):
+            self._failed_until = self._clock() + _LOAD_FAILURE_BACKOFF_SECONDS
+            self._kill_owned()
+            raise
+        finally:
+            with self._process_lock:
+                self._warming.clear()
+                self._admission.release()
 
     def status(self) -> dict[str, object]:
         """Worker load/memory/identity metrics (no audio); starts the worker if needed."""
@@ -271,13 +345,29 @@ class RobotSttClient:
         cancelled: Callable[[], bool],
     ) -> RobotReceipt:
         """Recognize one in-RAM utterance for an immutable turn snapshot; raise on any failure."""
+        if self._closed:
+            raise RobotSttUnavailable("closed")
         if language not in {"en", "nl", "es", "de", "fr", "it", "pt", "auto"}:
             raise ValueError("Unsupported robot STT language")
         pcm = np.nan_to_num(np.asarray(samples, dtype=np.float32).ravel(), nan=0.0, posinf=1.0, neginf=-1.0)
         if pcm.size > MAX_SAMPLES:
             raise RobotSttUnavailable("too_large")
-        if not self._admission.acquire(blocking=False):
-            raise RobotSttUnavailable("busy")
+        epoch = self._epoch
+        original_cancelled = cancelled
+        def cancelled() -> bool:
+            return original_cancelled() or self._epoch != epoch or self._closed
+        wait_deadline = self._clock() + self._load_timeout + self._decode_timeout
+        while True:
+            with self._process_lock:
+                admitted = self._admission.acquire(blocking=False)
+                warming = self._warming.is_set()
+            if admitted:
+                break
+            if cancelled():
+                raise RobotSttCancelled("cancelled waiting for warmup")
+            if not warming or self._clock() >= wait_deadline:
+                raise RobotSttUnavailable("busy")
+            time.sleep(_POLL_SECONDS)
         try:
             turn = next(self._turns)
             header = {
@@ -292,6 +382,8 @@ class RobotSttClient:
                 self._kill_owned()
                 raise RobotSttUnavailable("untrusted_endpoint") from None
             try:
+                if cancelled():
+                    raise RobotSttCancelled("cancelled before submission")
                 try:
                     sock.sendall(json.dumps(header, separators=(",", ":")).encode() + b"\n")
                     sock.sendall(np.clip(pcm, -1.0, 1.0).astype("<f4", copy=False).tobytes())
@@ -321,6 +413,8 @@ class RobotSttClient:
                                           else "protocol")
             accelerator = "gpu" if reply.get("accelerator") == "gpu" else "cpu"
             decode_ms = reply.get("decode_ms")
+            if cancelled():
+                raise RobotSttCancelled("cancelled after decode")
             return RobotReceipt(reply["text"].strip(), accelerator, decode_ms if type(decode_ms) is int else -1)
         finally:
             self._admission.release()
