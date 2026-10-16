@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.22] — Clean I Spy cancellation and sandbox-aware robot recognition
+
+- Treat End, Stop, privacy and superseded I Spy continuation work as expected cancellation instead of a voice failure. Preserve current-session camera/provider failures and prevent late work from tearing down a replacement session.
+- Bind continuation search and capture to the original voice turn's Stop checks while preserving initial Start admission and all camera-consent, power and generation checks.
+- Recover on-robot recognition when a hardened service hides its inherited runtime socket directory. Select an accessible runtime parent or the private temporary directory without weakening socket ownership, permissions, worker identity or service hardening.
+- Make configured local-host recognition fallback visible through categorical diagnostics without logging audio or transcript contents. Preserve selected models, languages, voices and fallback policy.
+- Verified with cancellation and recognition regressions plus isolated synthetic GPU decoding on a Jetson. Synthetic recognition timings are not full conversational latency or supervised child-speech acceptance.
+
 ## [0.5.21] — Owner-authorized shutdown over Tailnet
 
 - Correct the legacy desktop-refusal test to spy on the current helper boundary, install the independent scipy oracle in hosted CI, and isolate HTTPS shutdown fixtures from mocked PWA installation. The 0.5.20 draft failed hosted test gates and was not published or deployed.

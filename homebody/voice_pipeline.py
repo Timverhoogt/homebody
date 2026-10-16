@@ -19,6 +19,7 @@ import httpx
 from .audio import AdaptiveEndpointRecorder, EndpointResult, resample_linear
 from .config import AppConfig
 from .hermes_client import HermesBridgeError, SpeechAudio
+from .ispy import ISpyCancelled
 from .kids_acknowledgements import KidsAckPlayer, eligible_clips, output_quarantined
 from .kids_acknowledgements import catalog as kids_ack_catalog
 from .robot_stt import RobotSttCancelled, RobotSttClient, RobotSttUnavailable
@@ -494,10 +495,15 @@ class PipelineVoiceMixin:
                     and client.config.kids_activity == "ispy"
                     and client.last_kids_next_action == "prepare_robot_round"
                 ):
-                    interrupted = self._continue_ispy_reachy_turn(
-                        client,
-                        barge_in=config.barge_in_enabled,
-                    )
+                    try:
+                        interrupted = self._continue_ispy_reachy_turn(
+                            client,
+                            barge_in=config.barge_in_enabled,
+                        )
+                    except ISpyCancelled:
+                        # Stop/End/privacy already owns status and motors; end this turn quietly.
+                        _LOGGER.info("I Spy round ended by cancellation")
+                        break
                     if (
                         not conversation_is_current()
                         or self._turn_stop_requested()

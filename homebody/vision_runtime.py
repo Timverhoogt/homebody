@@ -15,6 +15,7 @@ from collections.abc import Callable
 from . import face_model
 from .config import AppConfig
 from .gesture_detection import GestureDetector, GestureReactionGate
+from .ispy import ISpyCancelled
 from .local_vision import LocalVisionClient, LocalVisionError
 from .platform_info import onnx_cache_dir, onnx_session_providers
 from .presence import PresenceObservation
@@ -90,7 +91,7 @@ class VisionMixin:
         _LOGGER.info("Local vision answered in %s ms with %s", result["latency_ms"], result["model"])
         return result
 
-    def _capture_camera_jpeg(self, *, kids_generation: int | None = None) -> bytes:
+    def _capture_camera_jpeg(self, *, kids_generation: int | None = None, turn_bound: bool = False) -> bytes:
         media = getattr(self.robot, "media", None)
         capture = getattr(media, "get_frame_jpeg", None)
         if not callable(capture):
@@ -98,10 +99,13 @@ class VisionMixin:
 
         def assert_allowed() -> None:
             if self.stop_event.is_set():
-                raise RuntimeError("Camera capture was cancelled")
+                cancelled = RuntimeError if kids_generation is None else ISpyCancelled
+                raise cancelled("Camera capture was cancelled")
             if kids_generation is None:
                 self._assert_camera_allowed()
                 return
+            if turn_bound and self._turn_stop_requested():
+                raise ISpyCancelled("I Spy camera capture was stopped")
             with self._kids_lock:
                 if (
                     not self._kids_active
@@ -111,9 +115,9 @@ class VisionMixin:
                     or self._kids_profile.activity != "ispy"
                     or not self._kids_profile.camera_consent
                 ):
-                    raise RuntimeError("I Spy camera capture was cancelled")
+                    raise ISpyCancelled("I Spy camera capture was cancelled")
             if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
-                raise RuntimeError("I Spy camera capture was cancelled by privacy")
+                raise ISpyCancelled("I Spy camera capture was cancelled by privacy")
 
         with self._camera_lock:
             for attempt in range(60):
