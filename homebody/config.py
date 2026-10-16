@@ -74,9 +74,8 @@ class AppConfig:
     wake_cooldown_seconds: float = 2.0
     motion_enabled: bool = True
     barge_in_enabled: bool = True
+    # Owner permission for explicit AI looks and bounded camera sessions; never activates media itself.
     camera_enabled: bool = False
-    # Owner opt-in for explicit, bounded Everyday looks; never enables tracking or a feed.
-    everyday_camera_enabled: bool = False
     camera_feed_enabled: bool = False
     camera_controls_enabled: bool = False
     camera_controls_handedness: str = "right"

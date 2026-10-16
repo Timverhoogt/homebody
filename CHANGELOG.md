@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Simplify explicit Everyday camera access to the existing Owner-controlled camera permission. Remove the duplicate voice-camera switch; retain separate viewer/tracking controls, bounded sessions, Stop/privacy cancellation and fail-closed legacy consent handling. Owner sign-in never activates capture or changes permissions.
+
 ## [0.5.24] — Expanded Everyday tools and compact permissions
 
 - Expand Everyday with shared robot-local power, one-shot vision, bounded camera sessions, speaker volume/mute, categorical status and semantic gestures across Pipeline, Realtime and GPT-Live. Keep camera-on-request as a separate owner opt-in; no saved viewer/tracking permission changes or automatic cloud captures.

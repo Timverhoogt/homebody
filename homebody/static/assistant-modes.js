@@ -146,7 +146,7 @@
     const tools = new Set([...names(body.tools), ...names(local.tools)]);
     const groups = body.groups && typeof body.groups === 'object' ? body.groups : {};
     text('everyday-robot-permissions', `Power requests: ${permission(permissions.power)} · movement: ${permission(permissions.movement)} · speaker volume: ${permission(permissions.volume)}.`);
-    text('everyday-camera-permission', `Temporary camera by voice: ${permission(permissions.camera_on_request)}. General camera permission: ${permission(permissions.camera)}. Neither means the camera is running.`);
+    text('everyday-camera-permission', `Camera access: ${permission(permissions.camera)}. Covers explicit looks and short voice sessions; permission never starts the camera. Viewer and tracking stay separate.`);
     const home = tools.has('home_control') || tools.has('home_status') || names(body.devices?.controls).length || names(body.devices?.status).length;
     const timers = groupState(groups.timers);
     const lookup = groupState(groups.public_lookup ?? groups.search);
