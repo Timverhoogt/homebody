@@ -215,9 +215,12 @@ async def run_checks(args: argparse.Namespace) -> int:
 
         async def ispy_guess() -> str:
             guess = await bridge._guess_player_ispy_object(
-                ["it is round", "you can drink from it", "it is on the table"], ["plate"], language="en", openai_key=""
+                ["it is round", "you can drink from it", "it is on the table"], ["plate"],
+                candidates=[{"object_name": "cup", "colour": "blue", "location": "on the table"}],
+                language="en", openai_key=""
             )
-            return f"Reachy guessed {guess!r}"
+            assert guess == "cup", "did not match the supplied synthetic observed cup"
+            return f"Reachy matched synthetic observed candidate {guess!r}"
 
         async def agent_plan() -> str:
             steps = await bridge._plan_agent_run("What can you do for me?")

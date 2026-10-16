@@ -91,6 +91,7 @@ class KidsModeMixin:
         self._kids_ispy_player_motion_index = 0
         self._kids_ispy_motion_started = False
         self._kids_last_end_reason = ""
+        self._kids_ispy_view_tokens: set[str] = set()
         self._kids_last_fold_succeeded: bool | None = None
         # Single-use (session_id, kids generation, conversation-stop generation, deadline) ticket,
         # armed only after the Start greeting/clue finished playing. The stop generation is the
@@ -234,6 +235,7 @@ class KidsModeMixin:
             generation = self._kids_generation
             self._kids_ispy_player_motion_index = 0
             self._kids_ispy_motion_started = False
+            self._kids_ispy_view_tokens.clear()
             self._kids_active = True
             self._kids_camera_active = False
             self._kids_locked = True
@@ -348,10 +350,36 @@ class KidsModeMixin:
         client: HermesBridgeClient | None = None,
         turn_bound: bool = False,
     ) -> ISpyTarget:
+        """Select one fixed target; initial Start deliberately is not voice-turn-bound."""
+        target = self._scan_ispy_scene(generation, profile, client=client, turn_bound=turn_bound)
+        if target is None:
+            raise RuntimeError("I Spy target selection returned no target")
+        return target
+
+    def _scan_ispy_scene(
+        self,
+        generation: int,
+        profile: KidsProfile,
+        *,
+        client: HermesBridgeClient | None = None,
+        turn_bound: bool = False,
+        view_token: str = "",
+        session_id: str | None = None,
+    ) -> ISpyTarget | None:
         """Run one consented, cancellable search; frames exist only on this stack."""
         if not profile.camera_consent:
             raise RuntimeError("Camera opt-in is required for I Spy")
-        session_id = self._kids_session_id
+        if session_id is None:
+            with self._kids_lock:
+                session_id = self._kids_session_id
+
+        def assert_current() -> None:
+            self._assert_ispy_current(generation, turn_bound=turn_bound)
+            with self._kids_lock:
+                if self._kids_session_id != session_id or self._kids_profile is not profile:
+                    raise ISpyCancelled("I Spy search ownership changed")
+
+        assert_current()
         # Five retained viewpoints cover a 240° desk arc while every commanded segment remains <= 60°.
         # Two intermediate waypoints cross safely from the left extreme to the right side without capturing.
         scan_route = (
@@ -370,12 +398,13 @@ class KidsModeMixin:
         if not callable(goto_target):
             raise RuntimeError("I Spy search motion is unavailable")
         with self._kids_lock:
-            if not self._kids_callback_is_current(generation):
-                raise ISpyCancelled("I Spy search was cancelled")
+            assert_current()
             self._kids_camera_active = True
         try:
             # Discard a consent-bound readiness frame before enabling torque or searching.
+            assert_current()
             self._capture_camera_jpeg(kids_generation=generation, turn_bound=turn_bound)
+            assert_current()
             with self._motor_transition_lock:
                 with self._kids_lock:
                     if (
@@ -388,12 +417,12 @@ class KidsModeMixin:
                         raise ISpyCancelled("I Spy search was cancelled before wake")
                     self._kids_ispy_motion_started = True
                 self.set_power_mode("awake", cancel_announcements=False)
-                self._assert_ispy_current(generation, turn_bound=turn_bound)
+                assert_current()
                 if self._motors_enabled is not True or self._head_safely_folded:
                     raise RuntimeError("I Spy requires a successful Awake transition")
                 previous_body_yaw = 0.0
                 for body_yaw, capture in scan_route:
-                    self._assert_ispy_current(generation, turn_bound=turn_bound)
+                    assert_current()
                     angular_distance = abs(body_yaw - previous_body_yaw)
                     goto_target(
                         head=self._ispy_head_target(body_yaw, -5.0),
@@ -403,13 +432,15 @@ class KidsModeMixin:
                         method="minjerk",
                     )
                     previous_body_yaw = body_yaw
+                    assert_current()
                     if capture:
                         frames.append(self._capture_camera_jpeg(kids_generation=generation, turn_bound=turn_bound))
+                        assert_current()
                 with self._kids_lock:
                     if self._kids_generation == generation:
                         self._kids_camera_active = False
                 for body_yaw in return_route:
-                    self._assert_ispy_current(generation, turn_bound=turn_bound)
+                    assert_current()
                     angular_distance = abs(body_yaw - previous_body_yaw)
                     goto_target(
                         head=self._ispy_head_target(body_yaw, -5.0 if body_yaw else 0.0),
@@ -419,29 +450,37 @@ class KidsModeMixin:
                         method="minjerk",
                     )
                     previous_body_yaw = body_yaw
+                    assert_current()
             with self._kids_lock:
                 if self._kids_generation == generation:
                     self._kids_camera_active = False
-            self._assert_ispy_current(generation, turn_bound=turn_bound)
+            assert_current()
             if client is None:
                 client = self._new_bridge_client(self.config_loader())
-            self._assert_ispy_current(generation, turn_bound=turn_bound)
-            self._set_status("thinking", "Choosing a safe I Spy object")
-            target = client.select_ispy_target(
-                frames,
-                session_id=session_id,
-                age_band=profile.age_band,
-                language=profile.language,
-            )
+            assert_current()
+            self._set_status("thinking", "Observing the I Spy scene" if view_token else "Choosing a safe I Spy object")
+            assert_current()
+            target = None
+            if view_token:
+                client.observe_ispy_scene(
+                    frames, session_id=session_id, age_band=profile.age_band,
+                    language=profile.language, view_token=view_token,
+                )
+            else:
+                target = client.select_ispy_target(
+                    frames, session_id=session_id, age_band=profile.age_band, language=profile.language,
+                )
             try:
-                self._assert_ispy_current(generation, turn_bound=turn_bound)
+                assert_current()
             except ISpyCancelled:
-                try:
-                    client.cancel_ispy_session(session_id)
-                except Exception:
-                    _LOGGER.warning("Could not delete a cancelled I Spy bridge session")
+                if not view_token:
+                    try:
+                        client.cancel_ispy_session(session_id)
+                    except Exception:
+                        _LOGGER.warning("Could not delete a cancelled I Spy bridge session")
                 raise ISpyCancelled("I Spy search was cancelled") from None
             with self._kids_lock:
+                assert_current()
                 self._kids_ispy_player_motion_index = 0
             return target
         finally:
@@ -486,6 +525,66 @@ class KidsModeMixin:
         except Exception:
             _LOGGER.warning("I Spy player-picker gesture failed; continuing with speech", exc_info=True)
             return False
+
+    def _continue_ispy_player_turn(
+        self,
+        client: HermesBridgeClient,
+        *,
+        barge_in: bool,
+    ) -> bool:
+        """Consume one bridge-issued view request. No speech or microphone admission here.
+
+        The normal pipeline opens the next voice listen; typed submissions remain single-turn.
+        The bridge owns candidate matching and the conditional-rescan budget.
+        """
+        with self._kids_lock:
+            generation = self._kids_generation
+            profile = self._kids_profile
+            session_id = self._kids_session_id
+            view_token = getattr(client, "last_kids_ispy_view_token", "")
+            if (
+                not self._kids_active
+                or profile is None
+                or profile.activity != "ispy"
+                or client.config.kids_session_id != session_id
+                or getattr(client, "last_kids_next_action", "") != "prepare_player_view"
+                or getattr(client, "last_kids_ispy_role", "") != "player_picker"
+                or getattr(client, "last_kids_ispy_phase", "") != "awaiting_view"
+                or not HermesBridgeClient.valid_ispy_view_token(view_token)
+                or view_token in self._kids_ispy_view_tokens
+                or (client.config.kids_host_enabled and getattr(client, "last_kids_game_state", "") != "playing")
+            ):
+                raise ISpyCancelled("I Spy view request is stale or invalid")
+            self._assert_ispy_current(generation, turn_bound=True)
+            # Claim before any blocking operation; this response cannot be dispatched twice.
+            self._kids_ispy_view_tokens.add(view_token)
+            client.last_kids_next_action = ""
+            client.last_kids_ispy_view_token = ""
+        try:
+            self._scan_ispy_scene(
+                generation, profile, client=client, turn_bound=True, view_token=view_token, session_id=session_id,
+            )
+            self._assert_ispy_current(generation, turn_bound=True)
+            return False
+        except ISpyCancelled:
+            self._abandon_ispy_view(client, session_id, view_token)
+            raise
+        except Exception as exc:
+            try:
+                self._assert_ispy_current(generation, turn_bound=True)
+            except ISpyCancelled:
+                self._abandon_ispy_view(client, session_id, view_token)
+                raise ISpyCancelled("I Spy view ended after its session") from exc
+            self.stop_kids_mode(reason="ispy_view_failed", fold=True, expected_generation=generation)
+            raise
+
+    @staticmethod
+    def _abandon_ispy_view(client: HermesBridgeClient, session_id: str, view_token: str) -> None:
+        try:
+            client.abandon_ispy_view(session_id, view_token)
+        except Exception:
+            # Token scope prevents deleting a replacement round or enabling media.
+            _LOGGER.warning("Could not reconcile the cancelled I Spy view")
 
     def _continue_ispy_reachy_turn(
         self,
@@ -735,6 +834,7 @@ class KidsModeMixin:
             self._kids_ends_at = 0.0
             self._kids_session_id = ""
             self._kids_last_end_reason = reason[:40]
+            self._kids_ispy_view_tokens.clear()
             self._kids_last_fold_succeeded = None
             self._reset_kids_host("", ())
             # This cancellation does not acquire the motor lock; invalidate/cancel
@@ -1051,6 +1151,7 @@ class KidsModeMixin:
             self._kids_camera_active = False
             self._kids_ispy_player_motion_index = 0
             self._kids_ispy_motion_started = False
+            self._kids_ispy_view_tokens.clear()
             self._kids_session_id = new_session_id = "kids-" + secrets.token_hex(16)
             self._kids_profile = profile = replace(self._kids_profile, activity=activity)
             self._kids_host_phase = "transition"
@@ -1340,7 +1441,7 @@ class KidsModeMixin:
                                 queued_samples += int(output.size)
                                 if queued_samples > self._output_sample_rate * 120:
                                     raise HermesBridgeError("Kids Mode streaming speech exceeded the playback limit")
-                                self.robot.media.push_audio_sample(output)
+                                self._playback.push_audio_sample(output)
                                 # A successful SDK enqueue is not proof of audible playback.
                                 self._voice_timings.mark("player_enqueued")
 

@@ -688,7 +688,7 @@ class RealtimeVoiceMixin:
                                 if self._motion is not None:
                                     self._motion.speaking()
                             output = resample_linear(audio, 24000, self._output_sample_rate)
-                            self.robot.media.push_audio_sample(output)
+                            self._playback.push_audio_sample(output)
                             playback.add(now, output.size / self._output_sample_rate)
                             timings.mark("player_enqueued", at=now)
                             if playback.started_at is not None:

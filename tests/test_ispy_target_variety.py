@@ -188,7 +188,8 @@ def test_vision_request_uses_strict_bounded_candidate_schema(monkeypatch: pytest
     assert pool["type"] == "array"
     assert pool["minItems"] == 1
     assert pool["maxItems"] == harness.module._ISPY_MAX_CANDIDATES <= 4
-    assert pool["items"] is harness.module._ISPY_TARGET_SCHEMA
+    assert pool["items"]["required"] == harness.module._ISPY_TARGET_SCHEMA["required"]
+    assert "English" in pool["items"]["properties"]["object_name"]["description"]
     assert pool["items"]["additionalProperties"] is False
     assert pool["items"]["properties"]["confidence"]["minimum"] == 0.78
 

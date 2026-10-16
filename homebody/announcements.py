@@ -166,7 +166,7 @@ class AnnouncementsMixin:
             cleared = self._clear_announcement_queue_unlocked() if clear_queue else 0
         if self._announcement_playing.is_set():
             try:
-                self.robot.media.play_sound(str(self.assets / "silence.wav"))
+                self._playback.play_sound(str(self.assets / "silence.wav"))
             except Exception:
                 _LOGGER.debug("Could not stop announcement playback with silence asset", exc_info=True)
             self._clear_streamed_audio()
@@ -437,11 +437,11 @@ class AnnouncementsMixin:
             if self._motion is not None and self._motors_enabled is True:
                 self._motion.speaking()
             self._announcement_playing.set()
-            self.robot.media.play_sound(str(path))
+            self._playback.play_sound(str(path))
             deadline = time.monotonic() + duration + 0.25
             while time.monotonic() < deadline and not self.stop_event.is_set():
                 if item.cancel_event.wait(0.02) or self._announcement_item_cancelled(item):
-                    self.robot.media.play_sound(str(self.assets / "silence.wav"))
+                    self._playback.play_sound(str(self.assets / "silence.wav"))
                     self._clear_streamed_audio()
                     break
                 if self._effective_power_mode() in {"meeting", "sleep"}:
@@ -449,7 +449,7 @@ class AnnouncementsMixin:
             else:
                 # Reachy's player is asynchronous. Explicitly flush at the measured
                 # end so ownership cannot be released while old audio remains queued.
-                self.robot.media.play_sound(str(self.assets / "silence.wav"))
+                self._playback.play_sound(str(self.assets / "silence.wav"))
                 self._clear_streamed_audio()
         finally:
             self._announcement_playing.clear()

@@ -84,6 +84,7 @@ class HermesBridgeClient:
         self.last_kids_ispy_phase = ""
         self.last_kids_game_state = ""
         self.last_answer_source: dict[str, str] = {}
+        self.last_kids_ispy_view_token = ""
 
     def close(self) -> None:
         if self._owns_client:
@@ -154,6 +155,54 @@ class HermesBridgeClient:
         except (KeyError, TypeError, ValueError) as exc:
             raise HermesBridgeError("Hermes returned an unsafe or invalid I Spy target") from exc
 
+    def observe_ispy_scene(
+        self,
+        frames: list[bytes],
+        *,
+        session_id: str,
+        age_band: str,
+        language: str,
+        view_token: str,
+    ) -> int:
+        """Submit five transient viewpoints for the bridge-owned player turn, never a target."""
+        if (
+            len(frames) != 5
+            or any(not isinstance(frame, bytes) or not frame or len(frame) > 1_500_000 for frame in frames)
+        ):
+            raise HermesBridgeError("I Spy camera frame bounds were not met")
+        if not self.valid_ispy_view_token(view_token):
+            raise HermesBridgeError("I Spy view token is invalid")
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/kids/ispy/observe",
+            headers={"Authorization": f"Bearer {self.config.api_key}"},
+            json={
+                "session_id": session_id,
+                "age_band": age_band,
+                "language": language,
+                "view_token": view_token,
+                "frames_jpeg": [base64.b64encode(frame).decode("ascii") for frame in frames],
+            },
+            timeout=30.0,
+        )
+        self._raise_for_error(response, "I Spy scene observation")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise HermesBridgeError("Hermes returned an invalid I Spy observation") from exc
+        if (
+            not isinstance(payload, dict)
+            or payload.get("observed") is not True
+            or type(payload.get("candidate_count")) is not int
+            or not 0 <= payload["candidate_count"] <= 4
+            or payload.get("view_token") != view_token
+        ):
+            raise HermesBridgeError("Hermes returned an invalid I Spy observation")
+        return payload["candidate_count"]
+
+    @staticmethod
+    def valid_ispy_view_token(value: object) -> bool:
+        return isinstance(value, str) and len(value) == 32 and all(c in "0123456789abcdef" for c in value)
+
     def approve_kids_fixed_speech(self, lines: tuple[dict[str, str], ...]) -> str:
         """Ask the bridge to render and approve server-authored fixed Kids copy; return its exact text.
 
@@ -186,6 +235,24 @@ class HermesBridgeClient:
         self._kids_fallback_speech_approval = fallback
         return approved
 
+    def abandon_ispy_view(self, session_id: str, view_token: str) -> None:
+        """Resolve a cancelled view without deleting an otherwise active Kids game."""
+        if not self.valid_ispy_view_token(view_token):
+            raise HermesBridgeError("Invalid I Spy view cancellation token")
+        response = self._client.post(
+            f"{self.config.bridge_url.rstrip('/')}/v1/kids/ispy/cancel",
+            headers=self._headers(), json={"session_id": session_id, "view_token": view_token},
+            timeout=6.0,
+        )
+        self._raise_for_error(response, "I Spy view cancellation")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise HermesBridgeError("Invalid I Spy view cancellation receipt") from exc
+        if (not isinstance(payload, dict) or payload.get("cancelled") is not True
+                or payload.get("view_token") != view_token):
+            raise HermesBridgeError("Invalid I Spy view cancellation receipt")
+
     def ispy_clue(self, session_id: str) -> str:
         """Fetch the server-owned colour clue with exact child-speech approvals."""
         self._kids_speech_approval = ""
@@ -210,6 +277,7 @@ class HermesBridgeClient:
         self.last_kids_next_action = ""
         self.last_kids_ispy_role = "reachy_picker"
         self.last_kids_ispy_phase = "reachy_guessing"
+        self.last_kids_ispy_view_token = ""
         return text
 
     def cancel_ispy_session(self, session_id: str) -> None:
@@ -799,6 +867,7 @@ class HermesBridgeClient:
         self.last_kids_ispy_role = ""
         self.last_kids_ispy_phase = ""
         self.last_kids_game_state = ""
+        self.last_kids_ispy_view_token = ""
         clean = transcript.strip()
         if not clean:
             raise HermesBridgeError("Kids Mode received an empty transcript")
@@ -830,33 +899,46 @@ class HermesBridgeClient:
         )
         if not approval or not fallback_approval:
             raise HermesBridgeError("Kids Mode returned incomplete moderated speech approvals")
+        game_state = ""
+        if self.config.kids_host_enabled:
+            # Validate the entire reply before publishing any actionable metadata.
+            game_state = payload.get("game_state")
+            if not isinstance(game_state, str) or game_state not in {"playing", "finished"}:
+                raise HermesBridgeError("Kids Mode returned an invalid game outcome")
         if self.config.kids_activity == "ispy":
-            action = str(payload.get("ispy_next_action") or "")
-            role = str(payload.get("ispy_role") or "")
-            phase = str(payload.get("ispy_phase") or "")
-            if action not in {"", "prepare_robot_round"}:
+            action = payload.get("ispy_next_action", "")
+            role = payload.get("ispy_role")
+            phase = payload.get("ispy_phase")
+            view_token = payload.get("ispy_view_token", "")
+            if not isinstance(action, str) or action not in {"", "prepare_robot_round", "prepare_player_view"}:
                 raise HermesBridgeError("Kids Mode returned an invalid I Spy action")
-            if role not in {"reachy_picker", "player_picker", "reachy_pending"}:
+            if not isinstance(role, str) or role not in {"reachy_picker", "player_picker", "reachy_pending"}:
                 raise HermesBridgeError("Kids Mode returned an invalid I Spy role")
-            if phase not in {
+            if not isinstance(phase, str) or phase not in {
                 "reachy_guessing",
+                "awaiting_view",
                 "awaiting_clue",
                 "awaiting_confirmation",
                 "awaiting_reveal",
                 "complete",
             }:
                 raise HermesBridgeError("Kids Mode returned an invalid I Spy phase")
+            if action == "prepare_player_view":
+                if role != "player_picker" or phase != "awaiting_view" or not self.valid_ispy_view_token(view_token):
+                    raise HermesBridgeError("Kids Mode returned incoherent I Spy view metadata")
+            elif view_token != "":
+                raise HermesBridgeError("Kids Mode returned an unrequested I Spy view")
+            if phase == "awaiting_view" and role != "player_picker":
+                raise HermesBridgeError("Kids Mode returned an invalid I Spy view role")
+            if action == "prepare_robot_round" and (role != "reachy_pending" or phase != "complete"):
+                raise HermesBridgeError("Kids Mode returned incoherent I Spy round metadata")
+            if self.config.kids_host_enabled and action == "prepare_robot_round":
+                raise HermesBridgeError("Hosted Kids rounds cannot start a target search")
             self.last_kids_next_action = action
             self.last_kids_ispy_role = role
             self.last_kids_ispy_phase = phase
-        if self.config.kids_host_enabled:
-            # A hosted round finishes only on this strict categorical outcome, never on prose.
-            game_state = payload.get("game_state") if isinstance(payload, dict) else None
-            if game_state not in {"playing", "finished"}:
-                raise HermesBridgeError("Kids Mode returned an invalid game outcome")
-            if self.last_kids_next_action:
-                raise HermesBridgeError("Hosted Kids rounds cannot start a camera search")
-            self.last_kids_game_state = game_state
+            self.last_kids_ispy_view_token = view_token
+        self.last_kids_game_state = game_state
         self._kids_speech_approval = approval
         self._kids_fallback_speech_approval = fallback_approval
         return text

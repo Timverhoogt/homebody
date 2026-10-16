@@ -354,10 +354,20 @@ def test_ispy_alternates_reachy_and_player_picker_turns(monkeypatch) -> None:
 
     reachy_round = json.loads(asyncio.run(bridge.kids_chat(Request("chair"))).text)
     assert reachy_round["ispy_role"] == "player_picker"
-    assert reachy_round["ispy_phase"] == "awaiting_clue"
-    assert reachy_round["ispy_next_action"] == ""
+    assert reachy_round["ispy_phase"] == "awaiting_view"
+    assert reachy_round["ispy_next_action"] == "prepare_player_view"
     assert "Now it's your turn" in reachy_round["text"]
     assert "ispy_target" not in bridge._kids_sessions[session_id]
+
+    from test_ispy_target_variety import FRAMES, FakeVision, candidate
+    from test_ispy_target_variety import Request as ObserveRequest
+    bridge.http = FakeVision({"candidates": [candidate("lamp"), candidate("table", frame_index=2)]})
+    observation = json.loads(asyncio.run(bridge.kids_ispy_observe(ObserveRequest({
+        "session_id": session_id, "age_band": "7-9", "language": "en",
+        "view_token": reachy_round["ispy_view_token"], "frames_jpeg": list(FRAMES),
+    }))).text)
+    assert observation["candidate_count"] == 2
+    assert bridge._kids_sessions[session_id]["ispy_player_phase"] == "awaiting_clue"
 
     player_clue = json.loads(asyncio.run(bridge.kids_chat(Request("It gives light"))).text)
     assert player_clue["text"] == "Is it a lamp?"

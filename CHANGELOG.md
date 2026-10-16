@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.5.25] — Consented companion presence, visual help and opt-in sources
+## [0.5.27] — Consented companion presence, visual help and opt-in sources
 
 - Presence reports occupancy and source health separately: heartbeats and bridge-loss reports keep healthy stationary occupancy "present", show "unknown" when the sensor bridge is silent, and never turn a reconnect into a second arrival. Only an arrival may trigger the silent acknowledgement; Standby never gains motors.
 - Direct visual help: one deliberate "Look at this" (phone card, explicit spoken request in Everyday Pipeline, Live via a bounded host request/result protocol, or Realtime's camera tool) takes exactly one frame on the configured route (local vision or Hermes host; no fallback) and answers. Every look is a ticket bound to the original Stop generation, profile, camera permission, voice ownership and (phone) owner session, re-validated after lock, capture, inference and before the answer is kept; Stop/privacy/Kids/profile/owner revocation discard late results and clear private RAM. Follow-ups use a structurally tool-free host route so text read from an object can never reach tools.
@@ -14,6 +14,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Opt-in sources on the Hermes host: at most one Home Assistant condition and one calendar lead-time source; delivery-aware, hashed-fingerprint lifecycle (no repeat of a delivered moment, no loss of a suppressed one, no replay of expired ones, enrollment drift clears memory); calendar details private by default and never spoken to an anonymous Yes; owner-zone clock times; offer texts must describe read-only help. Unsolicited offers need present occupancy; project offers keep Agent authority; requested reminders keep bypassing initiative budgets. See `docs/companion-implementation.md` for scope, receipts and remaining enrollment/provider/TTS/deployment/physical gates.
 
 - Preserve original request authority through HTTP preparation and visual barge-in. Durable source revisions reject delayed deliveries after removal; accepted replies and owner-private details retain their original Stop scope. New sources remain unenrolled, and existing power, media and voice settings are preserved.
+
+## [0.5.26] — Visually grounded I Spy guessing
+
+- Preserve audio cleanup after refused sleep: late SDK pushes remain subject to a real flush, failed cleanup retains quarantine, and wake cannot reopen playback over uncleared output. Distinguish drained calls from a confirmed SDK playback stop.
+- Let Reachy look when the child chooses an object, retain a small moderated set of observed safe objects, and match clues only to that set. Exclude rejected guesses and ask for more clues when nothing fits, rather than inventing an unseen household object.
+- Permit one conditional additional look, not continuous capture or a scan after every clue. Preserve camera consent, bounded motion, ephemeral images, shared-play deadlines and typed-input microphone boundaries.
+- Recover after interrupted handoff speech or Stop during a scan without deleting the still-active game, replaying a consumed view or automatically resuming motion. Preserve End, privacy, stale-result and moderation fences.
+- Generate object names in the selected play language and retain the screened name through each round. Preserve the 0.5.23 waiting-speech fixes, 0.5.24 Everyday tools and 0.5.25 native-sleep playback fences.
+- Requires a coordinated host bridge and robot update. Synthetic model and device tests do not establish real-room visual accuracy or supervised microphone-to-speaker acceptance.
+
+## [0.5.25] — Standard Reachy sleep without app-driven wobbling
+
+- Use the daemon-owned sleep sequence used by Reachy Control for Standby, Meeting and Sleep, rather than the SDK client's separate choreography. Preserve the standard sound, head/antenna targets, conditional repositioning, timing and torque release.
+- Quiesce app playback and remove its local wobbler before native sleep. Fence delayed speech offsets, voice poses, PCM pushes and playback cleanup so they cannot disturb a folded head or restart playback behind the sleep transition.
+- Preserve responsive Stop and existing Kids output quarantine when an SDK audio operation is stuck. Refuse unverified sleep admission or unresolved completion without retrying movement; restore Standby wake detection and reopen app speech only after a confirmed wake.
+- Preserve the 0.5.24 Everyday features, settings, voices, camera consent and managed updater. Offline callback/transport tests and the independent safety review do not replace an owner-supervised sleep/wake check.
+
 
 ## [0.5.24] — Expanded Everyday tools and compact permissions
 

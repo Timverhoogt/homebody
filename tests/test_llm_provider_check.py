@@ -60,7 +60,8 @@ def fake_router(seen: list[dict[str, Any]], *, reasoning: bool = False) -> web.A
         if schema == "ispy_match":
             return reply(json.dumps({"match": "mug" in prompt}))
         if schema == "ispy_player_object_guess":
-            return reply(json.dumps({"guess": "cup"}))
+            assert "Observed candidates" in prompt and "cup" in prompt
+            return reply(json.dumps({"candidate_index": 0}))
         capabilities = {
             "id": "c1",
             "type": "function",

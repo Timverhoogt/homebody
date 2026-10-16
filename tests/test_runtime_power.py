@@ -32,6 +32,9 @@ class FakeMedia:
     def start_playing(self) -> None:
         self.playing_starts += 1
 
+    def stop_playing(self) -> None:
+        self.recording = False
+
     def play_sound(self, path: str) -> None:
         self.played.append(path)
 
@@ -80,6 +83,12 @@ def fake_robot_fold_sensor(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(HermesVoiceRuntime, "_read_head_safely_folded", read_folded)
 
+    def native_sleep(runtime: HermesVoiceRuntime) -> None:
+        # Explicit daemon boundary fixture; production must never call SDK goto_sleep.
+        runtime.robot.goto_sleep()
+
+    monkeypatch.setattr(HermesVoiceRuntime, "_run_native_sleep", native_sleep)
+
 
 def test_sleep_stops_microphone_and_standby_restores_local_wake() -> None:
     robot = FakeRobot()
@@ -115,7 +124,7 @@ def test_standby_folds_head_before_releasing_motor_torque() -> None:
     assert runtime._head_safely_folded is True
 
 
-def test_already_folded_standby_does_not_replay_sleep_motion() -> None:
+def test_already_folded_standby_lets_native_daemon_decide_whether_to_move() -> None:
     robot = FakeRobot()
     runtime = HermesVoiceRuntime(robot, threading.Event())
     runtime._head_safely_folded = True
@@ -124,8 +133,8 @@ def test_already_folded_standby_does_not_replay_sleep_motion() -> None:
 
     runtime.set_power_mode("standby")
 
-    assert robot.sleep_calls == 0
-    assert motor_modes == [False]
+    assert robot.sleep_calls == 1
+    assert motor_modes == [True, False]
 
 
 def test_unverified_sleep_pose_keeps_torque_enabled() -> None:
@@ -328,12 +337,12 @@ def test_motor_daemon_failure_is_reported_instead_of_false_standby(monkeypatch) 
 
     monkeypatch.setattr("homebody.power.httpx.post", fail_post)
 
-    with pytest.raises(RuntimeError, match="disabling motor torque failed"):
+    with pytest.raises(RuntimeError, match="torque state is unverified"):
         runtime.set_power_mode("standby")
 
     status = runtime.status()
     assert status["motors_enabled"] is None
-    assert status["head_safely_folded"] is True
+    assert status["head_safely_folded"] is False
     assert "daemon unavailable" in str(status["last_error"])
 
 
@@ -768,7 +777,7 @@ def test_doa_angle_is_converted_to_reachy_yaw_with_deadband_and_clamp() -> None:
     assert doa_yaw_degrees(0.0) == 60.0
 
 
-def test_privacy_action_cancel_restarts_playback_on_standby() -> None:
+def test_privacy_action_cancel_keeps_playback_blocked_until_awake() -> None:
     class Actions:
         pending_count = 0
 
@@ -786,6 +795,9 @@ def test_privacy_action_cancel_restarts_playback_on_standby() -> None:
     runtime.set_power_mode("sleep")
     runtime.set_power_mode("standby")
 
+    assert robot.media.playing_starts == 0
+    assert runtime._playback.blocked is True
+    runtime.set_power_mode("awake")
     assert robot.media.playing_starts == 1
 
 

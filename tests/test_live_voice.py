@@ -108,6 +108,8 @@ class LiveHarness(LiveVoiceMixin, CompanionMixin):
         self.loops = 0
         self.stop_after = stop_after
         self.robot = SimpleNamespace(media=SimpleNamespace(push_audio_sample=lambda a: self.pushed.append(a.size)))
+        from homebody.playback_gate import PlaybackGate
+        self._playback = PlaybackGate(lambda: self.robot.media)
         self.finished = []
 
     def _new_live_session(self, *args, **kwargs):
