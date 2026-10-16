@@ -113,7 +113,7 @@ def test_pipeline_hooks_record_real_accepted_messages(monkeypatch, clear_during_
         def transcribe(self, _audio):
             return "Tell me about the roadmap"
 
-        def everyday_turn(self, _transcript, *, context=None):
+        def everyday_turn(self, _transcript, *, context=None, **local_tools):
             if clear_during_chat:
                 runtime.workspace("clear")
                 runtime.workspace("start")
@@ -169,7 +169,7 @@ def test_everyday_pipeline_progress_does_not_claim_full_hermes(monkeypatch, adva
                     runtime._agent_session_generation += 1
             return "What time is it?"
 
-        def everyday_turn(self, _transcript, *, context=None):
+        def everyday_turn(self, _transcript, *, context=None, **local_tools):
             assert context.session_generation == original_generation
             return "It is noon."
 

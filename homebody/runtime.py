@@ -21,6 +21,7 @@ from .audio import (
     resample_linear,
 )
 from .config import AppConfig, load_config
+from .everyday_runtime import EverydayRuntimeMixin
 from .hermes_client import HermesBridgeClient
 from .home_assistant import HermesHomeAssistantProvider, HomeAssistantBridge
 from .kids_acknowledgements import output_quarantined
@@ -192,6 +193,7 @@ class _RuntimeSafetyProbe:
 
 
 class HermesVoiceRuntime(
+    EverydayRuntimeMixin,
     KidsModeMixin,
     AnnouncementsMixin,
     ManualControlMixin,
@@ -265,6 +267,7 @@ class HermesVoiceRuntime(
         self._init_agent_session_state()
         self._voice_workspace = VoiceWorkspace()
         self._voice_timings = VoiceTimings()
+        self._init_everyday_state()
         from .speaker_volume import SpeakerVolume
         self._speaker = SpeakerVolume()
 
@@ -302,6 +305,8 @@ class HermesVoiceRuntime(
             self._conversation_stop_generation += 1
             self._conversation_stop_requested.set()
             generation = self._conversation_stop_generation
+        if hasattr(self, "_everyday_lock"):
+            self._revoke_everyday_actions()
         client = getattr(self, "_robot_stt", None)
         cancel = getattr(client, "cancel", None)
         if callable(cancel):

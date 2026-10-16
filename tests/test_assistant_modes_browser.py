@@ -118,8 +118,8 @@ def test_modes_stop_controls_and_everyday_disclosure(ui, width):
     assert "OpenAI Realtime" in page.locator("#everyday-voice").inner_text()
     assert "gpt-4o-realtime-preview" in page.locator("#everyday-voice").inner_text()
     assert "openai/gpt-4.1-mini" in page.locator("#everyday-model").text_content()
-    assert "retrieved through your home system" in page.locator("#everyday-weather").inner_text()
-    assert "1 permitted control" in page.locator("#everyday-devices").inner_text()
+    assert "retrieved through your home system" in page.locator("#everyday-weather").text_content()
+    assert "1 permitted control" in page.locator("#everyday-devices").text_content()
     assert "desk light" in page.locator("#everyday-device-ids").text_content()
     assert not page.locator("#everyday-technical-details").get_attribute("open")
     assert page.locator("#native-work-badge").is_visible()  # durable work visible as a badge in Everyday
