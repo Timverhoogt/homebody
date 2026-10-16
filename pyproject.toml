@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 # Match the existing registered app ID; pip canonicalizes hyphens/underscores equally.
 name = "reachy_mini_homebody"
-version = "0.5.19"
+version = "0.5.20"
 description = "Homebody: an always-on, privacy-first home companion app for Reachy Mini with pluggable agent backends"
 readme = "README.md"
 requires-python = ">=3.11"
