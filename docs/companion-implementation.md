@@ -2,6 +2,8 @@
 
 Companion connects presence, deliberate visual help, optional suggestions and quiet recovery. It reuses the existing voice, camera, safety, power and announcement owners; it is not a second always-running reasoning agent. See the [reviewed design](companion-design.md).
 
+Release 0.5.29 retains the accepted 0.5.28 single Owner camera permission and native-verification baseline. Installing it does not enroll sources or enable media permissions.
+
 ## Everyday experience
 
 The Everyday Companion card provides presence, silent arrival acknowledgement, **Look at this**, bounded text follow-up, **Stop**, suggestions, explanations and source enrollment. Older initiative, offer and stable-change detector diagnostics remain under Advanced.
