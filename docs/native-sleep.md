@@ -35,6 +35,14 @@ while retaining the SDK's daemon-wobbling command for normal awake speech.
 
 ## Failure behavior
 
+A quiescence timeout is not a successful playback stop. Producers stay blocked,
+but cleanup remains admitted and counted: a late push must still be flushed,
+and a failed flush retains Kids output quarantine. A later explicit wake flushes
+again before reopening app playback. After drain, cleanup cannot silently claim
+success until the SDK stop has actually returned; this prevents an unverified
+stop from releasing quarantine and prevents cleanup from restarting a stopped
+pipeline. A failed stop remains closed until a successful stop is confirmed.
+
 Do not retry a sleep admission with an unknown result. On a completion timeout
 or lost update connection, cancel only the admitted UUID and check that it no
 longer runs. Failure is never presented as successful sleep. If admission or

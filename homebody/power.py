@@ -142,8 +142,12 @@ class PowerMixin:
                 self._playback.suspend()
                 if self._motion is not None:
                     self._motion.prepare_sleep(self.robot.media.stop_playing)
-                    self._playback_stopped_for_privacy = True
-                    self._recording = False  # SDK 1.9 shares a capture/playback pipeline.
+                else:
+                    # Absence of a motion helper is not proof that audio stopped.
+                    self.robot.media.stop_playing()
+                    self._playback.confirm_stopped()
+                self._playback_stopped_for_privacy = True
+                self._recording = False  # SDK 1.9 shares a capture/playback pipeline.
             except Exception as exc:
                 return False, f"Could not stop voice wobbling before native sleep: {exc}"
             self._head_safely_folded = False

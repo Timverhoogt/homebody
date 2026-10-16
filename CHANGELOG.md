@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.5.26] — Visually grounded I Spy guessing
 
+- Preserve audio cleanup after refused sleep: late SDK pushes remain subject to a real flush, failed cleanup retains quarantine, and wake cannot reopen playback over uncleared output. Distinguish drained calls from a confirmed SDK playback stop.
 - Let Reachy look when the child chooses an object, retain a small moderated set of observed safe objects, and match clues only to that set. Exclude rejected guesses and ask for more clues when nothing fits, rather than inventing an unseen household object.
 - Permit one conditional additional look, not continuous capture or a scan after every clue. Preserve camera consent, bounded motion, ephemeral images, shared-play deadlines and typed-input microphone boundaries.
 - Recover after interrupted handoff speech or Stop during a scan without deleting the still-active game, replaying a consumed view or automatically resuming motion. Preserve End, privacy, stale-result and moderation fences.
