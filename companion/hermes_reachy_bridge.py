@@ -25,7 +25,7 @@ import tempfile
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote, urlparse
 
 from aiohttp import ClientError, ClientSession, ClientTimeout, FormData, web
@@ -1033,14 +1033,30 @@ def _validate_bridge_ispy_target(payload: object, *, frame_count: int, language:
 
 
 def _ispy_response_schema(language: str) -> dict[str, object]:
-    """EN/NL keep the original schema; an ES/DE/FR/IT/PT session also requires its own hints."""
-    if language not in _KIDS_SESSION_VOICE_LANGUAGES:
-        return _ISPY_RESPONSE_SCHEMA
-    key = f"hints_{language}"
+    """Bind the spoken name to this session without mutating the shared schema.
+
+    Colour remains a machine enum; object_name is retained and spoken verbatim on reveal.
+    Empty language is used only by language-neutral validator callers.
+    """
+    properties = dict(cast(dict[str, Any], _ISPY_TARGET_SCHEMA["properties"]))
+    required = list(cast(list[str], _ISPY_TARGET_SCHEMA["required"]))
+    if language:
+        properties["object_name"] = {
+            **properties["object_name"],
+            "description": (
+                f"The object's everyday name in {_KIDS_LANGUAGE_NAMES[language]}, the session language. "
+                "This name is stored and spoken verbatim to the child. Use only this language, "
+                "not an untranslated label from another language or a bilingual name."
+            ),
+        }
+    if language in _KIDS_SESSION_VOICE_LANGUAGES:
+        key = f"hints_{language}"
+        properties[key] = properties["hints_en"]
+        required.append(key)
     target_schema = {
         **_ISPY_TARGET_SCHEMA,
-        "properties": {**_ISPY_TARGET_SCHEMA["properties"], key: _ISPY_TARGET_SCHEMA["properties"]["hints_en"]},  # type: ignore[dict-item]
-        "required": [*_ISPY_TARGET_SCHEMA["required"], key],  # type: ignore[misc]
+        "properties": properties,
+        "required": required,
     }
     candidates = {**_ISPY_RESPONSE_SCHEMA["properties"]["candidates"], "items": target_schema}  # type: ignore[index]
     return {**_ISPY_RESPONSE_SCHEMA, "properties": {"candidates": candidates}}
@@ -2789,7 +2805,11 @@ class Bridge(NativeWorkspaceRoutes):
                 "object: never list the same object twice under another name. Mix kinds, sizes and colours where "
                 "the room allows, but only list objects that truly qualify; fewer candidates is fine. Never list "
                 "a person, face, body, clothing, screen, document, medicine, weapon, private/sensitive, "
-                "reflective, tiny, or unstable item. Return the exact strict candidates schema. Colour must be "
+                "reflective, tiny, or unstable item. Return the exact strict candidates schema. "
+                f"Write object_name in {_KIDS_LANGUAGE_NAMES[language]}, the child's selected language. "
+                "Use the ordinary child-friendly name in that language, not an untranslated or bilingual "
+                "label; it is stored and spoken verbatim in correct-answer and reveal sentences. "
+                "Write category and location in the same session language. Keep JSON keys unchanged. Colour must be "
                 "one of red, orange, yellow, green, blue, purple, pink, brown, black, white, grey. Set stable "
                 "true, visible_frame_count between 2 and the supplied frame count, and confidence from 0.78 to "
                 "1.0. bbox is normalized [x,y,width,height], fully inside the image, width and height at least "
