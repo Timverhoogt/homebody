@@ -17,6 +17,7 @@ from dataclasses import replace
 
 import numpy as np
 
+from . import kids_acknowledgements
 from .audio import resample_linear
 from .config import AppConfig
 from .hermes_client import HermesBridgeClient, HermesBridgeError
@@ -267,6 +268,7 @@ class KidsModeMixin:
             # later Stop/End/Standby/privacy bumps the generation past it; it is never refreshed.
             receipt = self._request_conversation_stop()
             self._kids_start_stop_generation = receipt if isinstance(receipt, int) else -1
+            start_stop_generation = self._kids_start_stop_generation
         if replaced_session_id:
             self._notify_bridge_kids_session_async(replaced_session_id, active=False)
         self._notify_bridge_kids_session_async(started_session_id, active=True)
@@ -286,8 +288,14 @@ class KidsModeMixin:
             greeting = host_line(profile.language, "lobby", a=first, b=second)
             lines = ({"kind": "host", "key": "lobby", "a": first, "b": second},)
         elif profile.activity == "ispy":
+            waiting = self._start_initial_search_wait(generation, profile, start_stop_generation)
             try:
-                ispy_target = self._prepare_ispy_round(generation, profile)
+                try:
+                    ispy_target = self._prepare_ispy_round(generation, profile)
+                finally:
+                    if waiting is not None:
+                        waiting.wait_finished()
+                        waiting.settle()  # before the clue announcement or any failure teardown
             except Exception as exc:
                 _LOGGER.warning("I Spy start failed (%s): %s", type(exc).__name__, exc)
                 if self._kids_callback_is_current(generation):
@@ -502,11 +510,22 @@ class KidsModeMixin:
                 or client.config.kids_session_id != session_id
             ):
                 raise ISpyCancelled("I Spy turn continuation is stale")
+        waiting = None
         try:
             self._assert_ispy_current(generation, turn_bound=True)
+            # One delayed "Let's see." while the search/clue is still pending; turn-bound fence.
+            refresh = getattr(client, "kids_voice_proof", None)
+            waiting = self._start_kids_ack(
+                client.config, refresh=refresh, stage="see",
+                delay=kids_acknowledgements.SEARCH_WAIT_DELAY_SECONDS,
+            ) if callable(refresh) else None
             self._prepare_ispy_round(generation, profile, client=client, turn_bound=True)
             self._assert_ispy_current(generation, turn_bound=True)
             clue = client.ispy_clue(session_id)
+            if waiting is not None:
+                waiting.wait_finished()
+                waiting.settle()  # quiesce before the clue; a blocked push keeps output quarantined
+                waiting = None
             self._assert_ispy_current(generation, turn_bound=True)
             self._set_status(
                 "speaking",
@@ -526,6 +545,46 @@ class KidsModeMixin:
                 raise ISpyCancelled("I Spy round ended after its session") from exc
             self.stop_kids_mode(reason="ispy_round_failed", fold=True, expected_generation=generation)
             raise
+        finally:
+            if waiting is not None:
+                waiting.settle()
+
+    def _start_initial_search_wait(self, generation: int, profile: KidsProfile, start_stop_generation: int):
+        """Arm one delayed "Let's see." for a Start or game-master I Spy search; None when ineligible.
+
+        Start/transition itself raised the conversation stop flag (and Awake later clears it), so
+        this fence deliberately ignores the flag and instead binds the immutable Kids generation plus
+        that admission's own stop receipt: any later Stop/End/replacement/expiry/privacy/sleep/shutdown
+        wins. It never opens the microphone, touches motors or camera, or holds their locks.
+        """
+        if start_stop_generation < 0:
+            return None
+
+        def is_current() -> bool:
+            with self._conversation_stop_generation_lock:
+                stopped = self._conversation_stop_generation != start_stop_generation
+            return (
+                not stopped
+                and self._kids_callback_is_current(generation)
+                and not self.stop_event.is_set()
+                and not self._privacy_requested.is_set()
+                and self._effective_power_mode() not in {"meeting", "sleep"}
+            )
+
+        def refresh() -> object:
+            # Fresh proof of exactly this session language's Kids voice, read off every lock.
+            client = self._new_bridge_client(self.config_loader())
+            try:
+                return client.kids_voice_proof(
+                    language=profile.language, timeout=_KIDS_VOICE_ADMISSION_TIMEOUT_SECONDS,
+                )
+            finally:
+                client.close()
+
+        return self._arm_kids_wait_speech(
+            profile.language, is_current, refresh=refresh, stage="see",
+            delay=kids_acknowledgements.SEARCH_WAIT_DELAY_SECONDS,
+        )
 
     def _assert_ispy_current(self, generation: int, *, turn_bound: bool = False) -> None:
         """Revalidate after every blocking boundary, including before provider handoff."""
@@ -963,6 +1022,8 @@ class KidsModeMixin:
             self._rearm_kids_timers(generation)
             receipt = self._request_conversation_stop()
             self._kids_start_stop_generation = receipt if isinstance(receipt, int) else -1
+            # This transition's own receipt, taken under admission: the search wait binds to it.
+            transition_stop_generation = self._kids_start_stop_generation
             if old_ispy and callable(cancel_move):
                 try:
                     cancel_move()
@@ -979,8 +1040,14 @@ class KidsModeMixin:
         self._notify_bridge_kids_session_async(new_session_id, active=True)
         intro = host_line(profile.language, "start", a=activity)
         if activity == "ispy":
+            waiting = self._start_initial_search_wait(generation, profile, transition_stop_generation)
             try:
-                target = self._prepare_ispy_round(generation, profile)
+                try:
+                    target = self._prepare_ispy_round(generation, profile)
+                finally:
+                    if waiting is not None:
+                        waiting.wait_finished()
+                        waiting.settle()  # before the clue handoff; a blocked push keeps output quarantined
             except Exception as exc:
                 _LOGGER.warning("Hosted I Spy round failed (%s)", type(exc).__name__)
                 if self._kids_callback_is_current(generation):

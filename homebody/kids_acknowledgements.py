@@ -93,10 +93,22 @@ class AckClip:
     samples: np.ndarray
     sample_rate: int
     voice_sha256: str = ""  # from the manifest; usable only if the host's current proof matches
+    text: str = ""  # one of ALLOWED_PHRASES; selects the wait stage, never spoken or logged
 
     @property
     def duration(self) -> float:
         return self.samples.size / float(self.sample_rate)
+
+    @property
+    def stage(self) -> str:
+        """'see' for the fixed looking phrase ("Eens kijken."/"Let's see."), otherwise 'think'."""
+        phrases = _PHRASES.get(self.language, ())
+        return "see" if len(phrases) > 2 and self.text.rstrip(".…") == phrases[2] else "think"
+
+
+def stage_clips(clips: tuple[AckClip, ...], stage: str | None) -> tuple[AckClip, ...]:
+    """Clips for one wait stage; ``None`` keeps the original STT behaviour (any phrase)."""
+    return tuple(clips) if stage is None else tuple(clip for clip in clips if clip.stage == stage)
 
 
 def _decode_wav(data: bytes) -> tuple[np.ndarray, int]:
@@ -173,7 +185,7 @@ def load_catalog(
                 or abs(samples.size / rate - float(declared)) > 0.02
             ):
                 raise ValueError("clip metadata does not match its audio")
-            catalog[language].append(AckClip(language, name, samples, rate, manifest["voice_sha256"]))
+            catalog[language].append(AckClip(language, name, samples, rate, manifest["voice_sha256"], text))
         return {language: tuple(clips) for language, clips in catalog.items()}
     except FileNotFoundError:
         _LOGGER.info("Kids acknowledgement clips are not installed; no thinking filler")
@@ -183,6 +195,10 @@ def load_catalog(
 
 
 ACK_DELAY_SECONDS = 1.0  # only when STT is genuinely still pending after a noticeable pause
+# Waiting speech beyond STT: one clip only if the I Spy camera search / backend reply is still
+# pending after these delays (read at arm time so tests can shorten them).
+SEARCH_WAIT_DELAY_SECONDS = 1.0
+REPLY_WAIT_DELAY_SECONDS = 1.5
 ACK_COOLDOWN_SECONDS = 8.0
 _CHUNK_SECONDS = 0.1
 
@@ -215,6 +231,25 @@ def output_quarantined(owner: object) -> bool:
     """
     producer = getattr(owner, "_kids_ack_producer", None)
     return producer is not None and bool(producer.inflight)
+
+
+_install_lock = threading.Lock()
+
+
+def install_producer(owner: object, player: KidsAckPlayer) -> bool:
+    """Make ``player`` the owner's single filler producer and start it, or refuse.
+
+    Refused while the previous producer is still running (in flight, playing, watching its
+    queued audio or resolving a proof): a newer producer never replaces a live old owner, so
+    ``output_quarantined`` always observes the one producer that may still push or clear.
+    """
+    with _install_lock:
+        previous = getattr(owner, "_kids_ack_producer", None)
+        if previous is not None and previous.running:
+            return False
+        owner._kids_ack_producer = player  # type: ignore[attr-defined]
+        player.start()
+        return True
 
 
 class KidsAckPlayer:
@@ -261,6 +296,17 @@ class KidsAckPlayer:
         with self._lock:
             return self._inflight
 
+    @property
+    def running(self) -> bool:
+        """True until the producer thread has exited and no push is in flight."""
+        return self.inflight or self._thread.is_alive()
+
+    @property
+    def clip_started(self) -> bool:
+        """At least one PCM push was entered for this wait (actual call, not an estimate)."""
+        with self._lock:
+            return self._admitted
+
     def start(self) -> KidsAckPlayer:
         self._thread.start()
         return self
@@ -289,7 +335,8 @@ class KidsAckPlayer:
         for offset in range(0, pcm.size, step):
             chunk = pcm[offset : offset + step]
             with self._lock:
-                if self._cancelled():
+                # A wait that finished after selection but before the first push stays silent.
+                if self._cancelled() or (not self._admitted and self._stt_done.is_set()):
                     break
                 self._inflight = True
                 self._admitted = True
@@ -324,6 +371,9 @@ class KidsAckPlayer:
     def stt_finished(self) -> None:
         """STT returned: never start a clip now; one already queued may finish during the reply request."""
         self._stt_done.set()
+
+    # The same contract for every wait (camera search, backend reply): the work it covered is done.
+    wait_finished = stt_finished
 
     def settle(self) -> bool:
         """Before reply speech, a re-listen or exit: stop, bounded join, flush anything admitted.
