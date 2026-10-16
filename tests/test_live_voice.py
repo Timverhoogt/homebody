@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from homebody.companion import CompanionMixin
 from homebody.config import AppConfig, load_config, merge_config, save_config
 from homebody.hermes_client import AgentBrokerContext
 from homebody.live_client import LiveBridgeSession, live_url
@@ -90,8 +91,9 @@ class FakeLiveSession:
         self.order.append("close")
 
 
-class LiveHarness(LiveVoiceMixin):
+class LiveHarness(LiveVoiceMixin, CompanionMixin):
     def __init__(self, session, *, stop_after=None):
+        self._init_companion_state()
         self.session = session
         self._voice_timings = VoiceTimings()
         self._privacy_requested = threading.Event()

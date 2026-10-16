@@ -73,7 +73,7 @@ def test_presence_signal_requires_bearer_auth_and_rejects_unbounded_payloads(mon
     _app, runtime, client, _saved = build_client(monkeypatch)
     monkeypatch.setattr(main_module, "load_config", lambda: AppConfig(api_key="presence-test-key"))
     observed: list[object] = []
-    runtime.observe_presence = lambda value: observed.append(value) or {  # type: ignore[method-assign]
+    runtime.observe_presence = lambda value, *, heartbeat=False: observed.append(value) or {  # type: ignore[method-assign]
         "enabled": True,
         "level": "present",
         "speech_enabled": False,
