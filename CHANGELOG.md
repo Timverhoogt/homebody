@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.5.20] — Owner-authorized shutdown over Tailnet
 
-- Admit host shutdown through a narrowly scoped root-owned Unix-socket helper while retaining the app's non-root identity and NoNewPrivileges sandbox. Require measured safe sleep pose and disabled torque before scheduling, and revalidate both before OS poweroff.
+- Admit host shutdown through an explicitly provisioned, narrowly scoped root-owned Unix-socket helper while retaining the app's non-root identity and NoNewPrivileges sandbox. Require measured safe sleep pose and disabled torque before scheduling, and revalidate both before OS poweroff. Missing helper provisioning fails closed.
 - Return success only after the fixed OS timer is active; expose Owner-only readiness and truthful failures. Preserve Owner pairing, same-origin HTTPS, CSRF and Kids management locks.
 - Treat phone/Tailnet proxy errors or disconnects before acknowledgement as an unknown outcome, with no automatic retry or duplicate shutdown submission. A scheduled acknowledgement is not proof of physical poweroff.
 - Preserve Everyday fast paths, bounded robot STT prewarming, all seven Kids languages and selected voices, Bluetooth and enforced Workspace discussion. No physical shutdown, microphone, camera or motion acceptance was performed for this release.
