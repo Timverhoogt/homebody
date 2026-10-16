@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.25] — Visually grounded I Spy guessing
+
+- Let Reachy look when the child chooses an object, retain a small moderated set of observed safe objects, and match clues only to that set. Exclude rejected guesses and ask for more clues when nothing fits, rather than inventing an unseen household object.
+- Permit one conditional additional look, not continuous capture or a scan after every clue. Preserve camera consent, bounded motion, ephemeral images, shared-play deadlines and typed-input microphone boundaries.
+- Recover after interrupted handoff speech or Stop during a scan without deleting the still-active game, replaying a consumed view or automatically resuming motion. Preserve End, privacy, stale-result and moderation fences.
+- Generate object names in the selected play language and retain the screened name through each round. Preserve the 0.5.23 waiting-speech fixes and 0.5.24 Everyday tools.
+- Requires a coordinated host bridge and robot update. Synthetic model and device tests do not establish real-room visual accuracy or supervised microphone-to-speaker acceptance.
+
 ## [0.5.24] — Expanded Everyday tools and compact permissions
 
 - Expand Everyday with shared robot-local power, one-shot vision, bounded camera sessions, speaker volume/mute, categorical status and semantic gestures across Pipeline, Realtime and GPT-Live. Keep camera-on-request as a separate owner opt-in; no saved viewer/tracking permission changes or automatic cloud captures.
