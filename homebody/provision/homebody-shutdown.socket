@@ -1,0 +1,14 @@
+[Unit]
+Description=Homebody fixed shutdown request socket
+
+[Socket]
+ListenStream=/run/homebody-shutdown.sock
+SocketUser=root
+SocketGroup=@APP_GROUP@
+SocketMode=0660
+Accept=yes
+MaxConnections=8
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

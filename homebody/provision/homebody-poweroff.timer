@@ -1,0 +1,8 @@
+[Unit]
+Description=Homebody acknowledged fixed-delay poweroff
+
+[Timer]
+OnActiveSec=5s
+AccuracySec=100ms
+Unit=homebody-poweroff.service
+RemainAfterElapse=no

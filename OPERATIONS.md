@@ -389,7 +389,7 @@ curl -X POST http://REACHY_HOST:8042/api/app-off \
   -d '{"confirm":"off"}'
 ```
 
-The Pi shutdown endpoint intentionally requires `{"confirm":"shutdown"}`. Do not call it as a routine health test.
+The dedicated Jetson/Pi shutdown endpoint intentionally requires `{"confirm":"shutdown"}`. Do not call it as a routine health test. The repaired candidate requires separately provisioned root helper units; use owner-only GET `/api/shutdown/readiness` for silent readiness, not POST. See [host shutdown](docs/host-shutdown.md) for privileged installation, Tailnet acknowledgement semantics and supervised physical acceptance.
 
 ## Cooling-maintenance acceptance checklist
 
