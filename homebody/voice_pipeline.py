@@ -625,7 +625,7 @@ class PipelineVoiceMixin:
         return turn_generation, is_current
 
     def _ack_output_quarantined(self) -> bool:
-        """True while an old filler push is still blocked inside the SDK (fail closed)."""
+        """True while a search owns its final flush or an old SDK audio push is blocked."""
         return output_quarantined(self)
 
     def _start_kids_ack(
@@ -680,13 +680,14 @@ class PipelineVoiceMixin:
         refresh: Callable[[], object] | None = None,
         stage: str | None = None,
         delay: float | None = None,
+        search_owner: object | None = None,
     ) -> KidsAckPlayer | None:
         """Shared arming for every Kids wait; the caller supplies its immutable ownership fence.
 
         Uses only the verified packaged catalog for exactly ``language``, a matching voice proof
         and the common single-producer/quarantine owner. Any failure => silence.
         """
-        if (voice_proof is None and refresh is None) or self._ack_output_quarantined():
+        if (voice_proof is None and refresh is None) or output_quarantined(self, search_owner=search_owner):
             return None
         language_clips = stage_clips(kids_ack_catalog().get(language, ()), stage)
         push = getattr(self.robot.media, "push_audio_sample", None)

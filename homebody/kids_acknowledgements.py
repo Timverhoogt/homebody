@@ -224,11 +224,15 @@ class AckSelector:
 SETTLE_JOIN_SECONDS = 0.5
 
 
-def output_quarantined(owner: object) -> bool:
-    """Common audio-admission gate for every engine: True while an old filler push is blocked.
+def output_quarantined(owner: object, *, search_owner: object | None = None) -> bool:
+    """Block new voice admission while a search retains output or an old SDK push is blocked.
 
-    Reads producer state only; it never samples or clears stop generations.
+    A search owns a future final flush even after its clip thread exits. Only that exact internal
+    lease may arm its own filler; ordinary dispatchers/engines always use the default gate.
     """
+    search = getattr(owner, "_kids_search_audio_owner", None)
+    if search is not None and search is not search_owner:
+        return True
     producer = getattr(owner, "_kids_ack_producer", None)
     return producer is not None and bool(producer.inflight)
 

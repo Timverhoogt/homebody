@@ -31,6 +31,7 @@ The delays live in `homebody/kids_acknowledgements.py` (`SEARCH_WAIT_DELAY_SECON
 - **Continuation search and reply waits** use the existing turn fence: the exact Kids session, the immutable turn stop generation, the stop flag, privacy, Meeting/Sleep and shutdown.
 - **Initial Start search and shared-play I Spy searches** cannot use the turn flag: Start or the game-master transition raises it itself, and Awake later clears it. Each binds the immutable Kids generation (which also covers the unchanged outer deadline/expiry) and its own conversation-stop receipt, captured inside the same motor+Kids admission lock that issued it. Any later Stop, End, game switch/replacement, expiry, privacy, Sleep or shutdown therefore silences it. The clip is settled before the clue is handed to the announcement queue.
 - **Rechecks:** the fence is checked after the delay, after the proof read, before and after every PCM chunk, and while queued audio is audible.
+- **Search voice ownership:** standalone Start and shared-play search acquire the existing voice-activity lock outside the motor/Kids admission locks. A separate internal lease blocks common dispatcher/direct engine and microphone admission until the search's final settle/flush, including while proof is pending, while PCM is queued and after the filler thread exits. Only that exact lease may arm the search's own filler. Stop remains independent, and waiting for an older voice owner rechecks the original cancellation receipt. After scope release, a still-blocked SDK push remains quarantined by the producer gate. This prevents the search's later cleanup from clearing a newer answer.
 - **Single producer:** `install_producer` refuses to replace a filler producer that is still running (in flight, playing, watching its queue or resolving a proof). An old blocked SDK push therefore always remains the observed owner. Clue, reply and announcement speech, re-listen and new engines keep honouring the common `output_quarantined` gate until that push returns and flushes its own chunk.
 
 ## Tests
@@ -42,6 +43,7 @@ The delays live in `homebody/kids_acknowledgements.py` (`SEARCH_WAIT_DELAY_SECON
 - calm, adult, typed-guess, wrong-proof, wrong-model, missing-asset and unsupported-language silence;
 - cancellation during a held proof and between PCM chunks (Stop, End, privacy, replacement/game switch, Standby, shutdown, outer deadline expiry);
 - a held SDK push that quarantines output and blocks new producers, after which a healthy later producer is admitted and plays;
+- `tests/test_kids_search_audio_ownership.py` additionally holds initial/shared searches through queued audio and filler-thread exit, proves that no concurrent wake/listener/new answer is admitted, verifies no later search flush cuts newer speech, covers pending proof and adult/direct entry, and checks Stop while waiting for an older voice owner.
 - a hung push during a shared-play search that makes the real announcement worker refuse the clue at the common quarantine gate.
 
 ## Not done here

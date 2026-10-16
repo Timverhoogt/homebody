@@ -97,7 +97,8 @@ class KidsModeMixin:
         # one sampled right after Start, so any later Stop, End, privacy or Standby invalidates it.
         self._kids_first_listen: tuple[str, int, int, float] | None = None
         self._kids_ack_selector = AckSelector()
-        self._kids_ack_producer = None  # latest filler producer; quarantines audio while a push is blocked
+        self._kids_ack_producer = None  # latest filler producer; quarantines blocked SDK pushes
+        self._kids_search_audio_owner: object | None = None  # search owns its final flush, not just clip PCM
         self._kids_start_stop_generation = -1
         # Game master (host) state: categorical only, reset by every Start and End.
         self._kids_host_phase = ""
@@ -288,14 +289,8 @@ class KidsModeMixin:
             greeting = host_line(profile.language, "lobby", a=first, b=second)
             lines = ({"kind": "host", "key": "lobby", "a": first, "b": second},)
         elif profile.activity == "ispy":
-            waiting = self._start_initial_search_wait(generation, profile, start_stop_generation)
             try:
-                try:
-                    ispy_target = self._prepare_ispy_round(generation, profile)
-                finally:
-                    if waiting is not None:
-                        waiting.wait_finished()
-                        waiting.settle()  # before the clue announcement or any failure teardown
+                ispy_target = self._prepare_owned_ispy_search(generation, profile, start_stop_generation)
             except Exception as exc:
                 _LOGGER.warning("I Spy start failed (%s): %s", type(exc).__name__, exc)
                 if self._kids_callback_is_current(generation):
@@ -549,7 +544,51 @@ class KidsModeMixin:
             if waiting is not None:
                 waiting.settle()
 
-    def _start_initial_search_wait(self, generation: int, profile: KidsProfile, start_stop_generation: int):
+    def _prepare_owned_ispy_search(
+        self, generation: int, profile: KidsProfile, stop_generation: int,
+    ) -> ISpyTarget:
+        """Own the voice channel through the search's final flush, not only its PCM pushes.
+
+        Admission's motor/Kids locks have already been released. Wait cancellably for any older
+        voice owner, then reserve the common direct-entry gate as well as the serialization lock.
+        Queued filler and even an exited filler thread retain a future clear until this scope ends.
+        A stuck push remains protected by the ordinary producer quarantine after scope release.
+        """
+        def current() -> bool:
+            with self._conversation_stop_generation_lock:
+                stopped = stop_generation >= 0 and self._conversation_stop_generation != stop_generation
+            return (
+                not stopped and self._kids_callback_is_current(generation)
+                and not self.stop_event.is_set() and not self._privacy_requested.is_set()
+                and self._effective_power_mode() not in {"meeting", "sleep"}
+            )
+
+        while not self._voice_activity_lock.acquire(timeout=0.05):
+            if not current():
+                raise ISpyCancelled("I Spy search voice admission was cancelled")
+        owner = object()
+        try:
+            if not current():
+                raise ISpyCancelled("I Spy search voice admission was cancelled")
+            self._kids_search_audio_owner = owner
+            waiting = self._start_initial_search_wait(
+                generation, profile, stop_generation, search_owner=owner,
+            )
+            try:
+                return self._prepare_ispy_round(generation, profile)
+            finally:
+                if waiting is not None:
+                    waiting.wait_finished()
+                    waiting.settle()  # final flush while no newer voice/listener can be admitted
+        finally:
+            if getattr(self, "_kids_search_audio_owner", None) is owner:
+                self._kids_search_audio_owner = None
+            self._voice_activity_lock.release()
+
+    def _start_initial_search_wait(
+        self, generation: int, profile: KidsProfile, start_stop_generation: int, *,
+        search_owner: object | None = None,
+    ):
         """Arm one delayed "Let's see." for a Start or game-master I Spy search; None when ineligible.
 
         Start/transition itself raised the conversation stop flag (and Awake later clears it), so
@@ -583,7 +622,7 @@ class KidsModeMixin:
 
         return self._arm_kids_wait_speech(
             profile.language, is_current, refresh=refresh, stage="see",
-            delay=kids_acknowledgements.SEARCH_WAIT_DELAY_SECONDS,
+            delay=kids_acknowledgements.SEARCH_WAIT_DELAY_SECONDS, search_owner=search_owner,
         )
 
     def _assert_ispy_current(self, generation: int, *, turn_bound: bool = False) -> None:
@@ -1040,14 +1079,8 @@ class KidsModeMixin:
         self._notify_bridge_kids_session_async(new_session_id, active=True)
         intro = host_line(profile.language, "start", a=activity)
         if activity == "ispy":
-            waiting = self._start_initial_search_wait(generation, profile, transition_stop_generation)
             try:
-                try:
-                    target = self._prepare_ispy_round(generation, profile)
-                finally:
-                    if waiting is not None:
-                        waiting.wait_finished()
-                        waiting.settle()  # before the clue handoff; a blocked push keeps output quarantined
+                target = self._prepare_owned_ispy_search(generation, profile, transition_stop_generation)
             except Exception as exc:
                 _LOGGER.warning("Hosted I Spy round failed (%s)", type(exc).__name__)
                 if self._kids_callback_is_current(generation):
