@@ -7,6 +7,7 @@ Usage: python asr_fake_worker.py MODE SOCKET MANIFEST
 
 from __future__ import annotations
 
+import ctypes
 import os
 import signal
 import sys
@@ -26,6 +27,8 @@ class FakeBackend:
         self.identity = {"backend": "fake", "env_keys": sorted(os.environ)}
 
     def recognize(self, samples: bytearray, language: str | None) -> str:
+        if self.mode == "native_hang_decode":
+            ctypes.PyDLL(None).sleep(600)  # deliberately retains the GIL in this child only
         if self.mode == "hang_decode" or len(samples) // 4 == 4321:  # 4321 samples: hang on demand
             time.sleep(600)
         if self.mode == "crash_decode":
@@ -37,6 +40,8 @@ class FakeBackend:
 
 def factory(mode: str):
     def build(_manifest):
+        if mode == "native_hang_load":
+            ctypes.PyDLL(None).sleep(600)
         if mode == "hang_load":
             time.sleep(600)
         if mode == "fail_load":

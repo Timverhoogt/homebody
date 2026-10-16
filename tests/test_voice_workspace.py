@@ -113,7 +113,7 @@ def test_pipeline_hooks_record_real_accepted_messages(monkeypatch, clear_during_
         def transcribe(self, _audio):
             return "Tell me about the roadmap"
 
-        def everyday_turn(self, _transcript):
+        def everyday_turn(self, _transcript, *, context=None):
             if clear_during_chat:
                 runtime.workspace("clear")
                 runtime.workspace("start")
@@ -140,7 +140,8 @@ def test_pipeline_hooks_record_real_accepted_messages(monkeypatch, clear_during_
         assert "workspace" not in runtime.status()  # Never added to public status.
 
 
-def test_everyday_pipeline_progress_does_not_claim_full_hermes(monkeypatch):
+@pytest.mark.parametrize("advance_during_stt", [False, True])
+def test_everyday_pipeline_progress_does_not_claim_full_hermes(monkeypatch, advance_during_stt):
     runtime = runtime_fixture()
     runtime.workspace("start")
     runtime._record_utterance = lambda _config: EndpointResult(
@@ -163,9 +164,13 @@ def test_everyday_pipeline_progress_does_not_claim_full_hermes(monkeypatch):
             return {"status": "ok"}
 
         def transcribe(self, _audio):
+            if advance_during_stt:
+                with runtime._agent_lock:
+                    runtime._agent_session_generation += 1
             return "What time is it?"
 
-        def everyday_turn(self, _transcript):
+        def everyday_turn(self, _transcript, *, context=None):
+            assert context.session_generation == original_generation
             return "It is noon."
 
         def synthesize(self, _text):
@@ -175,6 +180,7 @@ def test_everyday_pipeline_progress_does_not_claim_full_hermes(monkeypatch):
             pass
 
     monkeypatch.setattr("homebody.runtime.HermesBridgeClient", Client)
+    original_generation = runtime.agent_broker_context(explicit_private_intent=False).session_generation
     runtime._run_conversation(AppConfig(continuous_conversation=False))
     activity = [e["text"] for e in runtime.workspace()["events"] if e["role"] == "activity"]
     assert "Everyday is responding" in activity

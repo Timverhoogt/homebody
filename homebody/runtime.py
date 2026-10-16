@@ -299,7 +299,12 @@ class HermesVoiceRuntime(
         with self._conversation_stop_generation_lock:
             self._conversation_stop_generation += 1
             self._conversation_stop_requested.set()
-            return self._conversation_stop_generation
+            generation = self._conversation_stop_generation
+        client = getattr(self, "_robot_stt", None)
+        cancel = getattr(client, "cancel", None)
+        if callable(cancel):
+            cancel(release=self._privacy_requested.is_set())
+        return generation
 
     def _accept_wake_turn(self) -> None:
         """Begin a new wake-started turn that earlier stop requests no longer cancel."""

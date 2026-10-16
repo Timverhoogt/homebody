@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import re
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -20,7 +21,7 @@ from .config import AppConfig
 from .hermes_client import HermesBridgeError, SpeechAudio
 from .kids_acknowledgements import KidsAckPlayer, eligible_clips, output_quarantined
 from .kids_acknowledgements import catalog as kids_ack_catalog
-from .robot_stt import RobotSttClient
+from .robot_stt import RobotSttCancelled, RobotSttClient, RobotSttUnavailable
 from .stt_routing import (
     SttInfrastructureError,
     SttResult,
@@ -85,6 +86,10 @@ class PipelineVoiceMixin:
         ):
             self._invalidate_ispy_input()
         config = initial_config
+        # Freeze before blocking work; a later Stop/new wake must not donate its authority.
+        everyday_context = self.agent_broker_context(explicit_private_intent=False)
+        if typed_input is None:
+            self._prewarm_robot_stt(config)
         client = self._new_bridge_client(config)
         workspace_generation = None
 
@@ -352,7 +357,7 @@ class PipelineVoiceMixin:
                     response_text = client.chat(transcript)  # dedicated Kids route, unchanged
                 else:
                     # Everyday: the narrow fast backend, never the full Hermes agent.
-                    response_text = client.everyday_turn(transcript)
+                    response_text = client.everyday_turn(transcript, context=everyday_context)
                 self._voice_timings.mark("tool_result")  # backend text returned (not "heard")
                 if (
                     not conversation_is_current()
@@ -522,6 +527,42 @@ class PipelineVoiceMixin:
             self._voice_timings.end()
             self._workspace_event(workspace_generation, "activity", "Voice session ended")
             client.close()
+
+    def _prewarm_robot_stt(self, config: AppConfig) -> None:
+        """Only an admitted pipeline/Kids voice turn may request synthetic prewarming.
+
+        Runs alongside bridge health/endpoint capture, never owns capture itself. No retry
+        loop: failed readiness remains an infrastructure failure on the actual turn.
+        """
+        if config.stt_provider != "robot":
+            return
+        _, current = self._stt_turn_fence(config.kids_session_id if config.kids_mode_enabled else "")
+
+        def cancelled() -> bool:
+            return not current() or self.config_loader().stt_provider != "robot"
+
+        if cancelled():
+            return
+        with self._status_lock:
+            previous = getattr(self, "_robot_stt_warm_thread", None)
+            if previous is not None and previous.is_alive():
+                return
+            client = getattr(self, "_robot_stt", None)
+            if client is None:
+                client = self._robot_stt = RobotSttClient()
+            warm = getattr(client, "prewarm", None)
+            if not callable(warm):
+                return
+
+            def run() -> None:
+                try:
+                    warm(cancelled=cancelled)
+                except (RobotSttCancelled, RobotSttUnavailable, OSError, ValueError):
+                    pass  # optional optimisation, never host replay or synthesized speech
+
+            thread = threading.Thread(target=run, name="robot-stt-prewarm", daemon=True)
+            self._robot_stt_warm_thread = thread
+            thread.start()
 
     def _robot_stt_client(self) -> RobotSttClient:
         """The one owned on-robot ASR client; created on first robot-routed turn."""

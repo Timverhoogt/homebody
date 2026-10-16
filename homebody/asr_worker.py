@@ -59,7 +59,7 @@ NEMO_BACKEND = "nemo_speech_c_abi"
 PINNED_NEMO_REVISION = "083861c241061562b8ec29eb06d7f6cdc3af8775"
 LOAD_TIMEOUT_SECONDS = 90.0
 DECODE_TIMEOUT_SECONDS = 20.0
-IDLE_SECONDS = 600.0
+IDLE_SECONDS = 120.0
 IO_TIMEOUT_SECONDS = 5.0
 _WATCHDOG_GRACE_SECONDS = 2.0
 _SESSION = re.compile(r"^[A-Za-z0-9_-]{0,64}$")
@@ -335,7 +335,7 @@ def parse_header(raw: bytes) -> dict:
         raise ProtocolError("malformed") from None
     if not isinstance(header, dict) or header.get("v") != PROTOCOL_VERSION:
         raise ProtocolError("malformed")
-    if header.get("op") == "status" and set(header) == {"v", "op"}:
+    if header.get("op") in {"status", "warmup"} and set(header) == {"v", "op"}:
         return header
     if header.get("op") != "recognize" or set(header) != _RECOGNIZE_KEYS:
         raise ProtocolError("malformed")
@@ -430,6 +430,8 @@ def serve(
         staging = socket_path.with_name(f".worker-{os.getpid()}.sock")
         published_inode = None
         served = 0
+        inference_warm = False
+        warmup_ms = 0
         try:
             staging.unlink(missing_ok=True)
             server.bind(str(staging))
@@ -455,10 +457,23 @@ def serve(
                         continue
                     except OSError:
                         continue
-                    if header["op"] == "status":
+                    if header["op"] == "warmup":
+                        if not inference_warm:
+                            started = time.monotonic()
+                            try:
+                                # RAM-only synthetic silence; discard even hallucinated text.
+                                backend.recognize(bytearray(SAMPLE_RATE * 4), None)
+                            except Exception:
+                                _send(conn, {"v": PROTOCOL_VERSION, "status": "error", "error": "backend"})
+                                continue
+                            warmup_ms = int((time.monotonic() - started) * 1000)
+                            inference_warm = True
+                    if header["op"] in {"status", "warmup"}:
                         _send(conn, {
                             "v": PROTOCOL_VERSION, "status": "ok", "accelerator": accelerator,
                             "load_ms": load_ms, "rss_peak_kb": _peak_rss_kb(),
+                            "model_ready": True, "inference_warm": inference_warm,
+                            "warmup_ms": warmup_ms,
                             "identity": dict(getattr(backend, "identity", {}) or {}),
                         })
                         continue
@@ -479,6 +494,8 @@ def serve(
                         continue
                     finally:
                         del samples
+                    if header["samples"] > 0:
+                        inference_warm = True
                     _send(conn, {
                         **echo, "status": "ok", "text": str(text or "")[:4000], "processing": "robot",
                         "accelerator": accelerator, "decode_ms": int((time.monotonic() - started) * 1000),
