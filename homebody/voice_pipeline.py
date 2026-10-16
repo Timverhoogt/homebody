@@ -473,7 +473,9 @@ class PipelineVoiceMixin:
                     )
                 if (
                     not conversation_is_current()
+                    or self.stop_event.is_set()
                     or self._turn_stop_requested()
+                    or self._privacy_requested.is_set()
                     or self._effective_power_mode() in {"meeting", "sleep"}
                 ):
                     break
@@ -491,22 +493,30 @@ class PipelineVoiceMixin:
                 if (
                     not interrupted
                     and client.config.kids_mode_enabled
-                    and not client.config.kids_host_enabled
                     and client.config.kids_activity == "ispy"
-                    and client.last_kids_next_action == "prepare_robot_round"
+                    and (
+                        (not client.config.kids_host_enabled and client.last_kids_next_action == "prepare_robot_round")
+                        or (
+                            client.last_kids_next_action == "prepare_player_view"
+                            and (not client.config.kids_host_enabled or client.last_kids_game_state == "playing")
+                        )
+                    )
                 ):
                     try:
-                        interrupted = self._continue_ispy_reachy_turn(
-                            client,
-                            barge_in=config.barge_in_enabled,
-                        )
+                        if client.last_kids_next_action == "prepare_player_view":
+                            interrupted = self._continue_ispy_player_turn(client, barge_in=config.barge_in_enabled)
+                        else:
+                            client.last_kids_next_action = ""  # consume this response before blocking
+                            interrupted = self._continue_ispy_reachy_turn(client, barge_in=config.barge_in_enabled)
                     except ISpyCancelled:
                         # Stop/End/privacy already owns status and motors; end this turn quietly.
                         _LOGGER.info("I Spy round ended by cancellation")
                         break
                     if (
                         not conversation_is_current()
+                        or self.stop_event.is_set()
                         or self._turn_stop_requested()
+                        or self._privacy_requested.is_set()
                         or self._effective_power_mode() in {"meeting", "sleep"}
                     ):
                         break

@@ -117,7 +117,9 @@ def test_dutch_name_survives_all_reveal_paths_and_speech_approval(monkeypatch, t
         "profile": {"age_band": "7-9", "activity": "ispy", "language": "nl"},
     }))).text)
     assert "stoel" in payload["text"] and "chair" not in payload["text"]
-    assert payload["ispy_phase"] == "awaiting_clue"
+    assert payload["ispy_phase"] == "awaiting_view"
+    assert payload["ispy_next_action"] == "prepare_player_view"
+    assert harness.bridge._kids_sessions[SESSION]["ispy_view_token"] == payload["ispy_view_token"]
     assert "ispy_target" not in session
     assert payload["text"] in harness.moderated
     assert harness.bridge._kids_speech_approvals[payload["speech_approval"]]["language"] == "nl"
