@@ -93,10 +93,22 @@ class AckClip:
     samples: np.ndarray
     sample_rate: int
     voice_sha256: str = ""  # from the manifest; usable only if the host's current proof matches
+    text: str = ""  # one of ALLOWED_PHRASES; selects the wait stage, never spoken or logged
 
     @property
     def duration(self) -> float:
         return self.samples.size / float(self.sample_rate)
+
+    @property
+    def stage(self) -> str:
+        """'see' for the fixed looking phrase ("Eens kijken."/"Let's see."), otherwise 'think'."""
+        phrases = _PHRASES.get(self.language, ())
+        return "see" if len(phrases) > 2 and self.text.rstrip(".…") == phrases[2] else "think"
+
+
+def stage_clips(clips: tuple[AckClip, ...], stage: str | None) -> tuple[AckClip, ...]:
+    """Clips for one wait stage; ``None`` keeps the original STT behaviour (any phrase)."""
+    return tuple(clips) if stage is None else tuple(clip for clip in clips if clip.stage == stage)
 
 
 def _decode_wav(data: bytes) -> tuple[np.ndarray, int]:
@@ -173,7 +185,7 @@ def load_catalog(
                 or abs(samples.size / rate - float(declared)) > 0.02
             ):
                 raise ValueError("clip metadata does not match its audio")
-            catalog[language].append(AckClip(language, name, samples, rate, manifest["voice_sha256"]))
+            catalog[language].append(AckClip(language, name, samples, rate, manifest["voice_sha256"], text))
         return {language: tuple(clips) for language, clips in catalog.items()}
     except FileNotFoundError:
         _LOGGER.info("Kids acknowledgement clips are not installed; no thinking filler")
@@ -183,6 +195,10 @@ def load_catalog(
 
 
 ACK_DELAY_SECONDS = 1.0  # only when STT is genuinely still pending after a noticeable pause
+# Waiting speech beyond STT: one clip only if the I Spy camera search / backend reply is still
+# pending after these delays (read at arm time so tests can shorten them).
+SEARCH_WAIT_DELAY_SECONDS = 1.0
+REPLY_WAIT_DELAY_SECONDS = 1.5
 ACK_COOLDOWN_SECONDS = 8.0
 _CHUNK_SECONDS = 0.1
 
@@ -208,13 +224,36 @@ class AckSelector:
 SETTLE_JOIN_SECONDS = 0.5
 
 
-def output_quarantined(owner: object) -> bool:
-    """Common audio-admission gate for every engine: True while an old filler push is blocked.
+def output_quarantined(owner: object, *, search_owner: object | None = None) -> bool:
+    """Block new voice admission while a search retains output or an old SDK push is blocked.
 
-    Reads producer state only; it never samples or clears stop generations.
+    A search owns a future final flush even after its clip thread exits. Only that exact internal
+    lease may arm its own filler; ordinary dispatchers/engines always use the default gate.
     """
+    search = getattr(owner, "_kids_search_audio_owner", None)
+    if search is not None and search is not search_owner:
+        return True
     producer = getattr(owner, "_kids_ack_producer", None)
     return producer is not None and bool(producer.inflight)
+
+
+_install_lock = threading.Lock()
+
+
+def install_producer(owner: object, player: KidsAckPlayer) -> bool:
+    """Make ``player`` the owner's single filler producer and start it, or refuse.
+
+    Refused while the previous producer is still running (in flight, playing, watching its
+    queued audio or resolving a proof): a newer producer never replaces a live old owner, so
+    ``output_quarantined`` always observes the one producer that may still push or clear.
+    """
+    with _install_lock:
+        previous = getattr(owner, "_kids_ack_producer", None)
+        if previous is not None and previous.running:
+            return False
+        owner._kids_ack_producer = player  # type: ignore[attr-defined]
+        player.start()
+        return True
 
 
 class KidsAckPlayer:
@@ -227,13 +266,12 @@ class KidsAckPlayer:
 
     SDK limits, stated honestly: ``push_audio_sample``/``clear_player`` are opaque SDK calls and
     Python cannot forcibly cancel a thread blocked inside one. Therefore no lock is ever held
-    across them; ``inflight`` is True from just before a push until that push has returned AND any
-    required post-cancel flush has run. ``settle`` returns after a bounded join; if a push is still
-    in flight it returns False and the caller must treat audio output as quarantined (no answer
-    speech, re-listen or new stream/announcement) until ``inflight`` clears. A chunk admitted after
-    cancellation is flushed by the producer before ``inflight`` clears, so the flush can never cut
-    newer approved speech: none may start while the producer is quarantined. Whether audio was
-    admitted is tracked from actual push calls, never inferred only from an estimated deadline.
+    across them; ``inflight`` covers pushes, every outstanding clear, and admitted producer threads
+    that can still perform a late clear after settlement. A bounded join does not discharge an
+    outstanding flush obligation. A failed clear leaves output quarantined for runtime recovery.
+    ``settle`` returns after a bounded join plus its own opaque clear; if producer work survives it
+    returns False and the caller must keep output quarantined (no answer, re-listen or announcement).
+    No newer audio is admitted until the old push, pending watcher and all clears are quiescent.
     """
 
     def __init__(self, *, clips, selector, push, clear, is_current, resample, output_rate, clock, delay=None):
@@ -250,6 +288,8 @@ class KidsAckPlayer:
         self._settled = threading.Event()
         self._lock = threading.Lock()  # guards state only; never held across SDK calls
         self._inflight = False
+        self._clears_inflight = 0  # every opaque clear, including the queued-audio watcher
+        self._clear_failed = False  # unknown output state fails closed until runtime recovery
         self._admitted = False  # at least one push was entered (its audio may be queued)
         self.queued_until = 0.0  # estimate only, used solely to keep watching for cancellation
         self.first_enqueue_at: float | None = None
@@ -259,7 +299,35 @@ class KidsAckPlayer:
     @property
     def inflight(self) -> bool:
         with self._lock:
-            return self._inflight
+            return bool(
+                self._inflight or self._clears_inflight or self._clear_failed
+                or (self._settled.is_set() and self._admitted and self._thread.is_alive())
+            )
+
+    def _clear_output(self) -> None:
+        """Keep quarantine until this exact clear returns; never hold a lock across the SDK."""
+        with self._lock:
+            self._clears_inflight += 1
+        try:
+            self._clear()
+        except Exception:
+            with self._lock:
+                self._clear_failed = True
+            _LOGGER.warning("Kids filler audio clear failed; output remains quarantined")
+        finally:
+            with self._lock:
+                self._clears_inflight -= 1
+
+    @property
+    def running(self) -> bool:
+        """True until the producer thread has exited and no push is in flight."""
+        return self.inflight or self._thread.is_alive()
+
+    @property
+    def clip_started(self) -> bool:
+        """At least one PCM push was entered for this wait (actual call, not an estimate)."""
+        with self._lock:
+            return self._admitted
 
     def start(self) -> KidsAckPlayer:
         self._thread.start()
@@ -289,7 +357,8 @@ class KidsAckPlayer:
         for offset in range(0, pcm.size, step):
             chunk = pcm[offset : offset + step]
             with self._lock:
-                if self._cancelled():
+                # A wait that finished after selection but before the first push stays silent.
+                if self._cancelled() or (not self._admitted and self._stt_done.is_set()):
                     break
                 self._inflight = True
                 self._admitted = True
@@ -303,7 +372,7 @@ class KidsAckPlayer:
                 if cancelled_after:
                     # A chunk admitted after Stop/End/privacy/replacement/expiry/settle is flushed
                     # while still marked in flight, so nothing newer can be playing yet.
-                    self._clear()
+                    self._clear_output()
                 with self._lock:
                     now = self._clock()
                     self.queued_until = max(self.queued_until, now) + chunk.size / float(self._output_rate)
@@ -317,13 +386,16 @@ class KidsAckPlayer:
             if not watching:
                 return
             if not self._is_current():
-                self._clear()
+                self._clear_output()
                 return
             self._settled.wait(0.02)
 
     def stt_finished(self) -> None:
         """STT returned: never start a clip now; one already queued may finish during the reply request."""
         self._stt_done.set()
+
+    # The same contract for every wait (camera search, backend reply): the work it covered is done.
+    wait_finished = stt_finished
 
     def settle(self) -> bool:
         """Before reply speech, a re-listen or exit: stop, bounded join, flush anything admitted.
@@ -336,11 +408,13 @@ class KidsAckPlayer:
         if self._thread.is_alive() and self._thread is not threading.current_thread():
             self._thread.join(timeout=SETTLE_JOIN_SECONDS)
         with self._lock:
-            admitted, inflight = self._admitted, self._inflight
+            admitted = self._admitted
         if admitted:
             # Decided from actual pushes, not from an estimated deadline.
-            self._clear()
-        return not inflight
+            self._clear_output()
+        # Re-read after our clear: another producer clear or pending watcher may still survive
+        # the bounded join. Its complete obligation, not just a sampled push, owns quarantine.
+        return not self.inflight
 
 
 _catalog_lock = threading.Lock()

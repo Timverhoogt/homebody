@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from .audio import resample_linear
 from .config import AppConfig
+from .everyday_runtime import completed_everyday_call
 from .kids_acknowledgements import output_quarantined
 from .realtime_client import RealtimeBridgeError, RealtimeBridgeSession
 from .robot_tools import completed_robot_tool_call
@@ -241,6 +242,9 @@ class RealtimeVoiceMixin:
             return
         if output_quarantined(self):
             return  # direct entry: same common audio-quarantine gate as the dispatcher
+        local_closed = threading.Event()
+        original_fence = (self.everyday_tool_fence(local_closed)
+                          if callable(getattr(self, "everyday_tool_fence", None)) else None)
         broker_context = self.agent_broker_context(explicit_private_intent=False)
         agent_request_id = ""
         if broker_context.capability_profile == "agent":
@@ -269,6 +273,8 @@ class RealtimeVoiceMixin:
         handled_camera_call_ids: set[str] = set()
         handled_robot_call_ids: set[str] = set()
         handled_power_call_ids: set[str] = set()
+        handled_local_call_ids: set[str] = set()
+        local_fence = original_fence if timing_mode == "everyday" else None
         active_response_id = ""
         interrupted_response_ids: set[str] = set()
         try:
@@ -390,7 +396,23 @@ class RealtimeVoiceMixin:
                     camera_call_id = completed_camera_call_id(kind, payload)
                     robot_call = completed_robot_tool_call(kind, payload)
                     power_call = completed_power_mode_call(kind, payload)
-                    if power_call is not None and power_call.call_id not in handled_power_call_ids:
+                    local_call = completed_everyday_call(kind, payload) if local_fence is not None else None
+                    if local_call is not None:
+                        call_id, name, args = local_call
+                        if call_id in handled_local_call_ids:
+                            continue
+                        if len(handled_local_call_ids) >= 128:
+                            session.send_tool_result(
+                                call_id, {"ok": False, "error": "Conversation tool limit reached"},
+                            )
+                            continue
+                        handled_local_call_ids.add(call_id)
+                        self.launch_everyday_tool(
+                            name, args, fence=local_fence, call_id=call_id,
+                            deliver=lambda result, identifier=call_id: session.send_tool_result(identifier, result),
+                            is_current=lambda: not local_closed.is_set() and not self._turn_stop_requested(),
+                        )
+                    elif power_call is not None and power_call.call_id not in handled_power_call_ids:
                         handled_power_call_ids.add(power_call.call_id)
                         if config.power_tools_enabled:
                             self._handle_power_mode_call(session, power_call)
@@ -542,6 +564,7 @@ class RealtimeVoiceMixin:
             session_completed = True
         finally:
             # Local Stop wins: flush the speaker before the (possibly slow) socket close.
+            local_closed.set()
             self._clear_streamed_audio()
             session.close()
             timings.end()

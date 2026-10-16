@@ -20,12 +20,34 @@ import json
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
 from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
 
+try:
+    from companion.everyday_manifest import (
+        EVERYDAY_TURN_TIMEOUT_SECONDS,
+        LocalExecutor,
+        LocalToolTransport,
+        validate_local_tool_names,
+    )
+except ModuleNotFoundError:
+    from everyday_manifest import (
+        EVERYDAY_TURN_TIMEOUT_SECONDS,
+        LocalExecutor,
+        LocalToolTransport,
+        validate_local_tool_names,
+    )
+
 _LOGGER = logging.getLogger(__name__)
+_TURN_CURRENT: ContextVar[Callable[[], bool]] = ContextVar("live_turn_current", default=lambda: True)
+
+
+def current_live_turn() -> bool:
+    """Original delegation revision shared by host tools as well as local RPCs."""
+    return _TURN_CURRENT.get()()
 
 LIVE_URL = "wss://api.openai.com/v1/live/sessions"
 LIVE_MODELS = frozenset({"gpt-live-1"})
@@ -195,6 +217,7 @@ async def serve_live(
     connect_timeout: float = 10.0,
     started_timeout: float = 15.0,
     transcript_grace: float = TRANSCRIPT_GRACE_SECONDS,
+    answer_with_local: Callable[[dict[str, Any], LocalExecutor], Answer] | None = None,
 ) -> web.WebSocketResponse:
     """Relay one robot Live session. ``answer(config)`` returns the narrow backend for its mode;
     ``allowed(config)`` re-checks Kids/generation/authorization and ends the session when false."""
@@ -208,6 +231,10 @@ async def serve_live(
         config = json.loads(first.data) if first.type == WSMsgType.TEXT else {}
         if not isinstance(config, dict) or config.get("type") != "session.start":
             raise ValueError("session.start required")
+        # The original wire context must remain fixed for this socket's lifetime.
+        config = json.loads(json.dumps(config))
+        if config.get("assistant_mode") == "everyday":
+            validate_local_tool_names(config.get("local_tools", []))
         model, voice = config.get("model"), config.get("voice")
         if model not in LIVE_MODELS or voice not in LIVE_VOICES:
             raise ValueError("unsupported Live model or voice")
@@ -218,7 +245,8 @@ async def serve_live(
             raise PermissionError("Live session is not allowed in the current state")
         backend = answer(config)
         await _relay(client, config, key, backend, allowed, state, transcript, tasks, upstream_url,
-                     connect_timeout, started_timeout, timeout, transcript_grace, str(model), str(voice))
+                     connect_timeout, started_timeout, timeout, transcript_grace, str(model), str(voice),
+                     answer_with_local)
     except Exception as exc:
         _LOGGER.warning("Live relay ended (%s)", type(exc).__name__)
         if not client.closed:
@@ -237,10 +265,28 @@ async def serve_live(
 
 
 async def _relay(client, config, key, backend, allowed, state, transcript, tasks, upstream_url,
-                 connect_timeout, started_timeout, timeout, transcript_grace, model, voice) -> None:
+                 connect_timeout, started_timeout, timeout, transcript_grace, model, voice,
+                 answer_with_local=None) -> None:
     send_lock = asyncio.Lock()
     backend_lock = asyncio.Lock()
     carry = AudioCarry()
+    local = LocalToolTransport(config.get("local_tools", [])
+                               if config.get("assistant_mode") == "everyday" else [], client.send_json)
+    active_turn: ContextVar[tuple[int, float]] = ContextVar("live_local_turn")
+
+    async def local_execute(name: str, arguments: dict) -> dict:
+        revision, deadline = active_turn.get()
+        def current() -> bool:
+            return not state.closed.is_set() and not client.closed and state.revision == revision
+        if not current() or not await allowed(config):
+            raise PermissionError("stale Live operation")
+        result = await local.execute(name, arguments, deadline=deadline, current=current)
+        if not current() or not await allowed(config):
+            raise PermissionError("stale Live result")
+        return result
+
+    if local.names and answer_with_local is not None:
+        backend = answer_with_local(config, local_execute)
     async with ClientSession(timeout=ClientTimeout(total=None, connect=connect_timeout)) as http:
         async with http.ws_connect(upstream_url, headers={"Authorization": f"Bearer {key}"},
                                    max_msg_size=_MAX_MESSAGE_BYTES, heartbeat=20) as upstream:
@@ -254,7 +300,11 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
 
             await send(event("session.start", session={
                 "model": model,
-                "instructions": LIVE_INSTRUCTIONS,
+                "instructions": (LIVE_INSTRUCTIONS.replace(
+                    "Camera, robot movement and personal memory are unavailable in this session.",
+                    "Delegate explicit camera, speaker, robot status, power and gesture requests to the client. "
+                    "Never claim an operation succeeded without a delegated result. Personal memory is unavailable.")
+                    if local.names and answer_with_local is not None else LIVE_INSTRUCTIONS),
                 "store": False,
                 "audio": {"format": {"type": "audio/pcm", "rate": 24000}, "output": {"voice": voice}},
                 "delegation": {"type": "client"},
@@ -290,7 +340,20 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                     try:
                         if not await allowed(config):
                             raise PermissionError("not allowed")
-                        reply = await backend(text, context)
+                        token = active_turn.set((revision, asyncio.get_running_loop().time()
+                                                 + EVERYDAY_TURN_TIMEOUT_SECONDS))
+                        current_token = _TURN_CURRENT.set(
+                            lambda: not state.closed.is_set() and not client.closed and state.revision == revision)
+                        try:
+                            if local.names and answer_with_local is not None:
+                                async with asyncio.timeout(EVERYDAY_TURN_TIMEOUT_SECONDS):
+                                    reply = await backend(text, context)
+                            else:
+                                # Legacy and Workspace retain their existing backend budgets.
+                                reply = await backend(text, context)
+                        finally:
+                            _TURN_CURRENT.reset(current_token)
+                            active_turn.reset(token)
                         if not await allowed(config):
                             raise PermissionError("not allowed")
                         if isinstance(reply, DelegationResult):
@@ -375,6 +438,11 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                     kind = payload.get("type") if isinstance(payload, dict) else None
                     if kind == "session.close":
                         return
+                    if kind == "everyday.tool_result":
+                        if state.closed.is_set() or not await allowed(config):
+                            raise PermissionError("stale Live result")
+                        local.receive(payload)
+                        continue  # robot RPC results never go to the speech provider
                     if kind != "session.input_audio.append" or not isinstance(payload.get("audio"), str):
                         raise ValueError("unsupported Live client event")
                     try:
@@ -397,6 +465,7 @@ async def _relay(client, config, key, backend, allowed, state, transcript, tasks
                 await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
             finally:
                 state.closed.set()  # reject late delegation callbacks before cloud close
+                local.close()
                 for task in tasks | set(pumps):
                     task.cancel()
                 await asyncio.gather(*tasks, *pumps, return_exceptions=True)
