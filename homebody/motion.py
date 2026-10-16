@@ -62,6 +62,8 @@ class VoiceMotion:
             self._power_suspended = True
             self._wobble_generation += 1
             stop_playback()
+            if self._playback is not None:
+                self._playback.confirm_stopped()
             self.close()
 
     def awake(self) -> None:

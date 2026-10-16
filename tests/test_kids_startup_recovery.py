@@ -50,6 +50,9 @@ class Media:
     def play_sound(self, _path):
         pass
 
+    def stop_playing(self):
+        pass
+
 
 class Robot:
     def __init__(self, ready=True):

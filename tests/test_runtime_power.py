@@ -32,6 +32,9 @@ class FakeMedia:
     def start_playing(self) -> None:
         self.playing_starts += 1
 
+    def stop_playing(self) -> None:
+        self.recording = False
+
     def play_sound(self, path: str) -> None:
         self.played.append(path)
 
