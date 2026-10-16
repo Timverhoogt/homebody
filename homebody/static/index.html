@@ -13,9 +13,9 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=99">
-  <link rel="stylesheet" href="/static/scene.css?v=99">
-  <link rel="stylesheet" href="/static/onboarding.css?v=99">
+  <link rel="stylesheet" href="/static/style.css?v=100">
+  <link rel="stylesheet" href="/static/scene.css?v=100">
+  <link rel="stylesheet" href="/static/onboarding.css?v=100">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -210,21 +210,49 @@
           <div><p class="label">Everyday</p><h2 id="everyday-heading">Quick help at home</h2></div>
           <span id="everyday-badge" class="badge">Checking…</span>
         </div>
-        <div id="everyday-companion" class="everyday-companion"></div>
-        <dl class="everyday-facts">
+        <dl class="everyday-facts everyday-voice-fact">
           <div><dt>Selected voice engine</dt><dd id="everyday-voice">—</dd></div>
-          <div><dt>Weather</dt><dd id="everyday-weather">—</dd></div>
-          <div><dt>Home controls</dt><dd id="everyday-devices">—</dd></div>
         </dl>
-        <p id="everyday-voice-note" class="muted">Voice and text-backend settings are separate.</p>
-        <details id="everyday-technical-details"><summary>Providers and device details</summary>
-          <dl class="everyday-facts">
-            <div><dt>Text backend — not the voice model</dt><dd id="everyday-model">—</dd></div>
-            <div><dt>Time source</dt><dd id="everyday-time">—</dd></div>
-          </dl>
-          <p class="muted">Technical entity IDs permitted for home controls and status:</p>
-          <pre id="everyday-device-ids">—</pre>
+        <p id="everyday-voice-note" class="muted">Selection is not an active voice session.</p>
+        <p id="everyday-summary">Checking permitted home help…</p>
+        <p id="everyday-camera-activity" class="muted" role="status">Camera session status not reported.</p>
+        <details id="everyday-permissions"><summary>Manage permissions</summary>
+          <div class="everyday-permission-groups">
+            <section aria-labelledby="everyday-robot-heading">
+              <h3 id="everyday-robot-heading">Robot &amp; camera</h3>
+              <p id="everyday-robot-permissions">Not reported.</p>
+              <p id="everyday-camera-permission">Not reported.</p>
+              <div class="everyday-permission-links">
+                <button type="button" class="secondary" data-everyday-setting="robot_tools_enabled">Robot settings</button>
+                <button type="button" class="secondary" data-everyday-setting="everyday_camera_enabled">Camera permission</button>
+              </div>
+            </section>
+            <section aria-labelledby="everyday-household-heading">
+              <h3 id="everyday-household-heading">Household &amp; timers</h3>
+              <p id="everyday-household">Not reported.</p>
+              <p id="everyday-devices">—</p>
+              <p class="muted">Device allowlists and timer delivery are managed on the agent host.</p>
+            </section>
+            <section aria-labelledby="everyday-information-heading">
+              <h3 id="everyday-information-heading">Information</h3>
+              <p id="everyday-information">Not reported.</p>
+              <p id="everyday-search">Public lookup status not reported.</p>
+              <p class="muted">Public lookup is optional and configured on the agent host; opening this page never enables it.</p>
+            </section>
+          </div>
+          <p class="muted">Permissions are not activity. Requests still follow power, privacy and Kids Mode rules.</p>
+          <details id="everyday-technical-details"><summary>Providers and device details</summary>
+            <dl class="everyday-facts">
+              <div><dt>Weather</dt><dd id="everyday-weather">—</dd></div>
+              <div><dt>Text backend — not the voice model</dt><dd id="everyday-model">—</dd></div>
+              <div><dt>Time source</dt><dd id="everyday-time">—</dd></div>
+            </dl>
+            <p class="muted">A home weather source does not mean spoken answers stay off cloud voice services.</p>
+            <p class="muted">Technical entity IDs permitted for home controls and status:</p>
+            <pre id="everyday-device-ids">—</pre>
+          </details>
         </details>
+        <div id="everyday-companion" class="everyday-companion"></div>
         <p id="everyday-message" class="muted compact-note" role="status" aria-live="polite">Names and providers are set on the Hermes host; keys and coordinates never reach this page.</p>
       </section>
 
@@ -1117,6 +1145,7 @@
               <label>Face-following weight<input id="face_tracking_weight" name="face_tracking_weight" type="range" min="0" max="1" step="0.05" value="0.65" /><small>Blend local face tracking with Reachy's voice and action motion.</small></label>
               <label class="toggle-row"><span><strong>Turn toward wake phrase</strong><small>Use one local microphone-array direction estimate after wake</small></span><input id="doa_enabled" name="doa_enabled" type="checkbox" /></label>
               <label class="toggle-row"><span><strong>Interruption</strong><small>Pipeline wake-phrase interruption or natural Realtime barge-in</small></span><input id="barge_in_enabled" name="barge_in_enabled" type="checkbox" checked /></label>
+              <label class="toggle-row"><span><strong>Temporary camera by voice</strong><small>Allow explicit Everyday requests for a short camera session. Off by default; does not change On-demand camera or open the dashboard viewer.</small></span><input id="everyday_camera_enabled" name="everyday_camera_enabled" type="checkbox" /></label>
               <label class="toggle-row"><span><strong>On-demand camera</strong><small>Realtime captures one frame only for an explicit visual request</small></span><input id="camera_enabled" name="camera_enabled" type="checkbox" /></label>
               <label class="toggle-row"><span><strong>Local live camera</strong><small>Allow this UI to connect directly to Reachy's local WebRTC video while Awake</small></span><input id="camera_feed_enabled" name="camera_feed_enabled" type="checkbox" /></label>
               <label class="toggle-row"><span><strong>Camera movement controls</strong><small>Optional supervised joystick over the live feed. Off by default; release holds the current view.</small></span><input id="camera_controls_enabled" name="camera_controls_enabled" type="checkbox" /></label>
@@ -1228,20 +1257,20 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=99"></script>
-  <script src="/static/scene.js?v=99"></script>
-  <script src="/static/motion.js?v=99"></script>
-  <script src="/static/onboarding.js?v=99"></script>
-  <script src="/static/owner.js?v=99"></script>
+  <script src="/static/notifications.js?v=100"></script>
+  <script src="/static/scene.js?v=100"></script>
+  <script src="/static/motion.js?v=100"></script>
+  <script src="/static/onboarding.js?v=100"></script>
+  <script src="/static/owner.js?v=100"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=99"></script>
-  <script src="/static/agent-connection.js?v=99"></script>
-  <script src="/static/native-workspace.js?v=99"></script>
-  <script src="/static/workspace.js?v=99"></script>
-  <script src="/static/ispy-input.js?v=99"></script>
-  <script src="/static/main.js?v=99"></script>
-  <script src="/static/updates.js?v=99"></script>
-  <script src="/static/volume.js?v=99"></script>
-  <script src="/static/assistant-modes.js?v=99"></script>
+  <script src="/static/camera.js?v=100"></script>
+  <script src="/static/agent-connection.js?v=100"></script>
+  <script src="/static/native-workspace.js?v=100"></script>
+  <script src="/static/workspace.js?v=100"></script>
+  <script src="/static/ispy-input.js?v=100"></script>
+  <script src="/static/main.js?v=100"></script>
+  <script src="/static/updates.js?v=100"></script>
+  <script src="/static/volume.js?v=100"></script>
+  <script src="/static/assistant-modes.js?v=100"></script>
 </body>
 </html>
