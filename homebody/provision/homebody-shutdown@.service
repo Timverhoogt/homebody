@@ -1,0 +1,29 @@
+[Unit]
+Description=Homebody bounded shutdown admission
+
+[Service]
+Type=exec
+User=root
+ExecStart=/usr/bin/python3 -I /opt/homebody-shutdown/shutdown_helper.py --uid @APP_UID@
+StandardInput=socket
+StandardOutput=journal
+StandardError=journal
+RuntimeMaxSec=12
+TimeoutStartSec=10
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
+MemoryMax=64M
+TasksMax=8

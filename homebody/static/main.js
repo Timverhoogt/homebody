@@ -3138,16 +3138,44 @@ $("app-off-button").addEventListener("click", async () => {
   }
 });
 
+let shutdownPending = false;
 $("shutdown-button").addEventListener("click", async () => {
+  if (shutdownPending || window.HomebodyOwner?.isOwner() !== true) return;
   if (window.prompt(`Type SHUTDOWN to safely power off the ${hostShutdownLabel}`) !== "SHUTDOWN") return;
+  const generation = ownerGeneration;
+  shutdownPending = true;
+  $("shutdown-button").disabled = true;
+  setPowerMessage("Requesting safe shutdown… waiting for the computer's acknowledgement.", "");
+  const current = () => generation === ownerGeneration && window.HomebodyOwner?.isOwner() === true;
   try {
     const response = await fetchWithTimeout("/api/shutdown", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: "shutdown" }),
     });
-    if (!response.ok) throw new Error(await responseDetail(response));
-    setPowerMessage(`${hostShutdownLabel} is shutting down safely`, "ok");
+    if (!current()) return;
+    // A proxy 502/503/504 or a lost reply can occur AFTER admission. Only an
+    // explicit app refusal proves that this request did not schedule poweroff.
+    const body = await response.json().catch(() => null);
+    if (!current()) return;
+    if (response.status === 202 && body?.ok === true && body.protocol === 1
+        && body.state === "scheduled" && body.delay_seconds === 5) {
+      setPowerMessage("Shutdown scheduled by the computer. Reachy will go offline shortly; that is expected. "
+        + "Wait for power/activity lights to stop before disconnecting power.", "ok");
+      return;  // no repeat POST, even if ordinary status polls become offline
+    }
+    if (([400, 403, 409, 422, 423].includes(response.status)
+        || (response.status === 503 && response.headers.get("X-Homebody-Shutdown") === "refused"))
+        && typeof body?.detail === "string") {
+      setPowerMessage(`Shutdown refused: ${body.detail}`, "error");
+      shutdownPending = false;
+      $("shutdown-button").disabled = false;
+      return;
+    }
+    throw new Error(`Unverified acknowledgement (HTTP ${response.status})`);
   } catch (error) {
-    setPowerMessage(`Shutdown was not started: ${error.message || error}`, "error");
+    if (!current()) return;
+    setPowerMessage("Shutdown outcome unknown: the reply was lost or unverified. "
+      + "Reachy may already be shutting down. Check the robot before deliberately trying again; "
+      + "this page will not retry automatically.", "error");
   }
 });
 

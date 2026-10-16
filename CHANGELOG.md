@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.21] — Owner-authorized shutdown over Tailnet
+
+- Correct the legacy desktop-refusal test to spy on the current helper boundary, install the independent scipy oracle in hosted CI, and isolate HTTPS shutdown fixtures from mocked PWA installation. The 0.5.20 draft failed hosted test gates and was not published or deployed.
+
+- Admit host shutdown through an explicitly provisioned, narrowly scoped root-owned Unix-socket helper while retaining the app's non-root identity and NoNewPrivileges sandbox. Require measured safe sleep pose and disabled torque before scheduling, and revalidate both before OS poweroff. Missing helper provisioning fails closed.
+- Return success only after the fixed OS timer is active; expose Owner-only readiness and truthful failures. Preserve Owner pairing, same-origin HTTPS, CSRF and Kids management locks.
+- Treat phone/Tailnet proxy errors or disconnects before acknowledgement as an unknown outcome, with no automatic retry or duplicate shutdown submission. A scheduled acknowledgement is not proof of physical poweroff.
+- Preserve Everyday fast paths, bounded robot STT prewarming, all seven Kids languages and selected voices, Bluetooth and enforced Workspace discussion. No physical shutdown, microphone, camera or motion acceptance was performed for this release.
+
 ## [0.5.19] — Everyday read fast paths and bounded robot STT prewarming
 
 - Answer standalone English/Dutch Everyday clock/date, existing configured weather and exact allowlisted single-device status requests through existing read-only tools, bound to the original generation and authorization state. Context-bearing or ambiguous turns retain the narrow reasoner; Workspace, Kids and Realtime routing and permissions are unchanged.

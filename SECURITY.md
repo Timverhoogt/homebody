@@ -73,7 +73,7 @@ Gamepad movement is disabled by default and must be explicitly enabled. Only bou
 - Review systemd logs for tracebacks without copying secrets into support tickets.
 - Leave Reachy in Standby, Meeting, or Sleep when motor torque is not required.
 - Meeting and Sleep stop app microphone capture; stopping the app or powering off the Pi provides a stronger physical boundary.
-- The shutdown endpoint requires confirmation and uses non-interactive local `sudo`. Scope the host's sudo policy as narrowly as practical.
+- The shutdown endpoint retains Owner, CSRF, confirmation and Kids locks. It requires a separately admin-provisioned, root-owned fixed-protocol Unix helper, measured safe fold/disabled torque, and an acknowledged systemd timer. The app keeps NoNewPrivileges; no sudoers/Polkit grant is used. See [host shutdown](docs/host-shutdown.md) for the local UID trust boundary, unknown network outcomes and provisioning/acceptance gates.
 
 ## Repository hygiene
 
