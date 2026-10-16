@@ -1441,7 +1441,7 @@ class KidsModeMixin:
                                 queued_samples += int(output.size)
                                 if queued_samples > self._output_sample_rate * 120:
                                     raise HermesBridgeError("Kids Mode streaming speech exceeded the playback limit")
-                                self.robot.media.push_audio_sample(output)
+                                self._playback.push_audio_sample(output)
                                 # A successful SDK enqueue is not proof of audible playback.
                                 self._voice_timings.mark("player_enqueued")
 

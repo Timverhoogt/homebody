@@ -95,7 +95,7 @@ class HomeAssistantVoiceMixin:
             if self._motion is not None:
                 self._motion.speaking()
             self._set_status("speaking", "Home Assistant is responding")
-            self.robot.media.play_sound(temporary_path)
+            self._playback.play_sound(temporary_path)
             deadline = time.monotonic() + duration + 0.25
             while time.monotonic() < deadline:
                 if (
@@ -105,7 +105,7 @@ class HomeAssistantVoiceMixin:
                     or self._effective_power_mode() in {"meeting", "sleep"}
                 ):
                     try:
-                        self.robot.media.play_sound(str(self.assets / "silence.wav"))
+                        self._playback.play_sound(str(self.assets / "silence.wav"))
                     except Exception:
                         pass
                     raise RuntimeError("Home Assistant media playback was cancelled")

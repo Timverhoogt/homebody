@@ -108,6 +108,7 @@ def make_runtime(monkeypatch):
         runtime._head_safely_folded = True
         runtime._motors_enabled = False
         monkeypatch.setattr(runtime, "_read_head_safely_folded", lambda: not robot.unfolded)
+        monkeypatch.setattr(runtime, "_run_native_sleep", robot.goto_sleep)
         monkeypatch.setattr(runtime, "_wake_pose_is_ready", lambda: robot.unfolded)
         monkeypatch.setattr(runtime, "_notify_bridge_kids_session_async", lambda *_args, **_kwargs: None)
         monkeypatch.setattr(runtime, "_cancel_ispy_bridge_session", lambda *_args, **_kwargs: None)

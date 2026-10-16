@@ -91,3 +91,24 @@ sys.modules["reachy_mini.utils"] = utils_module
 sys.modules["reachy_mini.utils.interpolation"] = utils_module.interpolation
 sys.modules["reachy_mini.motion"] = motion_module
 sys.modules["reachy_mini.motion.recorded_move"] = motion_module.recorded_move
+
+# Public SDK command models used by Homebody's serialized wobble emitter.
+# Keep the fields visible to fakes; no SDK client or hardware is constructed.
+io_module = ModuleType("reachy_mini.io")
+protocol_module = ModuleType("reachy_mini.io.protocol")
+
+
+class SetWobblingCmd:
+    def __init__(self, *, enabled):
+        self.enabled = enabled
+
+
+class SetSpeechOffsetsCmd:
+    def __init__(self, *, offsets):
+        self.offsets = offsets
+
+
+protocol_module.SetWobblingCmd = SetWobblingCmd
+protocol_module.SetSpeechOffsetsCmd = SetSpeechOffsetsCmd
+sys.modules["reachy_mini.io"] = io_module
+sys.modules["reachy_mini.io.protocol"] = protocol_module
