@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.28] — One Owner camera permission for Everyday
+
+- Simplify explicit Everyday camera access to the existing Owner-controlled camera permission. Remove the duplicate voice-camera switch; retain separate viewer/tracking controls, bounded sessions, Stop/privacy cancellation and fail-closed legacy consent handling. Owner sign-in never activates capture or changes permissions.
+- Preserve the accepted native-sleep and visually grounded I Spy changes from 0.5.25 and 0.5.26. No camera, speech, tracking or movement is activated by installation.
+
 ## [0.5.26] — Visually grounded I Spy guessing
 
 - Preserve audio cleanup after refused sleep: late SDK pushes remain subject to a real flush, failed cleanup retains quarantine, and wake cannot reopen playback over uncleared output. Distinguish drained calls from a confirmed SDK playback stop.
@@ -21,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Quiesce app playback and remove its local wobbler before native sleep. Fence delayed speech offsets, voice poses, PCM pushes and playback cleanup so they cannot disturb a folded head or restart playback behind the sleep transition.
 - Preserve responsive Stop and existing Kids output quarantine when an SDK audio operation is stuck. Refuse unverified sleep admission or unresolved completion without retrying movement; restore Standby wake detection and reopen app speech only after a confirmed wake.
 - Preserve the 0.5.24 Everyday features, settings, voices, camera consent and managed updater. Offline callback/transport tests and the independent safety review do not replace an owner-supervised sleep/wake check.
+
 
 
 ## [0.5.24] — Expanded Everyday tools and compact permissions

@@ -1,5 +1,7 @@
 # Everyday capability expansion
 
+Follow-up: explicit looks and short voice sessions now share `camera_enabled`; the removed voice-only flag below describes the original 0.5.24 design, not the current permission model. Existing general-camera consent is never inferred from a legacy temporary-only grant. Owner sign-in does not change permissions or activate capture.
+
 Source baseline: origin/main 5b77d9b (includes immutable 0.5.21 and subsequent 0.5.22 fixes). Source-only implementation; no publication, deployment, media activation, speech or motion authorization.
 
 ## Deliverables

@@ -55,7 +55,7 @@ def ready(config_loader):
     ],
 )
 def test_camera_off_wins_at_status_boundary_before_lease_commit_or_vision(name, args):
-    config = AppConfig(camera_enabled=True, everyday_camera_enabled=True, local_vision_enabled=True)
+    config = AppConfig(camera_enabled=True, local_vision_enabled=True)
     runtime, called = ready(lambda: config)
     entered, release = hold_camera_at_status(runtime)
     results = []
@@ -76,7 +76,7 @@ def test_general_camera_reenable_cannot_restore_pre_revocation_capture(monkeypat
     import homebody.main as main
 
     configs = [
-        AppConfig(api_key="fixture-only", camera_enabled=True, everyday_camera_enabled=True, local_vision_enabled=True)
+        AppConfig(api_key="fixture-only", camera_enabled=True, local_vision_enabled=True)
     ]
     monkeypatch.setattr(main, "default_config_path", lambda: tmp_path / "config.json")
     monkeypatch.setattr(main, "load_config", lambda: configs[0])
@@ -108,7 +108,7 @@ def test_general_camera_reenable_cannot_restore_pre_revocation_capture(monkeypat
     assert client.post("/api/settings", json={"camera_enabled": False}, headers=headers).status_code == 200
     assert runtime._everyday_camera_generation > original
     assert client.post("/api/settings", json={"camera_enabled": True}, headers=headers).status_code == 200
-    assert configs[0].camera_enabled and configs[0].everyday_camera_enabled
+    assert configs[0].camera_enabled
     release.set()
     worker.join(2)
     assert not worker.is_alive() and not results[0]["ok"] and not called

@@ -56,8 +56,11 @@ candidate is not a deployed release or physical voice/camera acceptance.
 - **Look once:** one fresh frame, a specific question, then discard. Local vision is preferred
   when configured; otherwise the explicitly requested frame goes through the host's narrow
   Everyday vision endpoint. Images and visible text are untrusted data, not instructions.
-- **Camera session:** the owner must opt into **Camera on request** (`everyday_camera_enabled`,
-  default false). A spoken Start validates a fresh frame, then opens an app capture window
+- **Camera permission:** one Owner-controlled **Camera access for AI** (`camera_enabled`,
+  default false) covers explicit looks and short sessions in every voice engine. There is no
+  separate voice-camera switch or repeated Owner approval. Signing in never enables or starts it.
+  Legacy temporary-only consent never silently enables this broader permission.
+- **Camera session:** an explicit spoken Start validates a fresh frame, then opens an app capture window
   for 5–120 seconds. There is no automatic capture loop, cloud upload, tracking or recording.
   Camera off, Stop, permission revocation and lifecycle changes invalidate pending frames.
   This is app capture access, **not physical power control of the daemon-owned shared camera**.

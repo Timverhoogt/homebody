@@ -28,7 +28,7 @@ def test_real_robot_client_and_host_roundtrip(name, args):
             bridge_url=str(server.make_url("/")).rstrip("/"),
             api_key="bridge-secret",
             instance_id="reachy-1",
-            everyday_camera_enabled=True,
+            camera_enabled=True,
         )
         runtime = HermesVoiceRuntime(
             SimpleNamespace(media=SimpleNamespace()), threading.Event(), config_loader=lambda: config
@@ -130,7 +130,7 @@ def test_real_robot_client_and_host_roundtrip(name, args):
         answer = await asyncio.wait_for(asyncio.to_thread(request), 5)
         assert answer == ("" if name == "set_reachy_power_mode" else "Verified fixture reply.")
         if name in {"start_reachy_camera", "capture_reachy_camera"}:
-            assert len(captures) == (2 if name == "capture_reachy_camera" else 1) and not config.camera_enabled
+            assert len(captures) == (2 if name == "capture_reachy_camera" else 1) and config.camera_enabled
         if name == "capture_reachy_camera":
             assert len(requests) == 4  # start, capture, no-tools vision, grounded final text
         if name in {"move_reachy_head", "express_reachy_emotion", "dance_reachy"}:
