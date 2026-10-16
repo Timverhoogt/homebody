@@ -1,4 +1,4 @@
-# Companion setup and boundaries
+# Companion setup and boundaries (0.5.27)
 
 Companion connects presence, deliberate visual help, optional suggestions and quiet recovery. It reuses the existing voice, camera, safety, power and announcement owners; it is not a second always-running reasoning agent. See the [reviewed design](companion-design.md).
 
