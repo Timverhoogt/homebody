@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.5.20] — Owner-authorized shutdown over Tailnet
+## [0.5.21] — Owner-authorized shutdown over Tailnet
+
+- Correct the legacy desktop-refusal test to spy on the current helper boundary, install the independent scipy oracle in hosted CI, and isolate HTTPS shutdown fixtures from mocked PWA installation. The 0.5.20 draft failed hosted test gates and was not published or deployed.
 
 - Admit host shutdown through an explicitly provisioned, narrowly scoped root-owned Unix-socket helper while retaining the app's non-root identity and NoNewPrivileges sandbox. Require measured safe sleep pose and disabled torque before scheduling, and revalidate both before OS poweroff. Missing helper provisioning fails closed.
 - Return success only after the fixed OS timer is active; expose Owner-only readiness and truthful failures. Preserve Owner pairing, same-origin HTTPS, CSRF and Kids management locks.

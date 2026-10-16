@@ -43,6 +43,7 @@ jobs:
             "httpx>=0.28,<1" \
             "mutagen>=1.47,<2" \
             "numpy>=1.26" \
+            "scipy>=1.11,<2" \
             "onnxruntime>=1.20,<2" \
             "opencv-python-headless>=4.11,<6" \
             "Pillow>=10,<13" \

@@ -67,7 +67,8 @@ def test_status_reports_the_host_and_shutdown_refuses_on_a_desktop(monkeypatch: 
     monkeypatch.setattr(main_module, "host", lambda: desktop)
     monkeypatch.setattr(main_module, "load_config", lambda: AppConfig())
     ran: list[object] = []
-    monkeypatch.setattr(main_module.subprocess, "run", lambda *args, **kwargs: ran.append(args))
+    from homebody import host_shutdown
+    monkeypatch.setattr(host_shutdown, "request", lambda *args, **kwargs: ran.append(args))
     client = TestClient(Homebody(False).settings_app)
 
     status = client.get("/api/status").json()

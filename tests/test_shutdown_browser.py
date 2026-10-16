@@ -13,6 +13,9 @@ def phone(ui, width=390):
     page, state, posts, errors = ui
     page.set_viewport_size({'width':width, 'height':844})
     page.emulate_media(color_scheme='dark', reduced_motion='reduce')
+    # The imported HTTP fixture mocks all network traffic. Its JSON fallback is not
+    # a real HTTPS service-worker script; installation is outside this test scope.
+    page.add_init_script("navigator.serviceWorker.register = async () => ({})")
     page.route('**/api/status', lambda route: route.fulfill(json={
         'config':state['config'], 'runtime':state['runtime'],
         'host':{'shutdown_supported':True, 'label':'NVIDIA Jetson', 'kind':'jetson'}}))
@@ -25,7 +28,7 @@ def phone(ui, width=390):
 
 
 def click(page):
-    page.locator('#shutdown-button').scroll_into_view_if_needed()
+    page.locator('#shutdown-button').evaluate("button => button.scrollIntoView({block:'center'})")
     page.click('#shutdown-button')
 
 
