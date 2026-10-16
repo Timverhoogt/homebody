@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.23] — Prerecorded Kids search and reply-wait speech
+
+- Play one short, locally cached and voice-matched phrase during longer I Spy searches, including standalone Start, later rounds and shared Play together selections, replays and switches.
+- Add sparse prerecorded thinking speech during longer spoken Kids reply waits. Preserve existing recognition acknowledgements without doubling up in one turn; keep an eight-second shared cooldown and skip fast waits.
+- Reuse the verified English and Dutch recordings, including Ruth for Dutch. Require a current matching language, voice and model proof; other languages without verified clip bundles remain silent. No live filler synthesis, new voice selection or settings migration.
+- Settle and flush filler before the actual clue or answer, fence delayed proof and playback across Stop, End, switching, expiry, privacy and shutdown, and preserve single-producer output quarantine when an SDK audio push is blocked.
+- Keep adult speech, Calm, typed guesses, camera consent, microphone admission, motion policy and shared-session deadlines unchanged. Automated fake-device and browser checks do not replace supervised speaker/gameplay acceptance.
+
 ## [0.5.22] — Clean I Spy cancellation and sandbox-aware robot recognition
 
 - Treat End, Stop, privacy and superseded I Spy continuation work as expected cancellation instead of a voice failure. Preserve current-session camera/provider failures and prevent late work from tearing down a replacement session.

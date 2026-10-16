@@ -16,11 +16,18 @@ from pathlib import Path
 
 import httpx
 
+from . import kids_acknowledgements
 from .audio import AdaptiveEndpointRecorder, EndpointResult, resample_linear
 from .config import AppConfig
 from .hermes_client import HermesBridgeError, SpeechAudio
 from .ispy import ISpyCancelled
-from .kids_acknowledgements import KidsAckPlayer, eligible_clips, output_quarantined
+from .kids_acknowledgements import (
+    KidsAckPlayer,
+    eligible_clips,
+    install_producer,
+    output_quarantined,
+    stage_clips,
+)
 from .kids_acknowledgements import catalog as kids_ack_catalog
 from .robot_stt import RobotSttCancelled, RobotSttClient, RobotSttUnavailable
 from .stt_routing import (
@@ -355,7 +362,21 @@ class PipelineVoiceMixin:
                     ):
                         break
                 elif client.config.kids_mode_enabled:
-                    response_text = client.chat(transcript)  # dedicated Kids route, unchanged
+                    if typed_input is None and (ack_player is None or not ack_player.clip_started):
+                        # One clip per turn: the recognition filler never spoke, so retire it
+                        # (bounded settle, nothing admitted => no clear) and arm a reply wait.
+                        if not settle_ack():
+                            break
+                        refresh = getattr(client, "kids_voice_proof", None)
+                        ack_player = self._start_kids_ack(
+                            initial_config, refresh=refresh, stage="think",
+                            delay=kids_acknowledgements.REPLY_WAIT_DELAY_SECONDS,
+                        ) if callable(refresh) else None
+                    try:
+                        response_text = client.chat(transcript)  # dedicated Kids route, unchanged
+                    finally:
+                        if ack_player is not None:
+                            ack_player.wait_finished()
                 else:
                     # Everyday: the narrow fast backend, never the full Hermes agent.
                     response_text = client.everyday_turn(transcript, context=everyday_context)
@@ -604,7 +625,7 @@ class PipelineVoiceMixin:
         return turn_generation, is_current
 
     def _ack_output_quarantined(self) -> bool:
-        """True while an old filler push is still blocked inside the SDK (fail closed)."""
+        """True while a search owns its final flush or an old SDK audio push is blocked."""
         return output_quarantined(self)
 
     def _start_kids_ack(
@@ -612,33 +633,22 @@ class PipelineVoiceMixin:
         config: AppConfig,
         voice_proof: tuple[object, object] | None = None,
         refresh: Callable[[], object] | None = None,
+        *,
+        stage: str | None = None,
+        delay: float | None = None,
     ) -> KidsAckPlayer | None:
         """Arm one delayed cached clip for an active Kids audio turn; None when not eligible.
 
         ``voice_proof`` is a just-sampled bridge proof (voice digest, model) of the effective Kids
         streaming voice, used for the first turn of a conversation. ``refresh`` instead fetches a
         fresh proof from the bridge when the delay elapses (later turns), off the answer path.
-        Missing, failed or mismatching proof => no filler.
+        Missing, failed or mismatching proof => no filler. ``stage``/``delay`` select the waiting
+        phrase family and trigger delay for non-STT waits (backend reply, I Spy search).
         """
         if not config.kids_mode_enabled or config.kids_activity == "calm":
             return None
-        if (voice_proof is None and refresh is None) or self._ack_output_quarantined():
+        if voice_proof is None and refresh is None:
             return None
-        language_clips = kids_ack_catalog().get(config.language, ())
-        push = getattr(self.robot.media, "push_audio_sample", None)
-        if not language_clips or not callable(push):
-            return None  # missing/rejected assets or no PCM output: no filler, never live TTS
-        if refresh is None:
-            clips = eligible_clips(language_clips, *voice_proof)
-            if not clips:
-                return None
-        else:
-
-            def clips() -> tuple:
-                proof = refresh()
-                if not isinstance(proof, dict):
-                    return ()
-                return eligible_clips(language_clips, proof.get("kids_voice_sha256"), proof.get("kids_tts_model"))
         session_id = config.kids_session_id
         with self._conversation_stop_generation_lock:
             turn_generation = self._turn_stop_generation  # immutable snapshot; never resampled
@@ -657,9 +667,47 @@ class PipelineVoiceMixin:
                 and self._effective_power_mode() not in {"meeting", "sleep"}
             )
 
+        return self._arm_kids_wait_speech(
+            config.language, is_current, voice_proof=voice_proof, refresh=refresh, stage=stage, delay=delay,
+        )
+
+    def _arm_kids_wait_speech(
+        self,
+        language: str,
+        is_current: Callable[[], bool],
+        *,
+        voice_proof: tuple[object, object] | None = None,
+        refresh: Callable[[], object] | None = None,
+        stage: str | None = None,
+        delay: float | None = None,
+        search_owner: object | None = None,
+    ) -> KidsAckPlayer | None:
+        """Shared arming for every Kids wait; the caller supplies its immutable ownership fence.
+
+        Uses only the verified packaged catalog for exactly ``language``, a matching voice proof
+        and the common single-producer/quarantine owner. Any failure => silence.
+        """
+        if (voice_proof is None and refresh is None) or output_quarantined(self, search_owner=search_owner):
+            return None
+        language_clips = stage_clips(kids_ack_catalog().get(language, ()), stage)
+        push = getattr(self.robot.media, "push_audio_sample", None)
+        if not language_clips or not callable(push):
+            return None  # missing/rejected assets or no PCM output: no filler, never live TTS
+        if refresh is None:
+            clips = eligible_clips(language_clips, *voice_proof)
+            if not clips:
+                return None
+        else:
+
+            def clips() -> tuple:
+                proof = refresh()
+                if not isinstance(proof, dict) or not is_current():
+                    return ()  # rechecked after the (possibly slow) proof read
+                return eligible_clips(language_clips, proof.get("kids_voice_sha256"), proof.get("kids_tts_model"))
+
         if not is_current():
             return None
-        self._kids_ack_producer = player = KidsAckPlayer(
+        player = KidsAckPlayer(
             clips=clips,
             selector=self._kids_ack_selector,
             push=push,
@@ -668,8 +716,9 @@ class PipelineVoiceMixin:
             resample=resample_linear,
             output_rate=self._output_sample_rate,
             clock=time.monotonic,
+            delay=delay,
         )
-        return player.start()
+        return player if install_producer(self, player) else None
 
     def _record_utterance(
         self,
