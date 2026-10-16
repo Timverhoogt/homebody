@@ -235,6 +235,7 @@ def test_enrolled_source_offer_travels_from_host_to_runtime_once_and_responses_f
         initiative_mode="balanced",
         initiative_quiet_hours_enabled=False,
         contextual_offers_enabled=True,
+        companion_sources_revision="f" * 32,
     )
     clock = [1000.0]
     runtime._initiative = InitiativePolicy(
@@ -273,6 +274,15 @@ def test_enrolled_source_offer_travels_from_host_to_runtime_once_and_responses_f
         async def read(self) -> bytes:
             return b""
 
+    original_get = http.get
+
+    def get(url: str, *, headers=None, **kwargs):
+        if url.endswith("/api/initiative/source-state"):
+            return RouteResponse(api.get("/api/initiative/source-state", headers=headers or {}))
+        return original_get(url, headers=headers, **kwargs)
+
+    http.get = get
+    assert api.get("/api/initiative/source-state").status_code == 401
     original_post = http.post
 
     def post(url: str, *, json: dict[str, object], headers: dict[str, str] | None = None, **kwargs: object):
@@ -288,6 +298,7 @@ def test_enrolled_source_offer_travels_from_host_to_runtime_once_and_responses_f
     enrollment.write_text(
         json.dumps(
             {
+                "source_revision": "f" * 32,
                 "home_assistant": [
                     {
                         "id": "washer",
@@ -299,7 +310,7 @@ def test_enrolled_source_offer_travels_from_host_to_runtime_once_and_responses_f
                         "accepted_text": "Okay. The washer reported done just now; nothing else was changed.",
                         "min_interval_seconds": 1800,
                     }
-                ]
+                ],
             }
         ),
         encoding="utf-8",
@@ -377,7 +388,11 @@ def test_enrollment_rejects_action_promises_and_catalog_shows_setup_needed(monke
     assert catalog["available"] is False and len(catalog["setup_needed"]) >= 3
     assert catalog["enrollment"]["enabled"] is False
     with pytest.raises(module.web.HTTPServiceUnavailable):
-        asyncio.run(bridge.companion_sources_enroll(FakeRequest({"home_assistant": [], "calendar": []})))
+        asyncio.run(
+            bridge.companion_sources_enroll(
+                FakeRequest({"home_assistant": [], "calendar": [], "source_revision": "f" * 32})
+            )
+        )
 
 
 def test_fake_look_client_contract_matches_runtime_usage():
