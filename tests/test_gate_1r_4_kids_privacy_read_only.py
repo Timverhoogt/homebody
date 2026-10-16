@@ -34,6 +34,9 @@ class FakeMedia:
     def play_sound(self, path: str) -> None:
         pass
 
+    def stop_playing(self) -> None:
+        self.pushed_audio.clear()
+
     def start_recording(self) -> None:
         pass
 
