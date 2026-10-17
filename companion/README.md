@@ -70,6 +70,8 @@ The OpenAI account must have API billing and access to `gpt-realtime-2.1`. A Cha
 
 Everyday (the default adult voice purpose) reuses the Home Assistant allowlists below with a fast text model and never calls Hermes. Its own variables (`REACHY_EVERYDAY_PROVIDER`, `REACHY_EVERYDAY_MODEL`, `REACHY_EVERYDAY_ALIASES`, `REACHY_EVERYDAY_WEATHER_ENTITY`, optional `REACHY_EVERYDAY_WEATHER_PROVIDER=open-meteo` with `REACHY_EVERYDAY_WEATHER_LATLON`, `REACHY_EVERYDAY_TIMEZONE`, `OPENROUTER_API_KEY`) and the GPT-Live preview relay `/v1/live` are described in [docs/everyday-workspace.md](../docs/everyday-workspace.md).
 
+For local Everyday text reasoning, set `REACHY_EVERYDAY_PROVIDER=ollama`, an explicit `REACHY_EVERYDAY_MODEL`, and `REACHY_EVERYDAY_URL` reachable from the bridge. Ordinary local Ollama needs no provider key. It can run on Windows, Mac or Linux independently of the robot/bridge host; see [Ollama setup](../docs/ollama.md) for LAN and separate speech/camera boundaries.
+
 The restricted Agent broker is fail-closed: every read/action allowlist and reminder callback defaults empty. Configure only the resources Reachy may use in the bridge service environment. The model below is an API-backed example, not the subscription reference model:
 
 ```bash

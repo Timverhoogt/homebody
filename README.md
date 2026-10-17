@@ -72,12 +72,15 @@ Optional subscription-funded **text/vision** uses saved Hermes Codex authenticat
 
 Speech is separate: Realtime/GPT-Live and configured STT/TTS can incur API costs. Kids moderation remains an API safety-screening path; a subscription does not remove it or make the whole robot API-free. Provider credentials stay on the host, not the robot or dashboard.
 
+**Local models on your PC or Mac:** [Ollama setup](docs/ollama.md) covers Everyday Pipeline reasoning and camera vision, either on the same computer or over your trusted LAN. Ollama does not replace speech providers or Kids moderation, and the computer must remain awake.
+
 ## Practical guides
 
 | Need | Start here |
 |---|---|
 | Host choice, power, mounting and acceptance limits | [Hardware setups](docs/hardware-setups.md) · [Lite + Pi 4](docs/lite-raspberry-pi-4.md) |
 | Modes, tools, weather and speech routing | [Everyday / Workspace](docs/everyday-workspace.md) |
+| Ollama on Windows, Mac or Linux; same-computer and LAN model serving | [Ollama setup](docs/ollama.md) |
 | Subscription text/vision and native project setup | [Subscription reasoning](docs/subscription-reasoning.md) · [Native Workspace](docs/native-workspace.md) |
 | Bridge providers, restricted profiles and OpenClaw | [Companion bridge](companion/README.md) |
 | Supervised child activities and data flows | [Kids Mode](docs/kids-mode.md) |

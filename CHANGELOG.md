@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Add an explicit `ollama` text-provider preset for Everyday and optional shared bridge text calls: loopback default, explicit model tags, optional proxy-only key, no cloud-key reuse, and adaptation of unsupported OpenAI tool-control fields. Existing tool/permission/moderation boundaries remain unchanged.
+- Document Windows/Mac/Linux Ollama hosting for same-computer or trusted-LAN Everyday Pipeline reasoning and camera vision, including firewall, speech-provider and hardware-acceptance limits. Add portable model-client contract coverage; native model and robot acceptance remain separate.
+
 ## [0.5.29] — Consented companion presence, visual help and opt-in sources
 
 - Presence reports occupancy and source health separately: heartbeats and bridge-loss reports keep healthy stationary occupancy "present", show "unknown" when the sensor bridge is silent, and never turn a reconnect into a second arrival. Only an arrival may trigger the silent acknowledgement; Standby never gains motors.
