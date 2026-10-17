@@ -131,7 +131,9 @@ def test_failed_reconfirmation_must_not_report_torque_enabled(monkeypatch):
 def test_failed_torque_preservation_propagates_unknown_result(monkeypatch, reason):
     runtime, calls = runtime_with_io(monkeypatch)
     if reason == "movement_busy":
-        runtime._actions = SimpleNamespace(cancel=lambda **_: False, wait_idle=lambda **_: False)
+        runtime._actions = SimpleNamespace(
+            fence=lambda _reason: None, unfence=lambda: None, cancel=lambda **_: False, wait_idle=lambda **_: False
+        )
     elif reason == "native_failure":
 
         def fail_sleep():

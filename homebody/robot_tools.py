@@ -353,6 +353,7 @@ class ReachyRobotActions:
         self._generation = 0
         self._pending_actions = 0
         self._active_cancel_event: threading.Event | None = None
+        self._fence_reason = ""
 
     @property
     def busy(self) -> bool:
@@ -362,6 +363,25 @@ class ReachyRobotActions:
     def pending_count(self) -> int:
         with self._state_lock:
             return self._pending_actions
+
+    @property
+    def fence_reason(self) -> str:
+        with self._state_lock:
+            return self._fence_reason
+
+    def fence(self, reason: str) -> None:
+        """Refuse every new admission until ``unfence``; a safety fold sets this before draining.
+
+        The flag lives under the queue's own state lock, the same lock that accepts an enqueue
+        and lets the worker take an action, so a fold that observes idle after fencing stays
+        idle until it releases the fence.
+        """
+        with self._state_lock:
+            self._fence_reason = reason or "Robot action was blocked by a safety fold"
+
+    def unfence(self) -> None:
+        with self._state_lock:
+            self._fence_reason = ""
 
     def _mark_finished(self) -> None:
         with self._state_lock:
@@ -396,6 +416,8 @@ class ReachyRobotActions:
         if self._closed.is_set() or self.stop_event.is_set():
             return {"ok": False, "error": "Robot action controller is stopping"}
         with self._state_lock:
+            if self._fence_reason:
+                return {"ok": False, "error": self._fence_reason, "code": "safety_fold"}
             if reject_if_busy and self._pending_actions:
                 return {"ok": False, "error": "Robot is busy", "code": "robot_busy"}
             generation = self._generation
@@ -792,7 +814,20 @@ class ReachyRobotActions:
             if action is None:
                 self._queue.task_done()
                 break
-            if not self._generation_matches(action.generation):
+            with self._state_lock:
+                # Admission and the busy flag change together under the queue lock, so a fence
+                # set after this action was dequeued still wins, and a fold that has observed
+                # "idle" while fenced cannot be overtaken by a late admission.
+                admitted = (
+                    action.generation == self._generation
+                    and not self._closed.is_set()
+                    and not self._fence_reason
+                )
+                if admitted:
+                    self._cancel_requested.clear()
+                    self._active_cancel_event = action.cancel_event
+                    self._busy.set()
+            if not admitted:
                 result = _cancelled_action_result(action.name)
                 self._queue.task_done()
                 self._mark_finished()
@@ -801,9 +836,6 @@ class ReachyRobotActions:
                 if self._on_result is not None:
                     self._on_result(action.name, result)
                 continue
-            self._cancel_requested.clear()
-            self._active_cancel_event = action.cancel_event
-            self._busy.set()
             result: dict[str, object] = {
                 "ok": False,
                 "error": "Robot action did not complete",
