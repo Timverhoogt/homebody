@@ -303,17 +303,30 @@ class AnnouncementsMixin:
                     )
                     if speech is None:
                         continue
-                    for index in range(item.repeat):
-                        if self._announcement_item_cancelled(item):
-                            break
-                        self._set_status(
-                            "announcing",
-                            f"Playing announcement {index + 1} of {item.repeat}",
-                            announcement_provider=speech.provider,
+                    follow = None
+                    if item.kids_voice_session_id:
+                        # A Kids greeting/clue/host line is part of the active session: follow under the
+                        # saved setting, bound to this line's generation and the current stop generation.
+                        with self._conversation_stop_generation_lock:
+                            line_stop_generation = self._conversation_stop_generation
+                        follow = self._begin_face_follow(
+                            kids_config, line_stop_generation, kids_generation=item.kids_generation,
                         )
-                        self._play_announcement_audio(item, speech, item.text)
-                        if index + 1 < item.repeat and item.cancel_event.wait(item.pause_seconds):
-                            break
+                    try:
+                        for index in range(item.repeat):
+                            if self._announcement_item_cancelled(item):
+                                break
+                            self._set_status(
+                                "announcing",
+                                f"Playing announcement {index + 1} of {item.repeat}",
+                                announcement_provider=speech.provider,
+                            )
+                            self._play_announcement_audio(item, speech, item.text)
+                            if index + 1 < item.repeat and item.cancel_event.wait(item.pause_seconds):
+                                break
+                    finally:
+                        if follow is not None:
+                            self._end_face_follow(follow)
                     if not self._announcement_item_cancelled(item):
                         with self._status_lock:
                             self._status.announcements_completed += 1

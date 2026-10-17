@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.34] — Kids following and conversation recovery
+
+- Reuse the existing local face-following setting in Kids activities when motion is enabled. Following yields to exclusive actions, searches, captures and folds; Stop, privacy and session changes retire stale tracking work.
+- Queue an explicit Show and Tell Look now request through the active Kids Chat conversation instead of competing for its voice lock. Bound repeated requests and drop stale requests on cancellation or session end.
+- Avoid duplicate automatic sleep sequences after Kids End using fresh motor-state verification and serialized power reconciliation. A late cleanup cannot fold a newer wake.
+- Publish the verified active Standby wake-turn authority correctly to the bridge while preserving idle, Stop, privacy, Kids and unverified-motor rejection.
+- Replace placement assumptions in prompts, controls and current documentation with location-neutral wording.
+- Automated tests are not physical acceptance: supervised checks of face following, one-fold End, Look now and Live wake remain necessary. Existing saved camera and movement permissions are preserved.
+
+
 ## [0.5.33] — Safety-fold fencing and Kids Show and Tell
 
 - Fence queued robot-action admission for the complete safety fold and fail closed if work remains before torque release. Retain automatic fold failure guidance instead of overwriting it with normal idle status.

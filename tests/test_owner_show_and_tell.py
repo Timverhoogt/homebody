@@ -123,6 +123,7 @@ def test_owner_opt_out_persists_and_turning_on_needs_no_session_approval(persist
     runtime.start_kids_mode(KidsProfile(duration_minutes=15), greet=False)
     assert kids_state(client) == {
         "camera_approved": True, "enabled": True, "session": True, "available": True, "looking": False,
+        "queued": False,
     }
     off = client.post("/api/kids/show-and-tell/setting", json={"enabled": False}, headers=headers)
     assert off.status_code == 200 and off.json()["available"] is False

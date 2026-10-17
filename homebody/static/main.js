@@ -1181,7 +1181,7 @@ function updateStatus(payload, sequence = statusSequence) {
     ? showTellCamera
       ? "Show and Tell is taking one announced photo now. Turn off or End now stops it."
       : kidsCameraActive
-      ? "I Spy camera is active for this bounded five-frame desk search only. End now stops capture and folds Reachy."
+      ? "I Spy camera is active for this bounded five-frame search of nearby surroundings only. End now stops capture and folds Reachy."
       : `${kidsMode.host?.enabled ? `Play together · ${kidsMode.host.activity ? kidsActivityLabels[kidsMode.host.activity] || "game" : "choosing a game"}` : kidsActivityLabels[kidsProfile.activity] || "Kids activity"} · age ${kidsProfile.age_band} · ${kidsMode.turns_completed || 0} completed turn${kidsMode.turns_completed === 1 ? "" : "s"} · ${kidsMode.tool_policy === "voice-state-motion-only" ? "gentle voice-state motion only" : "no tools"}`
     : "Camera, personal Hermes memory, smart-home control, messaging, purchases, and power controls are unavailable to the child session.";
   $("kids-start-button").disabled = kidsActive || kidsLocked || kidsRequestPending || ["meeting", "sleep"].includes(powerMode);
@@ -2191,13 +2191,14 @@ function renderShowTell(showTell, cameraActive, sequence = statusSequence) {
   const available = showTell?.available === true;
   $("kids-show-tell-state").textContent = !approved
     ? "Off · Camera access for AI is off in Settings"
-    : !enabled ? "Off" : available ? "On · ready in this Kids Chat" : "On";
+    : !enabled ? "Off" : available && showTell.queued === true ? "On · Look now queued for the next pause"
+      : available ? "On · ready in this Kids Chat" : "On";
   const toggle = $("kids-show-tell-toggle");
   toggle.textContent = enabled ? "Turn off" : "Turn on";
   // Turning it off always stays possible, even mid-look; turning on never widens camera approval.
   toggle.disabled = !showTell || showTellRequestPending || (!enabled && !approved);
   $("kids-show-tell-look").disabled = !showTell || showTellRequestPending || !available
-    || showTell.looking === true || cameraActive;
+    || showTell.looking === true || showTell.queued === true || cameraActive;
   if (!showTell) $("kids-show-tell-message").textContent = "";
 }
 
@@ -2246,8 +2247,10 @@ $("kids-show-tell-toggle").addEventListener("click", () => {
 
 $("kids-show-tell-look").addEventListener("click", () => {
   showTellAction("Asking Reachy to look once…", async () => {
-    await showTellPost("/api/kids/show-and-tell/look-now");
-    return "Reachy says it is looking, then takes one photo.";
+    const result = await showTellPost("/api/kids/show-and-tell/look-now");
+    return result.queued === true
+      ? "Queued: Reachy will look once at the next pause in this conversation. Stop or End cancels it."
+      : "Reachy says it is looking, then takes one photo.";
   });
 });
 

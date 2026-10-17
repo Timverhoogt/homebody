@@ -158,6 +158,14 @@ class PipelineVoiceMixin:
                 self._status.stt_processing_location = location
                 self._status.stt_processing_verified = verified
 
+        # An unhosted Kids Chat voice conversation owns the slot for its whole length: it takes a
+        # queued Owner Look now itself, at its listen/output boundaries (never concurrently).
+        register_look = getattr(self, "_show_tell_register_consumer", None)
+        look_consumer = (
+            register_look(initial_config.kids_session_id)
+            if typed_input is None and initial_config.kids_mode_enabled and callable(register_look)
+            else None
+        )
         try:
             health = client.health()
             if not isinstance(health, dict):
@@ -187,6 +195,17 @@ class PipelineVoiceMixin:
                         break
                     self._set_status("listening", "Waiting for a follow-up")
                 first_turn = False
+                if look_consumer is not None and self._show_tell_take_pending(look_consumer):
+                    # Owner Look now, queued while this turn owned the slot: run it here as the same
+                    # owner, between listening and output, then carry on with the ordinary listen.
+                    if not settle_ack():
+                        break
+                    if self._show_tell_voice_turn():
+                        with self._status_lock:
+                            self._status.turns_completed += 1
+                    if not conversation_is_current() or self._turn_stop_requested():
+                        break
+                    continue
 
                 stt_result: SttResult | None = None
                 if typed_input is not None:
@@ -197,6 +216,9 @@ class PipelineVoiceMixin:
                         # An old filler push is still blocked in the SDK: no new microphone turn.
                         self._set_status("waiting_for_wake_word", "Audio output is busy; ending this turn")
                         break
+                    resume_follow = getattr(self, "_resume_face_follow", None)
+                    if callable(resume_follow):
+                        resume_follow("ispy_guess")  # the held guess pose was spoken; only a current lease resumes
                     self._play_asset("listening.wav")
                     if self._motion is not None:
                         self._motion.listening()
@@ -218,6 +240,8 @@ class PipelineVoiceMixin:
                     last_voiced_at = getattr(endpoint, "last_voiced_at", None)
                     if last_voiced_at is not None:
                         self._voice_timings.mark("speech_last_voiced", at=last_voiced_at)
+                    if look_consumer is not None and self._show_tell_look_queued():
+                        continue  # a queued Look now ended this listen; the loop top runs or drops it
                     if not endpoint.speech_detected or endpoint.samples.size == 0:
                         if kids_retry_allowed():
                             continue
@@ -625,6 +649,8 @@ class PipelineVoiceMixin:
             self._set_status("error", "Hermes bridge request failed", bridge_healthy=False)
             raise
         finally:
+            if look_consumer is not None:
+                self._show_tell_unregister_consumer(look_consumer)  # unconsumed looks are dropped
             settle_ack()
             self._end_companion_voice()
             set_locality("unknown")  # provenance is per conversation; never left stale
@@ -802,6 +828,11 @@ class PipelineVoiceMixin:
         )
         return player if install_producer(self, player) else None
 
+    def _listen_should_stop(self) -> bool:
+        """Shutdown, or an Owner Look now queued for this Kids Chat (its owner runs it next)."""
+        queued = getattr(self, "_show_tell_look_queued", None)
+        return self.stop_event.is_set() or (callable(queued) and queued())
+
     def _record_utterance(
         self,
         config: AppConfig,
@@ -818,7 +849,7 @@ class PipelineVoiceMixin:
         result = recorder.record(
             self._read_16k_frame,
             noise_floor=self._noise.value,
-            should_stop=should_stop or self.stop_event.is_set,
+            should_stop=should_stop or self._listen_should_stop,
         )
         _LOGGER.info(
             "Speech endpoint: reason=%s speech=%s duration=%.2fs threshold=%.4f",

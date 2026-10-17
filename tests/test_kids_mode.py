@@ -372,7 +372,10 @@ def test_runtime_kids_mode_forces_moderated_pipeline_and_removes_private_tools()
     assert effective.kids_activity == "quiz"
     assert effective.camera_enabled is False
     assert effective.camera_feed_enabled is False
-    assert effective.face_tracking_enabled is False
+    # Local face following reuses the saved Owner setting (daemon-local, no AI camera upload);
+    # Kids motion-off and a saved "off" both keep it off.
+    assert effective.face_tracking_enabled is True
+    assert runtime._kids_voice_config(replace(config, face_tracking_enabled=False)).face_tracking_enabled is False
     assert effective.doa_enabled is False
     assert effective.agent_tools_enabled is False
     assert effective.power_tools_enabled is False
@@ -630,8 +633,8 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     assert "homebody-shell-v" in worker
     # Companion card assets advance with the shell revision.
     for asset in ("style.css", "camera.js", "main.js", "companion.js"):
-        assert f"/static/{asset}?v=103" in html
-        assert f'"/static/{asset}?v=103"' in worker
+        assert f"/static/{asset}?v=104" in html
+        assert f'"/static/{asset}?v=104"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

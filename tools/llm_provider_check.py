@@ -313,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.ERROR)
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--profile", help="Hermes profile whose .env holds the keys, as for the bridge")
-    parser.add_argument("--photo", help="a JPEG of a desk or shelf, to also test I Spy target selection")
+    parser.add_argument("--photo", help="a JPEG of nearby objects, to also test I Spy target selection")
     parser.add_argument("--only", type=lambda value: set(value.split(",")), help="comma-separated: ispy, agent, kids")
     return asyncio.run(run_checks(parser.parse_args(argv)))
 

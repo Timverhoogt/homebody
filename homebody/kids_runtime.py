@@ -377,6 +377,23 @@ class KidsModeMixin:
         view_token: str = "",
         session_id: str | None = None,
     ) -> ISpyTarget | None:
+        """The search owns head, base and camera: local face following yields until it returns."""
+        with self._face_follow_yielded("ispy_search"):
+            return self._scan_ispy_scene_owned(
+                generation, profile, client=client, turn_bound=turn_bound, view_token=view_token,
+                session_id=session_id,
+            )
+
+    def _scan_ispy_scene_owned(
+        self,
+        generation: int,
+        profile: KidsProfile,
+        *,
+        client: HermesBridgeClient | None = None,
+        turn_bound: bool = False,
+        view_token: str = "",
+        session_id: str | None = None,
+    ) -> ISpyTarget | None:
         """Run one consented, cancellable search; frames exist only on this stack."""
         if not profile.camera_consent:
             raise RuntimeError("Camera opt-in is required for I Spy")
@@ -391,7 +408,7 @@ class KidsModeMixin:
                     raise ISpyCancelled("I Spy search ownership changed")
 
         assert_current()
-        # Five retained viewpoints cover a 240° desk arc while every commanded segment remains <= 60°.
+        # Five retained viewpoints cover a 240° viewing arc while every commanded segment remains <= 60°.
         # Two intermediate waypoints cross safely from the left extreme to the right side without capturing.
         scan_route = (
             (0.0, True),
@@ -515,6 +532,9 @@ class KidsModeMixin:
         body_yaws = (-12.0, 12.0, -8.0, 8.0, -5.0, 5.0)
         body_yaw = body_yaws[index % len(body_yaws)]
         head_yaw = body_yaw * 1.5
+        # The gesture holds through its spoken guess; the conversation resumes following before the
+        # next listen (only for a still-current lease).
+        self._yield_face_follow("ispy_guess")
         with self._motor_transition_lock:
             if not self._kids_callback_is_current(generation):
                 raise RuntimeError("I Spy player-turn motion was cancelled")
@@ -856,6 +876,7 @@ class KidsModeMixin:
                     cancel_move()
                 except Exception:
                     _LOGGER.warning("Could not cancel the active Kids Mode movement", exc_info=True)
+        self._stop_face_follow()  # immediately, before waiting on the motor lock; the lease is stale now
         self._revoke_show_tell()  # before waiting on the motor lock: an in-flight look is fenced now
         with self._motor_transition_lock:
             with self._kids_lock:
@@ -893,7 +914,13 @@ class KidsModeMixin:
             self._actions.cancel(stop_media=False)
         if fold:
             try:
-                if self._effective_power_mode() not in {"meeting", "sleep"}:
+                if self._effective_power_mode() == "standby" and self._verified_release_current():
+                    # The ended turn already returned to a verified fold: confirm it by measurement
+                    # instead of re-enabling torque for a second native sleep.
+                    folded, error = self._fold_unless_released()
+                    if not folded:
+                        raise RuntimeError(error)
+                elif self._effective_power_mode() not in {"meeting", "sleep"}:
                     self.set_power_mode("standby", cancel_announcements=False)
                 if not self._head_safely_folded or self._motors_enabled is not False:
                     raise RuntimeError("Kids Mode ended, but Reachy's safe fold could not be verified")
@@ -1012,7 +1039,11 @@ class KidsModeMixin:
                     self._conversation_stop_requested.clear()
                     self._turn_stop_generation = admission_stop_generation
             self._kids_host_typed_handled = False
-            self._run_conversation(config, typed_input=text.strip())
+            follow = self._begin_face_follow(config, admission_stop_generation)  # bound to this typed turn
+            try:
+                self._run_conversation(config, typed_input=text.strip())
+            finally:
+                self._end_face_follow(follow)
             if self._kids_host_typed_handled:
                 # The game master answered (switch, help, choice or stop); its own line follows.
                 return {"accepted": True}
@@ -1338,7 +1369,8 @@ class KidsModeMixin:
             conversation_timeout_seconds=min(base.conversation_timeout_seconds, remaining),
             camera_enabled=False,
             camera_feed_enabled=False,
-            face_tracking_enabled=False,
+            # The existing Owner setting, daemon-local only (no AI camera upload); Kids motion-off wins.
+            face_tracking_enabled=base.face_tracking_enabled and profile.motion_enabled,
             doa_enabled=False,
             robot_tools_enabled=False,
             agent_tools_enabled=False,

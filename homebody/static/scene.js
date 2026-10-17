@@ -231,12 +231,12 @@
 
     ispy: {
       label: "I Spy",
-      tagline: "An explorer's desk with a magnifying lens",
+      tagline: "An explorer's view with a magnifying lens",
       copy: {
         listening: "Reachy is ready for your guess or clue.",
         thinking: "Thinking about the clue.",
         speaking: "Reachy is speaking.",
-        searching: "Camera on for this desk search only.",
+        searching: "Camera on for this nearby search only.",
       },
       art: (p) => `<defs>${botDefs(p)}
           <linearGradient id="${p}-wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a140f"/><stop offset="1" stop-color="#2b2118"/></linearGradient>
@@ -498,7 +498,7 @@
       }
       return hostView("lobby", "Choosing", "Choosing a game", "Reachy offers two games. Saying stop always finishes.");
     }
-    if (scene === "ispy" && kids.camera_active === true) return view("searching", "Camera on", "Searching the desk", info.copy.searching);
+    if (scene === "ispy" && kids.camera_active === true) return view("searching", "Camera on", "Looking around nearby", info.copy.searching);
     const phase = STATE_PHASE[state];
     if (phase === "paused") return view("paused", "Paused", ...GENERIC.paused);
     if (phase === "trouble") return view("trouble", "Live", ...GENERIC.trouble);

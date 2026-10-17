@@ -13,9 +13,9 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=103">
-  <link rel="stylesheet" href="/static/scene.css?v=103">
-  <link rel="stylesheet" href="/static/onboarding.css?v=103">
+  <link rel="stylesheet" href="/static/style.css?v=104">
+  <link rel="stylesheet" href="/static/scene.css?v=104">
+  <link rel="stylesheet" href="/static/onboarding.css?v=104">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -626,7 +626,7 @@
               <select id="kids-language"><option value="en">English</option><option value="nl">Nederlands</option><option value="es">Español</option><option value="de">Deutsch</option><option value="fr">Français</option><option value="it">Italiano</option><option value="pt">Português</option></select>
             </label>
           </div>
-          <label class="toggle-row kids-motion-toggle"><span><strong>Gentle robot motion</strong><small>Allow occasional bounded head and antenna gestures; no camera and no wide dance</small></span><input id="kids-motion-enabled" type="checkbox" checked /></label>
+          <label class="toggle-row kids-motion-toggle"><span><strong>Gentle robot motion</strong><small>Allow occasional bounded head and antenna gestures; no wide dance. If Local face following is on in Settings, Reachy also follows a face using the camera on the robot only (nothing uploaded or saved)</small></span><input id="kids-motion-enabled" type="checkbox" checked /></label>
           <label id="kids-host-camera-row" class="toggle-row"><span><strong>Allow I Spy camera during Play together</strong><small>Optional. Without it Reachy never offers I Spy and tells the child a grown-up must allow the camera first.</small></span><input id="kids-host-camera-consent" type="checkbox" /></label>
           <div class="kids-safety-grid" aria-label="Kids Mode safeguards">
             <span><strong>Camera off after search</strong><small>I Spy uses only five transient frames after caregiver opt-in</small></span>
@@ -685,9 +685,9 @@
           <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="quiz"><span class="kids-activity-icon" aria-hidden="true">?</span><strong>Quiz quest</strong><small>Learn with kind hints</small></button>
           <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="riddles"><span class="kids-activity-icon" aria-hidden="true">◇</span><strong>Riddle box</strong><small>Guess, hint, reveal</small></button>
           <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="calm"><span class="kids-activity-icon" aria-hidden="true">≈</span><strong>Calm corner</strong><small>Breathe and slow down</small></button>
-          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="ispy"><span class="kids-activity-icon" aria-hidden="true">◉</span><strong>I Spy</strong><small>Wide desk search, then swap guesses</small></button>
+          <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="ispy"><span class="kids-activity-icon" aria-hidden="true">◉</span><strong>I Spy</strong><small>Look around nearby, then swap guesses</small></button>
         </div>
-        <label id="kids-ispy-consent-row" class="toggle-row" hidden><span><strong>Allow camera for this I Spy start only</strong><small>Five in-memory frames across one bounded ±120° desk search; no recording, storage, target selection involving people, or camera during guessing.</small></span><input id="kids-ispy-camera-consent" type="checkbox" /></label>
+        <label id="kids-ispy-consent-row" class="toggle-row" hidden><span><strong>Allow camera for this I Spy start only</strong><small>Five in-memory frames across one bounded ±120° search of nearby surroundings; no recording, storage, target selection involving people, or camera during guessing.</small></span><input id="kids-ispy-camera-consent" type="checkbox" /></label>
         <div class="actions kids-single-actions">
           <button type="button" id="kids-start-button" class="secondary">Start chosen activity</button>
         </div>
@@ -855,7 +855,7 @@
               <select id="base-yaw-step">
                 <option value="5">Fine · 5°</option>
                 <option value="15" selected>Small sector · 15°</option>
-                <option value="30">Desk sector · 30°</option>
+                <option value="30">Narrow view · 30°</option>
                 <option value="60">Wide sector · 60°</option>
               </select>
             </label>
@@ -1057,7 +1057,7 @@
         <form id="local-vision-ask" class="local-vision-ask" hidden>
           <label for="local-vision-question">Ask the local vision model</label>
           <div class="local-vision-row">
-            <input id="local-vision-question" type="text" maxlength="300" placeholder="What is on the desk?" />
+            <input id="local-vision-question" type="text" maxlength="300" placeholder="What can you see nearby?" />
             <button type="submit" id="local-vision-ask-button">Ask</button>
           </div>
           <details class="local-vision-credentials">
@@ -1217,7 +1217,7 @@
               <label class="toggle-row"><span><strong>Continued conversation</strong><small>Listen for a follow-up after each answer</small></span><input id="continuous_conversation" name="continuous_conversation" type="checkbox" /></label>
               <label class="toggle-row"><span><strong>Voice-state motion</strong><small>Listening, thinking, and speaking poses</small></span><input id="motion_enabled" name="motion_enabled" type="checkbox" checked /></label>
               <label class="toggle-row"><span><strong>Reachy action tools</strong><small>Realtime may look, express emotions, and dance. Manual controls remain local.</small></span><input id="robot_tools_enabled" name="robot_tools_enabled" type="checkbox" checked /></label>
-              <label class="toggle-row"><span><strong>Local face following</strong><small>Follow a face locally during the active conversation only</small></span><input id="face_tracking_enabled" name="face_tracking_enabled" type="checkbox" /></label>
+              <label class="toggle-row"><span><strong>Local face following</strong><small>Follow a face on the robot during an active conversation only, including Kids Mode sessions with motion on. Separate from Camera access for AI: nothing is uploaded, identified or saved</small></span><input id="face_tracking_enabled" name="face_tracking_enabled" type="checkbox" /></label>
               <p id="face-tracking-status" class="muted compact-note" role="status">Off.</p>
               <label>Face-following weight<input id="face_tracking_weight" name="face_tracking_weight" type="range" min="0" max="1" step="0.05" value="0.65" /><small>Blend local face tracking with Reachy's voice and action motion.</small></label>
               <label class="toggle-row"><span><strong>Turn toward wake phrase</strong><small>Use one local microphone-array direction estimate after wake</small></span><input id="doa_enabled" name="doa_enabled" type="checkbox" /></label>
@@ -1334,21 +1334,21 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=103"></script>
-  <script src="/static/scene.js?v=103"></script>
-  <script src="/static/motion.js?v=103"></script>
-  <script src="/static/onboarding.js?v=103"></script>
-  <script src="/static/owner.js?v=103"></script>
+  <script src="/static/notifications.js?v=104"></script>
+  <script src="/static/scene.js?v=104"></script>
+  <script src="/static/motion.js?v=104"></script>
+  <script src="/static/onboarding.js?v=104"></script>
+  <script src="/static/owner.js?v=104"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=103"></script>
-  <script src="/static/agent-connection.js?v=103"></script>
-  <script src="/static/native-workspace.js?v=103"></script>
-  <script src="/static/workspace.js?v=103"></script>
-  <script src="/static/ispy-input.js?v=103"></script>
-  <script src="/static/companion.js?v=103"></script>
-  <script src="/static/main.js?v=103"></script>
-  <script src="/static/updates.js?v=103"></script>
-  <script src="/static/volume.js?v=103"></script>
-  <script src="/static/assistant-modes.js?v=103"></script>
+  <script src="/static/camera.js?v=104"></script>
+  <script src="/static/agent-connection.js?v=104"></script>
+  <script src="/static/native-workspace.js?v=104"></script>
+  <script src="/static/workspace.js?v=104"></script>
+  <script src="/static/ispy-input.js?v=104"></script>
+  <script src="/static/companion.js?v=104"></script>
+  <script src="/static/main.js?v=104"></script>
+  <script src="/static/updates.js?v=104"></script>
+  <script src="/static/volume.js?v=104"></script>
+  <script src="/static/assistant-modes.js?v=104"></script>
 </body>
 </html>

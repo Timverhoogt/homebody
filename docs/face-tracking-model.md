@@ -2,6 +2,14 @@
 
 **Local face following** asks the Reachy Mini daemon to track faces. `start_head_tracking` only sends a command to the daemon; the tracker thread runs inside the daemon process. Homebody therefore reports the state as **Requested · not confirmed running**, never as running. If the command cannot be sent, it reports **command failed**. No face in view is not a failure.
 
+## When it runs (Everyday and Kids Mode)
+
+The single saved Owner setting **Local face following** (`face_tracking_enabled`, off by default) applies to Everyday turns and to every Kids Mode activity: Buddy, stories, quiz, riddles, calm, I Spy and hosted play, including the greeting, clue and host lines. Kids Mode adds no second opt-in. A session started with **Gentle robot motion** off never follows, and a saved "off" stays off.
+
+It is separate from **Camera access for AI**. The daemon reads its own camera locally to steer the head. Homebody never receives, identifies, stores or uploads a face. Kids Mode still runs with AI camera access, tools and DOA turned off. Show and Tell and I Spy uploads still need their own Owner approval or caregiver consent.
+
+Following is tied to one admitted turn (stop generation, plus the Kids session and generation). It pauses while another owner needs the head or camera: I Spy search, the I Spy guess gesture until the next listen, the Show and Tell photo, robot actions, manual camera control and every safety fold. It stops at once on Stop, End, expiry, privacy, Meeting/Sleep, Standby folds, torque release, an unavailable motor backend, a game switch or a session replacement. A late callback cannot restart it. Only a turn that is still current and still permitted can resume it, and resuming never wakes Reachy or enables torque. The movement itself is the daemon's existing bounded tracker at the saved weight.
+
 ## The dependency
 
 The daemon's SDK `FaceDetector` downloads one pinned file on first use:
