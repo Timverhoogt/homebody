@@ -653,6 +653,15 @@
           </div>
           <p id="kids-host-message" class="message" role="status" aria-live="polite"></p>
         </div>
+        <div id="kids-show-tell" class="kids-host-controls" hidden>
+          <p class="label">Show and Tell in Kids Chat · <span id="kids-show-tell-state">Off</span></p>
+          <p id="kids-show-tell-disclosure" class="muted compact-note">Uses your “Camera access for AI” approval and stays on until you turn it off here. Reachy never looks by itself: only when the child asks, for example “look at my drawing” or “kijk naar mijn tekening”, or when you press Look now. Reachy first says it will look, then takes one photo of a toy, drawing or build. The photo goes to the Hermes host’s configured vision provider — an external service unless the host set a local vision server — and is not stored. Only a short approved description stays in memory for follow-up chat until a new look, Stop, End or turning this off. Faces, screens, documents and writing are refused. English and Dutch Kids Chat only.</p>
+          <div class="kids-host-choices" role="group" aria-label="Show and Tell">
+            <button type="button" class="secondary" id="kids-show-tell-toggle" disabled>Turn off</button>
+            <button type="button" class="secondary" id="kids-show-tell-look" disabled>Look now</button>
+          </div>
+          <p id="kids-show-tell-message" class="message" role="status" aria-live="polite"></p>
+        </div>
         <form id="kids-ispy-guess-form" class="ispy-guess-form" autocomplete="off" hidden>
           <label id="kids-ispy-guess-label" for="kids-ispy-guess">Your I Spy guess</label>
           <div class="ispy-guess-row">
@@ -1214,7 +1223,7 @@
               <label class="toggle-row"><span><strong>Turn toward wake phrase</strong><small>Use one local microphone-array direction estimate after wake</small></span><input id="doa_enabled" name="doa_enabled" type="checkbox" /></label>
               <label class="toggle-row"><span><strong>Interruption</strong><small>Pipeline wake-phrase interruption or natural Realtime barge-in</small></span><input id="barge_in_enabled" name="barge_in_enabled" type="checkbox" checked /></label>
 
-              <label class="toggle-row"><span><strong>Camera access for AI</strong><small>Allow explicit looks and short camera sessions in any voice engine. Never starts capture, the live viewer or tracking by itself.</small></span><input id="camera_enabled" name="camera_enabled" type="checkbox" /></label>
+              <label class="toggle-row"><span><strong>Camera access for AI</strong><small>Allow explicit looks and short camera sessions in any voice engine. Never starts capture, the live viewer or tracking by itself. Also covers Kids Chat Show and Tell (one announced photo when a child asks; processed by the bridge’s vision provider), which you can turn off on the Kids page.</small></span><input id="camera_enabled" name="camera_enabled" type="checkbox" /></label>
               <label class="toggle-row"><span><strong>Local live camera</strong><small>Allow this UI to connect directly to Reachy's local WebRTC video while Awake</small></span><input id="camera_feed_enabled" name="camera_feed_enabled" type="checkbox" /></label>
               <label class="toggle-row"><span><strong>Camera movement controls</strong><small>Optional supervised joystick over the live feed. Off by default; release holds the current view.</small></span><input id="camera_controls_enabled" name="camera_controls_enabled" type="checkbox" /></label>
               <label>Joystick hand<select id="camera_controls_handedness" name="camera_controls_handedness"><option value="right">Right</option><option value="left">Left</option></select><small>Place the thumb control on the selected side of the live image.</small></label>

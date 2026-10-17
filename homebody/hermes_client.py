@@ -235,6 +235,88 @@ class HermesBridgeClient:
         self._kids_fallback_speech_approval = fallback
         return approved
 
+    def _show_tell_profile(self) -> dict[str, str]:
+        if not self.config.kids_mode_enabled or self.config.kids_activity != "buddy" or self.config.kids_host_enabled:
+            raise HermesBridgeError("Show and Tell needs an active Kids Chat session")
+        return {
+            "session_id": self.config.kids_session_id,
+            "age_band": self.config.kids_age_band,
+            "language": self.config.language,
+        }
+
+    def show_tell_revoke(self, serial: int) -> None:
+        """Retire this session's derived grant (and every older one) on the bridge."""
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/kids/show-and-tell/revoke",
+            headers={"Authorization": f"Bearer {self.config.api_key}"},
+            json={"session_id": self._show_tell_profile()["session_id"], "serial": int(serial)},
+            timeout=5.0,
+        )
+        self._raise_for_error(response, "Show and Tell revocation")
+        payload = response.json()
+        if not isinstance(payload, dict) or payload.get("revoked") is not True:
+            raise HermesBridgeError("Hermes returned an invalid Show and Tell revocation receipt")
+
+    def show_tell_permit(self, grant: str, serial: int, ttl_seconds: int) -> tuple[str, str]:
+        """One bridge look permit plus the approved exact pre-capture announcement.
+
+        ``grant``/``serial`` are Reachy's internally derived session capability, never a flag.
+        """
+        self._kids_speech_approval = ""
+        self._kids_fallback_speech_approval = ""
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/kids/show-and-tell/permit",
+            headers={"Authorization": f"Bearer {self.config.api_key}"},
+            json={
+                **self._show_tell_profile(), "grant": grant, "serial": int(serial), "ttl_seconds": int(ttl_seconds),
+            },
+            timeout=KIDS_FIXED_SPEECH_TIMEOUT_SECONDS,
+        )
+        self._raise_for_error(response, "Show and Tell permit")
+        payload = response.json()
+        values = [str(payload.get(key) or "") if isinstance(payload, dict) else "" for key in (
+            "permit", "text", "speech_approval", "fallback_speech_approval",
+        )]
+        if not all(value and value == value.strip() for value in values):
+            raise HermesBridgeError("Hermes returned an incomplete Show and Tell permit")
+        permit, text, self._kids_speech_approval, self._kids_fallback_speech_approval = values
+        return permit, text
+
+    def show_tell_look(self, permit: str, frame: bytes) -> tuple[str, bool]:
+        """Send exactly one transient frame; receive only approved fixed-vocabulary speech."""
+        self._kids_speech_approval = ""
+        self._kids_fallback_speech_approval = ""
+        if not isinstance(frame, bytes) or not 0 < len(frame) <= 1_000_000:
+            raise HermesBridgeError("Show and Tell frame bounds were not met")
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/kids/show-and-tell/look",
+            headers={"Authorization": f"Bearer {self.config.api_key}"},
+            json={
+                "session_id": self._show_tell_profile()["session_id"],
+                "permit": permit,
+                "frame_jpeg": base64.b64encode(frame).decode("ascii"),
+            },
+            timeout=httpx.Timeout(KIDS_CHAT_TIMEOUT_SECONDS, connect=5.0),
+        )
+        self._raise_for_error(response, "Show and Tell look")
+        payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("recognized"), bool):
+            raise HermesBridgeError("Hermes returned an invalid Show and Tell result")
+        values = [str(payload.get(key) or "") for key in ("text", "speech_approval", "fallback_speech_approval")]
+        if not all(value and value == value.strip() for value in values):
+            raise HermesBridgeError("Hermes returned an incomplete Show and Tell result")
+        text, self._kids_speech_approval, self._kids_fallback_speech_approval = values
+        return text, payload["recognized"]
+
+    def show_tell_cancel(self) -> None:
+        response = self._client.post(
+            f"{self.config.bridge_url}/v1/kids/show-and-tell/cancel",
+            headers={"Authorization": f"Bearer {self.config.api_key}"},
+            json={"session_id": self._show_tell_profile()["session_id"]},
+            timeout=3.0,
+        )
+        self._raise_for_error(response, "Show and Tell cancellation")
+
     def abandon_ispy_view(self, session_id: str, view_token: str) -> None:
         """Resolve a cancelled view without deleting an otherwise active Kids game."""
         if not self.valid_ispy_view_token(view_token):

@@ -345,6 +345,10 @@ Authorization: Bearer <API_SERVER_KEY>
 | `POST /v1/kids/session` | Reachy reports a Kids session as `active` or `ended` for the bridge-side Kids latch |
 | `POST /v1/kids/chat` | Bounded, pre/post-moderated child chat without Hermes memory/tools |
 | `POST /v1/kids/speech/approve` | Render one server-authored fixed Kids line from catalog selectors (`kids_fixed_copy.py`; never caller text), moderate it, and return its text with single-use speech approvals; no audio |
+| `POST /v1/kids/show-and-tell/permit` | Kids Chat Show and Tell: confirm Reachy's derived session grant (token + monotonic serial, never a flag), mint one 25 s look permit and return the moderated "I'll look once" line with speech approvals |
+| `POST /v1/kids/show-and-tell/look` | Consume that permit with one transient JPEG (≤ 1 MB); call the I Spy vision route (`REACHY_ISPY_VISION_URL`, else the external text provider) with a strict enum schema; return only moderated fixed copy; keep only kind/colour/shape in RAM for follow-up chat |
+| `POST /v1/kids/show-and-tell/cancel` | Stop: drop the in-flight look, permit and description; the grant stays |
+| `POST /v1/kids/show-and-tell/revoke` | Owner opt-out, camera revoke or End: retire the grant at a serial and every older one |
 | `POST /v1/kids/speech/stream` | Fixed-policy ElevenLabs Flash v2.5 24 kHz PCM stream for approved child text |
 | `POST /v1/audio/transcriptions` | Configured/local/ElevenLabs STT |
 | `POST /v1/audio/speech` | Configured/Edge/ElevenLabs TTS |
