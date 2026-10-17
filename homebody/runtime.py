@@ -41,6 +41,7 @@ from .safety_gate import (
     ROBOT_ACTION_POLICY,
     SafetyGate,
 )
+from .show_and_tell_runtime import ShowAndTellMixin
 from .vision_runtime import VisionMixin
 from .vision_runtime import doa_yaw_degrees as doa_yaw_degrees  # re-exported for existing imports
 from .voice_ha import HomeAssistantVoiceMixin
@@ -196,6 +197,7 @@ class _RuntimeSafetyProbe:
 class HermesVoiceRuntime(
     EverydayRuntimeMixin,
     KidsModeMixin,
+    ShowAndTellMixin,
     AnnouncementsMixin,
     ManualControlMixin,
     CompanionMixin,
@@ -266,6 +268,7 @@ class HermesVoiceRuntime(
         self._home_assistant_bridge: HomeAssistantBridge | None = None
         self._home_assistant_error = ""
         self._init_kids_state()
+        self._init_show_tell_state()
         self._safety_gate = SafetyGate(_RuntimeSafetyProbe(self))
         self._init_agent_session_state()
         self._voice_workspace = VoiceWorkspace()
@@ -318,6 +321,9 @@ class HermesVoiceRuntime(
             # Stop/privacy/power/Kids/profile all pass here: held look/offer callbacks bound to older
             # generations are rejected and private look/offer text leaves RAM.
             teardown("stop")
+        show_tell_stop = getattr(self, "_show_tell_stop_requested", None)
+        if callable(show_tell_stop):
+            show_tell_stop()  # clears Show and Tell work/context; never the Owner's saved setting
         if hasattr(self, "_everyday_lock"):
             self._revoke_everyday_actions()
         client = getattr(self, "_robot_stt", None)
@@ -382,6 +388,10 @@ class HermesVoiceRuntime(
         payload["companion"] = self.companion_public_status(config)
         with self._agent_lock:
             payload["agent"] = self._agent_status_unlocked()
+        # Read before _kids_lock: the gate snapshots that lock itself (categorical booleans only).
+        show_tell = self._show_tell_public() if hasattr(self, "_show_tell_gate") else {
+            "camera_approved": False, "enabled": False, "session": False, "available": False, "looking": False,
+        }
         with self._kids_lock:
             remaining = max(0, int(self._kids_ends_at - time.monotonic())) if self._kids_active else 0
             kids_payload = {
@@ -402,6 +412,7 @@ class HermesVoiceRuntime(
                 "camera_enabled": False,
                 "camera_active": self._kids_camera_active,
                 "host": self._kids_host_public(),
+                "show_and_tell": show_tell,
             }
             payload["kids_mode"] = kids_payload
             if self._kids_locked:

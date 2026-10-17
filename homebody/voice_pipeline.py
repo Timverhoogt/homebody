@@ -329,6 +329,20 @@ class PipelineVoiceMixin:
                     with self._status_lock:
                         self._status.turns_completed += 1
                     break
+                show_tell_requested = getattr(self, "_show_tell_requested", None)
+                if typed_input is None and callable(show_tell_requested) and show_tell_requested(
+                    initial_config, transcript
+                ):
+                    # Consented, explicit Kids Chat request: one announced look instead of a chat turn.
+                    # This turn already owns the voice slot; the filler must be quiet first.
+                    if not settle_ack() or not self._show_tell_voice_turn():
+                        self._set_status("waiting_for_wake_word", "Show and Tell ended")
+                        break
+                    with self._status_lock:
+                        self._status.turns_completed += 1
+                    if not conversation_is_current() or self._turn_stop_requested():
+                        break
+                    continue  # the ordinary continuous Kids turn; never a new wake
                 with self._agent_lock:
                     agent_profile_active = self._capability_profile == "agent"
                 visual_help = not client.config.kids_mode_enabled and (

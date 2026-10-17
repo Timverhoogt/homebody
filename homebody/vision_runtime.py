@@ -99,11 +99,14 @@ class VisionMixin:
         turn_bound: bool = False,
         is_current: Callable[[], bool] | None = None,
         adult_current: Callable[[], None] | None = None,
+        show_tell: Callable[[], None] | None = None,
     ) -> bytes:
         media = getattr(self.robot, "media", None)
         capture = getattr(media, "get_frame_jpeg", None)
         if not callable(capture):
             raise RuntimeError("Reachy camera capture is unavailable")
+        if show_tell is not None and kids_generation is None:
+            raise RuntimeError("Show and Tell capture needs its Kids generation")
 
         def assert_allowed() -> None:
             if self.stop_event.is_set():
@@ -111,6 +114,22 @@ class VisionMixin:
                 raise cancelled("Camera capture was cancelled")
             if is_current is not None and not is_current():
                 raise RuntimeError("Camera capture was cancelled")
+            if show_tell is not None:
+                # Kids Chat Show and Tell: its own consent permit, never the I Spy consent.
+                with self._kids_lock:
+                    if (
+                        not self._kids_active
+                        or self._kids_generation != kids_generation
+                        or not self._kids_camera_active
+                        or self._kids_profile is None
+                        or self._kids_profile.activity != "buddy"
+                        or self._kids_profile.host
+                    ):
+                        raise ISpyCancelled("Show and Tell camera capture was cancelled")
+                if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
+                    raise ISpyCancelled("Show and Tell camera capture was cancelled by privacy")
+                show_tell()
+                return
             if kids_generation is None:
                 self._assert_camera_allowed()
                 if adult_current is not None:
@@ -143,7 +162,7 @@ class VisionMixin:
                     if not isinstance(frame, (bytes, bytearray, memoryview)):
                         raise RuntimeError("Reachy camera returned an unsupported JPEG payload")
                     jpeg = bytes(frame)
-                    maximum = 1_500_000 if kids_generation is not None else 1_000_000
+                    maximum = 1_500_000 if kids_generation is not None and show_tell is None else 1_000_000
                     if len(jpeg) > maximum:
                         raise RuntimeError("Camera JPEG exceeded the active safety limit")
                     return jpeg
