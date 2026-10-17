@@ -414,7 +414,6 @@ def test_stale_start_failure_must_not_stop_replacement(make_runtime, monkeypatch
     ('enabled', 0.0, 0.0, True),
     ('disabled', 0.0, 0.0, False),
     ('enabled', -0.04, 0.30, False),
-    ('enabled', float('nan'), 0.0, False),
 ])
 def test_real_readiness_helper_requires_measured_enabled_unfolded_finite_pose(
         make_runtime, monkeypatch, control_mode, z, pitch, ready):

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.31] — Motor-disconnect safety and Ollama hosting
+
+- Treat unavailable motor commands and pose readbacks (daemon errors, disconnection, transport timeouts or invalid measurements) as unverified hardware, clearing stale torque/fold confirmations. Failed or duplicate Awake and post-Sleep readback failure do not send recovery motion through an unavailable connection; verified negative measurements retain the existing recovery behavior.
+- Keep Sleep and Meeting private while reporting unknown torque rather than claiming motors remain enabled. If communication disappears during torque release, do not claim a confirmed safe fold.
+- Give explicit power/USB/daemon recovery guidance. This does not automatically restart the daemon, reconnect hardware, or authorize movement; recovery still requires owner supervision and verified hardware state.
+- Preserve the accepted 0.5.30 temperature and Live permission fixes.
 - Add an explicit `ollama` text-provider preset for Everyday and optional shared bridge text calls: loopback default, explicit model tags, optional proxy-only key, no cloud-key reuse, and adaptation of unsupported OpenAI tool-control fields. Existing tool/permission/moderation boundaries remain unchanged.
 - Document Windows/Mac/Linux Ollama hosting for same-computer or trusted-LAN Everyday Pipeline reasoning and camera vision, including firewall, speech-provider and hardware-acceptance limits. Add portable model-client contract coverage; native model and robot acceptance remain separate.
 
