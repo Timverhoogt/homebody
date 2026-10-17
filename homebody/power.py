@@ -20,6 +20,10 @@ from .wakeword import WAKE_PROMPT as _WAKE_PROMPT
 # Keep the runtime logger name so existing log filters still match these lines.
 _LOGGER = logging.getLogger("homebody.runtime")
 
+class MotorBackendUnavailable(RuntimeError):
+    """Motor command outcome cannot be trusted; do not issue recovery motion."""
+
+
 class PowerMixin:
     """Serialized power transitions, safe fold before torque release, and confirmed wake."""
 
@@ -195,7 +199,10 @@ class PowerMixin:
             try:
                 self._set_motor_mode(False)
             except RuntimeError as exc:
-                message = f"Reachy folded safely, but disabling motor torque failed: {exc}"
+                message = (
+                    str(exc) if isinstance(exc, MotorBackendUnavailable)
+                    else f"Reachy folded safely, but disabling motor torque failed: {exc}"
+                )
                 _LOGGER.error(message)
                 return False, message
             _LOGGER.info("Reachy completed its native sleep movement before torque release")
@@ -237,13 +244,21 @@ class PowerMixin:
                 detail = (
                     "Voice is disabled; Reachy is folded safely into Sleep"
                     if head_folded
-                    else "Voice is disabled; sleep motion failed and motor torque remains enabled"
+                    else (
+                        "Voice is disabled; motor torque and folded pose are unverified"
+                        if self._motors_enabled is None
+                        else "Voice is disabled; sleep motion failed and motor torque remains enabled"
+                    )
                 )
             else:
                 detail = (
                     "Voice is disabled; Reachy is folded safely for Meeting"
                     if head_folded
-                    else "Voice is disabled; safe motor release failed and torque remains enabled"
+                    else (
+                        "Voice is disabled; motor torque and folded pose are unverified"
+                        if self._motors_enabled is None
+                        else "Voice is disabled; safe motor release failed and torque remains enabled"
+                    )
                 )
             self._set_status(
                 mode,
@@ -273,7 +288,12 @@ class PowerMixin:
             try:
                 self._set_motor_mode(True, wake=True)
             except RuntimeError as exc:
-                folded, recovery_error = self._fold_head_before_torque_release()
+                if isinstance(exc, MotorBackendUnavailable):
+                    # The same dead backend cannot safely fold. In particular a
+                    # timeout may have admitted the first write: never replay it.
+                    folded, recovery_error = False, ""
+                else:
+                    folded, recovery_error = self._fold_head_before_torque_release()
                 with self._power_lock:
                     self._power_mode = "standby"
                     self._meeting_until = 0.0
@@ -337,6 +357,20 @@ class PowerMixin:
             response = httpx.post(f"http://127.0.0.1:8000/api/motors/set_mode/{mode}", timeout=5.0)
             response.raise_for_status()
         except Exception as exc:
+            if isinstance(exc, httpx.TransportError) or (
+                isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code >= 500
+            ):
+                # Backend loss is not evidence that the old torque/pose survived
+                # unplugging. Never expose stale motor-off or folded confirmation.
+                self._motors_enabled = None
+                self._head_safely_folded = False
+                message = (
+                    "Reachy's hardware connection is unavailable; motor torque and folded pose are unverified. "
+                    "No automatic folding or motor retry was attempted. Check robot power and USB, "
+                    "then recover the Reachy daemon with the owner present and clear space before trying again."
+                )
+                _LOGGER.warning("Motor backend unavailable while setting %s: %s", mode, exc)
+                raise MotorBackendUnavailable(message) from exc
             message = f"Could not set Reachy motors to {mode}: {exc}"
             _LOGGER.warning(message)
             raise RuntimeError(message) from exc

@@ -20,6 +20,79 @@ from homebody.runtime import (
 )
 
 
+@pytest.mark.parametrize("failure", ["503", "connection", "timeout"])
+def test_unavailable_motor_backend_does_not_attempt_recovery_fold(monkeypatch, failure) -> None:
+    import httpx
+
+    robot = FakeRobot()
+    runtime = HermesVoiceRuntime(robot, threading.Event())
+    runtime._motors_enabled = False
+    runtime._head_safely_folded = True
+    requests = []
+
+    def unavailable(url, **kwargs):
+        requests.append(url)
+        request = httpx.Request("POST", url)
+        if failure == "connection":
+            raise httpx.ConnectError("unplugged", request=request)
+        if failure == "timeout":
+            raise httpx.ReadTimeout("outcome unknown", request=request)
+        return httpx.Response(503, request=request)
+
+    monkeypatch.setattr("homebody.power.httpx.post", unavailable)
+    with pytest.raises(RuntimeError, match="hardware connection is unavailable"):
+        runtime.set_power_mode("awake")
+
+    assert len(requests) == 1
+    assert robot.sleep_calls == 0
+    assert runtime._motors_enabled is None
+    assert runtime._head_safely_folded is False
+    status = runtime.status()
+    assert status["state"] == "power_transition_error"
+    assert "No automatic folding or motor retry" in str(status["last_error"])
+    assert "automatic safe-Standby recovery also failed" not in str(status["last_error"])
+
+
+@pytest.mark.parametrize("mode", ["sleep", "meeting"])
+def test_unavailable_backend_never_claims_enabled_torque_in_privacy_status(monkeypatch, mode) -> None:
+    import httpx
+
+    runtime = HermesVoiceRuntime(FakeRobot(), threading.Event())
+    runtime._motors_enabled = True
+    runtime._head_safely_folded = True
+    monkeypatch.setattr(
+        "homebody.power.httpx.post",
+        lambda url, **kwargs: httpx.Response(503, request=httpx.Request("POST", url)),
+    )
+    with pytest.raises(RuntimeError):
+        runtime.set_power_mode(mode)
+    status = runtime.status()
+    assert runtime._motors_enabled is None
+    assert runtime._head_safely_folded is False
+    assert "unverified" in str(status["detail"])
+    assert "torque remains enabled" not in str(status["detail"])
+
+
+def test_disconnect_during_torque_release_invalidates_fold_confirmation(monkeypatch) -> None:
+    import httpx
+
+    runtime = HermesVoiceRuntime(FakeRobot(), threading.Event())
+    requests = []
+
+    def post(url, **kwargs):
+        requests.append(url)
+        code = 503 if url.endswith("/disabled") else 200
+        return httpx.Response(code, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr("homebody.power.httpx.post", post)
+    with pytest.raises(RuntimeError, match="hardware connection is unavailable"):
+        runtime.set_power_mode("standby")
+    assert len(requests) == 2
+    assert runtime._motors_enabled is None
+    assert runtime._head_safely_folded is False
+    assert "Reachy folded safely" not in str(runtime.status()["last_error"])
+
+
 class FakeMedia:
     def __init__(self) -> None:
         self.recording = False
