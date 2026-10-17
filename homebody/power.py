@@ -109,16 +109,30 @@ class PowerMixin:
                     self._privacy_requested.clear()
             return self._power_mode
 
+    def _motor_backend_unavailable(self, exc: Exception) -> MotorBackendUnavailable:
+        """Invalidate cached confirmations; unknown hardware must not authorize motion."""
+        self._motors_enabled = None
+        self._head_safely_folded = False
+        _LOGGER.warning("Motor command or measured state unavailable: %s", exc)
+        return MotorBackendUnavailable(
+            "Reachy's hardware connection is unavailable; motor torque and folded pose are unverified. "
+            "No automatic folding or motor retry was attempted after the unavailable result. "
+            "Check robot power and USB, then recover the Reachy daemon with the owner present "
+            "and clear space before trying again."
+        )
+
     def _read_head_safely_folded(self) -> bool:
         """Read whether the current pose is already inside the supported sleep cradle."""
         try:
             response = httpx.get("http://127.0.0.1:8000/api/state/full", timeout=2.0)
             response.raise_for_status()
-            pose = response.json().get("head_pose") or {}
-            return float(pose.get("z", 0.0)) <= -0.03 and float(pose.get("pitch", 0.0)) >= 0.25
+            pose = response.json()["head_pose"]
+            z, pitch = float(pose["z"]), float(pose["pitch"])
+            if not math.isfinite(z) or not math.isfinite(pitch):
+                raise ValueError("Folded-pose measurement is not finite")
+            return z <= -0.03 and pitch >= 0.25
         except Exception as exc:
-            _LOGGER.warning("Could not verify whether Reachy's head is folded: %s", exc)
-            return False
+            raise self._motor_backend_unavailable(exc) from exc
 
     def _fold_head_before_torque_release(self) -> tuple[bool, str]:
         """Permit only serialized safety folding after shutdown, never a fresh wake."""
@@ -162,6 +176,8 @@ class PowerMixin:
                     _LOGGER.error(message)
                     try:
                         self._set_motor_mode(True)
+                    except MotorBackendUnavailable as exc:
+                        return False, str(exc)
                     except RuntimeError:
                         _LOGGER.exception("Could not preserve torque after movement stop timeout")
                     return False, message
@@ -184,14 +200,22 @@ class PowerMixin:
                 _LOGGER.exception("Could not run Reachy's native sleep movement")
                 try:
                     self._set_motor_mode(True)
+                except MotorBackendUnavailable as unavailable:
+                    return False, str(unavailable)
                 except RuntimeError:
                     _LOGGER.exception("Could not reconfirm enabled torque after sleep movement failure")
                 return False, message
-            if not self._read_head_safely_folded():
+            try:
+                measured_folded = self._read_head_safely_folded()
+            except MotorBackendUnavailable as exc:
+                return False, str(exc)
+            if not measured_folded:
                 message = "Reachy sleep movement returned without a verified folded pose; motors remain enabled"
                 _LOGGER.error(message)
                 try:
                     self._set_motor_mode(True)
+                except MotorBackendUnavailable as exc:
+                    return False, str(exc)
                 except RuntimeError:
                     _LOGGER.exception("Could not preserve torque after unverified sleep pose")
                 return False, message
@@ -360,17 +384,7 @@ class PowerMixin:
             if isinstance(exc, httpx.TransportError) or (
                 isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code >= 500
             ):
-                # Backend loss is not evidence that the old torque/pose survived
-                # unplugging. Never expose stale motor-off or folded confirmation.
-                self._motors_enabled = None
-                self._head_safely_folded = False
-                message = (
-                    "Reachy's hardware connection is unavailable; motor torque and folded pose are unverified. "
-                    "No automatic folding or motor retry was attempted. Check robot power and USB, "
-                    "then recover the Reachy daemon with the owner present and clear space before trying again."
-                )
-                _LOGGER.warning("Motor backend unavailable while setting %s: %s", mode, exc)
-                raise MotorBackendUnavailable(message) from exc
+                raise self._motor_backend_unavailable(exc) from exc
             message = f"Could not set Reachy motors to {mode}: {exc}"
             _LOGGER.warning(message)
             raise RuntimeError(message) from exc
@@ -403,11 +417,14 @@ class PowerMixin:
             response = httpx.get("http://127.0.0.1:8000/api/state/full", timeout=2.0)
             response.raise_for_status()
             state = response.json()
-            if state.get("control_mode") != "enabled":
-                return False
-            pose = state.get("head_pose") or {}
+            control_mode = state["control_mode"]
+            if control_mode not in {"enabled", "disabled", "gravity_compensation"}:
+                raise ValueError("Motor control mode is unverified")
+            pose = state["head_pose"]
             z = float(pose["z"])
             pitch = float(pose["pitch"])
-            return math.isfinite(z) and math.isfinite(pitch) and z > -0.02 and pitch < 0.20
-        except Exception:
-            return False
+            if not math.isfinite(z) or not math.isfinite(pitch):
+                raise ValueError("Awake-pose measurement is not finite")
+            return control_mode == "enabled" and z > -0.02 and pitch < 0.20
+        except Exception as exc:
+            raise self._motor_backend_unavailable(exc) from exc

@@ -432,6 +432,8 @@ def test_wake_failure_recovers_to_confirmed_folded_standby(monkeypatch) -> None:
     monkeypatch.setattr("homebody.power.httpx.post", lambda *args, **kwargs: Response())
     runtime = HermesVoiceRuntime(FailingWakeRobot(), threading.Event())
     runtime._head_safely_folded = True
+    # Recovery is authorized only by a real negative measurement, not a failed read.
+    monkeypatch.setattr(runtime, "_wake_pose_is_ready", lambda: False)
 
     with pytest.raises(RuntimeError, match="wake motion failed"):
         runtime.set_power_mode("awake")

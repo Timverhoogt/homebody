@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.5.31] — Motor-disconnect safety and Ollama hosting
 
-- Treat unavailable motor backends (daemon server errors, disconnection and transport timeouts) as unverified hardware, clearing stale torque/fold confirmations. Failed Awake does not send a second enable/fold request through the same unavailable connection.
+- Treat unavailable motor commands and pose readbacks (daemon errors, disconnection, transport timeouts or invalid measurements) as unverified hardware, clearing stale torque/fold confirmations. Failed or duplicate Awake and post-Sleep readback failure do not send recovery motion through an unavailable connection; verified negative measurements retain the existing recovery behavior.
 - Keep Sleep and Meeting private while reporting unknown torque rather than claiming motors remain enabled. If communication disappears during torque release, do not claim a confirmed safe fold.
 - Give explicit power/USB/daemon recovery guidance. This does not automatically restart the daemon, reconnect hardware, or authorize movement; recovery still requires owner supervision and verified hardware state.
 - Preserve the accepted 0.5.30 temperature and Live permission fixes.
