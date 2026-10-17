@@ -17,7 +17,7 @@ from .audio import resample_linear
 from .config import AppConfig
 from .everyday_runtime import EverydayCallbackScope
 from .kids_acknowledgements import output_quarantined
-from .live_client import LiveBridgeSession
+from .live_client import LiveBridgeSession, bridge_error_text
 from .realtime_client import RealtimeBridgeError
 from .voice_realtime import RealtimePlayback
 
@@ -243,7 +243,7 @@ class LiveVoiceMixin:
                     return
                 kind, payload = event.type, event.payload
                 if kind == "bridge.error":
-                    raise RealtimeBridgeError(str(payload.get("error") or "Live session failed"))
+                    raise RealtimeBridgeError(bridge_error_text(payload, "Live session failed"))
                 if kind == "session.closed":
                     return
                 if kind == "everyday.tool_call":

@@ -240,6 +240,19 @@ HOST_SLOTS = {
 }
 
 
+def selector_ids(segments: list[dict[str, object]]) -> str:
+    """Catalog ids of already-rendered selectors for a log line, e.g. ``host:offer[a=story,b=quiz]``.
+
+    Only call after rendering succeeded: every value is then a catalog key or activity id, never text.
+    """
+    ids = []
+    for segment in segments:
+        name = str(segment["kind"]) + (f":{segment['key']}" if "key" in segment else "")
+        slots = ",".join(f"{slot}={segment[slot]}" for slot in ("a", "b") if slot in segment)
+        ids.append(f"{name}[{slots}]" if slots else name)
+    return "+".join(ids)
+
+
 def render_segment(segment: object, *, activity: str, language: str) -> str:
     """Render one strict selector; raise ValueError for anything outside the catalog.
 
