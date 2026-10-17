@@ -24,7 +24,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
-from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
+from aiohttp import ClientError, ClientSession, ClientTimeout, WSMsgType, WSServerHandshakeError, web
 
 try:
     from companion.everyday_manifest import (
@@ -215,6 +215,67 @@ class DelegationFailure(Exception):
 
 _CATEGORY = frozenset("abcdefghijklmnopqrstuvwxyz_")
 _UNVERIFIED = "The backend could not safely verify a result. Nothing is confirmed."
+# Only public protocol vocabulary is permitted, never arbitrary upstream strings.
+_SAFE_CODES = frozenset({
+    "invalid_api_key", "insufficient_quota", "rate_limit_exceeded", "model_not_found",
+    "invalid_request_error", "authentication_error", "permission_denied", "server_error",
+    "billing_hard_limit_reached", "billing_not_active", "unsupported_model",
+    "session.created", "session.updated", "session.started", "error", "unknown",
+    "invalid_json", "binary", "ping", "pong", "closing", "closed", "close",
+})
+
+
+def _safe_detail(value: object) -> str:
+    if isinstance(value, str) and value in _SAFE_CODES:
+        return value
+    # HTTP status and WebSocket close codes are bounded protocol integers.
+    if type(value) is int or (isinstance(value, str) and value.isascii() and value.isdecimal()):
+        text = str(value)
+        if len(text) <= 4 and (100 <= int(text) <= 599 or 1000 <= int(text) <= 4999):
+            return str(int(text))
+    return "unknown"
+
+
+class LiveStartRejected(RuntimeError):
+    """The provider did not answer ``session.start`` with ``session.started``; text-free."""
+
+    def __init__(self, category: str, detail: str) -> None:
+        super().__init__("Live session was not accepted")
+        self.category, self.detail = category, detail
+
+
+def _start_rejection(message, upstream) -> LiveStartRejected:
+    if message.type == WSMsgType.TEXT:
+        try:
+            payload = json.loads(message.data)
+        except ValueError:
+            return LiveStartRejected("provider_frame", "invalid_json")
+        kind = payload.get("type") if isinstance(payload, dict) else None
+        if kind == "error":
+            error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+            return LiveStartRejected("provider_error", _safe_detail(error.get("code") or error.get("type")))
+        return LiveStartRejected("unexpected_event", _safe_detail(kind))
+    if message.type in {WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED}:
+        code = upstream.close_code if upstream.close_code is not None else message.data
+        return LiveStartRejected("provider_closed", _safe_detail(code))
+    return LiveStartRejected("provider_frame", _safe_detail(message.type.name.lower()))
+
+
+def _failure(exc: BaseException) -> tuple[str, str, str]:
+    """``(category, detail, robot message)`` for a relay that ended before or outside a clean close."""
+    if isinstance(exc, PermissionError):
+        return "blocked", "", "Live is blocked in the current state"
+    if isinstance(exc, LiveStartRejected):
+        return exc.category, exc.detail, "Live provider did not accept the session"
+    if isinstance(exc, WSServerHandshakeError):
+        return "provider_handshake", _safe_detail(exc.status), "Live provider did not accept the session"
+    if isinstance(exc, TimeoutError):
+        return "timeout", "", "Live transport unavailable or session invalid"
+    if isinstance(exc, (ClientError, OSError)):
+        return "provider_unreachable", "", "Live transport unavailable or session invalid"
+    if isinstance(exc, ValueError):
+        return "invalid_session", "", "Live transport unavailable or session invalid"
+    return "unexpected", "", "Live transport unavailable or session invalid"
 
 Answer = Callable[[str, str], Awaitable["str | DelegationResult"]]
 
@@ -292,14 +353,13 @@ async def serve_live(
             answer_with_local,
         )
     except Exception as exc:
-        _LOGGER.warning("Live relay ended (%s)", type(exc).__name__)
+        # Category and sanitized detail only: provider messages can quote keys or the request.
+        category, detail, message = _failure(exc)
+        _LOGGER.warning(
+            "Live relay ended (%s category=%s%s)", type(exc).__name__, category, f" detail={detail}" if detail else ""
+        )
         if not client.closed:
-            message = (
-                "Live is blocked in the current state"
-                if isinstance(exc, PermissionError)
-                else "Live transport unavailable or session invalid"
-            )
-            await client.send_json({"type": "bridge.error", "error": message})
+            await client.send_json({"type": "bridge.error", "error": message, "category": category, "detail": detail})
     finally:
         state.closed.set()
         transcript.clear()
@@ -388,9 +448,12 @@ async def _relay(
                 )
             )
             started = await upstream.receive(timeout=started_timeout)
-            payload = json.loads(started.data) if started.type == WSMsgType.TEXT else {}
-            if payload.get("type") != "session.started":
-                raise RuntimeError("Live session was not accepted")
+            try:
+                payload = json.loads(started.data) if started.type == WSMsgType.TEXT else {}
+            except ValueError:
+                payload = {}
+            if not isinstance(payload, dict) or payload.get("type") != "session.started":
+                raise _start_rejection(started, upstream)
             await client.send_json({"type": "session.started"})
 
             async def append(kind: str, delegation_id: str | None, content: str) -> None:

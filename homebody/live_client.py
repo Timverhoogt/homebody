@@ -22,6 +22,41 @@ from .everyday_runtime import configured_local_tools
 from .realtime_client import RealtimeBridgeError, RealtimeBridgeSession, RealtimeEvent
 
 _START_TIMEOUT_SECONDS = 15.0
+# Only public protocol vocabulary is permitted, never arbitrary upstream strings.
+_SAFE_CODES = frozenset({
+    "invalid_api_key", "insufficient_quota", "rate_limit_exceeded", "model_not_found",
+    "invalid_request_error", "authentication_error", "permission_denied", "server_error",
+    "billing_hard_limit_reached", "billing_not_active", "unsupported_model",
+    "session.created", "session.updated", "session.started", "error", "unknown",
+    "invalid_json", "binary", "ping", "pong", "closing", "closed", "close",
+})
+
+
+def _safe_detail(value: object) -> str:
+    if isinstance(value, str) and value in _SAFE_CODES:
+        return value
+    # HTTP status and WebSocket close codes are bounded protocol integers.
+    if type(value) is int or (isinstance(value, str) and value.isascii() and value.isdecimal()):
+        text = str(value)
+        if len(text) <= 4 and (100 <= int(text) <= 599 or 1000 <= int(text) <= 4999):
+            return str(int(text))
+    return "unknown"
+
+_SAFE_CATEGORIES = frozenset({
+    "blocked", "provider_error", "provider_closed", "unexpected_event", "provider_frame",
+    "provider_handshake", "timeout", "provider_unreachable", "invalid_session", "unexpected",
+})
+
+
+def bridge_error_text(payload: dict[str, object], default: str) -> str:
+    """Bridge's fixed error text plus its text-free category/detail when both are well-formed."""
+    text = str(payload.get("error") or default)
+    category, detail = payload.get("category"), payload.get("detail") or ""
+    if isinstance(category, str) and category in _SAFE_CATEGORIES:
+        if detail:
+            return f"{text} (category={category}, detail={_safe_detail(detail)})"
+        return f"{text} (category={category})"
+    return text
 
 
 def live_url(bridge_url: str) -> str:
@@ -109,7 +144,7 @@ class LiveBridgeSession(RealtimeBridgeSession):
                 self.started.set()
                 return seen
             if item.type in {"bridge.error", "session.closed"}:
-                raise RealtimeBridgeError(str(item.payload.get("error") or "Live session was not accepted"))
+                raise RealtimeBridgeError(bridge_error_text(item.payload, "Live session was not accepted"))
             seen.append(item)
         raise RealtimeBridgeError("Live session did not start in time")
 

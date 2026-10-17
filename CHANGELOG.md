@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.32] — Live and Kids failure diagnostics
+
+- Report categorized Live startup failures instead of discarding provider rejection information. Preserve permission checks, session lifecycle and explicit listening admission; no automatic retries or provider changes.
+- Identify rejected Kids fixed speech by validated catalog selectors without logging speech bodies, captured media or session identifiers. Preserve moderation and the existing fail-closed behavior.
+- Add regression coverage for Live rejection reporting and fixed-copy parity across all supported Kids languages.
+- These are diagnostic improvements, not confirmation that provider credit exhaustion or a specific moderation rejection has been resolved. Host bridge and robot updates are separate components; no new camera feature is included.
+
 ## [0.5.31] — Motor-disconnect safety and Ollama hosting
 
 - Treat unavailable motor commands and pose readbacks (daemon errors, disconnection, transport timeouts or invalid measurements) as unverified hardware, clearing stale torque/fold confirmations. Failed or duplicate Awake and post-Sleep readback failure do not send recovery motion through an unavailable connection; verified negative measurements retain the existing recovery behavior.

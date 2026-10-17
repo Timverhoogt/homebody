@@ -94,6 +94,7 @@ try:
     )
     from companion.kids_fixed_copy import MAX_SEGMENTS as _KIDS_FIXED_MAX_SEGMENTS
     from companion.kids_fixed_copy import render_segment as _render_kids_fixed_segment
+    from companion.kids_fixed_copy import selector_ids as _kids_fixed_selector_ids
     from companion.live_transport import DelegationFailure, DelegationResult, current_live_turn, serve_live
     from companion.llm_providers import LLMProviderConfigError, TextModelProvider, everyday_provider_from_env
     from companion.native_workspace import WorkspaceError
@@ -160,6 +161,7 @@ except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.pa
     )
     from kids_fixed_copy import MAX_SEGMENTS as _KIDS_FIXED_MAX_SEGMENTS  # type: ignore[no-redef]
     from kids_fixed_copy import render_segment as _render_kids_fixed_segment  # type: ignore[no-redef]
+    from kids_fixed_copy import selector_ids as _kids_fixed_selector_ids  # type: ignore[no-redef]
     from live_transport import DelegationFailure, DelegationResult, current_live_turn, serve_live  # type: ignore[no-redef]
     from llm_providers import (  # type: ignore[no-redef]
         LLMProviderConfigError,
@@ -4035,6 +4037,13 @@ class Bridge(NativeWorkspaceRoutes):
         except (TimeoutError, web.HTTPServiceUnavailable) as exc:
             raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is unavailable") from exc
         if flagged:
+            # Still refused. Log only the validated catalog ids, never the line, clue or session id.
+            _LOGGER.warning(
+                "Kids fixed speech was refused by moderation (language=%s activity=%s selectors=%s)",
+                language,
+                activity,
+                _kids_fixed_selector_ids(lines),
+            )
             raise web.HTTPForbidden(text="Kids Mode speech was not approved")
         self._require_fixed_speech_profile(session_id, profile)  # ended or changed while moderation ran
         if self._kids_epoch(session_id) != epoch:
