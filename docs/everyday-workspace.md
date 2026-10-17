@@ -18,10 +18,11 @@ except names/labels in `/v1/everyday/capabilities`.
 
 | Variable | Meaning |
 |---|---|
-| `REACHY_EVERYDAY_PROVIDER` | `openai` (default, or `REACHY_LLM_PROVIDER`), `openrouter`, `cortecs`, `llmrouter`, `custom` |
+| `REACHY_EVERYDAY_PROVIDER` | `openai` (default, or `REACHY_LLM_PROVIDER`), `openrouter`, `cortecs`, `llmrouter`, `ollama`, `custom` |
 | `REACHY_EVERYDAY_MODEL` | Defaults: `gpt-4.1-mini` (OpenAI), `openai/gpt-4.1-mini` (OpenRouter). Other routers must set it |
 | `REACHY_EVERYDAY_URL` | Optional OpenAI-compatible `/v1` URL override |
 | `OPENROUTER_API_KEY` / `OPENAI_API_KEY` | Resolved on the host only, by preset key name |
+| `OLLAMA_API_KEY` | Optional only for an authenticated Ollama proxy; ordinary local Ollama needs no key. Default URL: `http://127.0.0.1:11434/v1`; explicitly choose an installed `REACHY_EVERYDAY_MODEL` |
 | `REACHY_AGENT_HA_ALLOWLIST` / `REACHY_AGENT_HA_ACTION_ALLOWLIST` | Existing allowlists, reused unchanged. On/off for lights and switches; brightness for permitted lights; scenes only with an exact existing `scene.*` → `turn_on` entry. Locks, covers, alarms and climate stay refused. |
 | `REACHY_EVERYDAY_ALIASES` | `{"light.desk": ["desk light"]}` spoken names for allowlisted entities only; ambiguous or unknown names are returned for the model to ask about |
 | `REACHY_EVERYDAY_TEMPERATURE_ENTITIES` | JSON list of up to 16 unique indoor `sensor.*` IDs, also present in the HA read allowlist; no auto-discovery or added control authority |
@@ -33,6 +34,8 @@ except names/labels in `/v1/everyday/capabilities`.
 
 Budgets per user request: three tool calls, one device change, call ids executed at most once,
 HA 4 s (+2 s verification), weather 3 s, text turn 20 s. Kids Mode blocks every tool.
+
+For Windows/Mac/Linux Ollama setup, caller-relative loopback versus LAN URLs, firewall scope and Pipeline versus cloud speech boundaries, see [Ollama setup](ollama.md). Model download, availability and tool competence are separate from configuration readiness.
 
 Timers run for up to one day, reminders up to 30 days. They are scoped to the adult device
 in host RAM, so another wake or voice engine can inspect/cancel them, but another device

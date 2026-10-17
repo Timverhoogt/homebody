@@ -32,7 +32,7 @@ Every setup has the same three jobs. They can live on one machine or be spread o
 | --- | --- | --- |
 | **Robot computer** | The Reachy daemon and this app: wake word, audio, camera, motor safety, phone UI. | USB to a Lite (or the Wireless' own CM4). Light CPU load. |
 | **Bridge / agent host** | Narrow Everyday and Kids backends, speech providers, optional native Hermes Workspace, or legacy Hermes/OpenClaw conversation adapters. | Optional trusted host. [Agent-led setup](agent-setup.md) connects the basic adapter; [subscription/native setup](subscription-reasoning.md) is explicit and separate. Credentials stay here. |
-| **Local AI server** *(optional)* | An OpenAI-compatible vision model, e.g. Ollama. Used by the local vision features. | A GPU, an Apple Silicon Mac, or a Jetson. Can be the robot computer or another machine on your LAN. |
+| **Local AI server** *(optional)* | Ollama or another OpenAI-compatible server for camera vision and optional bridge-side Everyday text reasoning. | Windows/Linux PC, Mac or Jetson with enough memory; GPU/Apple Silicon recommended for speed. Can be the robot computer or another trusted LAN machine. [Ollama setup](ollama.md). |
 
 Because the local AI server is reached over HTTP, a Raspberry Pi robot computer can use a vision model running on a Jetson or GPU PC elsewhere in the house.
 
@@ -80,7 +80,7 @@ Follow Pollen's [official Lite setup](https://huggingface.co/docs/reachy_mini/pl
 - **Power off** is not offered, so the phone can never shut down your computer.
 - On a Mac, the standard onnxruntime build includes Core ML, so *Automatic* acceleration uses it for gesture detection.
 - On Windows, install `onnxruntime-directml` instead of `onnxruntime` for DirectML. Windows support is best-effort: it is covered by code paths and tests, not by a Windows robot.
-- **Local vision on a Mac or GPU PC:** install [Ollama](https://ollama.com), run `ollama pull qwen2.5vl:3b`, then set Settings → *Local vision and AI acceleration* → *Vision server URL* to `http://127.0.0.1:11434/v1`.
+- **Local models on a Mac or PC:** follow [Ollama setup](ollama.md) for Everyday text and camera vision. Use `http://127.0.0.1:11434/v1` only when the caller and Ollama run on the same computer; a robot or bridge elsewhere needs the Ollama computer's LAN address, explicit LAN listening and a narrowly scoped firewall rule. The Mac/PC may serve models without running Homebody itself.
 
 ## Lite + Raspberry Pi
 

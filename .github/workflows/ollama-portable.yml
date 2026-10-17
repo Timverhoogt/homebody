@@ -1,0 +1,39 @@
+name: Portable Ollama clients
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    name: Model-client contracts / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # These are model-client contracts, not SDK/robot or native Ollama acceptance.
+      # No Linux-only robot dependencies and no model/credential downloads are required.
+      - name: Install portable test dependencies
+        run: python -m pip install pytest aiohttp httpx fastapi pyyaml tzdata
+      - name: Exercise Ollama text and vision contracts
+        run: python -m pytest tests/test_ollama.py -q -o addopts= --junitxml=ollama-contracts.xml
+        env:
+          OPENAI_API_KEY: ''
+          OLLAMA_API_KEY: ''
+      - name: Keep native-OS contract evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ollama-contracts-${{ matrix.os }}
+          path: ollama-contracts.xml

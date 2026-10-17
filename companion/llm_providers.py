@@ -1,4 +1,4 @@
-"""Where the bridge's own text-model calls go: OpenAI, or an EU router such as Cortecs or LLMrouter.eu.
+"""Bridge text models: OpenAI, EU routers, or a self-hosted Ollama server on any OS.
 
 The bridge calls a chat model itself for Agent Mode (planning and the bounded tool loop), Kids
 Mode chat, and I Spy (target selection, guess judging and player-turn guesses). By default those
@@ -47,11 +47,20 @@ PRESETS: dict[str, _Preset] = {
     "cortecs": _Preset("Cortecs", "https://api.cortecs.ai/v1", ("CORTECS_API_KEY",), "EU", extras={"eu_native": True}),
     "llmrouter": _Preset("LLMrouter.eu", "https://proxy.llmrouter.eu/v1", ("LLMROUTER_API_KEY",), "EU"),
     "openrouter": _Preset("OpenRouter", "https://openrouter.ai/api/v1", ("OPENROUTER_API_KEY",), "global"),
+    "ollama": _Preset("Ollama", "http://127.0.0.1:11434/v1", ("OLLAMA_API_KEY",), "self-hosted"),
     "custom": _Preset("Custom provider", "", ("REACHY_LLM_API_KEY",), "custom"),
 }
 # Everyday is a small, fast tool-calling text model, never the full Hermes agent. Conservative
 # defaults that already exist on each preset; any other router must name its model explicitly.
 _EVERYDAY_DEFAULTS = {"openai": "gpt-4.1-mini", "openrouter": "openai/gpt-4.1-mini"}
+
+
+def _validate_ollama_url(name: str, base: str) -> None:
+    if name != "ollama":
+        return
+    parsed = urlparse(base)
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise LLMProviderConfigError("Ollama URL must not contain credentials, a query or a fragment")
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +101,7 @@ class TextModelProvider:
         parsed = urlparse(base)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise LLMProviderConfigError("Set REACHY_LLM_URL to the provider's OpenAI-compatible /v1 URL")
+        _validate_ollama_url(name, base)
         shared = get("REACHY_LLM_MODEL").strip()
         models: dict[str, str] = {}
         missing: list[str] = []
@@ -136,6 +146,10 @@ class TextModelProvider:
         for key_name in self.key_names:
             if value := resolve(key_name):
                 return value
+        # Local Ollama ignores the bearer value. Never borrow a cloud credential. An explicit
+        # OLLAMA_API_KEY supports an owner-managed authenticated reverse proxy if needed.
+        if self.name == "ollama":
+            return "ollama"
         return ""
 
     def request(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -147,6 +161,11 @@ class TextModelProvider:
         if not self.is_openai:
             for field_name in _OPENAI_ONLY_FIELDS:
                 adapted.pop(field_name, None)
+        if self.name == "ollama":
+            # Ollama supports tools but not OpenAI's tool_choice/parallel_tool_calls controls.
+            # Existing local schema, budget and result validation remain the authority boundary.
+            adapted.pop("tool_choice", None)
+            adapted.pop("parallel_tool_calls", None)
         adapted.update(self.extras)
         return adapted
 
@@ -189,6 +208,7 @@ def everyday_provider_from_env(
     parsed = urlparse(base)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise LLMProviderConfigError("Set REACHY_EVERYDAY_URL to the provider's OpenAI-compatible /v1 URL")
+    _validate_ollama_url(name, base)
     model = get("REACHY_EVERYDAY_MODEL") or _EVERYDAY_DEFAULTS.get(name, "")
     if not model:
         raise LLMProviderConfigError(f"{preset.label} needs REACHY_EVERYDAY_MODEL for Everyday")
