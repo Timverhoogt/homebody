@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.31] — Honest motor-disconnect recovery
+
+- Treat unavailable motor backends (daemon server errors, disconnection and transport timeouts) as unverified hardware, clearing stale torque/fold confirmations. Failed Awake does not send a second enable/fold request through the same unavailable connection.
+- Keep Sleep and Meeting private while reporting unknown torque rather than claiming motors remain enabled. If communication disappears during torque release, do not claim a confirmed safe fold.
+- Give explicit power/USB/daemon recovery guidance. This does not automatically restart the daemon, reconnect hardware, or authorize movement; recovery still requires owner supervision and verified hardware state.
+- Preserve the accepted 0.5.30 temperature and Live permission fixes.
+
 ## [0.5.30] — Indoor temperatures and Live permission recovery
 
 - Add a read-only indoor-temperature tool shared by Everyday voice engines. Use an explicit host-selected sensor list within the existing HA read allowlist, convert supported units, compute the mean deterministically, and disclose unavailable/stale sensors and partial coverage. No thermostat/device control, sensor discovery, or historical-average claim.
