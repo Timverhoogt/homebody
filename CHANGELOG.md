@@ -6,12 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.5.31] — Honest motor-disconnect recovery
+## [0.5.31] — Motor-disconnect safety and Ollama hosting
 
 - Treat unavailable motor backends (daemon server errors, disconnection and transport timeouts) as unverified hardware, clearing stale torque/fold confirmations. Failed Awake does not send a second enable/fold request through the same unavailable connection.
 - Keep Sleep and Meeting private while reporting unknown torque rather than claiming motors remain enabled. If communication disappears during torque release, do not claim a confirmed safe fold.
 - Give explicit power/USB/daemon recovery guidance. This does not automatically restart the daemon, reconnect hardware, or authorize movement; recovery still requires owner supervision and verified hardware state.
 - Preserve the accepted 0.5.30 temperature and Live permission fixes.
+- Add an explicit `ollama` text-provider preset for Everyday and optional shared bridge text calls: loopback default, explicit model tags, optional proxy-only key, no cloud-key reuse, and adaptation of unsupported OpenAI tool-control fields. Existing tool/permission/moderation boundaries remain unchanged.
+- Document Windows/Mac/Linux Ollama hosting for same-computer or trusted-LAN Everyday Pipeline reasoning and camera vision, including firewall, speech-provider and hardware-acceptance limits. Add portable model-client contract coverage; native model and robot acceptance remain separate.
 
 ## [0.5.30] — Indoor temperatures and Live permission recovery
 
@@ -19,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - End Live conversations cleanly when their camera permission or original request authority changes. A fresh wake/request receives current permissions; toggling settings never captures, uploads, restarts listening, or revives an old visual request.
 - Treat a normally closed Live connection as completion rather than trying to send microphone audio into a closed socket. Preserve abnormal provider failures, Stop/privacy/Kids fences and original Companion authority.
 - Requires matching host bridge and robot software. Installation does not validate real-room camera, microphone or acoustic behavior; those remain supervised acceptance checks.
+
 
 ## [0.5.29] — Consented companion presence, visual help and opt-in sources
 
