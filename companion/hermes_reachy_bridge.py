@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import mimetypes
 import os
 import random
@@ -59,6 +60,7 @@ def _load_look_intent() -> Callable[..., bool]:
 _looks_like_look_request = _load_look_intent()
 
 try:
+    from companion import kids_show_and_tell as _show_tell
     from companion.agent_backends import OpenClawBackend, OpenClawConfig, OpenClawConfigError
     from companion.companion_sources import (
         Enrollment,
@@ -122,6 +124,7 @@ try:
         WarmAgentUnavailable,
     )
 except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.path.
+    import kids_show_and_tell as _show_tell  # type: ignore[no-redef]
     from agent_backends import (  # type: ignore[no-redef]
         OpenClawBackend,
         OpenClawConfig,
@@ -252,7 +255,9 @@ _MAX_STT_PARTS = 8
 _MAX_STT_OPTION_BYTES = 256
 # Every route accepts the audio-sized client_max_size; JSON routes refuse large bodies up front.
 _MAX_JSON_BODY_BYTES = 1024 * 1024
-_LARGE_BODY_PATHS = frozenset({"/v1/audio/transcriptions", "/v1/kids/ispy/select", "/v1/kids/ispy/observe"})
+_LARGE_BODY_PATHS = frozenset(
+    {"/v1/audio/transcriptions", "/v1/kids/ispy/select", "/v1/kids/ispy/observe", "/v1/kids/show-and-tell/look"}
+)
 _KIDS_ENDED_MEMORY = 256
 # Adult capabilities the bridge refuses while any Kids session is live. Cancellation and session
 # publication stay available so Reachy can always wind adult work down.
@@ -2649,6 +2654,7 @@ class Bridge(NativeWorkspaceRoutes):
         self._kids_live.pop(session_id, None)
         self._kids_sessions.pop(session_id, None)
         self._ispy_selections.pop(session_id, None)
+        self._show_tell_records().pop(session_id, None)
         self._kids_ended[session_id] = None
         while len(self._kids_ended) > _KIDS_ENDED_MEMORY:
             self._kids_ended.pop(next(iter(self._kids_ended)))
@@ -2716,6 +2722,7 @@ class Bridge(NativeWorkspaceRoutes):
             self._kids_sessions.pop(session_id, None)
             self._kids_fixed_profiles.pop(session_id, None)
             self._ispy_selections.pop(session_id, None)
+            self._show_tell_records().pop(session_id, None)
             self._kids_speech_approvals = {
                 token: approval
                 for token, approval in self._kids_speech_approvals.items()
@@ -3478,10 +3485,13 @@ class Bridge(NativeWorkspaceRoutes):
                 activity=activity,
                 language=language,
             )
+            # Only a consented, approved enum description, never provider/image text, and never hosted.
+            show_tell = None if hosted or activity != "buddy" else self._show_tell_context(session_id, fingerprint)
             model_request: dict[str, Any] = {
                 "model": model,
                 "messages": [
                     {"role": "system", "content": system_prompt + (_KIDS_HOSTED_INSTRUCTION if hosted else "")},
+                    *([{"role": "system", "content": show_tell}] if show_tell else []),
                     *history,
                     {"role": "user", "content": text},
                 ],
@@ -4098,6 +4108,293 @@ class Bridge(NativeWorkspaceRoutes):
         return any(
             isinstance(other, (tuple, list)) and tuple(other[:3]) != tuple(profile[:3]) for other in (bound, chat)
         )
+
+    # ---- Show and Tell -------------------------------------------------------------------------
+    # Reachy derives one ephemeral grant (random token + monotonic serial) per live, unhosted Buddy
+    # session from the Owner's standing permission, and presents it with each explicit look. The
+    # bridge never accepts a bare permission flag. Grants, permits, in-flight looks and the approved
+    # enum description are RAM only and die with revocation, End or expiry; a revoked or older
+    # serial can never be re-established.
+
+    def _show_tell_records(self) -> dict[str, dict[str, Any]]:
+        return self.__dict__.setdefault("_show_tell", {})
+
+    def _show_tell_floors(self) -> dict[str, int]:
+        """Highest revoked grant serial per session; cleared with the session itself."""
+        return self.__dict__.setdefault("_show_tell_revoked", {})
+
+    def _show_tell_record(self, session_id: str) -> dict[str, Any] | None:
+        """The live, unexpired, unconflicted grant record, or None (an invalid one is dropped)."""
+        self.kids_session_live()  # prunes sessions past the hard cap
+        records = self._show_tell_records()
+        record = records.get(session_id)
+        if record is None:
+            return None
+        chat = self._kids_sessions.get(session_id, {}).get("profile")
+        if (
+            session_id not in self._kids_live
+            or time.monotonic() >= float(record["expires_at"])
+            or self._kids_profile_conflicts(session_id, record["profile"])
+            or (chat is not None and tuple(chat) != record["profile"])  # hosted or another activity
+        ):
+            records.pop(session_id, None)
+            return None
+        return record
+
+    def _show_tell_context(self, session_id: str, fingerprint: tuple[Any, ...]) -> str:
+        record = self._show_tell_record(session_id)
+        if record is None or record["profile"] != fingerprint or record.get("inflight") is not None:
+            return ""
+        description = record.get("description")
+        return _show_tell.follow_up_context(description) if description else ""
+
+    @staticmethod
+    def _show_tell_payload(request_payload: object, keys: set[str]) -> dict[str, Any]:
+        if not isinstance(request_payload, dict) or set(request_payload) != keys:
+            raise web.HTTPBadRequest(text="Invalid Show and Tell request")
+        session_id = request_payload.get("session_id")
+        if not isinstance(session_id, str) or _KIDS_SESSION_ID_RE.fullmatch(session_id) is None:
+            raise web.HTTPBadRequest(text="Invalid Show and Tell request")
+        return request_payload
+
+    async def kids_show_tell_revoke(self, request: web.Request) -> web.Response:
+        """Retire this session's grant at ``serial`` and every older one; revocation always wins."""
+        self.require_auth(request)
+        try:
+            payload = self._show_tell_payload(await request.json(), {"session_id", "serial"})
+            serial = payload["serial"]
+            if type(serial) is not int or serial < 1:
+                raise ValueError
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text="Invalid Show and Tell request") from exc
+        session_id = payload["session_id"]
+        floors = self._show_tell_floors()
+        floors[session_id] = max(serial, floors.get(session_id, 0))
+        while len(floors) > _KIDS_ENDED_MEMORY:
+            floors.pop(next(iter(floors)))
+        records = self._show_tell_records()
+        record = records.get(session_id)
+        if record is not None and int(record["serial"]) <= serial:
+            records.pop(session_id, None)  # also clears any approved description and in-flight look
+        return web.json_response({"revoked": True}, headers={"Cache-Control": "no-store"})
+
+    def _show_tell_grant(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Establish or confirm the derived grant presented with an explicit look request."""
+        session_id, age_band, language = payload["session_id"], payload["age_band"], payload["language"]
+        grant, serial, ttl = payload["grant"], payload["serial"], payload["ttl_seconds"]
+        if (
+            age_band not in _KIDS_AGE_BANDS
+            or language not in _show_tell.LANGUAGES
+            or not isinstance(grant, str) or re.fullmatch(r"[0-9a-f]{64}", grant) is None
+            or type(serial) is not int or serial < 1
+            or type(ttl) is not int or not 1 <= ttl <= _show_tell.CONSENT_MAX_SECONDS
+        ):
+            raise web.HTTPBadRequest(text="Invalid Show and Tell request")
+        profile = (age_band, "buddy", language)
+        self._require_fixed_speech_profile(session_id, profile)  # live and pinned to this Buddy profile
+        chat = self._kids_sessions.get(session_id, {}).get("profile")
+        if chat is not None and tuple(chat) != profile:
+            raise web.HTTPConflict(text="Show and Tell is only available in Kids Chat")
+        if serial <= self._show_tell_floors().get(session_id, 0):
+            raise web.HTTPConflict(text="Show and Tell authority was revoked")
+        digest = hashlib.sha256(grant.encode("ascii")).hexdigest()
+        record = self._show_tell_record(session_id)
+        if record is not None and int(record["serial"]) > serial:
+            raise web.HTTPConflict(text="Show and Tell authority is stale")
+        if record is not None and int(record["serial"]) == serial:
+            if not hmac.compare_digest(record["grant"], digest) or record["profile"] != profile:
+                raise web.HTTPConflict(text="Show and Tell authority does not match")
+            return record
+        record = {
+            "grant": digest,
+            "serial": serial,
+            "profile": profile,
+            "expires_at": time.monotonic() + ttl,
+            "permit": "",
+            "permit_deadline": 0.0,
+            "inflight": None,
+            "last_look": -math.inf,
+            "description": None,
+        }
+        self._show_tell_records()[session_id] = record  # a newer grant replaces the old one entirely
+        return record
+
+    def _release_show_tell(self, record: dict[str, Any], token: object) -> None:
+        if record.get("inflight") is token:
+            record["inflight"] = None
+            record["permit"] = ""
+
+    async def kids_show_tell_permit(self, request: web.Request) -> web.Response:
+        """Mint one short-lived look permit plus the approved pre-capture announcement."""
+        self.require_auth(request)
+        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        if not openai_key:
+            raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is not configured")
+        try:
+            payload = self._show_tell_payload(
+                await request.json(), {"session_id", "age_band", "language", "grant", "serial", "ttl_seconds"}
+            )
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text="Invalid Show and Tell request") from exc
+        session_id = payload["session_id"]
+        record = self._show_tell_grant(payload)
+        now = time.monotonic()
+        if record["inflight"] is not None or now - float(record["last_look"]) < _show_tell.MIN_LOOK_INTERVAL_SECONDS:
+            raise web.HTTPTooManyRequests(text="Show and Tell is already looking")
+        token = object()
+        record.update({"inflight": token, "last_look": now, "description": None, "permit": ""})  # fresh look replaces
+        language = record["profile"][2]
+        text = _show_tell.LOOKING[language]
+        try:
+            flagged = await self._kids_moderation(text, openai_key)
+        except (TimeoutError, web.HTTPServiceUnavailable) as exc:
+            self._release_show_tell(record, token)
+            raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is unavailable") from exc
+        if self._show_tell_record(session_id) is not record or record["inflight"] is not token:
+            raise web.HTTPConflict(text="Show and Tell was cancelled")
+        if flagged:
+            self._release_show_tell(record, token)
+            raise web.HTTPForbidden(text="Kids Mode speech was not approved")
+        permit = secrets.token_urlsafe(32)
+        record["permit"] = permit
+        record["permit_deadline"] = time.monotonic() + _show_tell.PERMIT_SECONDS
+        return web.json_response(
+            {
+                "permit": permit,
+                "text": text,
+                "speech_approval": self._issue_kids_speech_approval(session_id, text),
+                "fallback_speech_approval": self._issue_kids_speech_approval(session_id, text),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def _show_tell_vision(self, frame: bytes) -> object:
+        """One bounded call to the configured Kids vision route; transport failure raises."""
+        if self.http is None:
+            raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
+        vision_url, vision_headers, vision_body = _ispy_vision_request(self.llm, self._llm_key())
+        content: list[dict[str, object]] = [
+            {"type": "text", "text": _show_tell.VISION_PROMPT},
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{base64.b64encode(frame).decode('ascii')}",
+                    "detail": "low",
+                },
+            },
+        ]
+        try:
+            async with self.http.post(
+                vision_url,
+                headers=vision_headers,
+                json={
+                    **vision_body,
+                    "messages": [{"role": "user", "content": content}],
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "kids_show_and_tell", "strict": True, "schema": _show_tell.candidate_schema(),
+                        },
+                    },
+                },
+                timeout=ClientTimeout(total=_show_tell.VISION_TIMEOUT_SECONDS),
+            ) as response:
+                result = await response.json(content_type=None)
+                if response.status != 200:
+                    raise web.HTTPBadGateway(text="Show and Tell vision request failed")
+        finally:
+            content.clear()
+        try:
+            return json.loads(result["choices"][0]["message"]["content"])
+        except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError):
+            return None  # malformed provider output is a decline, never partially accepted
+
+    async def kids_show_tell_look(self, request: web.Request) -> web.Response:
+        """Consume one permit and one transient frame; return only moderated, approved fixed copy."""
+        self.require_auth(request)
+        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        if not openai_key or not self._llm_key():
+            raise web.HTTPServiceUnavailable(text="Show and Tell is not configured")
+        try:
+            payload = self._show_tell_payload(await request.json(), {"session_id", "permit", "frame_jpeg"})
+            encoded, permit = payload["frame_jpeg"], payload["permit"]
+            if not isinstance(permit, str) or not isinstance(encoded, str) or len(encoded) > 1_400_000:
+                raise ValueError
+            frame = base64.b64decode(encoded, validate=True)
+            if not 0 < len(frame) <= _show_tell.MAX_FRAME_BYTES:
+                raise ValueError
+        except (ValueError, TypeError) as exc:
+            raise web.HTTPBadRequest(text="Invalid Show and Tell request") from exc
+        session_id = payload["session_id"]
+        record = self._show_tell_record(session_id)
+        expected = record.get("permit", "") if record is not None else ""
+        if record is None or not expected or not hmac.compare_digest(expected.encode(), permit.encode()):
+            frame = b""
+            raise web.HTTPConflict(text="Show and Tell permit is missing or no longer current")
+        token = record["inflight"]
+        record["permit"] = ""  # one use: a replay never reaches the provider
+        deadline = float(record["permit_deadline"])
+        language = record["profile"][2]
+
+        def require_current() -> None:
+            if self._show_tell_record(session_id) is not record or record.get("inflight") is not token:
+                raise web.HTTPConflict(text="Show and Tell was cancelled")
+
+        if token is None or time.monotonic() >= deadline:
+            frame = b""
+            self._release_show_tell(record, token)
+            raise web.HTTPConflict(text="Show and Tell permit expired")
+        try:
+            raw = await self._kids_stage(self._show_tell_vision(frame), deadline, _show_tell.VISION_TIMEOUT_SECONDS)
+            available = True
+        except (TimeoutError, ClientError, web.HTTPBadGateway, web.HTTPServiceUnavailable) as exc:
+            _LOGGER.warning("Show and Tell vision unavailable (%s)", type(exc).__name__)
+            raw, available = None, False
+        finally:
+            frame = b""
+        try:
+            require_current()
+            description = _show_tell.validate_candidate(raw) if available else None
+            raw = None
+            if description is not None:
+                text = _show_tell.describe(description, language)
+            else:
+                text = (_show_tell.DECLINE if available else _show_tell.UNAVAILABLE)[language]
+            try:
+                flagged = await self._kids_stage(
+                    self._kids_moderation(text, openai_key), deadline + 6.0, _KIDS_MODERATION_TIMEOUT_SECONDS
+                )
+            except (TimeoutError, web.HTTPServiceUnavailable) as exc:
+                raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is unavailable") from exc
+            require_current()
+            if flagged:
+                raise web.HTTPForbidden(text="Kids Mode speech was not approved")
+            record["description"] = description  # a decline clears; only enums are kept
+            approval = self._issue_kids_speech_approval(session_id, text)
+            fallback = self._issue_kids_speech_approval(session_id, text)
+        finally:
+            self._release_show_tell(record, token)
+        return web.json_response(
+            {
+                "text": text,
+                "recognized": description is not None,
+                "speech_approval": approval,
+                "fallback_speech_approval": fallback,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def kids_show_tell_cancel(self, request: web.Request) -> web.Response:
+        """Abandon this session's in-flight look; a held provider result is then discarded."""
+        self.require_auth(request)
+        try:
+            payload = self._show_tell_payload(await request.json(), {"session_id"})
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text="Invalid Show and Tell request") from exc
+        record = self._show_tell_records().get(payload["session_id"])
+        if record is not None:
+            record.update({"inflight": None, "permit": "", "description": None})
+        return web.json_response({"cancelled": True}, headers={"Cache-Control": "no-store"})
 
     async def kids_voice_proof(self, request: web.Request) -> web.Response:
         """Current digest+model of the effective Kids streaming voice (same resolver); no raw id."""
@@ -6720,6 +7017,10 @@ def create_app(
     app.router.add_post("/v1/kids/ispy/observe", bridge.kids_ispy_observe)
     app.router.add_post("/v1/kids/ispy/clue", bridge.kids_ispy_clue)
     app.router.add_post("/v1/kids/ispy/cancel", bridge.kids_ispy_cancel)
+    app.router.add_post("/v1/kids/show-and-tell/revoke", bridge.kids_show_tell_revoke)
+    app.router.add_post("/v1/kids/show-and-tell/permit", bridge.kids_show_tell_permit)
+    app.router.add_post("/v1/kids/show-and-tell/look", bridge.kids_show_tell_look)
+    app.router.add_post("/v1/kids/show-and-tell/cancel", bridge.kids_show_tell_cancel)
     app.router.add_post("/v1/kids/speech/approve", bridge.kids_speech_approve)
     app.router.add_post("/v1/kids/speech/stream", bridge.kids_speech_stream)
     app.router.add_post("/v1/kids/speech/fallback", bridge.kids_speech_fallback)

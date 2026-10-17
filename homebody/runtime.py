@@ -41,6 +41,7 @@ from .safety_gate import (
     ROBOT_ACTION_POLICY,
     SafetyGate,
 )
+from .show_and_tell_runtime import ShowAndTellMixin
 from .vision_runtime import VisionMixin
 from .vision_runtime import doa_yaw_degrees as doa_yaw_degrees  # re-exported for existing imports
 from .voice_ha import HomeAssistantVoiceMixin
@@ -196,6 +197,7 @@ class _RuntimeSafetyProbe:
 class HermesVoiceRuntime(
     EverydayRuntimeMixin,
     KidsModeMixin,
+    ShowAndTellMixin,
     AnnouncementsMixin,
     ManualControlMixin,
     CompanionMixin,
@@ -266,6 +268,7 @@ class HermesVoiceRuntime(
         self._home_assistant_bridge: HomeAssistantBridge | None = None
         self._home_assistant_error = ""
         self._init_kids_state()
+        self._init_show_tell_state()
         self._safety_gate = SafetyGate(_RuntimeSafetyProbe(self))
         self._init_agent_session_state()
         self._voice_workspace = VoiceWorkspace()
@@ -318,6 +321,9 @@ class HermesVoiceRuntime(
             # Stop/privacy/power/Kids/profile all pass here: held look/offer callbacks bound to older
             # generations are rejected and private look/offer text leaves RAM.
             teardown("stop")
+        show_tell_stop = getattr(self, "_show_tell_stop_requested", None)
+        if callable(show_tell_stop):
+            show_tell_stop()  # clears Show and Tell work/context; never the Owner's saved setting
         if hasattr(self, "_everyday_lock"):
             self._revoke_everyday_actions()
         client = getattr(self, "_robot_stt", None)
@@ -382,6 +388,10 @@ class HermesVoiceRuntime(
         payload["companion"] = self.companion_public_status(config)
         with self._agent_lock:
             payload["agent"] = self._agent_status_unlocked()
+        # Read before _kids_lock: the gate snapshots that lock itself (categorical booleans only).
+        show_tell = self._show_tell_public() if hasattr(self, "_show_tell_gate") else {
+            "camera_approved": False, "enabled": False, "session": False, "available": False, "looking": False,
+        }
         with self._kids_lock:
             remaining = max(0, int(self._kids_ends_at - time.monotonic())) if self._kids_active else 0
             kids_payload = {
@@ -402,6 +412,7 @@ class HermesVoiceRuntime(
                 "camera_enabled": False,
                 "camera_active": self._kids_camera_active,
                 "host": self._kids_host_public(),
+                "show_and_tell": show_tell,
             }
             payload["kids_mode"] = kids_payload
             if self._kids_locked:
@@ -732,7 +743,17 @@ class HermesVoiceRuntime(
 
             detail = "Local wake detection only" if mode == "standby" else _WAKE_PROMPT
             self._expire_turn_error()
-            self._set_status("waiting_for_wake_word", detail)
+            with self._status_lock:
+                standby_fold_error = self._standby_fold_error if mode == "standby" else ""
+                # A richer error already published for this fault (for example a failed Awake
+                # plus its recovery fold) is kept rather than narrowed to the fold message.
+                held_error = self._status.last_error or standby_fold_error
+            if standby_fold_error:
+                # The last fold left torque enabled or unverified. Keep that guidance visible
+                # instead of resetting to the idle prompt on every audio frame.
+                self._set_status("power_transition_error", self._standby_fold_detail(), last_error=held_error)
+            else:
+                self._set_status("waiting_for_wake_word", detail)
             # A parent's Kids Start opens the first turn once its greeting has finished playing.
             first_listen = self._take_kids_first_listen(config.kids_session_id) if config.kids_mode_enabled else None
             keyword = "kids_start" if first_listen is not None else ""
@@ -793,7 +814,7 @@ class HermesVoiceRuntime(
                     self._signal_error()
                     continue
                 if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
-                    self._fold_head_before_torque_release()
+                    self._report_automatic_fold(*self._fold_head_before_torque_release())
                     continue
             try:
                 with self._voice_activity_lock:
@@ -835,7 +856,8 @@ class HermesVoiceRuntime(
                 if self._motion is not None:
                     self._motion.idle()
                 if self._effective_power_mode() == "standby":
-                    self._fold_head_before_torque_release()
+                    # A failed fold leaves torque enabled or unknown; report it like set_power_mode.
+                    self._report_automatic_fold(*self._fold_head_before_torque_release())
 
     def _run_selected_voice_conversation(self, config: AppConfig, keyword: str) -> None:
         """Route locked child sessions before every adult conversation provider."""

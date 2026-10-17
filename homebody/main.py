@@ -53,6 +53,7 @@ from .presence import PresenceObservation
 from .robot_stt import RobotSttClient
 from .robot_tools import robot_control_options
 from .runtime import HermesVoiceRuntime
+from .show_and_tell_runtime import ShowAndTellUnavailable
 from .speaker_api import register as register_speaker
 from .update_api import register as register_updates
 from .updates import installed_identity
@@ -439,6 +440,14 @@ class KidsHostSelectRequest(BaseModel):
     camera_consent: bool = False
 
 
+class ShowAndTellSettingRequest(BaseModel):
+    """Owner's persistent Show and Tell opt-out; effective only within Camera access for AI."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: StrictBool
+
+
 class AgentProfileRequest(BaseModel):
     profile: Literal["conversation", "agent"]
     # Explicit Workspace -> Everyday switch: keep approved native work running, hide its display.
@@ -593,6 +602,8 @@ class Homebody(ReachyMiniApp):
                 "/api/owner/logout",
                 "/api/kids/stop",
                 "/api/kids/host/select",
+                "/api/kids/show-and-tell/setting",
+                "/api/kids/show-and-tell/look-now",
                 "/api/kids/ispy/input",
                 "/api/kids/ispy/guess",
                 "/api/robot/stop",
@@ -960,6 +971,10 @@ class Homebody(ReachyMiniApp):
                 revoke_everyday_camera = getattr(self._runtime, "revoke_everyday_camera", None)
                 if callable(revoke_everyday_camera):
                     revoke_everyday_camera()
+            sync_show_tell = getattr(self._runtime, "show_tell_sync_permission", None)
+            if callable(sync_show_tell):
+                # A saved camera revoke or Show and Tell opt-out cancels outstanding looks now.
+                sync_show_tell(revoke=not merged.camera_enabled or not merged.kids_show_and_tell_enabled)
             if self._runtime is not None and not merged.contextual_offers_enabled:
                 cancel_contextual_offer = getattr(self._runtime, "cancel_contextual_offer", None)
                 if callable(cancel_contextual_offer):
@@ -1836,6 +1851,34 @@ class Homebody(ReachyMiniApp):
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except RuntimeError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        # Show and Tell: owner-only caregiver controls (pairing + same-origin CSRF from the owner
+        # boundary). Responses are categorical booleans; never a session id, frame or description.
+        @self.settings_app.post("/api/kids/show-and-tell/setting")
+        def show_tell_setting(request: ShowAndTellSettingRequest) -> JSONResponse:
+            # Persistent opt-out; it never widens Camera access for AI and never captures by itself.
+            try:
+                with config_transaction():
+                    save_config(merge_config(load_config(), {"kids_show_and_tell_enabled": request.enabled}))
+            except (OSError, ValueError) as exc:
+                if not request.enabled and self._runtime is not None:
+                    self._runtime.show_tell_sync_permission(revoke=True)  # fail closed in RAM anyway
+                raise HTTPException(status_code=500, detail="The Show and Tell setting could not be saved") from exc
+            state = (
+                self._runtime.show_tell_sync_permission(revoke=not request.enabled)
+                if self._runtime is not None and hasattr(self._runtime, "show_tell_sync_permission")
+                else {"enabled": request.enabled}
+            )
+            return JSONResponse(state, headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.post("/api/kids/show-and-tell/look-now")
+        def show_tell_look_now() -> JSONResponse:
+            if self._runtime is None or not hasattr(self._runtime, "show_tell_look_now"):
+                raise HTTPException(status_code=409, detail="Show and Tell is not available")
+            try:
+                return JSONResponse(self._runtime.show_tell_look_now(), headers={"Cache-Control": "no-store"})
+            except ShowAndTellUnavailable as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from None
 
         @self.settings_app.get("/api/kids/ispy/input")
         def ispy_input_context() -> JSONResponse:

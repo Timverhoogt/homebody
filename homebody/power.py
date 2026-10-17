@@ -20,6 +20,10 @@ from .wakeword import WAKE_PROMPT as _WAKE_PROMPT
 # Keep the runtime logger name so existing log filters still match these lines.
 _LOGGER = logging.getLogger("homebody.runtime")
 
+# Admission refusal returned by the action controller for the whole duration of a safety fold.
+_FOLD_FENCE_REASON = "Robot action was blocked by a safety fold"
+
+
 class MotorBackendUnavailable(RuntimeError):
     """Motor command outcome cannot be trusted; do not issue recovery motion."""
 
@@ -35,6 +39,9 @@ class PowerMixin:
         self._meeting_until = 0.0
         self._pending_privacy_transitions = 0
         self._native_sleep_uncertain = False
+        # Error of the most recent fold attempt, or "" once a fold verified a safe release.
+        # Guarded by _status_lock; the wake loop keeps it visible while idle in Standby.
+        self._standby_fold_error = ""
 
     def set_power_mode(
         self,
@@ -140,7 +147,7 @@ class PowerMixin:
             prior = getattr(self, "_safety_fold_active", False)
             self._safety_fold_active = True
             try:
-                return self._fold_head_before_torque_release_unlocked()
+                folded, error = self._fold_head_before_torque_release_unlocked()
             finally:
                 self._safety_fold_active = prior
                 # stop_playing also stops SDK 1.9's shared capture pipeline.
@@ -148,12 +155,60 @@ class PowerMixin:
                 if self._effective_power_mode() == "standby" and not self._recording:
                     self.robot.media.start_recording()
                     self._recording = True
+            self._remember_fold_outcome(folded, error)
+            return folded, error
+
+    def _remember_fold_outcome(self, folded: bool, error: str) -> None:
+        """Keep the latest fold result so the wake loop can keep reporting unreleased torque."""
+        with self._status_lock:
+            if not folded:
+                self._standby_fold_error = error
+                return
+            # A verified safe release resolves the loop's own earlier fold fault, and only that;
+            # turn errors keep their grace path and power transitions publish their own result.
+            if self._standby_fold_error and self._status.last_error == self._standby_fold_error:
+                self._status.last_error = ""
+            self._standby_fold_error = ""
+
+    def _standby_fold_detail(self) -> str:
+        """Idle-status wording for Standby while the last fold left torque enabled or unknown."""
+        return (
+            "Local wake detection active; motor torque and folded pose are unverified"
+            if self._motors_enabled is None
+            else "Local wake detection active; safe motor release failed and torque remains enabled"
+        )
+
+    def _report_automatic_fold(self, folded: bool, error: str) -> None:
+        """Publish a wake-loop fold the way a Standby transition does; success keeps the idle status."""
+        if folded:
+            return
+        self._set_status(
+            "power_transition_error",
+            self._standby_fold_detail(),
+            power_mode=self._effective_power_mode(),
+            meeting_seconds_remaining=0,
+            last_error=error,
+        )
 
     def _fold_head_before_torque_release_unlocked(self) -> tuple[bool, str]:
         """Fold Reachy into its supported pose before releasing motor torque."""
         with self._motor_transition_lock:
             if self._native_sleep_uncertain:
                 return False, "Native sleep outcome is unknown; motor transitions require inspection before restart"
+            actions = self._actions
+            if actions is not None:
+                # Fence admission for the whole fold, not just the drain below. The controller
+                # takes this flag under its own queue lock, atomically with enqueue and worker
+                # admission, so nothing can start moving between the drain and torque release.
+                actions.fence(_FOLD_FENCE_REASON)
+            try:
+                return self._fold_head_while_fenced()
+            finally:
+                if actions is not None:
+                    actions.unfence()
+
+    def _fold_head_while_fenced(self) -> tuple[bool, str]:
+        with self._motor_transition_lock:
             # Quiesce the SDK-side producer before the daemon clears its own offsets.
             # The daemon, not the client, decides whether an already-folded head moves.
             try:
@@ -218,6 +273,18 @@ class PowerMixin:
                     return False, str(exc)
                 except RuntimeError:
                     _LOGGER.exception("Could not preserve torque after unverified sleep pose")
+                return False, message
+            if self._actions is not None and not self._actions.wait_idle(timeout=0.0):
+                # The fence makes this unreachable for the real controller; it fails closed for
+                # any controller that admitted work beside the daemon sleep or the measurement.
+                message = "Robot movement was admitted during the safety fold; motors remain enabled"
+                _LOGGER.error(message)
+                try:
+                    self._set_motor_mode(True)
+                except MotorBackendUnavailable as exc:
+                    return False, str(exc)
+                except RuntimeError:
+                    _LOGGER.exception("Could not preserve torque after movement during the safety fold")
                 return False, message
             self._head_safely_folded = True
             try:

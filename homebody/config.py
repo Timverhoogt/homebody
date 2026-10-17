@@ -76,6 +76,8 @@ class AppConfig:
     barge_in_enabled: bool = True
     # Owner permission for explicit AI looks and bounded camera sessions; never activates media itself.
     camera_enabled: bool = False
+    # Kids Chat Show and Tell opt-out: effective only inside the camera_enabled approval above.
+    kids_show_and_tell_enabled: bool = True
     camera_feed_enabled: bool = False
     camera_controls_enabled: bool = False
     camera_controls_handedness: str = "right"

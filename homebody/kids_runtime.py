@@ -13,6 +13,7 @@ import queue
 import secrets
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import replace
 
 import numpy as np
@@ -113,6 +114,12 @@ class KidsModeMixin:
         # Outer play-session identity: set by each caregiver Start, kept across game switches, so a
         # child Stop binds to the session (never a stale per-game generation) and never to a later Start.
         self._kids_play_id = ""
+
+    def _revoke_show_tell(self) -> None:
+        """Never call with _kids_lock held: the Show and Tell gate snapshots that lock first."""
+        gate = getattr(self, "_show_tell_gate", None)
+        if gate is not None:
+            gate.revoke()
 
     def _kids_admission_fence(self) -> tuple[int, int]:
         """(Kids generation, conversation stop generation): any Stop/End/privacy/power bump changes it."""
@@ -272,6 +279,10 @@ class KidsModeMixin:
             receipt = self._request_conversation_stop()
             self._kids_start_stop_generation = receipt if isinstance(receipt, int) else -1
             start_stop_generation = self._kids_start_stop_generation
+        self._revoke_show_tell()  # a grant never carries into a new or replacing session
+        sync_show_tell = getattr(self, "show_tell_sync_permission", None)
+        if callable(sync_show_tell):
+            sync_show_tell()  # a fresh session derives authority only from the current saved permission
         if replaced_session_id:
             self._notify_bridge_kids_session_async(replaced_session_id, active=False)
         self._notify_bridge_kids_session_async(started_session_id, active=True)
@@ -845,6 +856,7 @@ class KidsModeMixin:
                     cancel_move()
                 except Exception:
                     _LOGGER.warning("Could not cancel the active Kids Mode movement", exc_info=True)
+        self._revoke_show_tell()  # before waiting on the motor lock: an in-flight look is fenced now
         with self._motor_transition_lock:
             with self._kids_lock:
                 if self._kids_generation != stopped_generation:
@@ -1349,17 +1361,27 @@ class KidsModeMixin:
         *,
         barge_in: bool = True,
         animate_motion: bool = True,
+        still_current: Callable[[], bool] | None = None,
+        turn_bound: bool = True,
     ) -> bool:
-        """Stream child PCM while retaining immediate stop/privacy/wake control."""
+        """Stream child PCM while retaining immediate stop/privacy/wake control.
+
+        ``still_current`` is an extra owner fence (Show and Tell) checked with every other
+        cancellation and again immediately before each PCM handoff. Only a caller whose
+        ``still_current`` binds the immutable stop generation may pass ``turn_bound=False``.
+        """
+        if not turn_bound and still_current is None:
+            raise ValueError("Unbound Kids speech needs its own stop-generation fence")
 
         def cancelled() -> bool:
             return (
-                self.stop_event.is_set()
+                (still_current is not None and not still_current())
+                or self.stop_event.is_set()
                 or (
                     client.config.kids_mode_enabled
                     and not self._kids_session_is_current(client.config.kids_session_id)
                 )
-                or self._turn_stop_requested()
+                or (turn_bound and self._turn_stop_requested())
                 or self._privacy_requested.is_set()
                 or self._effective_power_mode() in {"meeting", "sleep"}
             )
@@ -1441,6 +1463,9 @@ class KidsModeMixin:
                                 queued_samples += int(output.size)
                                 if queued_samples > self._output_sample_rate * 120:
                                     raise HermesBridgeError("Kids Mode streaming speech exceeded the playback limit")
+                                if still_current is not None and not still_current():
+                                    self._clear_streamed_audio()
+                                    return False
                                 self._playback.push_audio_sample(output)
                                 # A successful SDK enqueue is not proof of audible playback.
                                 self._voice_timings.mark("player_enqueued")

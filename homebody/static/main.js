@@ -27,6 +27,9 @@ let deferredInstallPrompt = null;
 let announcementRequestPending = false;
 let lastAnnouncementLiveText = "";
 let kidsRequestPending = false;
+let showTellRequestPending = false;
+let showTellFence = 0; // status requests started at or before this cannot re-render the Show and Tell setting
+let showTellLast = null; // last applied categorical Show and Tell state (RAM only)
 let selectedKidsActivity = "buddy";
 // The idle stage previews Play together until a grown-up picks a single activity in this visit.
 let kidsPreviewSingle = false;
@@ -1161,7 +1164,8 @@ function updateStatus(payload, sequence = statusSequence) {
   const remainingPercent = kidsActive ? Math.max(0, Math.min(100, (remainingSeconds / totalSeconds) * 100)) : 0;
   const remainingMinutes = Math.floor(remainingSeconds / 60);
   const remainingRemainder = remainingSeconds % 60;
-  $("kids-status-badge").textContent = kidsCameraActive ? "Camera search" : kidsActive ? "Active" : "Off";
+  const showTellCamera = kidsCameraActive && kidsProfile.activity === "buddy";
+  $("kids-status-badge").textContent = showTellCamera ? "One photo" : kidsCameraActive ? "Camera search" : kidsActive ? "Active" : "Off";
   $("kids-status-badge").classList.toggle("active", kidsActive);
   $("kids-timer").textContent = kidsActive
     ? `${remainingMinutes}:${String(remainingRemainder).padStart(2, "0")} remaining`
@@ -1174,7 +1178,9 @@ function updateStatus(payload, sequence = statusSequence) {
   const progress = document.querySelector(".kids-progress");
   progress.setAttribute("aria-valuenow", String(Math.round(remainingPercent)));
   $("kids-session-detail").textContent = kidsActive
-    ? kidsCameraActive
+    ? showTellCamera
+      ? "Show and Tell is taking one announced photo now. Turn off or End now stops it."
+      : kidsCameraActive
       ? "I Spy camera is active for this bounded five-frame desk search only. End now stops capture and folds Reachy."
       : `${kidsMode.host?.enabled ? `Play together · ${kidsMode.host.activity ? kidsActivityLabels[kidsMode.host.activity] || "game" : "choosing a game"}` : kidsActivityLabels[kidsProfile.activity] || "Kids activity"} · age ${kidsProfile.age_band} · ${kidsMode.turns_completed || 0} completed turn${kidsMode.turns_completed === 1 ? "" : "s"} · ${kidsMode.tool_policy === "voice-state-motion-only" ? "gentle voice-state motion only" : "no tools"}`
     : "Camera, personal Hermes memory, smart-home control, messaging, purchases, and power controls are unavailable to the child session.";
@@ -1190,6 +1196,11 @@ function updateStatus(payload, sequence = statusSequence) {
   });
   if (!kidsHost) $("kids-host-message").textContent = "";
   else if (kidsHost.notice === "camera_consent_needed") $("kids-host-message").textContent = "The child asked for I Spy. Use “Play I Spy (allows camera)” to allow it, or ignore this.";
+  const showTellState = kidsMode.show_and_tell;
+  const showTell = showTellState && typeof showTellState === "object" && !kidsHost
+    ? { ...showTellState, available: showTellState.available === true && kidsActive && !kidsStaleAfterEnd }
+    : null;
+  renderShowTell(showTell, kidsCameraActive, sequence);
   const kidsJustStarted = kidsActive && $("panel-kids").dataset.kidsSession !== "active";
   $("kids-stop-button").disabled = !kidsActive;
   renderKidsSession(kidsActive, kidsMode, kidsHost, kidsCameraActive, remainingMinutes, remainingRemainder);
@@ -1466,6 +1477,7 @@ async function refreshStatus() {
     // Owner loss or an unreachable robot: no stale caregiver game controls remain usable.
     $("kids-host-controls").hidden = true;
     document.querySelectorAll("[data-kids-host-activity]").forEach((button) => { button.disabled = true; });
+    renderShowTell(null, false, Infinity);
     kidsStageStatus = { ...kidsStageStatus, offline: true, sttLocality: "unknown" };
     renderKidsStage();
     companionStage?.update(window.HomebodyScene.companionView({ offline: true }));
@@ -2164,6 +2176,78 @@ document.querySelectorAll("[data-kids-host-activity]").forEach((button) => {
     } finally {
       await refreshStatus();
     }
+  });
+});
+
+// Show and Tell: the Owner's persistent opt-out inside "Camera access for AI". Status carries only
+// categorical booleans; nothing about the session, photo or description is stored in the browser.
+// A status poll that started before a setting change is stale for this panel and is ignored.
+function renderShowTell(showTell, cameraActive, sequence = statusSequence) {
+  if (showTell && showTellFence > 0 && sequence <= showTellFence) showTell = showTellLast;
+  else if (showTell) showTellLast = showTell;
+  $("kids-show-tell").hidden = !showTell;
+  const approved = showTell?.camera_approved === true;
+  const enabled = showTell?.enabled === true;
+  const available = showTell?.available === true;
+  $("kids-show-tell-state").textContent = !approved
+    ? "Off · Camera access for AI is off in Settings"
+    : !enabled ? "Off" : available ? "On · ready in this Kids Chat" : "On";
+  const toggle = $("kids-show-tell-toggle");
+  toggle.textContent = enabled ? "Turn off" : "Turn on";
+  // Turning it off always stays possible, even mid-look; turning on never widens camera approval.
+  toggle.disabled = !showTell || showTellRequestPending || (!enabled && !approved);
+  $("kids-show-tell-look").disabled = !showTell || showTellRequestPending || !available
+    || showTell.looking === true || cameraActive;
+  if (!showTell) $("kids-show-tell-message").textContent = "";
+}
+
+async function showTellPost(path, body = {}) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+  return payload;
+}
+
+async function showTellAction(pendingText, action) {
+  if (showTellRequestPending) return;
+  const message = $("kids-show-tell-message");
+  showTellRequestPending = true;
+  ["kids-show-tell-toggle", "kids-show-tell-look"].forEach((id) => { $(id).disabled = true; });
+  message.textContent = pendingText;
+  try {
+    message.textContent = await action();
+  } catch (error) {
+    message.textContent = String(error.message || error);
+  } finally {
+    showTellRequestPending = false;
+    if (showTellLast) renderShowTell(showTellLast, false, Infinity);
+    await refreshStatus();
+  }
+}
+
+// One click, no confirmation: the persistent setting only narrows the existing camera approval.
+$("kids-show-tell-toggle").addEventListener("click", () => {
+  if (!showTellLast) return;
+  const enabled = showTellLast.enabled !== true;
+  showTellFence = statusSequence; // polls already in flight cannot re-show the old setting
+  showTellAction(enabled ? "Turning on Show and Tell…" : "Turning off Show and Tell…", async () => {
+    const state = await showTellPost("/api/kids/show-and-tell/setting", { enabled });
+    showTellFence = statusSequence; // polls that started before the saved reply are stale too
+    showTellLast = { ...showTellLast, ...state };
+    return enabled
+      ? "Show and Tell is on. Reachy looks only when the child asks or you press Look now."
+      : "Show and Tell is off. Any look was stopped and its description cleared.";
+  });
+});
+
+$("kids-show-tell-look").addEventListener("click", () => {
+  showTellAction("Asking Reachy to look once…", async () => {
+    await showTellPost("/api/kids/show-and-tell/look-now");
+    return "Reachy says it is looking, then takes one photo.";
   });
 });
 
