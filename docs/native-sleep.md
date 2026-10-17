@@ -14,7 +14,12 @@ call the Python SDK client's separate `ReachyMini.goto_sleep()` choreography.
    Drain admitted media calls with a bounded wait before stopping pipelines;
    refuse sleep if a quarantined SDK push/clear is still pending. Ordinary Stop
    and clear remain responsive while an SDK push is quarantined.
-3. Cancel/wait for app actions and enable torque for a controlled fold.
+3. Fence the action controller for the whole fold, then cancel/wait for app
+   actions and enable torque for a controlled fold. The fence is taken under
+   the controller's own queue lock, so no Everyday, Realtime, presence or
+   manual action can be admitted between that drain and the final torque
+   release; the fence lifts on every fold exit, and admission afterwards is
+   decided by the usual torque-confirmed policy.
 4. Subscribe to daemon move updates, then submit exactly one
    `POST /api/move/play/goto_sleep`. Wait for that exact move UUID's
    `move_completed`, not merely admission or disappearance from `/running`.
@@ -49,6 +54,12 @@ longer runs. Failure is never presented as successful sleep. If admission or
 cancellation cannot be resolved, mark motor state unknown and block additional
 motor commands/duplicate sleeps in that runtime until inspected and restarted.
 There is no fallback to the client SDK's different choreography.
+
+The automatic return-to-Standby fold after a voice turn reports a failure the
+same way an explicit Standby transition does: `power_transition_error` with
+`last_error` set, and a detail that says whether torque is known enabled or
+unverified. The idle wake-word status does not overwrite that guidance until a
+later fold verifies a safe release.
 
 ## Verification scope
 

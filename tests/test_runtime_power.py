@@ -227,6 +227,12 @@ def test_fold_refuses_torque_release_until_action_worker_is_idle() -> None:
     class BusyActions:
         pending_count = 1
 
+        def fence(self, reason: str) -> None:
+            pass
+
+        def unfence(self) -> None:
+            pass
+
         def cancel(self, *, stop_media: bool = True) -> bool:
             return True
 
@@ -713,6 +719,12 @@ def test_manual_robot_action_is_blocked_in_privacy_modes() -> None:
     class Actions:
         pending_count = 0
 
+        def fence(self, reason: str) -> None:
+            pass
+
+        def unfence(self) -> None:
+            pass
+
         def cancel(self, *, stop_media: bool = True) -> bool:
             return False
 
@@ -855,6 +867,12 @@ def test_doa_angle_is_converted_to_reachy_yaw_with_deadband_and_clamp() -> None:
 def test_privacy_action_cancel_keeps_playback_blocked_until_awake() -> None:
     class Actions:
         pending_count = 0
+
+        def fence(self, reason: str) -> None:
+            pass
+
+        def unfence(self) -> None:
+            pass
 
         def cancel(self, *, stop_media: bool = True) -> bool:
             return True

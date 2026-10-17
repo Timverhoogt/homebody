@@ -732,7 +732,17 @@ class HermesVoiceRuntime(
 
             detail = "Local wake detection only" if mode == "standby" else _WAKE_PROMPT
             self._expire_turn_error()
-            self._set_status("waiting_for_wake_word", detail)
+            with self._status_lock:
+                standby_fold_error = self._standby_fold_error if mode == "standby" else ""
+                # A richer error already published for this fault (for example a failed Awake
+                # plus its recovery fold) is kept rather than narrowed to the fold message.
+                held_error = self._status.last_error or standby_fold_error
+            if standby_fold_error:
+                # The last fold left torque enabled or unverified. Keep that guidance visible
+                # instead of resetting to the idle prompt on every audio frame.
+                self._set_status("power_transition_error", self._standby_fold_detail(), last_error=held_error)
+            else:
+                self._set_status("waiting_for_wake_word", detail)
             # A parent's Kids Start opens the first turn once its greeting has finished playing.
             first_listen = self._take_kids_first_listen(config.kids_session_id) if config.kids_mode_enabled else None
             keyword = "kids_start" if first_listen is not None else ""
@@ -793,7 +803,7 @@ class HermesVoiceRuntime(
                     self._signal_error()
                     continue
                 if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
-                    self._fold_head_before_torque_release()
+                    self._report_automatic_fold(*self._fold_head_before_torque_release())
                     continue
             try:
                 with self._voice_activity_lock:
@@ -835,7 +845,8 @@ class HermesVoiceRuntime(
                 if self._motion is not None:
                     self._motion.idle()
                 if self._effective_power_mode() == "standby":
-                    self._fold_head_before_torque_release()
+                    # A failed fold leaves torque enabled or unknown; report it like set_power_mode.
+                    self._report_automatic_fold(*self._fold_head_before_torque_release())
 
     def _run_selected_voice_conversation(self, config: AppConfig, keyword: str) -> None:
         """Route locked child sessions before every adult conversation provider."""

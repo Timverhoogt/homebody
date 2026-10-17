@@ -186,7 +186,7 @@ class StartHarness:
         runtime._orient_to_voice = lambda _config: None  # type: ignore[method-assign]
         runtime.observe_presence = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
         runtime._set_face_tracking = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
-        runtime._fold_head_before_torque_release = lambda: None  # type: ignore[method-assign]
+        runtime._fold_head_before_torque_release = lambda: (True, "")  # type: ignore[method-assign]
         runtime._take_button_wake = lambda: False  # type: ignore[method-assign]
 
         def read_frame() -> None:
