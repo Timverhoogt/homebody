@@ -32,6 +32,9 @@ from .show_and_tell import (
 
 _LOGGER = logging.getLogger("homebody.runtime")
 
+# A queued Owner Look now waits at most this long for the conversation's next safe boundary.
+_QUEUED_LOOK_TTL = 30.0
+
 
 class ShowAndTellUnavailable(RuntimeError):
     """A safe categorical caregiver-facing error; never carries child or provider data."""
@@ -80,18 +83,20 @@ class _RuntimeRoutes:
 
     def capture_once(self, require_current) -> bytes:
         runtime = self._runtime
-        with runtime._kids_lock:
-            if not runtime._kids_callback_is_current(self._generation):
-                raise Unavailable()
-            runtime._kids_camera_active = True
-        try:
-            require_current()
-            runtime._set_status("looking", "Show and Tell: looking once")
-            return runtime._capture_camera_jpeg(kids_generation=self._generation, show_tell=require_current)
-        finally:
+        # The head holds still for the one frame; following may resume only after the camera is free.
+        with runtime._face_follow_yielded("show_tell_capture"):
             with runtime._kids_lock:
-                if runtime._kids_generation == self._generation:
-                    runtime._kids_camera_active = False
+                if not runtime._kids_callback_is_current(self._generation):
+                    raise Unavailable()
+                runtime._kids_camera_active = True
+            try:
+                require_current()
+                runtime._set_status("looking", "Show and Tell: looking once")
+                return runtime._capture_camera_jpeg(kids_generation=self._generation, show_tell=require_current)
+            finally:
+                with runtime._kids_lock:
+                    if runtime._kids_generation == self._generation:
+                        runtime._kids_camera_active = False
 
     def describe(self, frame: bytes, look: _Look, require_current) -> LookResult:
         require_current()
@@ -147,6 +152,12 @@ class ShowAndTellMixin:
         self._show_tell_permission: tuple[bool, bool, int] = (False, False, 0)
         self._show_tell_scope: tuple[Grant, AppConfig] | None = None  # last grant published to the bridge
         self._show_tell_gate = SessionGate(self._show_tell_authority, on_revoke=self._show_tell_revoked)
+        # Look now handoff: the continuous Kids Chat conversation owns the voice slot for its whole
+        # length, so an Owner Look now is queued (at most one) for that same owner to run at its next
+        # safe boundary. Leaf lock: nothing else is acquired while it is held.
+        self._show_tell_handoff_lock = threading.Lock()
+        self._show_tell_consumer: tuple[str, int, int] | None = None  # (session, Kids gen, stop gen)
+        self._show_tell_pending: tuple[tuple[str, int, int], int, float] | None = None
         self.show_tell_sync_permission()  # reads saved settings only: no capture, wake or microphone
 
     def show_tell_sync_permission(self, *, revoke: bool = False) -> dict[str, bool]:
@@ -169,6 +180,7 @@ class ShowAndTellMixin:
                 generation += 1
             self._show_tell_permission = (camera, setting, generation)
         if revoke or not (camera and setting):
+            self._show_tell_drop_pending()
             self._show_tell_gate.revoke()
         return self._show_tell_public()
 
@@ -200,6 +212,7 @@ class ShowAndTellMixin:
             "session": state["session"],
             "available": state["available"],
             "looking": state["looking"],
+            "queued": state["available"] and getattr(self, "_show_tell_pending", None) is not None,
         }
 
     def _show_tell_notify(self, config: AppConfig, action: str, serial: int) -> None:
@@ -235,6 +248,7 @@ class ShowAndTellMixin:
         Lock-free (callers may hold _kids_lock): the robot look itself is already fenced by the new
         Stop generation. A later explicit request may look again under the same permission.
         """
+        self._show_tell_drop_pending()  # a queued Look now never survives a Stop
         scope = getattr(self, "_show_tell_scope", None)  # Stop may run before this mixin's state exists
         if scope is not None:
             self._show_tell_schedule(scope[1], "cancel", scope[0].serial)
@@ -255,6 +269,11 @@ class ShowAndTellMixin:
                 "Show and Tell works in an active Kids Chat while Camera access for AI and Show and Tell are on"
             )
         if not self._voice_activity_lock.acquire(blocking=False):
+            # The slot is held. Only the current Kids Chat conversation may take this request, and
+            # only at its own next safe boundary (never concurrent audio/camera); others still refuse.
+            handoff = self._show_tell_queue_look()
+            if handoff:
+                return {"accepted": True, **self._show_tell_public(), "queued": handoff == "queued"}
             raise ShowAndTellUnavailable("Wait until Reachy finishes the current turn")
         try:
             if self._announcement_active.is_set():
@@ -267,7 +286,82 @@ class ShowAndTellMixin:
         except BaseException:
             self._voice_activity_lock.release()
             raise
-        return {"accepted": True, **self._show_tell_public()}
+        return {"accepted": True, **self._show_tell_public(), "queued": False}
+
+    # ---- Look now handoff to the conversation that owns the voice slot -------------------------
+
+    def _show_tell_consumer_key(self, session_id: str) -> tuple[str, int, int] | None:
+        """(session, Kids generation, turn stop generation) of an unhosted Buddy turn, else None."""
+        with self._kids_lock:
+            profile = self._kids_profile
+            if (
+                not session_id or not self._kids_active or profile is None or profile.host
+                or profile.activity != "buddy" or self._kids_session_id != session_id
+            ):
+                return None
+            generation = self._kids_generation
+        with self._conversation_stop_generation_lock:
+            return session_id, generation, self._turn_stop_generation
+
+    def _show_tell_register_consumer(self, session_id: str) -> tuple[str, int, int] | None:
+        """The voice conversation declares it will take queued Look now requests at its boundaries."""
+        key = self._show_tell_consumer_key(session_id)
+        if key is not None:
+            with self._show_tell_handoff_lock:
+                self._show_tell_consumer = key
+                self._show_tell_pending = None
+        return key
+
+    def _show_tell_unregister_consumer(self, key: tuple[str, int, int] | None) -> None:
+        """The conversation ended: an unconsumed request is dropped, never run later or by a wake."""
+        if key is None:
+            return
+        with self._show_tell_handoff_lock:
+            if self._show_tell_consumer == key:
+                self._show_tell_consumer = None
+                self._show_tell_pending = None
+
+    def _show_tell_drop_pending(self) -> None:
+        lock = getattr(self, "_show_tell_handoff_lock", None)
+        if lock is not None:
+            with lock:
+                self._show_tell_pending = None
+
+    def _show_tell_queue_look(self) -> str:
+        """For the registered, still-current conversation owner only: "queued" (at most one),
+        "looking" (a repeat while its look is in flight joins that look) or "" (refused)."""
+        authority = self._show_tell_authority()
+        key = (authority.session, authority.session_generation, authority.stop_generation)
+        if not authority.permitted or authority.private or authority.stopped or authority.turn_generation != key[2]:
+            return ""
+        looking = self._show_tell_gate.public_state()["looking"]
+        with self._show_tell_handoff_lock:
+            if self._show_tell_consumer != key:
+                return ""
+            if looking:
+                return "looking"
+            pending = self._show_tell_pending
+            if pending is None or pending[0] != key or time.monotonic() >= pending[2]:
+                self._show_tell_pending = (key, authority.permission_generation, time.monotonic() + _QUEUED_LOOK_TTL)
+            return "queued"  # a repeat while one is queued is the same single request
+
+    def _show_tell_take_pending(self, key: tuple[str, int, int] | None) -> bool:
+        """Consume the queued request iff it is still this owner's, permitted and unexpired."""
+        if key is None:
+            return False
+        with self._show_tell_handoff_lock:
+            pending, self._show_tell_pending = self._show_tell_pending, None
+        if pending is None:
+            return False
+        current = self._show_tell_consumer_key(key[0])
+        return (
+            pending[0] == key and current == key and time.monotonic() < pending[2]
+            and pending[1] == self._show_tell_permission[2] and self._show_tell_public()["available"]
+        )
+
+    def _show_tell_look_queued(self) -> bool:
+        """Lock-free probe used to end the current listen early so the queued look can run."""
+        return getattr(self, "_show_tell_pending", None) is not None
 
     def _show_tell_owned_look(self, routes: _RuntimeRoutes) -> None:
         try:

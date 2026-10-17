@@ -10,7 +10,8 @@ import logging
 import math
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 from . import face_model
 from .config import AppConfig
@@ -33,6 +34,21 @@ def doa_yaw_degrees(angle_radians: float) -> float:
     return round(max(-60.0, min(60.0, yaw)), 1)
 
 
+class _FaceFollowLease:
+    """Identity of the one voice turn allowed to follow a face (no face data, ids or frames)."""
+
+    __slots__ = ("kids_generation", "kids_session_id", "stop_generation", "wanted", "weight")
+
+    def __init__(
+        self, stop_generation: int, kids_session_id: str, kids_generation: int, weight: float, wanted: bool,
+    ) -> None:
+        self.stop_generation = stop_generation
+        self.kids_session_id = kids_session_id
+        self.kids_generation = kids_generation
+        self.weight = weight
+        self.wanted = wanted
+
+
 class VisionMixin:
     """One-frame camera capture, the gesture worker, face tracking, and direction-of-arrival orientation."""
 
@@ -40,8 +56,15 @@ class VisionMixin:
         self._camera_lock = threading.Lock()
         self._camera_recovery_specs = None
         self._face_tracking_active = False
-        self._face_tracking_desired = False
+        self._face_tracking_desired = False  # mirrors "the current lease wants following" (diagnostics)
         self._face_tracking_weight = 0.65
+        # One lease per admitted voice turn owns local following. The lock is a leaf: nothing is
+        # acquired while it is held except the tracker command and the status lock, so stop paths
+        # may take it while holding _motor_transition_lock or _kids_lock.
+        self._face_follow_lock = threading.Lock()
+        self._face_follow_lease: _FaceFollowLease | None = None
+        self._face_follow_yields: set[str] = set()
+        self._face_follow_epoch = 0
         self._last_doa_sample_at = 0.0
         self._last_valid_doa_at = 0.0
         self._last_valid_doa_angle: float | None = None
@@ -315,6 +338,137 @@ class VisionMixin:
             if detector is not None:
                 detector.close()
             self._clear_gesture_detection_state()
+
+    # ---- Local face following ownership --------------------------------------------------------
+    # The daemon-local tracker is the only producer; Homebody never sees, identifies or keeps a face.
+    # A lease binds it to one admitted turn (Everyday or Kids). Any stop path bumps the epoch and
+    # turns it off under _face_follow_lock, so a sync that sampled authority earlier can never
+    # restart it. Exclusive motion/camera owners yield it; only a still-current lease resumes it.
+
+    def _begin_face_follow(
+        self, config: AppConfig, stop_generation: int, *, kids_generation: int | None = None,
+    ) -> _FaceFollowLease:
+        """Bind following to this turn. Kids configs already fold in the profile's motion switch."""
+        kids_session_id, wanted = "", bool(config.face_tracking_enabled)
+        if config.kids_mode_enabled:
+            kids_session_id = config.kids_session_id
+            with self._kids_lock:
+                current = self._kids_active and bool(kids_session_id) and self._kids_session_id == kids_session_id
+                if kids_generation is None:
+                    kids_generation = self._kids_generation if current else -1
+            wanted = wanted and current
+        lease = _FaceFollowLease(
+            stop_generation, kids_session_id, -1 if kids_generation is None else kids_generation,
+            float(config.face_tracking_weight), wanted,
+        )
+        with self._face_follow_lock:
+            self._face_follow_epoch += 1
+            self._face_follow_lease = lease
+            self._face_follow_yields.clear()
+            self._face_tracking_desired = wanted
+        self._sync_face_follow()
+        return lease
+
+    def _end_face_follow(self, lease: _FaceFollowLease | None = None) -> None:
+        """The owning turn ended: stop now. A given lease only ends itself, never a newer turn's."""
+        with self._face_follow_lock:
+            if lease is not None and self._face_follow_lease is not lease:
+                return
+            self._face_follow_epoch += 1
+            self._face_follow_lease = None
+            self._face_follow_yields.clear()
+            self._face_tracking_desired = False
+            self._set_face_tracking(False)
+
+    def _stop_face_follow(self) -> None:
+        """Stop following immediately; the lease alone decides whether a later sync may resume."""
+        lock = getattr(self, "_face_follow_lock", None)
+        if lock is None:
+            return
+        with lock:
+            self._face_follow_epoch += 1
+            self._set_face_tracking(False)
+
+    def _yield_face_follow(self, reason: str) -> None:
+        """An exclusive motion or camera owner takes the head; following stays off until it resumes."""
+        with self._face_follow_lock:
+            self._face_follow_epoch += 1
+            self._face_follow_yields.add(reason)
+            self._set_face_tracking(False)
+
+    def _resume_face_follow(self, reason: str) -> None:
+        with self._face_follow_lock:
+            if reason not in self._face_follow_yields:
+                return
+            self._face_follow_yields.discard(reason)
+        self._sync_face_follow()
+
+    @contextmanager
+    def _face_follow_yielded(self, reason: str) -> Iterator[None]:
+        self._yield_face_follow(reason)
+        try:
+            yield
+        finally:
+            self._resume_face_follow(reason)
+
+    def _set_face_follow_wanted(self, wanted: bool, *, weight: float | None = None) -> None:
+        """Saved-setting change mid-turn (Home Assistant switch): applies to the current lease only."""
+        with self._face_follow_lock:
+            lease = self._face_follow_lease
+            if lease is not None:
+                if lease.kids_session_id:
+                    wanted = wanted and lease.wanted  # a Kids turn never gains following it lacked
+                lease.wanted = wanted
+                if weight is not None:
+                    lease.weight = float(weight)
+                self._face_tracking_desired = wanted
+            if not wanted or lease is None:
+                self._face_follow_epoch += 1
+                self._set_face_tracking(False)
+                return
+        self._sync_face_follow()
+
+    def _face_follow_eligible(self, lease: _FaceFollowLease | None) -> bool:
+        """Every authority is read under its own lock, never under _face_follow_lock."""
+        if lease is None or not lease.wanted:
+            return False
+        if (
+            self.stop_event.is_set() or self._privacy_requested.is_set()
+            or self._effective_power_mode() in {"meeting", "sleep"}
+            or self._motors_enabled is not True or self._head_safely_folded
+            or getattr(self, "_safety_fold_active", False) or getattr(self, "_native_sleep_uncertain", False)
+        ):
+            return False
+        with self._conversation_stop_generation_lock:
+            if self._conversation_stop_generation != lease.stop_generation:
+                return False
+        if lease.kids_session_id:
+            with self._kids_lock:
+                profile = self._kids_profile
+                if not (
+                    self._kids_active and profile is not None and profile.motion_enabled
+                    and self._kids_session_id == lease.kids_session_id
+                    and self._kids_generation == lease.kids_generation
+                    and time.monotonic() < self._kids_ends_at
+                    and not self._kids_camera_active
+                ):
+                    return False
+        camera_lock = getattr(self, "_camera_control_lock", None)
+        if camera_lock is not None:
+            with camera_lock:
+                if self._camera_control_session_live_locked():
+                    return False
+        return True
+
+    def _sync_face_follow(self) -> None:
+        """Apply the current lease; a stop, yield or newer turn that ran meanwhile always wins."""
+        with self._face_follow_lock:
+            epoch, lease, yielded = self._face_follow_epoch, self._face_follow_lease, bool(self._face_follow_yields)
+        enabled = not yielded and self._face_follow_eligible(lease)
+        with self._face_follow_lock:
+            if epoch != self._face_follow_epoch or lease is not self._face_follow_lease:
+                return
+            self._set_face_tracking(enabled, weight=lease.weight if enabled and lease is not None else None)
 
     def _set_face_tracking(self, enabled: bool, *, weight: float | None = None) -> None:
         """Control daemon-local face tracking and mirror the real state in status."""

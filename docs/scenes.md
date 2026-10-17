@@ -104,7 +104,7 @@ Each activity then gets its own world:
 - **Quiz quest** — an isometric island with a dotted trail, identical pennants, a compass and floating outline shapes. The needle turns toward the child while listening and sweeps while thinking. Pennants are all identical, so nothing reads as progress or a score.
 - **Riddle box** — a lantern-lit alcove with a brass-bound box, three turning dials and a key shaped like a question mark. Speaking lifts the lid a crack to let light out; it never opens to an answer.
 - **Calm corner** — a moonlit pond with slow water lines, reeds, a lily and a few dim fireflies. Deliberately low contrast and slow. There is no breathing instruction.
-- **I Spy** — an explorer's desk with abstract shapes and a magnifying lens. The lens iris stays closed unless status reports the bounded camera search. During a search, a soft beam sweeps the five-point desk arc and the chip reads "Camera on". The lens never shows imagery, and the scene never hints at a target.
+- **I Spy** — an explorer's view with abstract shapes and a magnifying lens. The lens iris stays closed unless status reports the bounded camera search. During a search, a soft beam sweeps the five-point viewing arc and the chip reads "Camera on". The lens never shows imagery, and the scene never hints at a target.
 
 ## Adult surfaces
 

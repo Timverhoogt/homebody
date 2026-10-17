@@ -58,7 +58,7 @@ def test_robot_tab_offers_precision_pose_and_base_controls() -> None:
         assert f'data-nudge-axis="{center}"' in html
     assert "Fine · 1 mm / 1°" in html
     assert "Small · 2.5 mm / 2.5°" in html
-    assert "Desk sector · 30°" in html
+    assert "Narrow view · 30°" in html
     assert "Wide sector · 60°" in html
     assert "base yaw ±120°" in html
     assert 'const stepControl = button.dataset.nudgeAxis === "body_yaw" ? "base-yaw-step" : "precision-step"' in main
@@ -101,6 +101,6 @@ def test_motor_ui_serializes_power_transitions_and_reports_confirmed_state() -> 
     assert "position: fixed" in style
     assert 'data-action-busy="false"' in html
     assert "homebody-shell-v" in worker
-    assert "/static/style.css?v=103" in html
-    assert "/static/camera.js?v=103" in html
-    assert "/static/main.js?v=103" in html
+    assert "/static/style.css?v=104" in html
+    assert "/static/camera.js?v=104" in html
+    assert "/static/main.js?v=104" in html

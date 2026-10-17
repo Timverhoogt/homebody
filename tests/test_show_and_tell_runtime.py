@@ -156,6 +156,7 @@ def test_startup_and_enabling_never_capture_wake_or_listen(rig, saved):
     runtime, events, _ = rig
     assert state(runtime) == {
         "camera_approved": True, "enabled": True, "session": True, "available": True, "looking": False,
+        "queued": False,
     }
     saved["kids_show_and_tell_enabled"] = False
     runtime.show_tell_sync_permission(revoke=True)
@@ -195,6 +196,7 @@ def test_fresh_install_defaults_keep_show_and_tell_disabled(monkeypatch):
         assert AppConfig().camera_enabled is False and AppConfig().kids_show_and_tell_enabled is True
         assert state(runtime) == {
             "camera_approved": False, "enabled": True, "session": True, "available": False, "looking": False,
+            "queued": False,
         }
     finally:
         runtime.stop_kids_mode(fold=False)

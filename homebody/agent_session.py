@@ -197,11 +197,18 @@ class AgentSessionMixin:
             bridge_healthy = self._status.bridge_healthy
             last_error = self._status.last_error
         power_mode = self._effective_power_mode()
+        # The authorization field describes the hardware the turn really has: a running Standby wake
+        # turn is Awake (bound to its stop generation). Kids, privacy and Stop keep their own fields;
+        # reachy_status still reports the selected mode.
+        turn_awake = getattr(self, "_standby_wake_turn_awake", None)
+        authority_power_mode = (
+            "awake" if power_mode == "standby" and callable(turn_awake) and turn_awake() else power_mode
+        )
         return AgentBrokerContext(
             capability_profile=profile,
             adult_ui_unlocked=profile == "agent",
             kids_mode_active=kids_active,
-            power_mode=power_mode,
+            power_mode=authority_power_mode,
             privacy_enabled=not self._privacy_requested.is_set(),
             emergency_stop_active=False,
             robot_available=not self.stop_event.is_set() and self._audio_ready,

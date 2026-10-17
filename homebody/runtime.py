@@ -251,6 +251,8 @@ class HermesVoiceRuntime(
         # later "awake" transition that clears the event can never resume a stopped turn.
         self._conversation_stop_generation = 0
         self._turn_stop_generation = 0
+        # Stop generation of the wake turn currently running with confirmed, unfolded torque.
+        self._voice_turn_awake_generation: int | None = None
         self._robot_stt = None  # owned on-robot ASR client, created on the first robot-routed turn
         self._conversation_stop_generation_lock = threading.Lock()
         self._init_vision_state()
@@ -316,6 +318,7 @@ class HermesVoiceRuntime(
             self._conversation_stop_generation += 1
             self._conversation_stop_requested.set()
             generation = self._conversation_stop_generation
+        self._stop_face_follow()  # the lease bound the old generation, so nothing can resume it
         teardown = getattr(self, "_companion_teardown", None)
         if callable(teardown):
             # Stop/privacy/power/Kids/profile all pass here: held look/offer callbacks bound to older
@@ -347,6 +350,21 @@ class HermesVoiceRuntime(
             if generation is None:
                 generation = self._turn_stop_generation
             return generation != self._conversation_stop_generation
+
+    def _standby_wake_turn_awake(self) -> bool:
+        """An admitted Standby wake turn is physically Awake: torque confirmed, head unfolded.
+
+        Bound to that turn's stop generation, so any Stop/End/privacy/power change ends it at once.
+        Never true while idle, folded, unconfirmed or stopped; it changes no power transition.
+        """
+        generation = self._voice_turn_awake_generation
+        if (
+            generation is None or self._motors_enabled is not True or self._head_safely_folded
+            or self.stop_event.is_set() or self._privacy_requested.is_set()
+        ):
+            return False
+        with self._conversation_stop_generation_lock:
+            return generation == self._conversation_stop_generation
 
     def privacy_active(self) -> bool:
         """True while privacy mode holds the microphone and camera off (read by agent access)."""
@@ -391,6 +409,7 @@ class HermesVoiceRuntime(
         # Read before _kids_lock: the gate snapshots that lock itself (categorical booleans only).
         show_tell = self._show_tell_public() if hasattr(self, "_show_tell_gate") else {
             "camera_approved": False, "enabled": False, "session": False, "available": False, "looking": False,
+            "queued": False,
         }
         with self._kids_lock:
             remaining = max(0, int(self._kids_ends_at - time.monotonic())) if self._kids_active else 0
@@ -473,7 +492,7 @@ class HermesVoiceRuntime(
     def _before_robot_action(self) -> None:
         self._safety_gate.require(ROBOT_ACTION_POLICY)
         self._head_safely_folded = False
-        self._set_face_tracking(False)
+        self._yield_face_follow("robot_action")
         if self._motion is not None:
             self._motion.suspend()
 
@@ -493,8 +512,8 @@ class HermesVoiceRuntime(
                 self._motion.listening()
             else:
                 self._motion.idle()
-        if self._face_tracking_desired and self._effective_power_mode() not in {"meeting", "sleep"}:
-            self._set_face_tracking(True, weight=self._face_tracking_weight)
+        # Resumes only for the still-current turn's lease; a late callback after Stop/End stays off.
+        self._resume_face_follow("robot_action")
 
     def _on_robot_action_result(self, name: str, result: dict[str, object]) -> None:
         if name == "acknowledge_presence":
@@ -677,8 +696,7 @@ class HermesVoiceRuntime(
         with self._status_lock:
             self._status.announcement_current_preview = ""
             self._status.announcement_last_text = ""
-        self._face_tracking_desired = False
-        self._set_face_tracking(False)
+        self._end_face_follow()
         if self._actions is not None:
             self._actions.close()
         try:
@@ -711,7 +729,7 @@ class HermesVoiceRuntime(
             with self._status_lock:
                 applied_mode = self._status.power_mode
             if mode != applied_mode:
-                self._apply_power_mode()
+                self._reconcile_power_mode()
             if mode in {"meeting", "sleep"}:
                 remaining = 0
                 if mode == "meeting":
@@ -816,6 +834,9 @@ class HermesVoiceRuntime(
                 if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
                     self._report_automatic_fold(*self._fold_head_before_torque_release())
                     continue
+                with self._conversation_stop_generation_lock:
+                    turn_stop_generation = self._turn_stop_generation
+            follow_lease = None
             try:
                 with self._voice_activity_lock:
                     with self._announcement_state_lock:
@@ -832,16 +853,17 @@ class HermesVoiceRuntime(
                     ):
                         _LOGGER.info("Discarding stale wake after announcement/power arbitration")
                         continue
+                    # Before the session publication below: a Standby wake's broker context must
+                    # describe this turn's real, Awake hardware state (Everyday/Live read fences).
+                    self._voice_turn_awake_generation = turn_stop_generation
                     self.cancel_agent_work("session_changed")
                     self._orient_to_voice(config)
                     self.observe_presence(
                         PresenceObservation(source="voice", occupied=True, attentive=True),
                         allow_acknowledgement=False,
                     )
-                    self._face_tracking_desired = config.face_tracking_enabled
-                    self._face_tracking_weight = config.face_tracking_weight
-                    if self._face_tracking_desired:
-                        self._set_face_tracking(True, weight=self._face_tracking_weight)
+                    # Everyday and every Kids activity: the saved Owner setting, bound to this turn.
+                    follow_lease = self._begin_face_follow(config, turn_stop_generation)
                     self._run_selected_voice_conversation(config, keyword)
             except Exception as exc:
                 _LOGGER.exception("Homebody voice turn failed")
@@ -850,14 +872,16 @@ class HermesVoiceRuntime(
                 self._signal_error()
                 self.stop_event.wait(0.4)
             finally:
-                self._face_tracking_desired = False
-                self._set_face_tracking(False)
+                self._voice_turn_awake_generation = None
+                self._end_face_follow(follow_lease)
                 self._spotter.reset()
                 if self._motion is not None:
                     self._motion.idle()
                 if self._effective_power_mode() == "standby":
                     # A failed fold leaves torque enabled or unknown; report it like set_power_mode.
-                    self._report_automatic_fold(*self._fold_head_before_torque_release())
+                    # A Kids End/expiry may already have folded this turn's torque: reuse only a
+                    # measured release with no enable since, so one End never sleeps twice.
+                    self._report_automatic_fold(*self._fold_unless_released())
 
     def _run_selected_voice_conversation(self, config: AppConfig, keyword: str) -> None:
         """Route locked child sessions before every adult conversation provider."""

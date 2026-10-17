@@ -1209,7 +1209,8 @@ class HermesHomeAssistantProvider(HomeAssistantStateProvider):
             if object_id in self._CONFIG_SWITCHES:
                 self._update_config({self._CONFIG_SWITCHES[object_id]: bool(value)})
                 if object_id == "face_tracking":
-                    self.runtime._set_face_tracking(bool(value), weight=config.face_tracking_weight)
+                    # Off stops now; on never starts following outside a current turn's lease.
+                    self.runtime._set_face_follow_wanted(bool(value), weight=config.face_tracking_weight)
                 return True
             if object_id == "camera_disabled":
                 if bool(value):

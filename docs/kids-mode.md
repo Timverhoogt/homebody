@@ -54,7 +54,7 @@ Evidence so far: unit tests, real-middleware owner-boundary tests, and Chromium 
 
 I Spy alternates roles between Reachy and the child.
 
-**Reachy's turn:** Reachy turns its rotating base and head through a bounded five-frame desk search at `0° / −60° / −120° / +60° / +120°` with non-capturing 60° transit waypoints and a neutral return. Its strict bridge schema accepts only a stable, child-safe target visible across frames. Local game state controls approved hints and reveals the answer after three meaningful incorrect guesses; hint requests do not consume guesses, and giving up reveals immediately.
+**Reachy's turn:** Reachy turns its rotating base and head through a bounded five-frame search of nearby surroundings at `0° / −60° / −120° / +60° / +120°` with non-capturing 60° transit waypoints and a neutral return. Its strict bridge schema accepts only a stable, child-safe target visible across frames. Local game state controls approved hints and reveals the answer after three meaningful incorrect guesses; hint requests do not consume guesses, and giving up reveals immediately.
 
 **Target language:** the vision request and its per-session schema explicitly require `object_name` in the selected play language (for example Dutch `bal` or `mok`, not English labels). The screened name is retained unchanged for that round and used in correct-answer and reveal sentences. JSON keys and the internal colour enum stay unchanged; language selection is not a translation of those machine identifiers. This is a model-language instruction, not a deterministic language detector; generative naming can still make mistakes. This logic runs on the host bridge, so installing a robot wheel alone does not activate a bridge fix.
 
@@ -84,7 +84,7 @@ The Kids display shows an illustrated scene for the chosen activity:
 - **Quiz quest:** compass island
 - **Riddle box:** lantern-lit box
 - **Calm corner:** moonlit pond
-- **I Spy:** explorer's desk with a lens
+- **I Spy:** explorer's view with a lens
 
 Before a session starts, the stage is a still preview. During a session it shows waiting, listening, thinking or speaking from the existing categorical runtime state. In I Spy, a "Camera on" search appears only while status reports the bounded camera search.
 

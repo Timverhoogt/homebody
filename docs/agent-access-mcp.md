@@ -1,6 +1,6 @@
 # Agent access (MCP): let your agents use Reachy
 
-Homebody can serve a [Model Context Protocol](https://modelcontextprotocol.io) endpoint. MCP-capable agents can then use Reachy as a gentle physical presence: Hermes Agent, OpenClaw, Claude Code, and others. "Remind me in Reachy's voice", "show that you're happy", "what's on the desk?".
+Homebody can serve a [Model Context Protocol](https://modelcontextprotocol.io) endpoint. MCP-capable agents can then use Reachy as a gentle physical presence: Hermes Agent, OpenClaw, Claude Code, and others. "Remind me in Reachy's voice", "show that you're happy", "what can you see nearby?".
 
 It runs inside Homebody instead of as a separate Reachy app. The Reachy daemon runs one app at a time, and agent requests should queue alongside wake-word conversations and announcements rather than replace the companion.
 

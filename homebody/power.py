@@ -39,6 +39,11 @@ class PowerMixin:
         self._meeting_until = 0.0
         self._pending_privacy_transitions = 0
         self._native_sleep_uncertain = False
+        # Torque ownership: every enable attempt (or unknown backend) advances the epoch; a fold that
+        # verified its release records the epoch it released. Equal values mean nothing in this
+        # process could have enabled torque since that verified release.
+        self._torque_epoch = 0
+        self._released_torque_epoch = -1
         # Error of the most recent fold attempt, or "" once a fold verified a safe release.
         # Guarded by _status_lock; the wake loop keeps it visible while idle in Standby.
         self._standby_fold_error = ""
@@ -120,6 +125,8 @@ class PowerMixin:
         """Invalidate cached confirmations; unknown hardware must not authorize motion."""
         self._motors_enabled = None
         self._head_safely_folded = False
+        self._torque_epoch += 1  # an earlier verified release no longer describes the hardware
+        self._stop_face_follow()
         _LOGGER.warning("Motor command or measured state unavailable: %s", exc)
         return MotorBackendUnavailable(
             "Reachy's hardware connection is unavailable; motor torque and folded pose are unverified. "
@@ -157,6 +164,67 @@ class PowerMixin:
                     self._recording = True
             self._remember_fold_outcome(folded, error)
             return folded, error
+
+    def _fold_unless_released(self) -> tuple[bool, str]:
+        """End-of-activity fold that never repeats a release another owner already verified.
+
+        A Kids End/expiry and the wake loop's post-turn return both fold the same turn. The second
+        reuses the first only when no torque enable happened since that verified release, no
+        movement is admitted, and a fresh measurement shows released torque in the folded pose.
+        Measured as not released, the native fold runs; an unknown measurement fails closed
+        without any motor write. Explicit Standby/Meeting/Sleep transitions always fold.
+
+        Callers sample Standby before waiting for the motor lock. If another owner's transition won
+        the lock meanwhile (a fresh Start greeting, I Spy or manual control switches to Awake;
+        Meeting/Sleep fold themselves), that owner holds the hardware now: never fold it again.
+        """
+        with self._motor_transition_lock:
+            if self._effective_power_mode() != "standby":
+                _LOGGER.info("Skipping a stale post-turn fold: a newer power transition owns the motors")
+                return True, ""
+            if not self._verified_release_current():
+                return self._fold_head_before_torque_release()
+            try:
+                released = self._measured_release_confirmed()
+            except MotorBackendUnavailable as exc:
+                self._remember_fold_outcome(False, str(exc))
+                return False, str(exc)
+            if not released:
+                _LOGGER.warning("Measured torque/pose disagree with the last verified release; folding again")
+                return self._fold_head_before_torque_release()
+            if self._effective_power_mode() == "standby" and not self._recording:
+                self.robot.media.start_recording()
+                self._recording = True
+            _LOGGER.info("Reachy's torque release was already verified for this turn; no second sleep")
+            self._remember_fold_outcome(True, "")
+            return True, ""
+
+    def _verified_release_current(self) -> bool:
+        """Caller holds _motor_transition_lock. Bookkeeping precondition only; never sufficient alone."""
+        actions = self._actions
+        return (
+            self._released_torque_epoch == self._torque_epoch
+            and self._motors_enabled is False and self._head_safely_folded
+            and not self._native_sleep_uncertain
+            and (actions is None or actions.wait_idle(timeout=0.0))
+        )
+
+    def _measured_release_confirmed(self) -> bool:
+        """Read the daemon state: torque released and head inside the sleep cradle (no motion)."""
+        try:
+            response = httpx.get("http://127.0.0.1:8000/api/state/full", timeout=2.0)
+            response.raise_for_status()
+            state = response.json()
+            control_mode = state["control_mode"]
+            if control_mode not in {"enabled", "disabled", "gravity_compensation"}:
+                raise ValueError("Motor control mode is unverified")
+            pose = state["head_pose"]
+            z, pitch = float(pose["z"]), float(pose["pitch"])
+            if not math.isfinite(z) or not math.isfinite(pitch):
+                raise ValueError("Folded-pose measurement is not finite")
+            return control_mode == "disabled" and z <= -0.03 and pitch >= 0.25
+        except Exception as exc:
+            raise self._motor_backend_unavailable(exc) from exc
 
     def _remember_fold_outcome(self, folded: bool, error: str) -> None:
         """Keep the latest fold result so the wake loop can keep reporting unreleased torque."""
@@ -209,6 +277,7 @@ class PowerMixin:
 
     def _fold_head_while_fenced(self) -> tuple[bool, str]:
         with self._motor_transition_lock:
+            self._stop_face_follow()  # the fold owns the head from here; no lease may resume over it
             # Quiesce the SDK-side producer before the daemon clears its own offsets.
             # The daemon, not the client, decides whether an already-folded head moves.
             try:
@@ -296,6 +365,7 @@ class PowerMixin:
                 )
                 _LOGGER.error(message)
                 return False, message
+            self._released_torque_epoch = self._torque_epoch
             _LOGGER.info("Reachy completed its native sleep movement before torque release")
             return True, ""
 
@@ -308,6 +378,20 @@ class PowerMixin:
         with self._motor_transition_lock:
             self._apply_power_mode_unlocked()
 
+    def _reconcile_power_mode(self) -> None:
+        """Wake-loop catch-up (e.g. timed Meeting expiry), decided under the motor lock.
+
+        ``set_power_mode`` publishes the new mode before applying it and records the applied mode
+        only when done; an off-lock comparison in that window re-applied the same transition after
+        it finished (a second native sleep). Re-reading both under the lock applies each mode once.
+        """
+        with self._motor_transition_lock:
+            mode = self._effective_power_mode()
+            with self._status_lock:
+                applied_mode = self._status.power_mode
+            if mode != applied_mode:
+                self._apply_power_mode()  # reentrant: still inside this lock section
+
     def _apply_power_mode_unlocked(self) -> None:
         mode = self._effective_power_mode()
         remaining = 0
@@ -316,8 +400,7 @@ class PowerMixin:
                 remaining = max(0, int(self._meeting_until - time.monotonic()))
         if mode in {"meeting", "sleep"}:
             self._presence.clear(f"power_{mode}")
-            self._face_tracking_desired = False
-            self._set_face_tracking(False)
+            self._end_face_follow()
             if self._actions is not None:
                 self._playback_stopped_for_privacy = self._actions.cancel() or self._playback_stopped_for_privacy
             try:
@@ -434,6 +517,10 @@ class PowerMixin:
             raise RuntimeError("Runtime is stopping; motor enable is blocked")
         if self._native_sleep_uncertain:
             raise RuntimeError("Native sleep outcome is unknown; motor transitions are blocked")
+        if enabled:
+            self._torque_epoch += 1  # any enable attempt, even a failed one, retires an earlier release
+        else:
+            self._stop_face_follow()  # never leave the tracker commanding a head losing torque
         # A second caller can queue Awake using status from before the first wake.
         # Re-read hardware under the lock, rather than trusting that stale app status.
         if enabled and wake and self._motors_enabled is True and not self._head_safely_folded:
