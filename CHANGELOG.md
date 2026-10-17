@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.33] — Safety-fold fencing and Kids Show and Tell
+
+- Fence queued robot-action admission for the complete safety fold and fail closed if work remains before torque release. Retain automatic fold failure guidance instead of overwriting it with normal idle status.
+- Add English/Dutch Show and Tell inside ordinary Kids Chat: one ephemeral picture after an explicit look request, bounded vision and moderation, exact approved speech, and minimal session-only follow-up context. No automatic scanning or capture on startup.
+- Reuse existing Owner AI-camera approval, with a persistent Show and Tell opt-out. Existing camera-off remains off. Add caregiver Look now and Turn off/on controls; Stop and permission revocation cancel pending work without erasing the saved preference.
+- Require matching bridge and robot updates. Automated checks use synthetic media/providers; real recognition, audio and robot behavior require supervised owner acceptance. This is not a guarantee of child-content safety.
+
+
 ## [0.5.32] — Live and Kids failure diagnostics
 
 - Report categorized Live startup failures instead of discarding provider rejection information. Preserve permission checks, session lifecycle and explicit listening admission; no automatic retries or provider changes.
