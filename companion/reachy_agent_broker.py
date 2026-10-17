@@ -984,6 +984,10 @@ class ReachyAgentBroker:
                     "attributes": attributes,
                 }
             )
+            # Observation freshness is separately opt-in, not an arbitrary HA attribute leak.
+            if "last_updated" in self.config.home_entities[entity]:
+                stamp = payload.get("last_updated")
+                states[-1]["last_updated"] = stamp[:64] if isinstance(stamp, str) else None
             evidence.append({"source": "home_assistant", "entity_id": entity, "observed_at": observed})
         return {"entities": states}, evidence, observed
 

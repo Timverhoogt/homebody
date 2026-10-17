@@ -32,6 +32,33 @@ class LiveVoiceMixin:
     def _new_live_session(self, *args: object, **kwargs: object) -> LiveBridgeSession:
         return LiveBridgeSession(*args, **kwargs)  # type: ignore[arg-type]
 
+    def _live_camera_scope(self, config, original_fence, closed) -> Callable[[], bool]:
+        # Freeze before session startup, not after a blocking microphone/provider read.
+        # Never refresh a look authority or a tool advertisement inside the old session.
+        enabled = config.camera_enabled
+
+        def current() -> bool:
+            loader = getattr(self, "config_loader", None)
+            changed = callable(loader) and loader().camera_enabled != enabled
+            if original_fence is not None:
+                latest = self.everyday_tool_fence()
+                # A general Stop/new wake already has its own original-fence refusals.
+                # Only camera-specific revocation needs this additional restart boundary.
+                changed = changed or (
+                    latest == original_fence and latest.camera_generation != original_fence.camera_generation
+                )
+            if changed:
+                closed.set()  # revoke queued callbacks before reporting or closing transport
+                message = "Camera access changed; wake Reachy again and repeat your request"
+                self._set_status("waiting_for_wake_word", message, last_error=message)
+                # Wake polling replaces detail immediately. Reuse bounded turn-error retention
+                # for visible next-step guidance, without throwing or playing an error sound.
+                self._turn_error = (message, time.monotonic() + 30.0)
+                return False
+            return not closed.is_set()
+
+        return current
+
     def _run_live_conversation(self, config: AppConfig) -> None:
         if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
             return
@@ -41,6 +68,7 @@ class LiveVoiceMixin:
         original_fence = (
             self.everyday_tool_fence(local_closed) if callable(getattr(self, "everyday_tool_fence", None)) else None
         )
+        camera_current = self._live_camera_scope(config, original_fence, local_closed)
         look_authority = (
             self._companion_authority("voice", lambda: not local_closed.is_set() and not self._turn_stop_requested())
             if original_fence is not None
@@ -65,7 +93,14 @@ class LiveVoiceMixin:
             session.start()
             pending = session.wait_started()
             timings.mark("session_ready")
-            if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
+            if (
+                self._turn_stop_requested()
+                or self.stop_event.is_set()
+                or self._privacy_requested.is_set()
+                or self._effective_power_mode() in {"meeting", "sleep"}
+            ):
+                return
+            if not camera_current():
                 return
             self._workspace_event(workspace_generation, "activity", "Listening via GPT-Live preview")
             self._set_status("listening", "GPT-Live session active")
@@ -79,6 +114,7 @@ class LiveVoiceMixin:
                 workspace_generation,
                 original_fence=original_fence,
                 look_authority=look_authority,
+                camera_current=camera_current,
             )
             completed = True
         finally:
@@ -144,7 +180,16 @@ class LiveVoiceMixin:
         threading.Thread(target=run, name="reachy-live-look", daemon=True).start()
 
     def _live_loop(
-        self, config, session, pending, mode, workspace_generation, *, original_fence=None, look_authority=None
+        self,
+        config,
+        session,
+        pending,
+        mode,
+        workspace_generation,
+        *,
+        original_fence=None,
+        look_authority=None,
+        camera_current=None,
     ) -> None:
         closed = original_fence.cancelled if original_fence is not None else threading.Event()
         if look_authority is None and callable(getattr(self, "everyday_tool_fence", None)):
@@ -153,15 +198,17 @@ class LiveVoiceMixin:
                 "voice", lambda: not closed.is_set() and not self._turn_stop_requested()
             )
         fence = original_fence if mode == "everyday" else None
+        if camera_current is None:
+            camera_current = self._live_camera_scope(config, original_fence, closed)
         try:
             self._live_loop_with_tools(
-                config, session, pending, mode, workspace_generation, closed, fence, look_authority
+                config, session, pending, mode, workspace_generation, closed, fence, look_authority, camera_current
             )
         finally:
             closed.set()
 
     def _live_loop_with_tools(
-        self, config, session, pending, mode, workspace_generation, closed, fence, look_authority
+        self, config, session, pending, mode, workspace_generation, closed, fence, look_authority, camera_current
     ) -> None:
         timings = self._voice_timings
         seen_local = set()
@@ -173,7 +220,9 @@ class LiveVoiceMixin:
         last_activity = time.monotonic()
         dropped_audio = False
         while not self.stop_event.is_set() and not self._turn_stop_requested():
-            if self._effective_power_mode() in {"meeting", "sleep"}:
+            if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
+                return
+            if not camera_current():
                 return
             now = time.monotonic()
             if now - last_activity >= config.conversation_timeout_seconds:
@@ -182,11 +231,15 @@ class LiveVoiceMixin:
             frame = self._read_16k_frame()
             if self._turn_stop_requested() or self._privacy_requested.is_set() or self.stop_event.is_set():
                 return
+            if not camera_current():
+                return
             if frame is not None and (config.barge_in_enabled or not playback.audible(now)):
                 session.send_audio(resample_linear(frame, 16000, 24000))
             events, pending = pending + session.events(), []
             for event in events:
                 if self._turn_stop_requested() or self._privacy_requested.is_set() or self.stop_event.is_set():
+                    return
+                if not camera_current():
                     return
                 kind, payload = event.type, event.payload
                 if kind == "bridge.error":
