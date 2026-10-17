@@ -15,6 +15,7 @@ from dataclasses import asdict
 from urllib.parse import urlparse, urlunparse
 
 import numpy as np
+from websockets.exceptions import ConnectionClosedOK
 from websockets.sync.client import connect
 
 from .everyday_runtime import configured_local_tools
@@ -66,6 +67,20 @@ class LiveBridgeSession(RealtimeBridgeSession):
         self._receiver = threading.Thread(target=self._receive_loop, name="reachy-live-events", daemon=True)
         self._receiver.start()
 
+    def _remote_closed(self) -> None:
+        self.started.clear()
+        if not self._closed.is_set():
+            self._closed.set()
+            self._enqueue(RealtimeEvent("session.closed", {"type": "session.closed"}))
+
+    def _receive_loop(self) -> None:
+        try:
+            super()._receive_loop()
+        finally:
+            # Normal websocket iterator EOF has no provider session.closed event.
+            # Retire microphone sending too; abnormal bridge.error stays queued first.
+            self._remote_closed()
+
     def send_look_result(self, delegation_id: str, *, text: str = "", error: str = "") -> None:
         """Answer one bridge look request with text only; no frame ever enters the Live session."""
         socket = self._socket
@@ -104,7 +119,10 @@ class LiveBridgeSession(RealtimeBridgeSession):
         return (clipped * 32767.0).astype("<i2", copy=False).tobytes()
 
     def send_audio(self, samples_24k: np.ndarray) -> None:
-        if self._socket is None:
+        if self._closed.is_set():
+            return
+        socket = self._socket
+        if socket is None:
             raise RealtimeBridgeError("Live session is not connected")
         if not self.started.is_set():
             return  # never stream before the provider accepted the session
@@ -112,7 +130,7 @@ class LiveBridgeSession(RealtimeBridgeSession):
         if not pcm:
             return
         try:
-            self._socket.send(
+            socket.send(
                 json.dumps(
                     {
                         "type": "session.input_audio.append",
@@ -120,6 +138,9 @@ class LiveBridgeSession(RealtimeBridgeSession):
                     }
                 )
             )
+        except ConnectionClosedOK:
+            # The peer can close between the receive-side check and this send.
+            self._remote_closed()
         except Exception as exc:
             raise RealtimeBridgeError(f"Could not stream microphone audio: {exc}") from exc
 

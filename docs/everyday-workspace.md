@@ -24,6 +24,7 @@ except names/labels in `/v1/everyday/capabilities`.
 | `OPENROUTER_API_KEY` / `OPENAI_API_KEY` | Resolved on the host only, by preset key name |
 | `REACHY_AGENT_HA_ALLOWLIST` / `REACHY_AGENT_HA_ACTION_ALLOWLIST` | Existing allowlists, reused unchanged. On/off for lights and switches; brightness for permitted lights; scenes only with an exact existing `scene.*` → `turn_on` entry. Locks, covers, alarms and climate stay refused. |
 | `REACHY_EVERYDAY_ALIASES` | `{"light.desk": ["desk light"]}` spoken names for allowlisted entities only; ambiguous or unknown names are returned for the model to ask about |
+| `REACHY_EVERYDAY_TEMPERATURE_ENTITIES` | JSON list of up to 16 unique indoor `sensor.*` IDs, also present in the HA read allowlist; no auto-discovery or added control authority |
 | `REACHY_EVERYDAY_WEATHER_ENTITY` | Preferred: a Home Assistant `weather.*` entity (state + `weather.get_forecasts`). Freshness is reported; data older than 3 h is marked stale |
 | `REACHY_EVERYDAY_WEATHER_PROVIDER=open-meteo` + `REACHY_EVERYDAY_WEATHER_LATLON=lat,lon` | Optional public provider; the rounded coordinates are sent to api.open-meteo.com and the UI discloses that. No auto-geolocation |
 | `REACHY_EVERYDAY_TIMEZONE` | IANA zone for the host-clock time tool (default: host local time) |
@@ -41,6 +42,22 @@ Creation verifies scheduling, not audible completion. Scene verification confirm
 activation timestamp, not the resulting state of every member. Brightness/scenes have no
 automatic undo. Search returns bounded source URLs, snippets and retrieval timestamps;
 provider configuration is not proof of live provider access.
+
+### Indoor temperatures
+
+`get_home_temperature` reads only `REACHY_EVERYDAY_TEMPERATURE_ENTITIES`, resolves exact
+aliases from `REACHY_EVERYDAY_ALIASES`, and computes an equal-weight current sensor mean
+in Celsius. An empty `names` list selects that configured set; explicit names select a
+subset, without duplicates. Choose one representative sensor per room; do not include
+outdoor, appliance, battery or NAS temperatures in an indoor average.
+
+For each sensor, allow `device_class`, `unit_of_measurement`, and `last_updated` in
+`REACHY_AGENT_HA_ALLOWLIST`. The last field opts into its HA observation timestamp.
+Only finite temperature-class readings in °C/°F with a timezone-bearing observation
+no older than six hours are included. Missing/invalid/future timestamps and unavailable
+readings are excluded, with source names, included/requested counts and partial coverage.
+No usable readings returns no average, never zero. This is neither a historical average
+nor a claim to measure the entire home. No action allowlist changes are needed.
 
 ## Expanded Everyday robot tools (development candidate)
 

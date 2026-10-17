@@ -39,7 +39,7 @@ try:
     from companion.everyday_manifest import LOCAL_CALL_TIMEOUT_SECONDS, local_tool_specs, validate_local_arguments
     from companion.look_intent import looks_like_look_request, requests_camera_session
     from companion.reachy_agent_actions import ActionUnavailableError, ActionValidationError
-    from companion.reachy_agent_broker import BrokerUnavailableError, BrokerValidationError
+    from companion.reachy_agent_broker import BrokerUnavailableError, BrokerValidationError, HomeEntityMissingError
 except ModuleNotFoundError:
     from everyday_host import (
         HOST_NAMES,
@@ -54,12 +54,13 @@ except ModuleNotFoundError:
     from everyday_manifest import LOCAL_CALL_TIMEOUT_SECONDS, local_tool_specs, validate_local_arguments
     from look_intent import looks_like_look_request, requests_camera_session
     from reachy_agent_actions import ActionUnavailableError, ActionValidationError
-    from reachy_agent_broker import BrokerUnavailableError, BrokerValidationError
+    from reachy_agent_broker import BrokerUnavailableError, BrokerValidationError, HomeEntityMissingError
 
 _LOGGER = logging.getLogger(__name__)
 
 EVERYDAY_TOOL_NAMES = (
-    frozenset({"home_status", "home_control", "home_undo", "get_weather", "get_current_time"}) | HOST_NAMES
+    frozenset({"home_status", "home_control", "home_undo", "get_weather", "get_current_time", "get_home_temperature"})
+    | HOST_NAMES
 )
 # Even when allowlisted for Agent Mode, only directly verifiable on/off domains are spoken controls.
 _CONTROL_DOMAINS = frozenset({"light", "switch"})
@@ -83,6 +84,10 @@ EVERYDAY_INSTRUCTIONS = (
     "Use timer/reminder tools for create/list/status/cancel. They are RAM-only and scoped to this adult device; "
     "never claim delivery was heard or survives restart. Use offered local Reachy tools only when present. "
     "Use home_brightness for light brightness and home_scene only for an exactly allowlisted scene. "
+    "For indoor temperatures or their average call get_home_temperature: it computes a current sensor average, "
+    "not a historical or whole-house measurement. Say which rooms contributed and disclose partial coverage; "
+    "Never substitute outdoor weather or device temperatures. "
+    "For a time-period average explain history is unavailable. "
     "For home devices use home_status and home_control with the spoken name. If a tool returns "
     "ambiguous or unknown, ask which device was meant and list the offered names; never pick one. "
     "Only say a device changed when the tool returned verified true. "
@@ -108,6 +113,7 @@ class EverydayConfig:
     search_provider: str = ""
     search_api_key: str = field(default="", repr=False)
     search_timeout_seconds: float = 4.0
+    temperature_entities: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls, env: Callable[[str], str] | None = None) -> EverydayConfig:
@@ -151,6 +157,15 @@ class EverydayConfig:
                 ZoneInfo(tz)
             except ZoneInfoNotFoundError as exc:
                 raise ValueError("REACHY_EVERYDAY_TIMEZONE must be an IANA zone such as Europe/Amsterdam") from exc
+        raw_temperatures = get("REACHY_EVERYDAY_TEMPERATURE_ENTITIES")
+        temperatures = json.loads(raw_temperatures) if raw_temperatures else []
+        if (
+            not isinstance(temperatures, list)
+            or len(temperatures) > 16
+            or any(not isinstance(e, str) or not re.fullmatch(r"sensor\.[a-z0-9_]+", e) for e in temperatures)
+            or len(set(temperatures)) != len(temperatures)
+        ):
+            raise ValueError("REACHY_EVERYDAY_TEMPERATURE_ENTITIES must be up to 16 unique sensor ids")
         search_provider = get("REACHY_EVERYDAY_SEARCH_PROVIDER").lower()
         if search_provider not in {"", "brave"}:
             raise ValueError("REACHY_EVERYDAY_SEARCH_PROVIDER must be empty or brave")
@@ -161,6 +176,7 @@ class EverydayConfig:
             latitude,
             longitude,
             tz,
+            temperature_entities=tuple(temperatures),
             search_provider=search_provider,
             search_api_key=get("REACHY_EVERYDAY_SEARCH_API_KEY"),
         )
@@ -222,6 +238,14 @@ def realtime_tool_specs(*, home: bool = True) -> list[dict[str, Any]]:
     ]
     if home:
         tools += [
+            _function(
+                "get_home_temperature",
+                "Read configured indoor room temperatures and compute their current average in Celsius. "
+                "Empty names selects the configured room sensors. Excludes unavailable/stale readings; "
+                "disclose partial coverage. Not a historical average, outdoor weather, or device temperature.",
+                {"names": names},
+                ["names"],
+            ),
             _function(
                 "home_status",
                 "Read the current state of allowlisted home devices by spoken name. Empty list reads all.",
@@ -348,6 +372,17 @@ class EverydayTools:
                     if e.startswith("scene.") and "turn_on" in allowed
                 ],
             },
+            "temperature": {
+                "configured": bool(self.config.temperature_entities)
+                and set(self.config.temperature_entities) <= self._read_entities(),
+                "names": [
+                    (self._names_for(e) or (e,))[0]
+                    for e in self.config.temperature_entities
+                    if e in self._read_entities()
+                ],
+                "scope": "configured_indoor_sensors_read_only",
+                "historical": False,
+            },
             "time": {"configured": True, "source": "hermes_host_clock"},
             "weather": {
                 "configured": bool(self.config.weather_entity or self.config.weather_provider),
@@ -394,7 +429,7 @@ class EverydayTools:
             return {"ok": False, "error": "This tool call was already handled.", "duplicate": True}
         if refusal:
             return {"ok": False, "error": refusal}
-        if name in HOST_NAMES:
+        if name in HOST_NAMES or name == "get_home_temperature":
             spec = next(s for s in realtime_tool_specs() if s["name"] == name)
             if not validate_arguments(spec, arguments):
                 return {"ok": False, "verified": False, "error": "Invalid tool arguments."}
@@ -432,6 +467,10 @@ class EverydayTools:
             elif name == "get_weather":
                 result = await asyncio.wait_for(
                     self.weather(str(arguments.get("when") or "now"), http), self.config.weather_timeout_seconds + 1
+                )
+            elif name == "get_home_temperature":
+                result = await asyncio.wait_for(
+                    self.home_temperature(arguments["names"], http, current=current), self.config.ha_timeout_seconds
                 )
             elif name == "home_status":
                 result = await asyncio.wait_for(
@@ -505,6 +544,85 @@ class EverydayTools:
             for item in data.get("entities", [])
         ]
         return {"ok": True, "entities": states, "observed_at": int(observed), "source": "home_assistant"}
+
+    async def home_temperature(
+        self, names: list[str], http: Any, *, current: Callable[[], bool] = lambda: True
+    ) -> dict[str, object]:
+        """Current equal-weight sensor average; configuration selects indoor sensors, not domains."""
+        configured = self.config.temperature_entities
+        if not configured or not set(configured) <= self._read_entities():
+            return {"ok": False, "error": "Indoor temperature sensors are not configured for read access."}
+        selected: list[str] = []
+        for spoken in names:
+            resolved = self.resolve(spoken, set(configured))
+            if "entity_id" not in resolved:
+                return {"ok": False, **resolved}
+            entity = str(resolved["entity_id"])
+            if entity not in selected:
+                selected.append(entity)
+        selected = selected or list(configured)
+        states: list[dict[str, Any]] = []
+        missing: set[str] = set()
+        observed = self.clock()
+        for entity in selected:
+            if not current():
+                return {"ok": False, "error": "The conversation ended before the result arrived."}
+            try:
+                data, _, observed = await self.broker._home_status({"entity_ids": [entity]}, http)
+                states.extend(data.get("entities", []))
+            except HomeEntityMissingError:
+                missing.add(entity)
+            # Authentication/authorization, timeouts and service failures deliberately propagate.
+        if not current():
+            return {"ok": False, "error": "The conversation ended before the result arrived."}
+        readings: list[dict[str, object]] = []
+        excluded: list[dict[str, str]] = []
+        values: list[float] = []
+        by_id = {item["entity_id"]: item for item in states}
+        for entity in selected:
+            value = math.nan
+            item = by_id.get(entity, {})
+            label = (self._names_for(entity) or (entity,))[0]
+            if entity in missing:
+                excluded.append({"name": label, "reason": "configured sensor no longer exists"})
+                continue
+            attrs = item.get("attributes", {})
+            stamp = item.get("last_updated")
+            reason = ""
+            try:
+                value = float(item.get("state", ""))
+                unit = attrs.get("unit_of_measurement")
+                if attrs.get("device_class") != "temperature" or unit not in {"°C", "°F"}:
+                    reason = "not a supported temperature reading"
+                elif not math.isfinite(value):
+                    reason = "unavailable or nonfinite reading"
+                else:
+                    value = (value - 32) * 5 / 9 if unit == "°F" else value
+                    if not math.isfinite(value):
+                        raise ValueError("nonfinite converted temperature")
+                    updated = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+                    if updated.tzinfo is None or not -60 <= self.clock() - updated.timestamp() <= 6 * 3600:
+                        reason = "missing, future or older-than-six-hours observation"
+            except (ValueError, TypeError, OverflowError):
+                reason = "unavailable reading or missing observation time"
+            if reason:
+                excluded.append({"name": label, "reason": reason})
+                continue
+            values.append(value)
+            readings.append({"name": label, "celsius": round(value, 2), "last_updated": stamp})
+        return {
+            "ok": bool(values),
+            "average_celsius": round(math.fsum(values) / len(values), 2) if values else None,
+            "sensor_count": len(values),
+            "requested_count": len(selected),
+            "partial": bool(excluded),
+            "entities": readings,
+            "excluded": excluded,
+            "historical": False,
+            "scope": "current selected indoor sensor average, not a whole-house or time-period measurement",
+            "source": "home_assistant",
+            "observed_at": int(observed),
+        }
 
     async def home_control(
         self, spoken: str, action: str, http: Any, *, device_id: str, generation: int
