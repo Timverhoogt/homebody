@@ -45,6 +45,8 @@ def exercise(check, *, entities=("sensor.lounge", "sensor.bedroom"), allowed=Non
             assert request.headers["Authorization"] == "Bearer synthetic"
             e = request.match_info["entity"]
             requests.append(e)
+            if "http_status" in states[e]:
+                return web.json_response({}, status=states[e]["http_status"])
             return web.json_response(states[e])
 
         app = web.Application()
@@ -214,6 +216,24 @@ def test_stale_result_is_not_delivered():
         tools.broker._home_status = finish
         r = await call(is_current=lambda: current[0])
         assert r["ok"] is False and "entities" not in r and "average_celsius" not in r
+        assert requests == ["sensor.lounge"]  # cancellation also prevents the next sensor read
+
+    exercise(check)
+
+
+@pytest.mark.parametrize("entity", ["sensor.lounge", "sensor.bedroom"])
+@pytest.mark.parametrize("status", [404, 401, 403, 500])
+def test_missing_entity_is_partial_but_auth_and_service_failures_are_not(entity, status):
+    async def check(call, states, requests, tools):
+        states[entity] = {"http_status": status}
+        result = await call()
+        if status == 404:
+            assert result["ok"] and result["partial"] and result["sensor_count"] == 1
+            assert result["requested_count"] == 2 and len(result["excluded"]) == 1
+            assert result["average_celsius"] == (22.0 if entity == "sensor.lounge" else 20.0)
+            assert sorted(requests) == ["sensor.bedroom", "sensor.lounge"]
+        else:
+            assert result["ok"] is False and "average_celsius" not in result
 
     exercise(check)
 

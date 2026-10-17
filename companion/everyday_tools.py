@@ -39,7 +39,7 @@ try:
     from companion.everyday_manifest import LOCAL_CALL_TIMEOUT_SECONDS, local_tool_specs, validate_local_arguments
     from companion.look_intent import looks_like_look_request, requests_camera_session
     from companion.reachy_agent_actions import ActionUnavailableError, ActionValidationError
-    from companion.reachy_agent_broker import BrokerUnavailableError, BrokerValidationError
+    from companion.reachy_agent_broker import BrokerUnavailableError, BrokerValidationError, HomeEntityMissingError
 except ModuleNotFoundError:
     from everyday_host import (
         HOST_NAMES,
@@ -54,7 +54,7 @@ except ModuleNotFoundError:
     from everyday_manifest import LOCAL_CALL_TIMEOUT_SECONDS, local_tool_specs, validate_local_arguments
     from look_intent import looks_like_look_request, requests_camera_session
     from reachy_agent_actions import ActionUnavailableError, ActionValidationError
-    from reachy_agent_broker import BrokerUnavailableError, BrokerValidationError
+    from reachy_agent_broker import BrokerUnavailableError, BrokerValidationError, HomeEntityMissingError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -470,7 +470,7 @@ class EverydayTools:
                 )
             elif name == "get_home_temperature":
                 result = await asyncio.wait_for(
-                    self.home_temperature(arguments["names"], http), self.config.ha_timeout_seconds
+                    self.home_temperature(arguments["names"], http, current=current), self.config.ha_timeout_seconds
                 )
             elif name == "home_status":
                 result = await asyncio.wait_for(
@@ -545,7 +545,9 @@ class EverydayTools:
         ]
         return {"ok": True, "entities": states, "observed_at": int(observed), "source": "home_assistant"}
 
-    async def home_temperature(self, names: list[str], http: Any) -> dict[str, object]:
+    async def home_temperature(
+        self, names: list[str], http: Any, *, current: Callable[[], bool] = lambda: True
+    ) -> dict[str, object]:
         """Current equal-weight sensor average; configuration selects indoor sensors, not domains."""
         configured = self.config.temperature_entities
         if not configured or not set(configured) <= self._read_entities():
@@ -559,15 +561,31 @@ class EverydayTools:
             if entity not in selected:
                 selected.append(entity)
         selected = selected or list(configured)
-        data, _, observed = await self.broker._home_status({"entity_ids": selected}, http)
+        states: list[dict[str, Any]] = []
+        missing: set[str] = set()
+        observed = self.clock()
+        for entity in selected:
+            if not current():
+                return {"ok": False, "error": "The conversation ended before the result arrived."}
+            try:
+                data, _, observed = await self.broker._home_status({"entity_ids": [entity]}, http)
+                states.extend(data.get("entities", []))
+            except HomeEntityMissingError:
+                missing.add(entity)
+            # Authentication/authorization, timeouts and service failures deliberately propagate.
+        if not current():
+            return {"ok": False, "error": "The conversation ended before the result arrived."}
         readings: list[dict[str, object]] = []
         excluded: list[dict[str, str]] = []
         values: list[float] = []
-        by_id = {item["entity_id"]: item for item in data.get("entities", [])}
+        by_id = {item["entity_id"]: item for item in states}
         for entity in selected:
             value = math.nan
             item = by_id.get(entity, {})
             label = (self._names_for(entity) or (entity,))[0]
+            if entity in missing:
+                excluded.append({"name": label, "reason": "configured sensor no longer exists"})
+                continue
             attrs = item.get("attributes", {})
             stamp = item.get("last_updated")
             reason = ""

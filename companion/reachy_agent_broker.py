@@ -105,6 +105,10 @@ class BrokerUnavailableError(RuntimeError):
     """A configured read-only data source could not be reached safely."""
 
 
+class HomeEntityMissingError(BrokerUnavailableError):
+    """An authorized entity no longer exists; not an authentication or service failure."""
+
+
 def _redact(value: object, *, limit: int = _MAX_RESULT_TEXT) -> str:
     return _SECRET.sub("[redacted]", str(value).replace("\x00", ""))[:limit]
 
@@ -964,6 +968,8 @@ class ReachyAgentBroker:
                 headers=headers,
                 allow_redirects=False,
             ) as response:
+                if response.status == 404:
+                    raise HomeEntityMissingError(f"Home Assistant entity is missing: {entity}")
                 if response.status != 200:
                     raise BrokerUnavailableError(f"Home Assistant state unavailable for {entity}")
                 payload = await response.json(content_type=None)
