@@ -9,6 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Add an explicit `ollama` text-provider preset for Everyday and optional shared bridge text calls: loopback default, explicit model tags, optional proxy-only key, no cloud-key reuse, and adaptation of unsupported OpenAI tool-control fields. Existing tool/permission/moderation boundaries remain unchanged.
 - Document Windows/Mac/Linux Ollama hosting for same-computer or trusted-LAN Everyday Pipeline reasoning and camera vision, including firewall, speech-provider and hardware-acceptance limits. Add portable model-client contract coverage; native model and robot acceptance remain separate.
 
+## [0.5.30] — Indoor temperatures and Live permission recovery
+
+- Add a read-only indoor-temperature tool shared by Everyday voice engines. Use an explicit host-selected sensor list within the existing HA read allowlist, convert supported units, compute the mean deterministically, and disclose unavailable/stale sensors and partial coverage. No thermostat/device control, sensor discovery, or historical-average claim.
+- End Live conversations cleanly when their camera permission or original request authority changes. A fresh wake/request receives current permissions; toggling settings never captures, uploads, restarts listening, or revives an old visual request.
+- Treat a normally closed Live connection as completion rather than trying to send microphone audio into a closed socket. Preserve abnormal provider failures, Stop/privacy/Kids fences and original Companion authority.
+- Requires matching host bridge and robot software. Installation does not validate real-room camera, microphone or acoustic behavior; those remain supervised acceptance checks.
+
+
 ## [0.5.29] — Consented companion presence, visual help and opt-in sources
 
 - Presence reports occupancy and source health separately: heartbeats and bridge-loss reports keep healthy stationary occupancy "present", show "unknown" when the sensor bridge is silent, and never turn a reconnect into a second arrival. Only an arrival may trigger the silent acknowledgement; Standby never gains motors.
