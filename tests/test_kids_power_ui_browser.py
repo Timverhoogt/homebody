@@ -103,7 +103,7 @@ def test_shared_start_payload_and_standalone_start_are_preserved(ui):
     press(page, "kids-start-button")
     page.wait_for_function("!kidsRequestPending")
     single = starts(posts)[-1]
-    assert single["activity"] == "story" and "host" not in single and single["camera_consent"] is False
+    assert single["activity"] == "story" and single["host"] is False and single["camera_consent"] is False
     # I Spy alone still demands its own per-start consent before posting.
     count = len(starts(posts))
     page.click('[data-kids-activity="ispy"]')

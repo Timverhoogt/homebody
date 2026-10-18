@@ -4,12 +4,14 @@ import sys
 from pathlib import Path
 from zipfile import ZipFile
 
+from homebody import __version__
+
 
 def test_packaged_household_entrypoint_imports_without_checkout(tmp_path):
     root = Path(__file__).resolve().parents[1]
-    with ZipFile(root / "dist/reachy_mini_homebody-0.5.35-py3-none-any.whl") as archive:
+    with ZipFile(root / f"dist/reachy_mini_homebody-{__version__}-py3-none-any.whl") as archive:
         archive.extractall(tmp_path)
-        metadata = archive.read("reachy_mini_homebody-0.5.35.dist-info/entry_points.txt").decode()
+        metadata = archive.read(f"reachy_mini_homebody-{__version__}.dist-info/entry_points.txt").decode()
         assert "homebody-household = homebody.household_launcher:main" in metadata
     code = (
         "import runpy, sys; sys.argv=['homebody-household', '--help']; "
@@ -23,7 +25,7 @@ def test_packaged_household_entrypoint_imports_without_checkout(tmp_path):
 
 def test_standalone_household_wheel_matches_source():
     root = Path(__file__).resolve().parents[1]
-    wheel = root / "dist/reachy_mini_homebody-0.5.35-py3-none-any.whl"
+    wheel = root / f"dist/reachy_mini_homebody-{__version__}-py3-none-any.whl"
     with ZipFile(wheel) as archive:
         for name in ("household_catalogue.py", "household_server.py", "household_mcp.py", "household_robot.py",
                      "everyday_tools.py",

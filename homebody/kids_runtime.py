@@ -876,6 +876,7 @@ class KidsModeMixin:
                     cancel_move()
                 except Exception:
                     _LOGGER.warning("Could not cancel the active Kids Mode movement", exc_info=True)
+            self._request_conversation_stop()  # revoke voice atomically, before waiting for a scan/fold
         self._stop_face_follow()  # immediately, before waiting on the motor lock; the lease is stale now
         self._revoke_show_tell()  # before waiting on the motor lock: an in-flight look is fenced now
         with self._motor_transition_lock:

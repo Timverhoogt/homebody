@@ -181,7 +181,10 @@ def main() -> int:
             return code == 0
 
         if args.profile == "release":
-            if not run([args.python, "-m", "build", "--wheel"], "build", 180):
+            if not run([args.python, "-m", "ruff", "check", "."], "lint", 60):
+                return 1
+            # Release environments must already carry build dependencies; never fetch them.
+            if not run([args.python, "-m", "build", "--wheel", "--no-isolation"], "build", 180):
                 return 1
         if units:
             command = [

@@ -214,12 +214,18 @@ def kids_message(language: str, key: str) -> str:
 
 def build_kids_prompt(profile: KidsProfile) -> str:
     """Build the defense-in-depth child interaction policy for a tool-free session."""
+    word_limit = {"4-6": 30, "7-9": 45, "10-12": 60}[profile.age_band]
+    brevity = (
+        f"Keep each reply under {word_limit} words. Use at most two short sentences. "
+        if profile.activity == "buddy" and not profile.host else ""
+    )
     child_reference = f"The child's nickname is {profile.nickname}. " if profile.nickname else ""
     language = LANGUAGE_NAMES[profile.language]
     return (
         "You are Hermes speaking through a Reachy Mini robot in Kids Mode. "
         f"Speak in {language} for a child aged {profile.age_band}. {child_reference}"
         "Use warm, concrete, short spoken sentences. Ask only one question at a time. Never use Markdown. "
+        f"{brevity}"
         "You are a friendly robot activity partner, not a parent, teacher, doctor, therapist, or emergency service. "
         "Never ask for or repeat a full name, address, school, phone number, email, precise location, passwords, "
         "photos, account details, family finances, or other identifying/private information. Do not suggest moving "

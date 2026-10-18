@@ -413,6 +413,8 @@ def test_late_agent_run_cannot_repaint_after_display_authority_is_lost(agent, bo
 
 def test_older_idle_badge_cannot_hide_stop_after_newer_running_badge(agent):
     page, state, errors = agent
+    # Workspace keeps polling; unused Everyday intentionally performs discovery only.
+    state["runtime"]["agent"]["profile"] = "agent"
     state["hold"].add("/api/agent/workspace/native-badge")
     page.evaluate("HomebodyAssistantModes.owner(false); HomebodyAssistantModes.owner(true); void refreshStatus()")
     for _ in range(100):

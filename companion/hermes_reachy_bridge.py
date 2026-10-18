@@ -1158,13 +1158,18 @@ _KIDS_ACTIVITY_INSTRUCTIONS = {
 }
 
 
-def _build_bridge_kids_prompt(*, age_band: str, activity: str, language: str) -> str:
+def _build_bridge_kids_prompt(*, age_band: str, activity: str, language: str, hosted: bool = False) -> str:
     """Build the authoritative child policy from validated profile enums on the bridge."""
     spoken_language = _KIDS_LANGUAGE_NAMES[language]
+    brevity = (
+        f"Keep each reply under {_KIDS_REPLY_WORD_LIMITS[age_band]} words, at most two short sentences. "
+        if activity == "buddy" and not hosted else ""
+    )
     return (
         "You are Hermes speaking through a Reachy Mini robot in a supervised child session. "
         f"Speak in {spoken_language} for a child aged {age_band}. "
         "Use warm, concrete, short spoken sentences. Ask only one question at a time. Never use Markdown. "
+        f"{brevity}"
         "You are a friendly robot activity partner, not a parent, teacher, doctor, therapist, or emergency service. "
         "This chat has no tools, live camera view, personal memory, files, devices, messages, purchases, web access, "
         "or ability to "
@@ -1189,6 +1194,25 @@ def _build_bridge_kids_prompt(*, age_band: str, activity: str, language: str) ->
         f"energetic dance. Current activity: {_KIDS_ACTIVITY_INSTRUCTIONS[activity]} "
         "A parent can end the session at any time."
     )
+
+
+_KIDS_REPLY_WORD_LIMITS = {"4-6": 30, "7-9": 45, "10-12": 60}
+
+
+def _brief_kids_reply(text: str, age_band: str, language: str) -> str:
+    """Keep complete spoken sentences within the age budget, before moderation/approval.
+
+    Fixed safety/host/I Spy messages bypass this model-output-only guard. Never emit a
+    chopped sentence; if the first sentence alone is too long, use safe localized copy.
+    """
+    limit = _KIDS_REPLY_WORD_LIMITS[age_band]
+    sentences = re.split(r"(?<=[.!?])\s+", _kids_speech_friendly(text))
+    kept: list[str] = []
+    for sentence in sentences[:2]:
+        if len(" ".join([*kept, sentence]).split()) > limit:
+            break
+        kept.append(sentence)
+    return " ".join(kept) or _kids_copy(language, "no_answer")
 
 
 def _kids_speech_friendly(text: str) -> str:
@@ -3518,6 +3542,7 @@ class Bridge(NativeWorkspaceRoutes):
                 age_band=age_band,
                 activity=activity,
                 language=language,
+                hosted=hosted,
             )
             # Only a consented, approved enum description, never provider/image text, and never hosted.
             show_tell = None if hosted or activity != "buddy" else self._show_tell_context(session_id, fingerprint)
@@ -3559,6 +3584,10 @@ class Bridge(NativeWorkspaceRoutes):
                 answer = str(result["choices"][0]["message"]["content"]).strip()
                 if hosted:
                     answer, game_state = _parse_kids_hosted_turn(answer)
+                # Chat brevity must not cut Story choices, quiz explanations, calm
+                # instructions, or hosted completion speech away from its game state.
+                if activity == "buddy" and not hosted:
+                    answer = _brief_kids_reply(answer, age_band, language)
             except (
                 TimeoutError,
                 ClientError,

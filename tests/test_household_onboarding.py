@@ -16,6 +16,7 @@ from test_standalone_household_tools import standalone
 
 from companion.household_mcp import household_mcp
 from companion.household_smoke import NoRedirect, check, endpoint, main
+from homebody import __version__
 from homebody.agent_setup import BACKENDS, bridge_manifest, render_guide
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -154,14 +155,15 @@ def test_guide_checklist_and_critical_boundaries():
     guide = (ROOT / "homebody/agent_guides/household.md").read_text()
     checklist = json.loads(re.search(r"```json\n(.*?)\n```", guide, re.S)[1])
     assert checklist and set(checklist.values()) == {"not_attempted"}
-    for term in ("unreleased", "Independent household routing", "300 seconds", "X-Homebody-CSRF", "homebody_context",
+    for term in ("Released support since 0.5.35", "Independent household routing", "300 seconds",
+                 "X-Homebody-CSRF", "homebody_context",
                  "HOMEBODY_HOUSEHOLD_ROBOT_TOKEN", "HOMEBODY_HOUSEHOLD_TOKEN", "HTTPS/WSS",
                  "No autonomous", "rollback", "GPT-Live", "STT/TTS", "Hermes installation"):
         assert term.lower() in guide.lower()
 
 
 def test_wheel_includes_exact_runbook_and_smoke(tmp_path):
-    wheel = ROOT / "dist/reachy_mini_homebody-0.5.35-py3-none-any.whl"
+    wheel = ROOT / f"dist/reachy_mini_homebody-{__version__}-py3-none-any.whl"
     with ZipFile(wheel) as archive:
         for dest, source in (("homebody/agent_guides/household.md", "homebody/agent_guides/household.md"),
                              ("homebody/agent_setup.py", "homebody/agent_setup.py"),
