@@ -205,8 +205,9 @@ household host installer. Have the operator resolve this prerequisite before con
 3. Owner starts the approved **adult Everyday** runtime/session using its existing controls.
    Merely opening Settings or setting power Awake is not an active adult session. Starting
    voice may have microphone/speech/power effects; obtain separate approval and supervise it.
-4. Press **Connect external tools** in the same card. Connection requires an eligible adult
-   Everyday runtime and existing external-tool permission; it never wakes, captures or listens.
+4. Press **Connect external tools** in the same card. Standby connects idle with tools inactive.
+   Active tools require an eligible adult Everyday runtime and existing external-tool permission;
+   connection never wakes, captures or listens. Step 3 is needed only for active tools.
    For an MCP client's private scope handoff, the equivalent Owner API returns the exact
    scope below (disconnect first if already connected). In the paired dashboard console:
 
@@ -220,13 +221,30 @@ The loaded `owner.js` fetch wrapper supplies the same-origin Owner cookie and in
 `X-Homebody-CSRF` header. Do not copy cookies/CSRF values to a shell or disable the boundary.
 This must run in the actual dashboard, not an arbitrary page or raw console fetch without its
 wrapper. The POST has **no body**: request URLs, credentials or fabricated context are ignored.
-It returns `connected: true`, `device_id`, exact `homebody_context`, `maximum_seconds: 300`
+For active tools it returns `connected: true`, `tools_active: true`, `device_id`, exact `homebody_context`, `maximum_seconds: 300`
 only after host acknowledgement. Connection itself does not capture, move or change settings.
 
 Save that response locally as a private `household-scope.json` for the approved MCP caller
 (e.g. browser DevTools `copy(JSON.stringify(householdScope))`, then paste into a local private
 file, not chat; clear the clipboard afterward). Keep it outside version control, owner-readable
 only. Context is short-lived authority metadata, not a replacement for the caller token.
+
+### Connected transport is not action authority
+
+Owner Connect also works in Standby: `connected: true`, `tools_active: false`,
+`homebody_context: null`. The UI says **Connected — tools inactive**. No wake,
+camera, movement, listening or broker action lease is created. Scoped tool lists
+and calls are refused, including host tools. Kids, privacy, Workspace and Stop
+cannot gain authority by connecting. Do not pass an idle response to the scoped smoke check.
+
+There is no automatic promotion from idle. Start a separately approved adult
+Everyday session using existing runtime controls, then Disconnect and Connect
+explicitly to obtain fresh action scope. A mode, generation, Stop or permission
+change retires the connection; restoring settings does not revive old work.
+Bounded transport renewal never grants fresh authority. Matching updated robot
+and household service code is required for idle connections; old services refuse
+the distinct idle handshake rather than silently granting tools. Active legacy
+handshakes retain the existing execution-time fences.
 
 ## 6. List tools and make one read-only call
 

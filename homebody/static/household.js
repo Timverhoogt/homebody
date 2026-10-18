@@ -97,6 +97,13 @@
     return request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload || {}) });
   }
 
+  function connectionMessage(body) {
+    if (!body.connected) return "External tools disconnected.";
+    return body.tools_active === true
+      ? "Connected — tools active within current adult permissions."
+      : "Connected — tools inactive. Start an approved adult Everyday session, then reconnect explicitly.";
+  }
+
   async function load() {
     if (!owner || kids) return null;
     const result = await request("/api/household/setup", { headers: { Accept: "application/json" } });
@@ -107,7 +114,7 @@
       if (response.ok && mine === generation && owner && !kids && typeof body.url === "string") {
         byId("household-url").value = body.url;
         byId("household-durable").checked = body.enabled === true;
-        byId("household-connection-message").textContent = body.connected ? "External tools connected." : "External tools disconnected.";
+        byId("household-connection-message").textContent = connectionMessage(body);
       }
     } catch { /* Keep setup independent of connection status. */ }
     return result;
@@ -152,10 +159,11 @@
       const response = await fetch(`/api/household/tools/${action}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
+      const body = await response.json().catch(() => ({}));
       if (mine !== generation || !owner || kids) return;
       byId("household-connection-message").textContent = response.ok
-        ? ({configure: "Connection saved. No listening or capture started.", validate: "Household service validated; shared speech services were not checked.", connect: "External tools connected within current permissions.", disconnect: "External tools disconnected."})[action]
-        : "Connection action refused. Check Owner approval, saved host credentials and current adult permissions.";
+        ? ({configure: "Connection saved. No listening or capture started.", validate: "Household service validated; shared speech services were not checked.", connect: connectionMessage(body), disconnect: "External tools disconnected."})[action]
+        : (typeof body.detail === "string" ? body.detail : "Connection action refused. Check Owner approval and saved host settings.");
     } catch {
       if (mine === generation && owner && !kids) byId("household-connection-message").textContent = "Household connection unavailable.";
     }

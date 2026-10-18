@@ -88,15 +88,16 @@ def test_household_setup_requires_owner_csrf_and_explicit_acknowledgement(owner)
 def test_household_tools_connection_owner_boundary_and_saved_destination(owner, monkeypatch):
     import asyncio
 
-    from test_everyday_workspace_bridge import ctx
+    from test_everyday_runtime import runtime as make_runtime
 
-    from companion.reachy_agent_broker import BrokerContext
     from homebody import household_client
 
     robot, client, code, path, calls = owner
     before = path.read_text()
     seen = []
-    robot._runtime.agent_broker_context = lambda **kw: BrokerContext.parse(ctx(1, "conversation"))
+    robot._runtime, _ = make_runtime(mcp_enabled=True)
+    robot._runtime._audio_ready = True
+    robot._runtime.config_loader = lambda: load_config(path)
 
     async def fake_callbacks(runtime, **kwargs):
         seen.append((runtime, kwargs))

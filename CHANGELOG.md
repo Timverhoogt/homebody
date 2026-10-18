@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.37] — Household idle connection
+
+- Allow Owner Connect in Standby as authenticated idle transport, explicitly showing tools inactive without granting action authority, waking, listening, capturing or moving.
+- Require a separately approved adult Everyday session and explicit reconnect for active tools. Preserve Stop, privacy, Kids, permission and generation fences; idle connections never automatically promote.
+- Report categorical connection failures without exposing credentials, and refresh the UI shell cache.
+- Require matching updated household server and robot software for the distinct idle handshake. Automated protocol and browser checks do not establish deployed acceptance or fix camera hardware.
+
 ## [0.5.36] — Kids End and field follow-up
 
 - Fence voice motion before SDK playback teardown without holding the callback lock; revoke Kids voice before waiting for the motor transition. Read the Kids controls lock off the ASGI event loop so End remains reachable.
