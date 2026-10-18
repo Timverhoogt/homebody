@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.38] — Provider-led Kids vision and natural camera requests
+
+- Let the vision provider recognize ordinary objects and animals in consented Kids Show and Tell, instead of a toy/drawing/build whitelist. Distinguish unclear views, provider refusals and unavailable results.
+- Preserve bounded single-frame permits, caregiver consent, lifecycle/privacy cancellation, final speech moderation and exact session-bound single-use speech approvals. Treat moderated image descriptions as untrusted user-role data for follow-up, never instructions.
+- Explicitly select one fresh Everyday camera look for direct current-view questions such as “What do you see?” and “Wat zie je?” under existing household approval; retain negation, quoted/hypothetical request, currentness and tool-free follow-up fences.
+- Make the canonical volume schema compatible with OpenAI function parameters while retaining strict execution-time exclusive-field validation. Report bounded HTTP status diagnostics without upstream response bodies.
+- Refresh the UI shell cache. Playback cleanup is unchanged; automated checks and selector acceptance do not establish camera, audio or hardware acceptance.
+
 ## [0.5.37] — Household idle connection
 
 - Allow Owner Connect in Standby as authenticated idle transport, explicitly showing tools inactive without granting action authority, waking, listening, capturing or moving.

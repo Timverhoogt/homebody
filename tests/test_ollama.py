@@ -155,11 +155,13 @@ def test_ollama_failure_does_not_retry_another_provider(status):
         app.router.add_post("/v1/chat/completions", model)
         async with TestServer(app) as server, ClientSession() as http:
             provider = everyday(REACHY_EVERYDAY_URL=str(server.make_url("/v1")))
-            with pytest.raises(BrokerUnavailableError, match=f"HTTP {status}"):
+            with pytest.raises(BrokerUnavailableError, match="Everyday text provider HTTP failure") as failure:
                 await make_tools("http://127.0.0.1:1").answer(
                     "hello", http=http, provider=provider, key=provider.api_key(lambda _: ""),
                     device_id="fixture", generation=1,
                 )
+            assert failure.value.http_status == status
+            assert "synthetic model unavailable" not in str(failure.value)
         assert len(requests) == 1
 
     asyncio.run(run())

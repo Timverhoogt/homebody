@@ -1181,7 +1181,9 @@ def _build_bridge_kids_prompt(*, age_band: str, activity: str, language: str, ho
         "that you need the child. Do not provide instructions for weapons, drugs, dangerous stunts, sexual content, "
         "self-harm, or illegal activity. Do not claim to see the room or child. The robot has a separate "
         "Show and Tell feature in Kids Chat: only with saved grown-up camera permission and a direct look "
-        "request can it briefly look at a toy, drawing or build. You cannot activate it from chat or infer "
+        "request can it briefly look at what the child is showing. The vision provider applies its safety "
+        "policy; ordinary objects and animals are not limited to toys, drawings or builds. "
+        "You cannot activate it from chat or infer "
         "whether permission is saved; suggest asking a grown-up if it is unavailable. Never claim the robot "
         "has no camera or can never look. Only describe an earlier look when approved facts are supplied. If "
         "asked for disallowed or adult-only help, decline briefly and suggest asking a trusted grown-up. If the child "
@@ -3544,13 +3546,16 @@ class Bridge(NativeWorkspaceRoutes):
                 language=language,
                 hosted=hosted,
             )
-            # Only a consented, approved enum description, never provider/image text, and never hosted.
+            # Consented, moderated image-derived text remains untrusted user data; never hosted.
             show_tell = None if hosted or activity != "buddy" else self._show_tell_context(session_id, fingerprint)
             model_request: dict[str, Any] = {
                 "model": model,
                 "messages": [
                     {"role": "system", "content": system_prompt + (_KIDS_HOSTED_INSTRUCTION if hosted else "")},
-                    *([{"role": "system", "content": show_tell}] if show_tell else []),
+                    *([
+                        {"role": "system", "content": _show_tell.FOLLOW_UP_POLICY},
+                        {"role": "user", "content": show_tell},
+                    ] if show_tell else []),
                     *history,
                     {"role": "user", "content": text},
                 ],
@@ -4176,7 +4181,7 @@ class Bridge(NativeWorkspaceRoutes):
     # Reachy derives one ephemeral grant (random token + monotonic serial) per live, unhosted Buddy
     # session from the Owner's standing permission, and presents it with each explicit look. The
     # bridge never accepts a bare permission flag. Grants, permits, in-flight looks and the approved
-    # enum description are RAM only and die with revocation, End or expiry; a revoked or older
+    # moderated description are RAM only and die with revocation, End or expiry; a revoked or older
     # serial can never be re-established.
 
     def _show_tell_records(self) -> dict[str, dict[str, Any]]:
@@ -4337,7 +4342,7 @@ class Bridge(NativeWorkspaceRoutes):
             raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
         vision_url, vision_headers, vision_body = _ispy_vision_request(self.llm, self._llm_key())
         content: list[dict[str, object]] = [
-            {"type": "text", "text": _show_tell.VISION_PROMPT},
+            {"type": "text", "text": "Describe what the child is showing."},
             {
                 "type": "image_url",
                 "image_url": {
@@ -4352,7 +4357,10 @@ class Bridge(NativeWorkspaceRoutes):
                 headers=vision_headers,
                 json={
                     **vision_body,
-                    "messages": [{"role": "user", "content": content}],
+                    "messages": [
+                        {"role": "system", "content": _show_tell.VISION_PROMPT},
+                        {"role": "user", "content": content},
+                    ],
                     "response_format": {
                         "type": "json_schema",
                         "json_schema": {
@@ -4368,12 +4376,18 @@ class Bridge(NativeWorkspaceRoutes):
         finally:
             content.clear()
         try:
-            return json.loads(result["choices"][0]["message"]["content"])
+            choice = result["choices"][0]
+            message = choice["message"]
+            if message.get("refusal") or choice.get("finish_reason") == "content_filter":
+                return {"status": "refused", "description_en": "", "description_nl": ""}
+            if message.get("tool_calls"):
+                return None
+            return json.loads(message["content"])
         except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError):
-            return None  # malformed provider output is a decline, never partially accepted
+            return None  # malformed provider output is unavailable, never partially accepted
 
     async def kids_show_tell_look(self, request: web.Request) -> web.Response:
-        """Consume one permit and one transient frame; return only moderated, approved fixed copy."""
+        """Consume one permit and one transient frame; return only exact moderated, approved speech."""
         self.require_auth(request)
         openai_key = self.resolve_secret("OPENAI_API_KEY")
         if not openai_key or not self._llm_key():
@@ -4417,12 +4431,15 @@ class Bridge(NativeWorkspaceRoutes):
             frame = b""
         try:
             require_current()
+            outcome = _show_tell.candidate_outcome(raw) if available else "unavailable"
             description = _show_tell.validate_candidate(raw) if available else None
             raw = None
+            _LOGGER.info("Show and Tell classification: %s", outcome)
             if description is not None:
                 text = _show_tell.describe(description, language)
             else:
-                text = (_show_tell.DECLINE if available else _show_tell.UNAVAILABLE)[language]
+                copy = {"refused": _show_tell.DECLINE, "unclear": _show_tell.UNCLEAR}
+                text = copy.get(outcome, _show_tell.UNAVAILABLE)[language]
             try:
                 flagged = await self._kids_stage(
                     self._kids_moderation(text, openai_key), deadline + 6.0, _KIDS_MODERATION_TIMEOUT_SECONDS
@@ -4431,8 +4448,10 @@ class Bridge(NativeWorkspaceRoutes):
                 raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is unavailable") from exc
             require_current()
             if flagged:
+                _LOGGER.info("Show and Tell speech: moderation_blocked")
                 raise web.HTTPForbidden(text="Kids Mode speech was not approved")
-            record["description"] = description  # a decline clears; only enums are kept
+            _LOGGER.info("Show and Tell speech: approved")
+            record["description"] = text if description is not None else None  # only moderated speech stays in RAM
             approval = self._issue_kids_speech_approval(session_id, text)
             fallback = self._issue_kids_speech_approval(session_id, text)
         finally:
