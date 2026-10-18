@@ -68,7 +68,12 @@ def test_end_is_single_flight_even_before_next_status(ui):
     page.route('**/api/kids/stop', lambda route: held.append(route))
     page.evaluate("document.getElementById('kids-stop-button').click(); "
                   "document.getElementById('kids-stop-button').click()")
-    page.wait_for_timeout(150)
+    # Wait for intercepted delivery rather than assuming the CI browser can
+    # dispatch the request within 150 ms. Both clicks above stay in one JS turn.
+    for _ in range(50):
+        if held:
+            break
+        page.wait_for_timeout(100)
     assert len(held) == 1
     state['runtime']['kids_mode'] = {'active': False, 'locked': False}
     held[0].fulfill(json={'ok': True, 'kids_mode': state['runtime']['kids_mode']})
