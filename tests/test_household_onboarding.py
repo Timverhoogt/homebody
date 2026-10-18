@@ -161,7 +161,7 @@ def test_guide_checklist_and_critical_boundaries():
 
 
 def test_wheel_includes_exact_runbook_and_smoke(tmp_path):
-    wheel = ROOT / "dist/reachy_mini_homebody-0.5.34-py3-none-any.whl"
+    wheel = ROOT / "dist/reachy_mini_homebody-0.5.35-py3-none-any.whl"
     with ZipFile(wheel) as archive:
         for dest, source in (("homebody/agent_guides/household.md", "homebody/agent_guides/household.md"),
                              ("homebody/agent_setup.py", "homebody/agent_setup.py"),

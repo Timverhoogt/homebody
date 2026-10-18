@@ -8,7 +8,7 @@ wizard and must not be passed its one-time setup code.
 ## 1. Choose the integrated installation
 
 **Unreleased feature:** published/installed 0.5.34 is not evidence that household MCP exists.
-The development wheel still uses that version. Obtain an explicitly reviewed source snapshot
+The release candidate is 0.5.35. Obtain an explicitly reviewed source snapshot
 containing `companion/household_server.py`, `household_smoke.py`, `homebody/household_client.py`
 and this guide, or a wheel built from that exact snapshot. Record source revision plus local
 changes and the wheel SHA-256; a matching version string alone is insufficient. Do not overwrite
@@ -136,7 +136,9 @@ Use this only in an operator-controlled private home directory, outside version 
 shared backups. Protect any copy with the same permissions. The host receives both values;
 the MCP caller receives **only HOMEBODY_HOUSEHOLD_TOKEN**, through its secret store. The trial
 robot receives **only HOMEBODY_HOUSEHOLD_ROBOT_TOKEN**, through authenticated Owner settings
-as its `api_key`. Never put tokens in command arguments, URLs, screenshots or logs. Do not
+as its `household_api_key` (Standalone household connection → Robot credential).
+Preserve the legacy `api_key` for shared speech, Kids and Workspace services.
+Never put tokens in command arguments, URLs, screenshots or logs. Do not
 source this two-token file in an untrusted caller/agent environment; have the operator provision
 only its caller variable there. Separate tokens are mandatory and cannot be interchanged.
 

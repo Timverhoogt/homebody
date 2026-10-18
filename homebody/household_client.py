@@ -13,10 +13,18 @@ from dataclasses import asdict, is_dataclass
 from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field
-from websockets.asyncio.client import connect
+from websockets.asyncio.client import connect as _WebSocketConnect
 from websockets.exceptions import WebSocketException
 
 from .everyday_runtime import configured_local_tools
+
+
+class connect(_WebSocketConnect):
+    """Pin credential-bearing handshakes to the Owner-approved endpoint."""
+
+    def process_redirect(self, exc: Exception) -> Exception:
+        # Reject even same-origin redirects; never start a second handshake.
+        return exc
 
 
 class HouseholdConnectionSettings(BaseModel):
