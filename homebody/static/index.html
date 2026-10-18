@@ -13,9 +13,10 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=108">
-  <link rel="stylesheet" href="/static/scene.css?v=108">
-  <link rel="stylesheet" href="/static/onboarding.css?v=108">
+  <link rel="stylesheet" href="/static/style.css?v=109">
+  <link rel="stylesheet" href="/static/scene.css?v=109">
+  <link rel="stylesheet" href="/static/onboarding.css?v=109">
+  <link rel="stylesheet" href="/static/shell.css?v=109">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -37,6 +38,31 @@
     <button type="button" id="owner-devices-refresh">Manage remembered devices</button>
     <ul id="owner-device-list"></ul><p id="owner-devices-message" role="status"></p>
   </details>
+  <!-- One local icon set: 24px grid, 1.8 stroke, round caps. Icons sit beside text labels or carry an
+       accessible name on their button; they are never the only status cue. -->
+  <svg class="icon-sprite" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+    <defs>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 8-4 4 4 4"/><path d="m16 8 4 4-4 4"/><path d="m13.5 5-3 14"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.3L12 16l-4.9 2.6 1.1-5.3-4-3.7 5.4-.6z"/></symbol>
+      <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M4 10v4h3l7 4V6l-7 4z"/><path d="M17.5 9.5a3.5 3.5 0 0 1 0 5"/><path d="M7 14l1 5h2.5"/></symbol>
+      <symbol id="i-robot" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="4"/><path d="M9 8 7.5 4.5M15 8l1.5-3.5"/><path d="M9.5 13.5h.01M14.5 13.5h.01"/></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><path d="M6 12h.01M12 12h.01M18 12h.01"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="4" width="6" height="10" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3"/></symbol>
+      <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></symbol>
+      <symbol id="i-motor" viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2-4.9"/><path d="M19 4v4h-4"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 4v4M15 4v4"/><path d="M7 8h10v3a5 5 0 0 1-10 0z"/><path d="M12 16v4"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 6h5l2 2h9v10H4z"/></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><path d="M5 5h14v10H10l-5 4z"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 7h10M9 12h10M9 17h10M5 7h.01M5 12h.01M5 17h.01"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2-4.9"/><path d="M19 4v4h-4"/></symbol>
+      <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 4v7"/><path d="M7.5 7a7 7 0 1 0 9 0"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M18 14.5A7 7 0 0 1 9.5 6a7 7 0 1 0 8.5 8.5z"/></symbol>
+    </defs>
+  </svg>
   <main hidden inert>
     <header class="topbar">
       <div class="wordmark" aria-hidden="true">
@@ -50,13 +76,19 @@
         <span>Homebody</span>
       </div>
       <button type="button" id="agent-connection-badge" class="agent-connection-badge" data-state="unknown"><span class="agent-connection-dot" aria-hidden="true"></span><span id="agent-connection-label" role="status" aria-live="polite">Connection unknown</span></button>
-      <nav class="tabs" role="tablist" aria-label="Homebody controls">
-        <button type="button" class="tab-button active" id="tab-dashboard" role="tab" aria-selected="true" aria-controls="panel-dashboard" data-tab="dashboard">Home</button>
-        <button type="button" class="tab-button" id="tab-agent" role="tab" aria-selected="false" aria-controls="panel-agent" data-tab="agent">Agent</button>
-        <button type="button" class="tab-button" id="tab-kids" role="tab" aria-selected="false" aria-controls="panel-kids" data-tab="kids">Kids</button>
-        <button type="button" class="tab-button" id="tab-announce" role="tab" aria-selected="false" aria-controls="panel-announce" data-tab="announce">Announce</button>
-        <button type="button" class="tab-button" id="tab-robot" role="tab" aria-selected="false" aria-controls="panel-robot" data-tab="robot">Robot</button>
-        <button type="button" class="tab-button" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings">Settings</button>
+      <!-- Three destinations lead; Announce, Robot and Settings sit behind More on phones. -->
+      <nav class="tabs" role="tablist" aria-label="Homebody">
+        <span class="tabs-primary" role="none">
+          <button type="button" class="tab-button tab-primary active" id="tab-dashboard" role="tab" aria-selected="true" aria-controls="panel-dashboard" data-tab="dashboard"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg>Everyday</button>
+          <button type="button" class="tab-button tab-primary" id="tab-agent" role="tab" aria-selected="false" aria-controls="panel-agent" data-tab="agent"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg>Workspace</button>
+          <button type="button" class="tab-button tab-primary" id="tab-kids" role="tab" aria-selected="false" aria-controls="panel-kids" data-tab="kids"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>Kids</button>
+          <button type="button" class="tab-button tab-more" id="tab-more" aria-expanded="false" aria-controls="tabs-secondary"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg>More</button>
+        </span>
+        <span class="tabs-secondary" id="tabs-secondary" role="none">
+          <button type="button" class="tab-button tab-secondary" id="tab-announce" role="tab" aria-selected="false" aria-controls="panel-announce" data-tab="announce"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg>Announce</button>
+          <button type="button" class="tab-button tab-secondary" id="tab-robot" role="tab" aria-selected="false" aria-controls="panel-robot" data-tab="robot"><svg class="icon" aria-hidden="true"><use href="#i-robot"/></svg>Robot</button>
+          <button type="button" class="tab-button tab-secondary" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings"><svg class="icon" aria-hidden="true"><use href="#i-gear"/></svg>Settings</button>
+        </span>
       </nav>
     </header>
 
@@ -101,27 +133,29 @@
       <footer><button id="setup-back" type="button" class="secondary" hidden>Back</button><button id="setup-next" type="button">Continue</button><button id="setup-refresh" type="button" class="secondary">Refresh checks</button></footer>
     </dialog>
 
-    <section id="global-robot-status" class="global-robot-status" aria-label="Reachy status" hidden>
+    <section id="global-robot-status" class="global-robot-status" aria-label="Reachy status">
       <!-- Mode and telemetry come only from live status; a requested change shows on its button until confirmed. -->
-      <div class="power-now">
-        <span class="label">Reachy is</span>
-        <strong id="compact-power-mode" class="power-now-mode">Unknown</strong>
-        <span id="compact-power-detail" class="power-now-detail">Waiting for live status</span>
+      <div class="status-row">
+        <div class="power-now">
+          <span class="label">Reachy is</span>
+          <strong id="compact-power-mode" class="power-now-mode">Unknown</strong>
+          <span id="compact-power-detail" class="power-now-detail">Waiting for live status</span>
+        </div>
+        <dl class="compact-status-line" aria-label="Measured status">
+          <div><dt><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Mic</dt><dd id="compact-mic">Unknown</dd></div>
+          <div><dt><svg class="icon" aria-hidden="true"><use href="#i-camera"/></svg>Camera</dt><dd id="compact-camera">Unknown</dd></div>
+          <div><dt><svg class="icon" aria-hidden="true"><use href="#i-motor"/></svg>Motors</dt><dd id="compact-motors">Unknown</dd></div>
+        </dl>
       </div>
-      <dl class="compact-status-line" aria-label="Measured status">
-        <div><dt>Mic</dt><dd id="compact-mic">Unknown</dd></div>
-        <div><dt>Camera</dt><dd id="compact-camera">Unknown</dd></div>
-        <div><dt>Motors</dt><dd id="compact-motors">Unknown</dd></div>
-      </dl>
       <div id="global-adult-controls" class="global-adult-controls">
         <div class="global-power-primary" role="group" aria-label="Reachy power">
-          <button type="button" id="global-power-awake" class="secondary" data-power="awake" data-power-message="global-power-message">Wake up</button>
-          <button type="button" id="global-power-standby" class="secondary" data-power="standby" data-power-message="global-power-message">Standby</button>
-          <button type="button" id="global-robot-stop" class="secondary" disabled>Stop movement</button>
+          <button type="button" id="global-power-awake" class="secondary" data-power="awake" data-power-message="global-power-message"><svg class="icon" aria-hidden="true"><use href="#i-power"/></svg>Wake up</button>
+          <button type="button" id="global-power-standby" class="secondary" data-power="standby" data-power-message="global-power-message"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg>Standby</button>
+          <button type="button" id="global-robot-stop" class="secondary" disabled><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop movement</button>
         </div>
         <details id="global-power-controls">
-          <summary>Meeting, Sleep · what each mode does</summary>
-          <p class="power-hint">Wake up turns the motors on and listens. Standby folds Reachy and releases torque but still hears the wake word. Stop movement cancels motion only. Meeting (60 minutes) and Sleep turn the microphone and camera off.</p>
+          <summary>Meeting · Sleep</summary>
+          <p class="power-hint">Wake up turns the motors on and listens. Standby folds Reachy but still hears the wake word. Stop movement cancels motion only. Meeting (60 minutes) and Sleep turn the microphone and camera off.</p>
           <div class="actions" role="group" aria-label="Quiet power modes">
             <button type="button" class="secondary" data-power="meeting" data-minutes="60" data-power-message="global-power-message">Meeting · 60 min</button>
             <button type="button" class="secondary" data-power="sleep" data-power-message="global-power-message">Sleep</button>
@@ -130,22 +164,42 @@
       </div>
       <p id="global-power-message" class="message" role="status"></p>
       <p id="global-stop-message" class="message" role="status"></p>
+      <!-- Where spoken requests go, and the Agent stops. Hidden with every adult surface in Kids Mode. -->
+      <div class="agent-card voice-route" role="group" aria-labelledby="voice-route-label">
+        <span id="voice-route-label" class="label">Voice</span>
+        <span id="agent-profile-badge" class="sr-only">Conversation</span>
+        <div class="assistant-mode-switch" role="group" aria-label="Voice goes to">
+          <button type="button" id="agent-conversation-button" aria-pressed="true"><strong>Everyday</strong><small>Quick answers, home and weather</small></button>
+          <button type="button" id="agent-enable-button" aria-pressed="false"><strong>Workspace</strong><small>Your repositories and coding sessions</small></button>
+        </div>
+        <p id="assistant-mode-state" class="assistant-mode-state" role="status" aria-live="polite"><span class="sr-only">Current mode</span> <strong id="assistant-mode-current">Checking…</strong> <span id="assistant-mode-detail" class="muted">Waiting for Reachy to confirm.</span></p>
+        <p id="assistant-mode-help" class="sr-only">Everyday never uses your agent memory, projects or coding tools. Workspace may take longer.</p>
+        <p id="assistant-mode-notice" class="message warning-note" role="status" hidden>Ordinary questions now use Everyday. Choose Workspace for project work. <button type="button" id="assistant-mode-notice-ack" class="secondary">OK</button></p>
+        <div class="agent-mode-bar" aria-label="Stop controls">
+          <span id="native-work-badge" class="badge" data-status="running" hidden>Project work running</span>
+          <button type="button" id="voice-stop-button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop speaking</button>
+          <button type="button" id="agent-stop-button" class="secondary stop-agent" title="Stops the voice turn, pending approvals and approved project work"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop all work</button>
+        </div>
+        <p id="agent-message" class="message" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section id="agent-approval-sheet" class="card agent-approval-sheet" hidden>
+      <div class="section-heading"><div><p class="label">Approval required</p><h2>Review exact action</h2></div><span class="badge warning">One shot</span></div>
+      <strong id="agent-approval-capability">—</strong>
+      <pre id="agent-approval-arguments"></pre>
+      <p class="muted">Check every target and value. Any edit requires a new draft; approval expires and cannot be replayed.</p>
+      <button type="button" id="agent-approve-button">Approve this exact action</button>
     </section>
 
     <div id="panel-dashboard" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboard" data-panel="dashboard">
-      <header class="page-heading"><h1>Home</h1><p>Reachy’s current state and recent conversation.</p></header>
+      <header class="page-heading"><h1>Everyday</h1><p>Questions, looking, home and timers.</p></header>
     <section class="display hero status-card" aria-label="Current state">
       <div id="hero-presence" class="hero-face" aria-hidden="true"></div>
       <div class="hero-copy">
         <p class="label hero-label"><span id="status-dot" class="status-dot" aria-label="Runtime status"></span>Current state <span id="power-mode-badge" class="hero-mode">—</span></p>
         <h2 id="runtime-state">Connecting…</h2>
         <p id="runtime-detail" class="hero-detail">Reading app status</p>
-        <div class="actions power-actions" role="group" aria-label="Power state">
-          <button type="button" data-power="standby">Standby</button>
-          <button type="button" data-power="awake" class="secondary">Awake</button>
-          <button type="button" data-power="meeting" data-minutes="60" class="secondary">Meeting · 60 min</button>
-          <button type="button" data-power="sleep" class="secondary">Sleep</button>
-        </div>
         <p id="power-message" class="message" role="status"></p>
       </div>
       <ul class="tele" aria-label="Live status">
@@ -164,10 +218,10 @@
 
       <details id="install-card" class="card install-card disclosure-card">
         <summary class="section-heading">
-          <div><p class="label">Phone shortcut</p><h2>Install Homebody</h2><p class="muted compact-note">Open controls from your home screen</p></div>
+          <div><p class="label">Phone shortcut</p><h2>Add to home screen</h2></div>
           <span id="install-status" class="badge">Web app</span>
         </summary>
-        <p id="install-description" class="muted">Open Reachy controls in a standalone window from your phone's home screen.</p>
+        <p id="install-description" class="muted">Opens these controls in their own window.</p>
         <div class="actions left-actions">
           <button type="button" id="install-button" hidden>Install app</button>
         </div>
@@ -177,33 +231,6 @@
           <p class="muted">In Chrome, open the ⋮ menu and choose <strong>Add to Home screen</strong>. Full app installation requires a trusted HTTPS address; this direct LAN page can still be saved as a shortcut.</p>
         </details>
       </details>
-    </div>
-
-    <div id="panel-agent" class="tab-panel" role="tabpanel" aria-labelledby="tab-agent" data-panel="agent" hidden>
-      <header class="page-heading"><h1>Agent</h1><p>Your companion and shared workspace.</p></header>
-      <section class="card agent-card display">
-        <div class="agent-hero">
-          <div>
-            <p class="label">Your embodied companion</p>
-            <h2>Homebody, through Reachy</h2>
-            <p class="muted">A helpful presence at home. Speak to Reachy, and follow the conversation in your workspace.</p>
-          </div>
-          <span id="agent-profile-badge" class="badge">Conversation</span>
-        </div>
-        <div class="assistant-mode-switch" role="group" aria-label="Assistant mode">
-          <button type="button" id="agent-conversation-button" aria-pressed="true"><strong>Everyday</strong><small>Fast answers, home and weather</small></button>
-          <button type="button" id="agent-enable-button" aria-pressed="false"><strong>Workspace</strong><small>Your selected project session</small></button>
-        </div>
-        <p id="assistant-mode-state" class="assistant-mode-state" role="status" aria-live="polite"><span class="label">Current mode</span> <strong id="assistant-mode-current">Checking…</strong> <span id="assistant-mode-detail" class="muted">Waiting for Reachy to confirm.</span></p>
-        <p id="assistant-mode-help" class="muted compact-note">Everyday never uses your Hermes memory, projects or coding tools. Workspace is entered only here and may take longer.</p>
-        <p id="assistant-mode-notice" class="message warning-note" role="status" hidden>Voice routing changed: ordinary questions now use Everyday (fast, no Hermes memory or projects). Choose Workspace for project work. <button type="button" id="assistant-mode-notice-ack" class="secondary">Got it</button></p>
-        <div class="agent-mode-bar" aria-label="Stop controls">
-          <button type="button" id="voice-stop-button" class="secondary">Stop speaking</button>
-          <span id="native-work-badge" class="badge" data-status="running" hidden>Project work running</span>
-          <button type="button" id="agent-stop-button" class="danger" title="Stops the voice turn, pending approvals and approved project work">Stop all Agent work</button>
-        </div>
-        <p id="agent-message" class="message" role="status" aria-live="polite"></p>
-      </section>
 
       <section id="everyday-card" class="card everyday-card" aria-labelledby="everyday-heading">
         <div class="section-heading">
@@ -258,7 +285,7 @@
 
       <section id="household-card" class="card household-card" aria-labelledby="household-heading" hidden>
         <div class="section-heading">
-          <div><p class="label">Household</p><h2 id="household-heading">One-time household setup</h2></div>
+          <div><p class="label">Household</p><h2 id="household-heading">Household permissions</h2></div>
           <span id="household-badge" class="badge">Checking…</span>
         </div>
         <p id="household-state" role="status" aria-live="polite">Checking the saved household choices…</p>
@@ -301,33 +328,10 @@
         <p id="household-message" class="muted compact-note" role="status" aria-live="polite">Saving never takes a picture or starts listening.</p>
       </section>
 
-      <section id="workspace-mode-card" class="card workspace-mode-card" aria-labelledby="workspace-mode-heading" hidden>
-        <div><p class="label">Workspace</p><h2 id="workspace-mode-heading">Project work</h2></div>
-        <ol id="workspace-mode-steps" class="workspace-mode-steps">
-          <li><strong>Show conversation</strong> lets this page display your voice turns, in memory only. It does not open a project.</li>
-          <li>Choose a configured repository and tap <strong>Open project</strong>. That is the project connection.</li>
-          <li>Say <strong>“Hey Homebody”</strong> to Reachy. Awake is not listening; Reachy listens after the wake word.</li>
-        </ol>
-        <dl class="everyday-facts workspace-mode-facts">
-          <div><dt>Agent view</dt><dd id="workspace-mode-view">Companion</dd></div>
-          <div><dt>Conversation display</dt><dd id="workspace-mode-display">Off</dd></div>
-          <div><dt>GitHub repository</dt><dd id="workspace-mode-repository">None selected</dd></div>
-          <div><dt>Project connection</dt><dd id="workspace-mode-session">Not checked</dd></div>
-          <div><dt>Voice</dt><dd id="workspace-mode-voice">Not listening · say “Hey Homebody” to Reachy to talk</dd></div>
-          <div><dt>Spoken requests go to</dt><dd id="workspace-mode-route">Not checked yet</dd></div>
-        </dl>
-        <p id="workspace-mode-work" class="muted compact-note">Review planned coding work before approving it.</p>
-        <button type="button" id="workspace-mode-open" class="secondary">Open Conversation &amp; projects</button>
-      </section>
-
-      <div class="agent-view-switch" role="group" aria-label="Agent view">
-        <button type="button" id="agent-view-companion" aria-pressed="true">Companion</button>
-        <button type="button" id="agent-view-workspace" aria-pressed="false">Conversation &amp; projects</button>
-      </div>
-      <div id="agent-companion-view">
+      <div id="agent-companion-view" class="everyday-companion-view">
       <section id="companion-card" class="card companion-card" aria-labelledby="companion-heading">
         <div class="section-heading">
-          <div><p class="label">Companion</p><h2 id="companion-heading">Reachy in the room</h2></div>
+          <div><p class="label">Companion</p><h2 id="companion-heading">Look and notice</h2></div>
           <span id="companion-activity" class="badge">Unknown</span>
         </div>
         <dl class="companion-grid">
@@ -519,71 +523,113 @@
       </details>
 
       </div>
-      <div id="agent-workspace-view" hidden>
-      <section class="card voice-workspace" aria-labelledby="voice-workspace-heading">
-        <div class="section-heading">
-          <div><p class="label">Conversation</p><h2 id="voice-workspace-heading">Speak. See. Continue.</h2></div>
-          <span id="workspace-badge" class="badge">Not showing</span>
+    </div>
+
+    <div id="panel-agent" class="tab-panel workspace-panel" role="tabpanel" aria-labelledby="tab-agent" data-panel="agent" hidden>
+      <header class="page-heading"><h1>Workspace</h1></header>
+
+      <section id="workspace-gate" class="card workspace-gate">
+        <h2>Voice is in Everyday</h2>
+        <p id="workspace-gate-state" class="muted" role="status">Checking the voice route…</p>
+        <button type="button" id="workspace-enable-mode"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg>Use Workspace</button>
+        <p class="muted compact-note">Running project work keeps going if you switch back.</p>
+      </section>
+
+      <!-- Header: what is open, its state, and Connect. Voice/route details stay one tap away. -->
+      <section id="workspace-mode-card" class="workspace-header" aria-label="Open project" hidden>
+        <div class="workspace-header-main">
+          <h2 id="workspace-mode-repository">No project open</h2>
+          <p id="workspace-mode-session" class="muted">Not checked</p>
         </div>
-        <p class="muted">Say “Hey Homebody” to talk to Reachy in Workspace. This view shows accepted voice messages and actual activity—not private reasoning.</p>
-        <div class="workspace-toolbar">
-          <button type="button" id="workspace-start">Show conversation</button>
-          <button type="button" id="workspace-clear" class="secondary" aria-controls="workspace-clear-confirm">Clear &amp; disconnect…</button>
-        </div>
-        <section id="workspace-clear-confirm" class="workspace-clear-confirm" role="alertdialog" aria-labelledby="workspace-clear-title" aria-describedby="workspace-clear-scope" hidden>
-          <h3 id="workspace-clear-title">Clear and disconnect?</h3>
-          <p id="workspace-clear-scope">This erases the conversation shown here, stops the selected project's work and disconnects the project. To continue afterwards, tap Show conversation and Open project again. To only stop speaking, use Stop speaking instead.</p>
-          <div class="workspace-toolbar">
-            <button type="button" id="workspace-clear-confirm-button" class="danger">Clear and disconnect</button>
-            <button type="button" id="workspace-clear-cancel" class="secondary">Keep everything</button>
-          </div>
-        </section>
-        <p class="muted compact-note">Owner-only · kept in memory for up to one hour · cleared by Kids, privacy, power changes or Stop. Showing this view does not start the microphone or grant new tools.</p>
-        <p id="workspace-state" role="status" aria-live="polite">Conversation display is off.</p>
-        <ol id="workspace-timeline" class="workspace-timeline" aria-label="Voice conversation"></ol>
-        <section class="workspace-native" aria-labelledby="workspace-native-heading">
-          <div class="section-heading"><div><p class="label">Shared project session</p><h3 id="workspace-native-heading">Continue the real work</h3></div></div>
-          <p id="workspace-native-identity" class="muted">No native project selected.</p>
-          <p id="workspace-mode-help" class="muted">First enable Workspace, then tap Show conversation above. Selecting a repository does not start work.</p>
-          <button type="button" id="workspace-enable-mode">Enable Workspace</button>
+        <span id="workspace-badge" class="badge">Not connected</span>
+        <button type="button" id="workspace-start"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg>Connect</button>
+        <details class="workspace-header-more">
+          <summary>Details</summary>
+          <dl class="workspace-header-facts">
+            <div><dt>Conversation</dt><dd id="workspace-mode-display">Not connected</dd></div>
+            <div><dt>Voice</dt><dd id="workspace-mode-voice">Not listening · say “Hey Homebody” to Reachy to talk</dd></div>
+            <div><dt>Spoken requests go to</dt><dd id="workspace-mode-route">Not checked yet</dd></div>
+            <div><dt>Work</dt><dd id="workspace-mode-work">Review planned coding work before approving it.</dd></div>
+          </dl>
+        </details>
+      </section>
+
+      <!-- Phones show one pane at a time; wider screens show all three side by side. -->
+      <div class="workspace-segments" role="tablist" aria-label="Workspace views">
+        <button type="button" role="tab" id="ws-seg-chat" data-ws-pane="chat" aria-controls="workspace-pane-chat" aria-selected="true"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>Chat</button>
+        <button type="button" role="tab" id="ws-seg-work" data-ws-pane="work" aria-controls="workspace-pane-work" aria-selected="false"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>Work</button>
+        <button type="button" role="tab" id="ws-seg-project" data-ws-pane="project" aria-controls="workspace-pane-project" aria-selected="false"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Project</button>
+      </div>
+
+      <div id="agent-workspace-view" class="workspace-layout" data-pane="chat">
+        <section id="workspace-pane-project" class="workspace-pane workspace-pane-project" aria-labelledby="workspace-project-heading">
+          <h2 id="workspace-project-heading" class="pane-title">Project</h2>
+          <p id="workspace-mode-help" class="muted compact-note">Connect to load your repositories.</p>
           <label for="workspace-repository">GitHub repository</label>
           <div class="workspace-toolbar">
             <select id="workspace-repository" aria-label="GitHub repository"></select>
-            <button type="button" id="workspace-repositories-reload" class="secondary">Reload repositories</button>
+            <button type="button" id="workspace-repositories-reload" class="secondary icon-button" aria-label="Reload repositories"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg></button>
           </div>
-          <p id="workspace-repository-state" class="muted" role="status">Repositories appear after you enable Workspace and show the conversation.</p>
-          <label for="workspace-native-target">Available project session</label>
-          <div class="workspace-toolbar">
+          <p id="workspace-repository-state" class="muted compact-note" role="status">Connect to load your repositories.</p>
+          <div id="workspace-native-target-row" hidden>
+            <label for="workspace-native-target">Project session</label>
             <select id="workspace-native-target" aria-label="Project and native session"></select>
-            <button type="button" id="workspace-native-bind" aria-describedby="workspace-native-bind-help">Open project</button>
           </div>
-          <p id="workspace-native-bind-help" class="muted compact-note" role="status">Show conversation first. Opening a project is a separate, explicit step.</p>
+          <button type="button" id="workspace-native-bind" class="workspace-open" aria-describedby="workspace-native-bind-help"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Open project</button>
+          <p id="workspace-native-bind-help" class="muted compact-note" role="status">Connect first.</p>
+          <p id="workspace-native-identity" class="workspace-identity">No project open.</p>
+          <div class="workspace-clear-row">
+            <button type="button" id="workspace-clear" class="secondary" aria-controls="workspace-clear-confirm">Clear &amp; disconnect…</button>
+          </div>
+          <section id="workspace-clear-confirm" class="workspace-clear-confirm" role="alertdialog" aria-labelledby="workspace-clear-title" aria-describedby="workspace-clear-scope" hidden>
+            <h3 id="workspace-clear-title">Clear and disconnect?</h3>
+            <p id="workspace-clear-scope">This erases the conversation shown here, stops the project's work and disconnects it. To only stop speaking, use Stop speaking.</p>
+            <div class="workspace-toolbar">
+              <button type="button" id="workspace-clear-confirm-button" class="danger">Clear and disconnect</button>
+              <button type="button" id="workspace-clear-cancel" class="secondary">Keep everything</button>
+            </div>
+          </section>
+          <p class="muted compact-note">This view is kept in memory for up to an hour. Session history stays on the agent host.</p>
+        </section>
+
+        <section id="workspace-pane-chat" class="workspace-pane workspace-pane-chat" aria-labelledby="workspace-chat-heading">
+          <h2 id="workspace-chat-heading" class="pane-title">Chat</h2>
+          <p id="workspace-state" class="muted compact-note" role="status" aria-live="polite">Not connected.</p>
+          <p id="workspace-stale" class="workspace-stale" role="status" hidden>Connection lost · showing the last confirmed messages. Reconnecting…</p>
+          <ol id="workspace-timeline" class="workspace-timeline workspace-thread" aria-label="Conversation" tabindex="0"></ol>
+          <p id="workspace-live-status" class="workspace-live" role="status" aria-live="polite" hidden></p>
+        </section>
+
+        <section id="workspace-pane-work" class="workspace-pane workspace-pane-work" aria-labelledby="workspace-work-heading">
+          <h2 id="workspace-work-heading" class="pane-title">Work</h2>
           <div id="workspace-native-scene" class="workspace-native-scene" aria-hidden="true"></div>
-          <p id="workspace-native-state" role="status" aria-live="polite">Enable Workspace, then tap Show conversation above to choose a project.</p>
-          <ol id="workspace-native-timeline" class="workspace-timeline" aria-label="Native project conversation"></ol>
-          <p id="workspace-native-permissions-note" class="muted compact-note">Opening a project does not submit work. Native conversations use the backend’s configured tools; this screen does not enforce read-only discussion. Review and approve exact worker requests below; native command and external-action approvals still apply.</p>
-          <label for="workspace-native-request">Exact work request for the selected worker</label>
-          <textarea id="workspace-native-request" rows="3" maxlength="4000" placeholder="Describe the exact work you want to review and authorize."></textarea>
+          <p id="workspace-native-state" class="workspace-run-state" role="status" aria-live="polite">Connect, then choose a repository to open its project session.</p>
+          <label for="workspace-native-request">Work request</label>
+          <textarea id="workspace-native-request" rows="4" maxlength="4000" placeholder="Describe the change. You review it before anything runs."></textarea>
           <div class="workspace-toolbar">
-            <button type="button" id="workspace-native-prepare">Review request</button>
-            <button type="button" id="workspace-native-stop" class="secondary">Stop project work</button>
+            <button type="button" id="workspace-native-prepare"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>Review request</button>
+            <button type="button" id="workspace-native-stop" class="secondary stop-agent"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop project work</button>
           </div>
           <section id="workspace-native-approval" class="workspace-native-approval" hidden>
-            <h3>Approve this exact request?</h3>
-            <p>Selection and voice requests do not authorize execution. This approval expires after two minutes. Native command and external-action approvals still apply.</p>
-            <p id="workspace-native-request-summary"></p>
-            <details><summary>Full scope, source evidence and worker input</summary>
+            <h3>Start this work?</h3>
+            <p id="workspace-native-request-summary" class="sr-only"></p>
+            <dl id="workspace-native-review" class="workspace-review"></dl>
+            <details><summary>Full scope and worker input</summary>
               <pre id="workspace-native-scope"></pre>
             </details>
-            <button type="button" id="workspace-native-approve">Approve exact request</button>
+            <button type="button" id="workspace-native-approve"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>Approve and start</button>
+            <p class="muted compact-note">Approval expires after two minutes. Native command approvals still apply in the backend’s owner UI.</p>
           </section>
-          <details id="workspace-native-verification" data-hb-disclosure hidden>
-            <summary>Verification evidence</summary>
-            <pre id="workspace-native-receipt"></pre>
+          <details id="workspace-native-verification" class="workspace-results" data-hb-disclosure open hidden>
+            <summary>Results and artifacts</summary>
+            <ul id="workspace-native-checks" class="workspace-checks"></ul>
+            <details><summary>Raw receipt</summary><pre id="workspace-native-receipt"></pre></details>
           </details>
-          <p class="muted compact-note">Native history remains on its existing backend; the display is RAM-only. Host credentials stay on the host. Clear also stops selected project work and disconnects the project. Native approvals are reviewed in the backend’s owner UI.</p>
-        </section>
-      </section>
+          <details class="workspace-activity-log" data-hb-disclosure>
+            <summary>Tool and voice activity</summary>
+            <ol id="workspace-work-activity" class="agent-activity"></ol>
+          </details>
+          <p id="workspace-native-permissions-note" class="muted compact-note">Opening a project never submits work. Native conversations use the backend’s configured tools; this screen does not enforce read-only discussion.</p>
       <details class="card agent-advanced-actions">
         <summary><strong>Advanced home actions</strong><small>Preview a bounded plan and approve exact steps</small></summary>
       <section class="agent-run-sheet" aria-labelledby="agent-run-heading">
@@ -611,13 +657,6 @@
       </section>
 
       </details>
-      <section id="agent-approval-sheet" class="card agent-approval-sheet" hidden>
-        <div class="section-heading"><div><p class="label">Approval required</p><h2>Review exact action</h2></div><span class="badge warning">One shot</span></div>
-        <strong id="agent-approval-capability">—</strong>
-        <pre id="agent-approval-arguments"></pre>
-        <p class="muted">Check every target and value. Any edit requires a new draft; approval expires and cannot be replayed.</p>
-        <button type="button" id="agent-approve-button">Approve this exact action</button>
-      </section>
 
       <details class="card agent-session-details" data-hb-disclosure>
         <summary><span><strong>Tool activity &amp; session details</strong><small>Actual sanitized broker activity, capabilities and approvals</small></span></summary>
@@ -629,11 +668,12 @@
         <p class="label">Recent sanitized activity</p>
         <ol id="agent-activity" class="agent-activity"><li>No activity yet</li></ol>
       </details>
-      </div><!-- agent workspace view -->
+        </section>
+      </div><!-- workspace layout -->
     </div>
 
     <div id="panel-kids" class="tab-panel kids-panel" role="tabpanel" aria-labelledby="tab-kids" data-panel="kids" hidden>
-      <header class="page-heading"><h1>Kids</h1><p>Supervised activities and child-safe controls.</p></header>
+      <header class="page-heading"><h1>Kids</h1><p>Games and stories with a grown-up nearby.</p></header>
       <section class="card kids-hero display">
         <div class="kids-hero-copy">
           <p class="label">Kids Mode · Supervised play</p>
@@ -683,7 +723,7 @@
         <p id="kids-live-summary" class="kids-live-summary"></p>
         <div class="actions kids-actions">
           <button type="button" id="kids-host-start-button" class="kids-host-start">Play together</button>
-          <button type="button" id="kids-stop-button" class="danger" disabled>End now &amp; fold safely</button>
+          <button type="button" id="kids-stop-button" class="danger" disabled><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>End now &amp; fold safely</button>
         </div>
         <p class="muted compact-note kids-host-note">Starts one session with the settings above. Reachy offers two games at a time and switches when the child asks; the time limit stays the same. Saying “stop” always finishes.</p>
         <div id="kids-host-controls" class="kids-host-controls" hidden>
@@ -739,14 +779,14 @@
       </section>
 
       <section class="card kids-guide-card">
-        <div class="section-heading"><div><p class="label">For families</p><h2>Use Kids Mode together</h2></div><span class="badge">Beta</span></div>
+        <div class="section-heading"><div><p class="label">For grown-ups</p><h2>How Kids Mode works</h2></div><span class="badge">Beta</span></div>
         <div class="kids-guide-grid">
           <div><strong>How to talk</strong><p class="muted">After Reachy's greeting, it listens for the first answer automatically—no wake phrase needed. Kids can keep answering while it is listening. To interrupt or resume after listening stops, say <b>Hey Homebody</b>, <b>Hey Hermes</b>, <b>Okay Nabu</b>, or <b>Hey Reachy</b>.</p></div>
           <div><strong>Adult supervision</strong><p class="muted">Generative AI can still make mistakes. Keep a grown-up nearby, especially for younger children or sensitive topics.</p></div>
-          <div><strong>Fast child voice</strong><p class="muted">Replies use ElevenLabs Flash v2.5 and begin playing from streamed PCM as soon as audio arrives.</p></div>
+          <div><strong>Voice</strong><p class="muted">Replies start playing as soon as the first audio arrives.</p></div>
           <div><strong>Cloud processing</strong><p class="muted">Child audio/text—and the optional nickname in the greeting—go to the configured STT provider, OpenAI moderation/chat, and ElevenLabs speech. No Hermes memory does not mean provider non-retention; review those providers' terms.</p></div>
           <div><strong>Emergency boundary</strong><p class="muted">Reachy is not an emergency service, therapist, or babysitter. In danger, contact a trusted adult and local emergency services.</p></div>
-          <div><strong>Stop always wins</strong><p class="muted">End now cancels voice and motion, clears queued speech, then uses Reachy's verified safe fold before torque release.</p></div>
+          <div><strong>Stopping</strong><p class="muted">End now cancels voice and motion, clears queued speech, then folds Reachy safely.</p></div>
         </div>
       </section>
     </div>
@@ -797,8 +837,8 @@
         </div>
 
         <div class="actions announcement-actions">
-          <button type="button" id="announcement-send">Announce now</button>
-          <button type="button" id="announcement-stop" class="danger">Stop &amp; clear queue</button>
+          <button type="button" id="announcement-send"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg>Announce now</button>
+          <button type="button" id="announcement-stop" class="danger"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop &amp; clear queue</button>
         </div>
         <p id="announcement-message" class="message" role="status" aria-live="polite"></p>
       </section>
@@ -1078,7 +1118,7 @@
         </div>
         <div class="actions camera-actions">
           <button type="button" id="camera-live-start">Start live camera</button>
-          <button type="button" id="camera-wake-control" class="secondary">Wake &amp; start camera controls</button>
+          <button type="button" id="camera-wake-control" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-camera"/></svg>Wake &amp; start camera controls</button>
           <button type="button" id="camera-live-stop" class="secondary" disabled>Stop camera</button>
           <button type="button" id="camera-live-fullscreen" class="secondary" disabled>Fullscreen</button>
           <button type="button" id="camera-test-button" class="secondary">Capture one local test frame</button>
@@ -1379,22 +1419,23 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=108"></script>
-  <script src="/static/scene.js?v=108"></script>
-  <script src="/static/motion.js?v=108"></script>
-  <script src="/static/onboarding.js?v=108"></script>
-  <script src="/static/owner.js?v=108"></script>
+  <script src="/static/notifications.js?v=109"></script>
+  <script src="/static/scene.js?v=109"></script>
+  <script src="/static/motion.js?v=109"></script>
+  <script src="/static/onboarding.js?v=109"></script>
+  <script src="/static/owner.js?v=109"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=108"></script>
-  <script src="/static/agent-connection.js?v=108"></script>
-  <script src="/static/native-workspace.js?v=108"></script>
-  <script src="/static/workspace.js?v=108"></script>
-  <script src="/static/ispy-input.js?v=108"></script>
-  <script src="/static/companion.js?v=108"></script>
-  <script src="/static/main.js?v=108"></script>
-  <script src="/static/updates.js?v=108"></script>
-  <script src="/static/volume.js?v=108"></script>
-  <script src="/static/assistant-modes.js?v=108"></script>
-  <script src="/static/household.js?v=108"></script>
+  <script src="/static/camera.js?v=109"></script>
+  <script src="/static/agent-connection.js?v=109"></script>
+  <script src="/static/workspace-thread.js?v=109"></script>
+  <script src="/static/native-workspace.js?v=109"></script>
+  <script src="/static/workspace.js?v=109"></script>
+  <script src="/static/ispy-input.js?v=109"></script>
+  <script src="/static/companion.js?v=109"></script>
+  <script src="/static/main.js?v=109"></script>
+  <script src="/static/updates.js?v=109"></script>
+  <script src="/static/volume.js?v=109"></script>
+  <script src="/static/assistant-modes.js?v=109"></script>
+  <script src="/static/household.js?v=109"></script>
 </body>
 </html>

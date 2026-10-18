@@ -333,7 +333,7 @@ def test_late_status_started_before_end_cannot_revive_the_scene(ui):
 
 def test_everyday_companion_reuses_the_component(ui):
     page, state, posts, errors = ui
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")  # the companion lives in Everyday
     for runtime_state, power, phase, title in [
         ("waiting_for_wake_word", "awake", "waiting", "Waiting"),
         ("listening", "awake", "listening", "Listening"),

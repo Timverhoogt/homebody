@@ -57,7 +57,7 @@ def quiesce(page):
 
 def open_card(page, state):
     companion_state(state)
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     page.evaluate("refreshStatus()")
     page.wait_for_function("!document.getElementById('companion-look').disabled")
 
@@ -132,7 +132,7 @@ def test_unknown_offline_and_disabled_reasons_are_truthful(ui):  # noqa: F811
     )
     state["runtime"]["companion"]["presence"] = {"occupancy": "unknown", "source_health": "stale"}
     state["runtime"]["companion"]["camera"] = {"permitted": False, "in_use": False}
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     page.evaluate("refreshStatus()")
     page.wait_for_function("document.getElementById('companion-presence').textContent.includes('Unknown')")
     assert "sensor not reporting" in page.locator("#companion-presence").inner_text()

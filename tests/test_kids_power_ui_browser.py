@@ -173,7 +173,7 @@ def test_shared_power_card_names_mode_and_exposes_common_actions(ui, width, sche
     page.set_viewport_size({"width": width, "height": 800})
     state["config"]["camera_feed_enabled"] = True
     state["runtime"].update(power_mode="standby", motors_enabled=False, head_safely_folded=True)
-    page.click("#tab-settings")
+    page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
     page.evaluate("refreshStatus()")
     page.wait_for_function("document.getElementById('compact-power-mode').textContent === 'Standby'")
     card = page.locator("#global-robot-status")
@@ -199,7 +199,7 @@ def test_power_pending_is_not_rendered_as_confirmed_and_stop_stays_reachable(ui)
     page, state, posts, errors = ui
     page.evaluate("HomebodyNotifications.show = () => false")
     state["runtime"].update(power_mode="standby", motors_enabled=False, head_safely_folded=True)
-    page.click("#tab-robot")
+    page.evaluate("document.getElementById('tab-robot').click()")
     page.evaluate("refreshStatus()")
     page.wait_for_function("document.getElementById('compact-power-mode').textContent === 'Standby'")
     held = []
@@ -237,7 +237,7 @@ def test_power_pending_is_not_rendered_as_confirmed_and_stop_stays_reachable(ui)
 
 def test_offline_power_card_fails_closed(ui):
     page, state, posts, errors = ui
-    page.click("#tab-announce")
+    page.evaluate("document.getElementById('tab-announce').click()")
     page.route("**/api/status", lambda route: route.fulfill(status=503, json={"detail": "unavailable"}))
     page.evaluate("refreshStatus()")
     page.wait_for_function("document.getElementById('compact-power-mode').textContent.includes('Unknown')")

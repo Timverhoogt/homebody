@@ -73,7 +73,7 @@ def browser_page():
         page.route("**/*", respond)
         page.goto("http://homebody.test")
         page.set_default_timeout(8000)
-        page.locator("#tab-robot").click()
+        page.evaluate("document.getElementById('tab-robot').click()")  # behind More on phones
         page.wait_for_function("document.querySelectorAll('#bluetooth-device-select option').length === 3")
         page.wait_for_function("!document.querySelector('.bluetooth-card').hidden")
         page.locator(".bluetooth-card > summary").click()

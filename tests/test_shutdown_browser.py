@@ -21,7 +21,7 @@ def phone(ui, width=390):
         'host':{'shutdown_supported':True, 'label':'NVIDIA Jetson', 'kind':'jetson'}}))
     page.goto(ORIGIN + '/')
     page.wait_for_function("HomebodyOwner.isOwner() && !document.querySelector('main').hidden")
-    page.click('#tab-settings')
+    page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
     page.wait_for_function("!document.getElementById('shutdown-button').hidden")
     page.on('dialog', lambda dialog: dialog.accept('SHUTDOWN'))
     return page, state, posts, errors

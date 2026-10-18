@@ -8,7 +8,7 @@ from test_notifications_browser import browser_page as browser_page
 def test_feedback_card_replaces_inline_text(browser_page, width):
     page, errors = browser_page
     page.set_viewport_size({"width": width, "height": 900})
-    page.locator("#tab-settings").click()
+    page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
     page.evaluate(
         "const m=document.getElementById('form-message'); "
         "m.textContent='Settings saved'; notifyFeedback(m,'ok')"

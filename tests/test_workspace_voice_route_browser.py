@@ -14,7 +14,8 @@ SHOTS = Path(__file__).resolve().parents[1] / ".artifacts" / "browser-screens" /
 
 
 def text(page, element_id):
-    return page.locator(f"#{element_id}").inner_text()
+    # Route and voice facts live in the header's Details disclosure, so read content, not rendering.
+    return page.locator(f"#{element_id}").text_content()
 
 
 def wait_text(page, element_id, fragment):
@@ -50,13 +51,13 @@ def test_show_bind_voice_route_clear_reopen_and_stale_replies(route_browser, wid
     assert "Not sent to a project" in text(page, "workspace-mode-route")
     assert "Not listening" in text(page, "workspace-mode-voice")
 
-    # 2. Show conversation is display consent only.
-    page.click("#agent-view-workspace")
+    # 2. Connect is the conversation display only, not a project connection.
     page.wait_for_function("!document.getElementById('workspace-start').disabled")
     page.click("#workspace-start")
-    page.wait_for_function("document.getElementById('workspace-badge').textContent === 'Showing live'")
+    page.wait_for_function("document.getElementById('workspace-badge').textContent === 'Live'")
     page.wait_for_function("!document.getElementById('workspace-native-bind').disabled")
-    assert "not a project connection" in text(page, "workspace-mode-display")
+    assert text(page, "workspace-mode-display") == "Connected"
+    assert "Not open" in text(page, "workspace-mode-session")
     assert "Not sent to a project" in text(page, "workspace-mode-route")
     page.locator("#workspace-mode-card").screenshot(path=str(SHOTS / f"1-shown-unbound-{width}.png"))
 
@@ -69,6 +70,7 @@ def test_show_bind_voice_route_clear_reopen_and_stale_replies(route_browser, wid
 
     # 4. Bound with host voice discussion: spoken requests go to the session; listening is separate.
     voice_discussion["enabled"] = True
+    page.evaluate("HomebodyWorkspace.pane('project')")  # opening a project lands on Chat on phones
     page.click("#workspace-native-bind")
     wait_text(page, "workspace-mode-route", "Your project session · hermes · photo")
     assert "Spoken Workspace requests go to this session." in text(page, "workspace-native-bind-help")
@@ -77,7 +79,8 @@ def test_show_bind_voice_route_clear_reopen_and_stale_replies(route_browser, wid
     page.evaluate("refreshStatus()")
     wait_text(page, "workspace-mode-voice", "Listening now")
     page.locator("#workspace-mode-card").screenshot(path=str(SHOTS / f"3-bound-voice-listening-{width}.png"))
-    page.locator(".workspace-native").screenshot(path=str(SHOTS / f"4-native-help-{width}.png"))
+    page.evaluate("HomebodyWorkspace.pane('project')")
+    page.locator("#workspace-pane-project").screenshot(path=str(SHOTS / f"4-native-help-{width}.png"))
     runtime["state"] = "waiting_for_wake_word"
 
     # 5. Clear disconnects; a late read answered after Clear cannot repaint a bound route.
@@ -85,6 +88,7 @@ def test_show_bind_voice_route_clear_reopen_and_stale_replies(route_browser, wid
     page.evaluate("HomebodyNativeWorkspace.update(true)")
     page.wait_for_timeout(80)
     assert held, "read poll was not issued"
+    page.evaluate("HomebodyWorkspace.pane('project')")
     page.click("#workspace-clear")
     page.click("#workspace-clear-confirm-button")
     wait_text(page, "workspace-state", "Open project again")
@@ -97,7 +101,7 @@ def test_show_bind_voice_route_clear_reopen_and_stale_replies(route_browser, wid
     # 6. Reopen: the server cleared the binding, so the route stays "not sent" until Open project.
     native.update(binding=None, _hold=False)
     page.click("#workspace-start")
-    page.wait_for_function("document.getElementById('workspace-badge').textContent === 'Showing live'")
+    page.wait_for_function("document.getElementById('workspace-badge').textContent === 'Live'")
     page.wait_for_function("!document.getElementById('workspace-native-bind').disabled")
     assert "Not sent to a project" in text(page, "workspace-mode-route")
 
@@ -117,7 +121,7 @@ def test_face_status_is_requested_not_running_and_failure_is_explicit(route_brow
     status = page.locator("#face-tracking-status").text_content()
     assert "No face in view is not a failure" in status and "not in this app's cache" in status
     assert "running." not in status.replace("not confirmed running", "")
-    page.click("#tab-settings")
+    page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
     page.locator("summary", has_text="Embodiment and privacy").click()
     target = page.locator("#face-tracking-status")
     target.wait_for(state="visible")

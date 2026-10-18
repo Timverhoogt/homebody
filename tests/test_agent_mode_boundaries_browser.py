@@ -33,7 +33,7 @@ CATALOG = {
 }
 AGENT_POLLS = ("/api/agent/activity", "/api/agent/run/current", "/api/agent/run/status", "/api/agent/pending-approval")
 # Everything that belongs to the Workspace project surface; none of it may be visible outside Workspace.
-PROJECT_SURFACE = ["#agent-workspace-view", ".agent-view-switch", "#workspace-mode-card", "#workspace-repository",
+PROJECT_SURFACE = ["#agent-workspace-view", ".workspace-segments", "#workspace-mode-card", "#workspace-repository",
                    "#workspace-native-request", ".agent-advanced-actions", "#agent-approval-sheet",
                    ".agent-session-details", "#workspace-start"]
 
@@ -113,7 +113,7 @@ def agent():
         page.route("**/*", respond)
         page.goto("http://homebody.test/")
         page.wait_for_function("!document.querySelector('main').hidden && typeof updateStatus === 'function'")
-        page.click("#tab-agent")
+        page.evaluate("activateTab('agent', false, true)")  # navigation only; tab taps also enter Workspace
         page.wait_for_function("document.getElementById('panel-agent').dataset.assistantMode === 'everyday'")
         yield page, state, errors
         browser.close()
@@ -126,7 +126,7 @@ def _mode(page, mode):
 def _enter_workspace(page, state):
     page.click("#agent-enable-button")
     _mode(page, "workspace")
-    page.wait_for_function("!document.getElementById('agent-workspace-view').hidden")
+    page.locator("#agent-workspace-view").wait_for(state="visible")
 
 
 def _visible_project_surface(page):
@@ -137,8 +137,7 @@ def _try_to_reveal(page):
     """Every path that previously revealed project content, including synthetic clicks on hidden buttons."""
     page.evaluate("""() => {
       HomebodyWorkspace.show();
-      document.getElementById('agent-view-workspace').click();
-      document.getElementById('workspace-mode-open').click();
+      activateTab('agent');
       currentAgentRun = {status: 'waiting_approval', steps: [], active_step_id: ''};
       renderAgentRun();
       currentAgentRun = null;
@@ -163,7 +162,10 @@ def test_workspace_to_everyday_leaves_only_the_everyday_surface(agent, width):
     assert page.locator("#workspace-repository").is_visible()
     page.click("#agent-conversation-button")
     _mode(page, "everyday")
-    page.wait_for_function("document.getElementById('agent-workspace-view').hidden")
+    page.locator("#agent-workspace-view").wait_for(state="hidden")
+    assert _visible_project_surface(page) == []
+    assert page.locator("#workspace-gate").is_visible()  # the destination offers one way back in
+    page.click("#tab-dashboard")
     assert _visible_project_surface(page) == []
     assert page.locator("#everyday-card").is_visible()
     assert page.locator("#agent-companion-view").is_visible()  # existing Companion presence stays
@@ -214,7 +216,7 @@ def test_pending_entry_reveals_projects_only_after_confirmation(agent):
     state["runtime"]["agent"]["profile"] = "agent"
     route.fulfill(json={"ok": True, "agent": state["runtime"]["agent"]})
     _mode(page, "workspace")
-    page.wait_for_function("!document.getElementById('agent-workspace-view').hidden")
+    page.locator("#agent-workspace-view").wait_for(state="visible")
     # Mode entry opens no session and no display: those stay explicit owner actions.
     assert not any(p.startswith("/api/agent/workspace/") and m == "POST" for m, p in state["requests"]
                    if p.rsplit("/", 1)[-1] in {"start", "bind"})
@@ -260,6 +262,7 @@ def test_clear_is_confirmed_names_its_scope_and_asks_to_reopen(agent):
     page, state, errors = agent
     _enter_workspace(page, state)
     _open_project(page)
+    page.click("#ws-seg-project")  # phones show one Workspace pane at a time
     page.click("#workspace-clear")
     confirm = page.locator("#workspace-clear-confirm")
     assert confirm.is_visible()
@@ -284,15 +287,16 @@ def test_workspace_guidance_separates_display_connection_and_voice(agent, width)
     page, state, errors = agent
     page.set_viewport_size({"width": width, "height": 900})
     _enter_workspace(page, state)
-    steps = page.locator("#workspace-mode-steps li")
-    assert steps.count() == 3
-    assert "Show conversation" in steps.nth(0).inner_text() and "Open project" in steps.nth(1).inner_text()
-    assert "Hey Homebody" in steps.nth(2).inner_text()
-    voice = page.inner_text("#workspace-mode-voice")
+    # Display, project connection and voice are separate header facts; Connect is the one display step.
+    # Display, route and voice facts sit in the header's Details disclosure: read their content.
+    assert page.text_content("#workspace-mode-display") == "Not connected"
+    assert page.inner_text("#workspace-start") == "Connect"
+    assert "Not connected" in page.inner_text("#workspace-mode-session")
+    voice = page.text_content("#workspace-mode-voice")
     assert "Hey Homebody" in voice and "Listening" not in voice  # waiting for wake word is not listening
     page.click("#workspace-start")
     page.wait_for_function("document.getElementById('workspace-repository').options.length === 3")
-    assert "Showing" in page.inner_text("#workspace-mode-display")
+    assert "Connected" in page.text_content("#workspace-mode-display")
     session = page.inner_text("#workspace-mode-session")
     assert "Not open" in session and "Open ·" not in session  # display consent is not a connection
     # Unconfigured repository: the disabled action explains the exact setup that is missing.
@@ -317,9 +321,9 @@ def test_workspace_guidance_separates_display_connection_and_voice(agent, width)
 
 def test_labels_name_homebody_not_full_hermes(agent):
     page, state, errors = agent
-    assert "Hermes" not in page.inner_text(".agent-hero")
+    assert "Hermes" not in page.inner_text(".voice-route")
     _enter_workspace(page, state)
-    assert "talk to Hermes" not in page.inner_text(".voice-workspace")
+    assert "talk to Hermes" not in page.inner_text("#agent-workspace-view")
     assert "with Hermes" not in page.inner_text("#workspace-mode-card")
     page.click("#workspace-start")
     state["display"]["events"] = [{"id": 1, "role": "user", "text": "Hi"},

@@ -55,7 +55,6 @@ def test_native_session_exact_approval_and_verified_receipt(native_browser, widt
         route.fulfill(json=response)
 
     page.route("**/api/agent/workspace/native/*", native)
-    page.click("#agent-view-workspace")
     page.wait_for_function("!document.getElementById('workspace-start').disabled")
     page.click("#workspace-start")
     page.wait_for_function("!document.getElementById('workspace-native-bind').disabled")
@@ -63,8 +62,9 @@ def test_native_session_exact_approval_and_verified_receipt(native_browser, widt
     page.click("#workspace-native-bind")
     page.wait_for_function("!document.getElementById('workspace-native-request').disabled")
     assert "native-existing" in page.locator("#workspace-native-identity").inner_text()
-    assert page.locator("#workspace-native-timeline img").count() == 0
-    assert "native previous turn" in page.locator("#workspace-native-timeline").inner_text()
+    assert page.locator("#workspace-timeline img").count() == 0
+    assert "native previous turn" in page.locator("#workspace-timeline").inner_text()
+    browser_fixtures.pane(page, "work")
     page.fill("#workspace-native-request", "Implement the discussed contract")
     page.click("#workspace-native-prepare")
     page.wait_for_function("!document.getElementById('workspace-native-approval').hidden")
@@ -103,7 +103,7 @@ def test_native_session_exact_approval_and_verified_receipt(native_browser, widt
     page.evaluate("HomebodyNativeWorkspace.reset()")
     held[0].fulfill(json=fixture)
     page.wait_for_timeout(50)
-    assert page.locator("#workspace-native-timeline li").count() == 0
+    assert page.locator("#workspace-timeline [data-source='native']").count() == 0
     assert "native-existing" not in page.locator("#workspace-native-identity").inner_text()
     assert page.locator("#workspace-native-approve").is_disabled()
     assert not errors
@@ -123,13 +123,13 @@ def test_native_connection_unknown_keeps_stop_available(native_browser):
             route.fulfill(status=502, json={"detail": "Native connection unavailable"})
 
     page.route("**/api/agent/workspace/native/*", fail)
-    page.click("#agent-view-workspace")
     page.wait_for_function("!document.getElementById('workspace-start').disabled")
     page.click("#workspace-start")
     page.wait_for_function(
         "document.getElementById('workspace-native-state').textContent.includes('may still be running')"
     )
     assert page.locator("#workspace-native-stop").is_enabled()
+    browser_fixtures.pane(page, "work")
     page.click("#workspace-native-stop")
     page.wait_for_function("document.getElementById('workspace-native-state').textContent.includes('stopping')")
     assert "cancel" in calls

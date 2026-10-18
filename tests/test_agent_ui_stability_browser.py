@@ -88,7 +88,6 @@ def picker(picker_browser):
         route.fulfill(json=state["catalog"] if action == "repositories" else state["native"])
 
     page.route("**/api/agent/workspace/native/*", reply)
-    page.click("#agent-view-workspace")
     page.click("#workspace-start")
     page.wait_for_function("document.getElementById('workspace-repository').options.length === 3")
     page.wait_for_function("!document.getElementById('workspace-repository').disabled")
@@ -100,12 +99,14 @@ def _reads(state):
 
 
 def _poll(page, state, count=4):
-    """Drive the real status -> conversation -> native read chain until `count` more native reads answer."""
+    """Drive status polls plus explicit native refreshes until `count` more native reads answer.
+
+    The native lane now polls on its own slower cadence, so each round also requests a read directly."""
     goal = _reads(state) + count
     for _ in range(400):
         if _reads(state) >= goal:
             break
-        page.evaluate("refreshStatus()")
+        page.evaluate("refreshStatus(); HomebodyNativeWorkspace.update(true)")
         page.wait_for_timeout(20)
     assert _reads(state) >= goal
     page.wait_for_timeout(60)
@@ -139,7 +140,7 @@ def test_slow_read_keeps_picker_usable_and_write_supersedes_it(picker):
     for _ in range(200):
         if len(state["held"]) > held_before:
             break
-        page.evaluate("refreshStatus()")
+        page.evaluate("refreshStatus(); HomebodyNativeWorkspace.update(true)")
         page.wait_for_timeout(20)
     assert len(state["held"]) > held_before  # a read is genuinely in flight
     assert page.locator("#workspace-repository").is_enabled()
@@ -173,12 +174,15 @@ def test_failed_read_is_unconfirmed_not_bound_and_recovers(picker):
     assert page.locator("#workspace-native-stop").is_enabled()
     assert page.locator("#workspace-native-prepare").is_disabled()
     assert page.locator("#workspace-native-bind").is_disabled()  # no write against an unconfirmed binding
-    assert "native-fixture" not in page.inner_text("#workspace-native-identity")
+    # A transient failure keeps the last confirmed content, visibly marked stale, instead of blanking it.
+    assert page.locator("#workspace-stale").is_visible()
+    assert page.locator("#workspace-timeline").get_attribute("data-stale") is not None
     assert page.locator("#workspace-repository").input_value() == "Timverhoogt/homebody"
     state["fail"].clear()
     _poll(page, state, 1)
     page.wait_for_function("!document.getElementById('workspace-native-prepare').disabled")
     assert "native-fixture" in page.inner_text("#workspace-native-identity")
+    assert page.locator("#workspace-stale").is_hidden()
     assert not any(action in {"prepare", "approve"} for action, _ in state["calls"])
     assert not errors
 
@@ -218,6 +222,7 @@ def test_repository_switch_under_polls_never_reaches_old_binding(picker):
     page.select_option("#workspace-repository", "Timverhoogt/homebody")
     page.click("#workspace-native-bind")
     page.wait_for_function("!document.getElementById('workspace-native-prepare').disabled")
+    page.evaluate("HomebodyWorkspace.pane('project')")  # opening a project lands on Chat on phones
     page.select_option("#workspace-repository", "Timverhoogt/private-project")
     _poll(page, state, 3)
     for control in ["prepare", "request", "approve", "bind"]:
@@ -247,10 +252,9 @@ def test_mode_switch_owner_loss_and_late_catalog_clear_picker(picker):
     runtime["agent"]["profile"] = "agent"
     page.evaluate("refreshStatus()")
     page.wait_for_timeout(100)
-    # Leaving Workspace closed the projects view; reopening it is explicit (this fixture's display lease
-    # stays on, so the reopened view reads again without a new Show).
-    assert page.locator("#agent-workspace-view").is_hidden()
-    page.click("#agent-view-workspace")
+    # Back in Workspace the destination shows its project surface again (this fixture's display lease
+    # stays on, so it reads again without a new Connect).
+    page.locator("#agent-workspace-view").wait_for(state="visible")
     for _ in range(100):
         if any(action == "repositories" for action, _ in state["held"]):
             break
@@ -306,7 +310,7 @@ def test_current_mode_is_unambiguous_and_shows_only_its_content(ui, width, schem
     page, state, posts, errors = ui
     page.set_viewport_size({"width": width, "height": 900})
     page.emulate_media(color_scheme=scheme)
-    page.click("#tab-agent")
+    page.evaluate("activateTab('agent', false, true)")  # navigation only; tab taps also enter Workspace
     page.wait_for_function("document.getElementById('panel-agent').dataset.assistantMode === 'everyday'")
     everyday = page.evaluate(MODE)
     assert everyday == {
@@ -319,7 +323,7 @@ def test_current_mode_is_unambiguous_and_shows_only_its_content(ui, width, schem
     assert page.locator(".assistant-mode-switch").is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     SHOTS.mkdir(parents=True, exist_ok=True)
-    _shot(page, f"everyday-{width}-{scheme}", "#everyday-card")
+    _shot(page, f"everyday-{width}-{scheme}", "#workspace-gate")
 
     held = []
     page.route("**/api/agent/profile", lambda route: held.append(route))
@@ -346,21 +350,20 @@ def test_current_mode_is_unambiguous_and_shows_only_its_content(ui, width, schem
         "everyday": False,
         "workspace": True,
     }, workspace
-    facts = page.locator("#workspace-mode-card").inner_text()
-    assert "Conversation & projects" in facts  # entering Workspace opens the projects view
-    assert "Off" in page.inner_text("#workspace-mode-display")  # display consent is separate from mode
-    assert "None selected" in page.inner_text("#workspace-mode-repository")
-    # Display is off, so the binding was never read: not checked, rather than "none" or "open".
-    assert "Not checked" in page.inner_text("#workspace-mode-session")
+    facts = page.locator("#workspace-mode-card").text_content()  # includes the collapsed Details
+    assert page.locator("#agent-workspace-view").is_visible()  # entering Workspace shows the project surface
+    assert "Not connected" in page.text_content("#workspace-mode-display")  # display is separate from mode
+    assert "No project open" in page.inner_text("#workspace-mode-repository")
+    # Display is off, so the binding was never read: not connected, rather than "none" or "open".
+    assert "Not connected" in page.inner_text("#workspace-mode-session")
     assert "Project work running." in facts  # from the status-only badge fixture, not from selection
-    assert page.locator("#workspace-mode-open").is_hidden()
     assert page.locator(".assistant-mode-switch").is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     _shot(page, f"workspace-{width}-{scheme}", "#workspace-mode-card")
 
-    page.click("#agent-view-companion")
-    assert "Companion" in page.inner_text("#workspace-mode-view")
-    assert page.evaluate(MODE)["mode"] == "workspace"  # the view switch is not the mode switch
+    page.click("#tab-dashboard")
+    assert page.evaluate(MODE)["mode"] == "workspace"  # navigation is not the mode switch
+    page.evaluate("activateTab('agent', false, true)")  # navigation only; tab taps also enter Workspace
 
     page.route("**/api/status", lambda route: route.fulfill(status=503, json={}))
     page.evaluate("refreshStatus()")
@@ -371,8 +374,8 @@ def test_current_mode_is_unambiguous_and_shows_only_its_content(ui, width, schem
     # The last pressed button is no longer presented as a confirmed mode.
     assert page.locator(".assistant-mode-switch").get_attribute("data-confirmed") == "false"
     # Unconfirmed mode fails closed: no projects view switch, only Companion beneath.
-    assert page.locator(".agent-view-switch").is_hidden() and page.locator("#agent-workspace-view").is_hidden()
-    _shot(page, f"offline-{width}-{scheme}", ".presence-card")
+    assert page.locator(".workspace-jump").is_hidden() and page.locator("#agent-workspace-view").is_hidden()
+    _shot(page, f"offline-{width}-{scheme}", "#workspace-gate")
     assert body == {"profile": "agent", "preserve_work": False}
     assert not any(path.startswith("/api/agent/workspace") for path, _ in posts)  # mode entry starts no work
     assert not errors
@@ -380,7 +383,7 @@ def test_current_mode_is_unambiguous_and_shows_only_its_content(ui, width, schem
 
 def test_kids_and_owner_loss_never_claim_a_mode(ui):
     page, state, _posts, errors = ui
-    page.click("#tab-agent")
+    page.evaluate("activateTab('agent', false, true)")  # navigation only; tab taps also enter Workspace
     state["runtime"]["agent"]["profile"] = "agent"
     page.evaluate("refreshStatus()")
     page.wait_for_function("document.getElementById('panel-agent').dataset.assistantMode === 'workspace'")
@@ -409,7 +412,7 @@ def test_owner_loss_clears_private_mode_summary_even_in_hidden_dom(picker):
 
 def test_successful_switch_waits_for_status_not_an_old_inflight_read(ui):
     page, state, _posts, errors = ui
-    page.click("#tab-agent")
+    page.evaluate("activateTab('agent', false, true)")  # navigation only; tab taps also enter Workspace
     page.wait_for_function("document.getElementById('panel-agent').dataset.assistantMode === 'everyday'")
     old = json.loads(json.dumps(state))
     status_reads, writes = [], []
@@ -443,6 +446,7 @@ def test_catalog_failure_cannot_restore_old_binding_actions(picker, failure):
     page.select_option("#workspace-repository", "Timverhoogt/homebody")
     page.click("#workspace-native-bind")
     page.wait_for_function("!document.getElementById('workspace-native-request').disabled")
+    page.evaluate("HomebodyWorkspace.pane('project')")  # opening a project lands on Chat on phones
     page.select_option("#workspace-repository", "Timverhoogt/private-project")
     page.route(
         "**/api/agent/workspace/native/repositories",
@@ -472,6 +476,7 @@ def test_removed_selected_repository_cannot_restore_old_binding_actions(picker):
     page.select_option("#workspace-repository", "Timverhoogt/homebody")
     page.click("#workspace-native-bind")
     page.wait_for_function("!document.getElementById('workspace-native-request').disabled")
+    page.evaluate("HomebodyWorkspace.pane('project')")  # opening a project lands on Chat on phones
     page.select_option("#workspace-repository", "Timverhoogt/private-project")
     state["catalog"] = _catalog("homebody")
     page.click("#workspace-repositories-reload")

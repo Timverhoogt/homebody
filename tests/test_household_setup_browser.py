@@ -42,7 +42,7 @@ def serve(page, config, *, apply_status=200):
         route.fulfill(json=household_status(state["config"]))
 
     page.route("**/api/household/**", respond)
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     page.evaluate("HomebodyHousehold.reload()")
     page.wait_for_function("document.getElementById('household-badge').textContent !== 'Checking…'")
     return state

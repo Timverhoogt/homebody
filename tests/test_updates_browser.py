@@ -75,7 +75,7 @@ def test_updates_in_chromium(tmp_path):
         page.wait_for_function("!document.getElementById('update-dialog').open")
         page.evaluate("HomebodyUpdates.refresh()")
         assert not page.locator("#update-dialog").is_visible()
-        page.click("#tab-settings")
+        page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
         assert page.locator("#update-preview").is_disabled()
         for _ in range(2):
             page.locator("#update-check").click()

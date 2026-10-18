@@ -8,68 +8,43 @@
   let blocked = true;
   let showing = false;
   let signature = "";
+  let voiceBusy = false;
   // Set only by HomebodyAssistantModes: 'workspace' once status confirms it; anything else fails closed.
   let mode = "unknown";
-  let openWhenConfirmed = false;
+  const visible = () => !byId("panel-agent").hidden && !document.hidden;
   function controls() {
     byId("workspace-start").disabled = blocked || pending || showing;
+    byId("workspace-start").hidden = showing;
     byId("workspace-clear").disabled = blocked || writing;
     if (byId("workspace-clear").disabled) byId("workspace-clear-confirm").hidden = true;
     window.HomebodyAssistantModes?.sync();
   }
-  function reset(message = "Conversation display is off.") {
+  function reset(message = "Not connected. Tap Connect to show this conversation.") {
     epoch += 1;
     window.HomebodyMotion?.clear(byId("workspace-start"));
     window.HomebodyNativeWorkspace?.reset();
     showing = false;
     signature = "";
-    byId("workspace-timeline").replaceChildren();
-    byId("workspace-badge").textContent = "Not showing";
+    window.HomebodyWorkspaceThread?.setVoice(null);
+    byId("workspace-badge").textContent = "Not connected";
     byId("workspace-state").textContent = message;
     byId("workspace-clear-confirm").hidden = true;
     controls();
   }
   function render(payload) {
     showing = payload.enabled === true;
-    window.HomebodyNativeWorkspace?.update(showing);
-    byId("workspace-badge").textContent = showing ? "Showing live" : "Not showing";
+    byId("workspace-badge").textContent = showing ? "Live" : "Not connected";
     const events = Array.isArray(payload.events) ? payload.events : [];
-    const next = `${payload.generation}:${events.map((event) => event.id).join(",")}`;
+    const next = `${payload.generation}:${showing}:${events.map((event) => event.id).join(",")}`;
     if (signature !== next) {
-      const timeline = byId("workspace-timeline");
-      const atBottom = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 70;
-      timeline.replaceChildren();
-      for (const event of events) {
-        const row = document.createElement("li");
-        const role = ["user", "assistant"].includes(event.role) ? event.role : "activity";
-        row.className = `workspace-event workspace-${role}`;
-        const label = document.createElement("strong");
-        // Events carry no backend provenance; the activity rows below name it when it is known.
-        label.textContent = role === "user" ? "You" : role === "assistant" ? "Homebody" : "Activity";
-        const body = document.createElement("p");
-        body.textContent = String(event.text || "");
-        row.append(label, body);
-        if (event.truncated) {
-          const note = document.createElement("small");
-          note.textContent = "Display limit reached; this message is shortened.";
-          row.append(note);
-        }
-        timeline.append(row);
-      }
-      if (!events.length) {
-        const empty = document.createElement("li");
-        empty.className = "workspace-empty";
-        empty.textContent = showing
-          ? "Ready for the next voice turn. Say “Hey Homebody” when Reachy is listening."
-          : "Your conversation will appear here when you choose to show it.";
-        timeline.append(empty);
-      }
-      if (atBottom) timeline.scrollTop = timeline.scrollHeight;
+      window.HomebodyWorkspaceThread?.setVoice(payload);
       signature = next;
     }
     byId("workspace-state").textContent = showing
-      ? "Showing accepted voice messages. Replies may be interrupted during playback."
-      : "Conversation display is off. Nothing is being retained here.";
+      ? "Connected. Spoken and typed turns appear here."
+      : "Not connected. Tap Connect to show this conversation.";
+    // The native lane polls on its own cadence; this only tells it whether the display is on.
+    window.HomebodyNativeWorkspace?.tick(showing, voiceBusy);
     controls();
   }
   async function request(action = "read") {
@@ -79,14 +54,15 @@
       // Clear must not wait for a slow poll; its old response cannot repaint the DOM.
       controller?.abort();
     }
-    if (action === "read" && (byId("panel-agent").hidden || byId("agent-workspace-view").hidden)) return;
+    // Off screen nothing is read or rendered; the native lane refreshes as soon as the view returns.
+    if (action === "read" && !visible()) { window.HomebodyNativeWorkspace?.away(); return; }
     pending = true;
     writing = action !== "read";
     const abort = new AbortController();
     controller = abort;
     const timer = setTimeout(() => abort.abort(), 8000);
     const mine = epoch;
-    // Only "Show" gets button feedback, and it confirms only if the display really turned on.
+    // Only Connect gets button feedback, and it confirms only if the display really turned on.
     const feedback = action === "start" ? window.HomebodyMotion?.pending(byId("workspace-start")) : null;
     let outcome = "cleared";
     controls();
@@ -103,7 +79,7 @@
       // Clear keeps its backend scope (stop + disconnect); say exactly what is needed to continue.
       if (action === "clear") {
         byId("workspace-state").textContent = "Cleared. Selected project work was asked to stop and the project "
-          + "is disconnected. To continue, tap Show conversation, then Open project again.";
+          + "is disconnected. To continue, tap Connect, then Open project again.";
       }
     } catch (error) {
       if (mine === epoch) outcome = "failed";
@@ -122,25 +98,24 @@
       }
     }
   }
-  function select(view) {
-    if (view === "workspace" && mode !== "workspace") {
-      // A reveal during a pending switch waits for confirmation; any other mode refuses it.
-      openWhenConfirmed = mode === "pending";
-      view = "companion";
-    }
-    const target = byId(`agent-${view}-view`);
-    const switching = target.hidden;
-    byId("agent-companion-view").hidden = view !== "companion";
-    byId("agent-workspace-view").hidden = view !== "workspace";
-    if (switching) window.HomebodyMotion?.enter(target);
-    for (const name of ["companion", "workspace"]) {
-      byId(`agent-view-${name}`).setAttribute("aria-pressed", String(name === view));
-    }
-    window.HomebodyAssistantModes?.sync();
-    if (view === "workspace") request();
+  /** Phones show one pane (Chat, Work or Project); wider layouts show all three and ignore this. */
+  function pane(name) {
+    byId("agent-workspace-view").dataset.pane = name;
+    document.querySelectorAll("[data-ws-pane]").forEach((button) => {
+      button.setAttribute("aria-selected", String(button.dataset.wsPane === name));
+    });
   }
-  byId("agent-view-companion").addEventListener("click", () => select("companion"));
-  byId("agent-view-workspace").addEventListener("click", () => select("workspace"));
+  document.querySelectorAll("[data-ws-pane]").forEach((button) => {
+    button.addEventListener("click", () => pane(button.dataset.wsPane));
+  });
+  // One tap from the Workspace tab: switch the voice route if needed, then connect. Only an explicit
+  // tab click sets this; startup, history and #hash restore never do.
+  let entering = false;
+  function continueEntry() {
+    if (!entering || blocked || mode !== "workspace") return;
+    entering = false;
+    if (!showing && !pending) request("start");
+  }
   byId("workspace-start").addEventListener("click", () => request("start"));
   // Clear is destructive beyond the display, so it states its scope and asks first.
   byId("workspace-clear").addEventListener("click", () => {
@@ -161,32 +136,36 @@
   });
   window.HomebodyWorkspace = {
     reset,
-    show: () => select("workspace"),
-    /** Assistant-mode authority: 'workspace' only when confirmed. Leaving it hides and fences everything. */
+    /** Navigation only: opens the Workspace destination; connecting stays an explicit tap. */
+    show: () => window.activateTab?.("agent", false, true),
+    pane,
+    /** Explicit Workspace tab tap. A failed route switch leaves Everyday and its error message as they are. */
+    enter() {
+      entering = true;
+      if (mode === "workspace") continueEntry();
+      else if (mode === "everyday" && !byId("agent-enable-button").disabled) byId("agent-enable-button").click();
+    },
+    /** Assistant-mode authority: 'workspace' only when confirmed. Leaving it fences everything. */
     gate(next) {
       const previous = mode;
       mode = next;
-      if (next === "workspace") {
-        if (openWhenConfirmed) { openWhenConfirmed = false; select("workspace"); }
-        return;
-      }
-      if (next !== "pending") openWhenConfirmed = false;
-      if (previous === "workspace" || !byId("agent-workspace-view").hidden) {
-        select("companion");
-        // The host clears the display on every profile change; drop rendered content and late replies.
-        reset("Conversation & projects are available in Workspace.");
-      }
+      if (next === "workspace") { continueEntry(); return; }
+      if (next === "pending") return;
+      entering = false;
+      // The host clears the display on every profile change; drop rendered content and late replies.
+      if (previous === "workspace" || showing) reset("Workspace is not active. Choose Workspace to continue.");
     },
-    /** Display-only facts for the Workspace mode card. */
-    state: () => ({ showing, view: byId("agent-workspace-view").hidden ? "companion" : "workspace" }),
+    /** Display-only facts for the Workspace header. */
+    state: () => ({ showing, view: byId("panel-agent").hidden ? "other" : "workspace" }),
     update(runtime) {
       const nextBlocked = Boolean(runtime.kids_mode?.active || runtime.kids_mode?.locked)
         || ["meeting", "sleep"].includes(runtime.power_mode);
       if (nextBlocked) reset("Conversation hidden in Kids or privacy mode.");
       blocked = nextBlocked;
+      voiceBusy = ["listening", "thinking", "looking", "speaking"].includes(runtime.state);
       controls();
       window.HomebodyNativeWorkspace?.sync();
-      if (!blocked && runtime.agent?.pending_approval) select("workspace");
+      continueEntry();
       if (!blocked) request();
     },
   };

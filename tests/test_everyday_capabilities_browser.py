@@ -57,7 +57,7 @@ def test_compact_permissions_geometry_and_navigation(ui, width, scheme, scale):
     page.set_viewport_size({"width": width, "height": 1000})
     page.emulate_media(color_scheme=scheme)
     page.evaluate("scale => document.documentElement.style.fontSize = `${16 * scale}px`", scale)
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     refresh(page, state, snapshot())
     assert "OpenAI Realtime" in page.locator("#everyday-voice").inner_text()
     assert "not proof of an active" in page.locator("#everyday-voice-note").inner_text()
@@ -115,7 +115,7 @@ def test_compact_permissions_geometry_and_navigation(ui, width, scheme, scale):
 
 def test_old_unknown_and_malformed_fields_do_not_invent_permissions(ui):
     page, state, posts, errors = ui
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     refresh(page, state, deepcopy(CAPABILITIES))
     assert "not reported" in page.locator("#everyday-robot-permissions").text_content()
     assert "status not reported" in page.locator("#everyday-camera-activity").text_content()
@@ -138,7 +138,7 @@ def test_old_unknown_and_malformed_fields_do_not_invent_permissions(ui):
 
 def test_temporary_session_expiry_is_not_persistent_camera_or_voice_activity(ui):
     page, state, posts, errors = ui
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     body = snapshot()
     body["local"]["activity"] = {"camera_session_active": True, "camera_remaining_seconds": 1}
     refresh(page, state, body)
@@ -155,7 +155,7 @@ def test_temporary_session_expiry_is_not_persistent_camera_or_voice_activity(ui)
 @pytest.mark.parametrize("transition", ["owner", "kids", "offline"])
 def test_private_copies_and_held_permissions_cannot_return_after_teardown(ui, transition):
     page, state, _posts, errors = ui
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     body = snapshot()
     body["text_provider"]["model"] = "private-model-name"
     body["devices"]["controls"] = ["private-room-device"]
@@ -202,7 +202,7 @@ def test_private_copies_and_held_permissions_cannot_return_after_teardown(ui, tr
 
 def test_host_configuration_is_not_live_provider_or_audible_delivery_proof(ui):
     page, state, posts, errors = ui
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     refresh(
         page,
         state,
@@ -221,7 +221,7 @@ def test_host_configuration_is_not_live_provider_or_audible_delivery_proof(ui):
 
 def test_late_active_camera_snapshot_cannot_extend_its_reported_expiry(ui):
     page, state, posts, errors = ui
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     held = []
     page.route("**/api/everyday/capabilities", lambda route: held.append(route))
     page.evaluate(
@@ -242,7 +242,7 @@ def test_late_active_camera_snapshot_cannot_extend_its_reported_expiry(ui):
 def test_single_camera_permission_uses_existing_settings_without_activating_viewer_or_tracking(ui):
     page, state, posts, errors = ui
     state["config"].update(camera_enabled=False)
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     refresh(page, state, snapshot())
     page.locator("#everyday-permissions > summary").click()
     page.click("[data-everyday-setting=camera_enabled]")
