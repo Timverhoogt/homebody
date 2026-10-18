@@ -611,11 +611,14 @@ class Homebody(ReachyMiniApp):
                 "/api/agent/stop",
                 "/api/voice/stop",
             }
+            runtime = self._runtime
             if (
                 request.url.path.startswith("/api/")
                 and request.url.path not in allowed
-                and self._runtime is not None
-                and self._runtime.kids_controls_locked
+                and runtime is not None
+                # The property takes a threading lock also held by Kids lifecycle work.
+                # Never park the ASGI loop behind SDK cancellation or a concurrent start.
+                and await run_in_threadpool(lambda: runtime.kids_controls_locked)
             ):
                 return JSONResponse(
                     status_code=423,

@@ -7,12 +7,12 @@ wizard and must not be passed its one-time setup code.
 
 ## 1. Choose the integrated installation
 
-**Unreleased feature:** published/installed 0.5.34 is not evidence that household MCP exists.
-The release candidate is 0.5.35. Obtain an explicitly reviewed source snapshot
-containing `companion/household_server.py`, `household_smoke.py`, `homebody/household_client.py`
-and this guide, or a wheel built from that exact snapshot. Record source revision plus local
-changes and the wheel SHA-256; a matching version string alone is insufficient. Do not overwrite
-a production release or use `pip install reachy-mini-homebody` expecting this preview.
+**Released support since 0.5.35:** standalone household MCP is included in published Homebody.
+Use matching reviewed versions on the household and robot hosts. Verify the exact source snapshot
+contains `companion/household_server.py`, `household_smoke.py`, `homebody/household_client.py`
+and this guide, or use a wheel built from that exact snapshot. Record source revision plus local
+changes and the wheel SHA-256; a matching version string alone is insufficient. Verify installed
+files against that artifact before replacing a production installation.
 
 Roles:
 

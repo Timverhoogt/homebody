@@ -61,10 +61,13 @@ class VoiceMotion:
         with self._lock:
             self._power_suspended = True
             self._wobble_generation += 1
-            stop_playback()
-            if self._playback is not None:
-                self._playback.confirm_stopped()
-            self.close()
+        # SDK pipeline teardown may wait for a callback on another thread. That callback
+        # must be able to acquire our lock, observe the fence and return; holding it here
+        # creates a teardown/callback lock cycle. The runtime serializes power transitions.
+        stop_playback()
+        if self._playback is not None:
+            self._playback.confirm_stopped()
+        self.close()
 
     def awake(self) -> None:
         """Re-admit voice cues only after the runtime confirms a new wake."""

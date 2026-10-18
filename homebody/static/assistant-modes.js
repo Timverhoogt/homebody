@@ -12,6 +12,7 @@
   let confirmedMode = '', switchingTo = '', kidsHidden = false, unknownReason = 'Waiting for Reachy to confirm.';
   // 'unknown' = no answer yet, 'uncertain' = the status check failed; both keep the global Stop reachable.
   let badgeState = 'unknown', voiceState = '', badgeSequence = 0;
+  let badgeWorkUnresolved = false;
   const text = (id, value) => { if ($(id).textContent !== value) $(id).textContent = value; };
   const MODE_LABELS = { everyday: 'Everyday', workspace: 'Workspace' };
 
@@ -106,6 +107,7 @@
     text('everyday-message', message);
     $('native-work-badge').hidden = true;
     badgeState = 'unknown';
+    badgeWorkUnresolved = false;
     renderStop();
     $('voice-stop-button').disabled = blocked || stopping;
   }
@@ -253,6 +255,7 @@
       $('native-work-badge').dataset.status = 'running';
       text('native-work-badge', body.status === 'stopping' ? 'Project work stopping' : 'Project work running');
       badgeState = body.running !== true ? 'idle' : body.status === 'stopping' ? 'stopping' : 'running';
+      badgeWorkUnresolved = body.running === true;
     } catch {
       // Preserved work may still be running; say so and keep Stop all Agent work reachable.
       if (token === generation && sequence === badgeSequence && !blocked) {
@@ -292,7 +295,13 @@
     renderVoice();
     const now = Date.now();
     if (wasBlocked || now - lastCapabilitiesAt > (cameraTimer ? 5000 : 15000)) { lastCapabilitiesAt = now; refreshCapabilities(); }
-    if (wasBlocked || now - lastBadgeAt > 5000) { lastBadgeAt = now; refreshBadge(); }
+    // One discovery check still finds work preserved across a browser reload. Outside
+    // Workspace only known running work needs polling; failures remain unconfirmed,
+    // with Stop reachable, rather than hammering a Kids-latched/unused adult route.
+    const badgeApplicable = confirmedMode === 'workspace' || badgeWorkUnresolved;
+    if (wasBlocked || lastBadgeAt === 0 || (badgeApplicable && now - lastBadgeAt > 5000)) {
+      lastBadgeAt = now; refreshBadge();
+    }
   }
 
   $('voice-stop-button').addEventListener('click', async () => {

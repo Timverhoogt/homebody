@@ -614,7 +614,7 @@ def test_kids_tab_has_activities_direct_controls_disclosures_and_end_button() ->
     assert 'fetch("/api/kids/start"' in main
     assert 'fetch("/api/kids/stop"' in main
     assert 'kidsCameraActive ? "Camera search"' in main
-    assert '$("kids-stop-button").disabled = !kidsActive;' in main
+    assert '$("kids-stop-button").disabled = !kidsActive || kidsEndPending;' in main
     assert "homebody-kids-profile" in main
     persisted_profile = main.split(
         'window.localStorage.setItem("homebody-kids-profile"',
@@ -633,8 +633,8 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     assert "homebody-shell-v" in worker
     # Companion card assets advance with the shell revision.
     for asset in ("style.css", "camera.js", "main.js", "companion.js"):
-        assert f"/static/{asset}?v=105" in html
-        assert f'"/static/{asset}?v=105"' in worker
+        assert f"/static/{asset}?v=106" in html
+        assert f'"/static/{asset}?v=106"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

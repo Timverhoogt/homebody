@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.36] — Kids End and field follow-up
+
+- Fence voice motion before SDK playback teardown without holding the callback lock; revoke Kids voice before waiting for the motor transition. Read the Kids controls lock off the ASGI event loop so End remains reachable.
+- Separate standalone activity and Play together setup, clear per-start camera consent on route changes and End, explicitly send standalone host=false, and keep End single-flight.
+- Stop repeated Workspace badge polling in unused Everyday while continuing discovery and polling for known work, including recovery from transient failures.
+- Keep standalone Buddy replies within an age-based whole-sentence budget. Preserve Story choices, other activity instructions, hosted completion state, moderation and exact approved speech.
+- Refresh the UI shell cache and verify the current-version wheel, with offline packaging and lint in the release gate.
+- Automated local checks do not establish live latency, SDK camera recovery, physical fold/audio behavior or deployed acceptance.
+
 ## [0.5.35] — Household tools and natural camera requests
 
 - Add a standalone authenticated household tool service and composed MCP catalogue without exposing Workspace or the Hermes agent.

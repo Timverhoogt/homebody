@@ -1203,7 +1203,7 @@ function updateStatus(payload, sequence = statusSequence) {
     : null;
   renderShowTell(showTell, kidsCameraActive, sequence);
   const kidsJustStarted = kidsActive && $("panel-kids").dataset.kidsSession !== "active";
-  $("kids-stop-button").disabled = !kidsActive;
+  $("kids-stop-button").disabled = !kidsActive || kidsEndPending;
   renderKidsSession(kidsActive, kidsMode, kidsHost, kidsCameraActive, remainingMinutes, remainingRemainder);
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.hidden = kidsLocked && button.dataset.tab !== "kids";
@@ -2045,7 +2045,7 @@ $("test-button").addEventListener("click", async () => {
 document.querySelectorAll("[data-kids-activity]").forEach((button) => {
   button.addEventListener("click", () => {
     selectedKidsActivity = button.dataset.kidsActivity;
-    kidsPreviewSingle = true;
+    selectKidsStartRoute(true);
     document.querySelectorAll("[data-kids-activity]").forEach((candidate) => {
       const selected = candidate === button;
       candidate.classList.toggle("selected", selected);
@@ -2072,7 +2072,7 @@ function renderKidsSession(kidsActive, kidsMode, kidsHost, kidsCameraActive, min
   const wasActive = panel.dataset.kidsSession === "active";
   panel.dataset.kidsSession = kidsActive ? "active" : "idle";
   const hosted = kidsMode.host?.enabled === true;
-  $("kids-setup-label").textContent = !kidsActive ? "Grown-up check · Play together" : hosted ? "Play together · live" : "Single activity · live";
+  $("kids-setup-label").textContent = !kidsActive ? (kidsPreviewSingle ? "Grown-up check · Single activity" : "Grown-up check · Play together") : hosted ? "Play together · live" : "Single activity · live";
   $("kids-setup-title").textContent = kidsActive ? "Session in progress" : "Review, then start";
   const summary = $("kids-live-summary");
   if (!kidsActive) {
@@ -2105,9 +2105,26 @@ function revealKidsSection(section, focusTarget) {
   focusTarget?.focus({ preventScroll: true });
 }
 
-// Routes only: neither button starts anything, so the grown-up still reviews the setup first.
-$("kids-host-setup-link").addEventListener("click", () => revealKidsSection($("kids-setup"), $("kids-age-band")));
+// A single-activity selection must never leave an unrelated host Start beside its settings.
+function selectKidsStartRoute(single) {
+  kidsPreviewSingle = single;
+  $("kids-host-start-button").hidden = single;
+  $("kids-host-camera-row").hidden = single;
+  document.querySelector(".kids-host-note").hidden = single;
+  $("kids-host-camera-consent").checked = false;
+  $("kids-ispy-camera-consent").checked = false;
+  $("kids-host-message").textContent = "";
+  $("kids-setup-label").textContent = single ? "Grown-up check · Single activity" : "Grown-up check · Play together";
+  $("kids-start-button").textContent = `Start ${kidsActivityLabels[selectedKidsActivity]} only`;
+  renderKidsStage();
+}
+// Routes only: neither button starts anything; consent never carries between routes.
+$("kids-host-setup-link").addEventListener("click", () => {
+  selectKidsStartRoute(false);
+  revealKidsSection($("kids-setup"), $("kids-age-band"));
+});
 $("kids-single-link").addEventListener("click", () => {
+  selectKidsStartRoute(true);
   revealKidsSection($("kids-activity-picker"), document.querySelector("[data-kids-activity].selected"));
 });
 
@@ -2126,7 +2143,7 @@ function kidsProfileFromForm() {
 // Play together: the same owner-only Start route with host=true; the child chooses games by voice
 // or typing. Camera consent here covers only I Spy rounds in this one session.
 $("kids-host-start-button").addEventListener("click", async () => {
-  if (kidsRequestPending) return;
+  if (kidsRequestPending || kidsPreviewSingle) return;
   const profile = { ...kidsProfileFromForm(), activity: "buddy", host: true, camera_consent: $("kids-host-camera-consent").checked };
   const message = $("kids-message");
   kidsRequestPending = true;
@@ -2257,7 +2274,7 @@ $("kids-show-tell-look").addEventListener("click", () => {
 
 $("kids-start-button").addEventListener("click", async () => {
   if (kidsRequestPending) return;
-  const profile = kidsProfileFromForm();
+  const profile = { ...kidsProfileFromForm(), host: false };
   const message = $("kids-message");
   if (profile.activity === "ispy" && !profile.camera_consent) {
     message.textContent = "Allow the narrow camera search for this I Spy start.";
@@ -2294,6 +2311,7 @@ $("kids-start-button").addEventListener("click", async () => {
 });
 
 $("kids-stop-button").addEventListener("click", async () => {
+  if (kidsEndPending) return;
   const message = $("kids-message");
   kidsRequestPending = true;
   kidsEndPending = true;
@@ -2306,6 +2324,7 @@ $("kids-stop-button").addEventListener("click", async () => {
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     // A status poll already in flight may still describe the session that just ended.
     kidsEndFence = statusSequence;
+    selectKidsStartRoute(kidsPreviewSingle);
     message.textContent = "Kids Mode ended. Reachy is safely folded in Standby.";
     notifyFeedback(message, "ok");
   } catch (error) {
