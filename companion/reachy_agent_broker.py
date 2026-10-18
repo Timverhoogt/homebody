@@ -104,6 +104,10 @@ class BrokerValidationError(ValueError):
 class BrokerUnavailableError(RuntimeError):
     """A configured read-only data source could not be reached safely."""
 
+    def __init__(self, message: str, *, http_status: int | None = None) -> None:
+        super().__init__(message)
+        self.http_status = http_status if type(http_status) is int and 100 <= http_status <= 599 else None
+
 
 class HomeEntityMissingError(BrokerUnavailableError):
     """An authorized entity no longer exists; not an authentication or service failure."""

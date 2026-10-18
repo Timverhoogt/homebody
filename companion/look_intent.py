@@ -213,19 +213,31 @@ def direct_action_intent(text: str) -> tuple[str, dict] | None:
 
 
 _LOOK_WORD_RE = re.compile(r"(?i)\b(look\w*|see|seeing|watch\w*|camera|photo|picture|kijk\w*|zie\w*|foto)\b")
+_HYPOTHETICAL_VISUAL_RE = re.compile(
+    r"(?i)\b(imagine|suppose|hypothetical\w*|stel|hypothetisch\w*)\b|"
+    r"\bwhat (?:would|could)\b.*\bsee\b|\bwat zou(?:den)?\b.*\bzien\b"
+)
 
 
 def natural_visual_words_ok(text: str) -> bool:
     """Provenance guard for a model-selected one-frame look under household approval.
 
     The model decides whether fresh visual evidence helps the person's direct request; this only
-    checks the trusted current words permit it: present, not quoted, not a negated/meta request
-    about looking, not a non-physical (text/project) target and not a control command.
+    checks the trusted current words permit it: present, neither quoted nor conditional/hypothetical,
+    not a negated/meta request about looking, a non-physical target or a control command.
+    Simple current-view questions ("What do you see?" / "Wat zie je?") need no magic words
+    or physical object being held up. This guard never starts a camera session.
     """
     raw = str(text or "")
     clean = _SPACE_RE.sub(" ", raw.strip())
     if not clean or len(clean) > 400 or _QUOTE_RE.search(raw):
         return False
-    if direct_control_intent(clean) is not None or _META_RE.search(clean) or _NON_PHYSICAL_RE.search(clean):
+    if (
+        direct_control_intent(clean) is not None
+        or _META_RE.search(clean)
+        or _NON_PHYSICAL_RE.search(clean)
+        or _CONDITION_RE.search(clean)
+        or _HYPOTHETICAL_VISUAL_RE.search(clean)
+    ):
         return False
     return not (_NEGATION_RE.search(clean) and _LOOK_WORD_RE.search(clean))

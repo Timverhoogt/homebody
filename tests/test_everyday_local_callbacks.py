@@ -100,7 +100,7 @@ def test_legacy_unbound_request_cannot_advertise_or_read_device_schedules():
     asyncio.run(main())
 
 
-@pytest.mark.parametrize("arguments", [{"volume": True}, {"muted": True, "volume": 5}, {"other": 1}, []])
+@pytest.mark.parametrize("arguments", [{}, {"volume": True}, {"muted": True, "volume": 5}, {"other": 1}, []])
 def test_invalid_local_arguments_never_dispatch(arguments):
     async def main():
         actual = []

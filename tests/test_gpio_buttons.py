@@ -469,7 +469,7 @@ def gpio_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, FakeGpioSe
     app = Homebody(False)
     service = FakeGpioService()
     app._gpio_buttons = service  # type: ignore[assignment]
-    app.settings_app.extra["hermes"] = app
+    app.settings_app.state.hermes = app
     stored = [AppConfig()]
     monkeypatch.setattr(main_module, "load_config", lambda: stored[-1])
     monkeypatch.setattr(main_module, "save_config", lambda config: stored.append(config))
@@ -528,7 +528,7 @@ def test_gpio_route_rejects_invalid_settings_without_touching_lines(
 
 def test_gpio_settings_are_parent_controls_while_kids_mode_is_locked(monkeypatch: pytest.MonkeyPatch) -> None:
     client, service, stored = gpio_client(monkeypatch)
-    app = client.app.extra["hermes"]
+    app = client.app.state.hermes
     app._runtime = SimpleNamespace(kids_controls_locked=True)
 
     assert client.post("/api/gpio/buttons", json={"enabled": True}).status_code == 423

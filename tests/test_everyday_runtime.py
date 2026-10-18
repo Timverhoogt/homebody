@@ -89,6 +89,7 @@ def test_volume_strictness_replay_and_readback():
     assert r.execute_everyday_tool("set_reachy_volume", {"volume": 20}, fence=fence, call_id="one")["verified"]
     assert not r.execute_everyday_tool("set_reachy_volume", {"volume": 20}, fence=fence, call_id="one")["ok"]
     for bad in (
+        {},
         {"volume": True},
         {"volume": 1.5},
         {"volume": 200},

@@ -37,21 +37,30 @@ There is no scanning, motion, tracking or continuous camera.
 1. Reachy derives an internal grant for this session (a random token plus a monotonic serial)
    from the current saved permission. The bridge accepts a look permit only with that grant. It
    refuses older or revoked serials and never accepts a bare permission flag.
-2. Reachy says the bridge-moderated line "I'll look once at your toy, drawing or build now." /
-   "Ik kijk nu één keer naar je speelgoed, tekening of bouwwerk." using exact approved Kids TTS.
+2. Reachy says the bridge-moderated line "I'll look once at what you're showing me now." /
+   "Ik kijk nu één keer naar wat je me laat zien." using exact approved Kids TTS.
 3. Reachy takes **one** frame.
 4. The bridge sends it once to the configured Kids vision route. Unless the host sets
    `REACHY_ISPY_VISION_URL` to a local vision server, that route is the bridge's **external**
    model provider. The frame is not stored.
-5. The provider can only return a strict enum: toy, drawing or build, plus a colour and shape.
-   The bridge renders a fixed sentence such as "I saw a drawing with blue. What would you like to
-   tell me about it?", moderates it and returns it with exact-text speech approvals.
-6. People, faces, clothing, screens, documents, medicine, weapons, hazards, private items,
-   identifying text, sensitive inferences or uncertainty produce the fixed decline "I can't
-   safely tell what that is…". Unavailable vision produces "Sorry, I couldn't look just now…".
-   Text in the image is never read, repeated or obeyed.
-7. Only the three enums stay in the bridge's session RAM, as a system note for later moderated
-   Kids Chat turns. A fresh look replaces them.
+5. The provider applies its child-safety policy and returns a structured status (`recognized`,
+   `unclear` or `refused`) plus English and Dutch descriptions, each bounded locally to 600
+   characters. Ordinary objects and animals are not restricted to a toy/drawing/build enum.
+   The bridge moderates the final selected-language text and issues separate single-use
+   streaming and fallback approvals bound to that exact session and text. Nothing is spoken
+   without screening; text is not changed after approval.
+6. Actual provider refusals and content-filter responses are honored, without retrying or
+   speaking raw refusal text. Unclear views receive uncertainty copy, not a safety accusation.
+   Malformed/unavailable vision receives unavailable copy. All of these replies are moderated.
+   The provider is instructed not to identify people, infer sensitive traits, reproduce private
+   text, follow image instructions or give age-inappropriate/dangerous advice. These are provider
+   instructions, not claims of perfect recognition or deterministic content filtering.
+7. Only the moderated selected-language description (at most 600 characters) stays in the
+   bridge's bounded, expiring session RAM for follow-up. It is supplied as **untrusted user-role
+   data**, never interpolated into system instructions. A new admitted look clears the previous
+   description. Frames and raw responses are not persisted or logged; logs contain outcome
+   categories only. Lifecycle cleanup below clears the session description. Normal bounded
+   Kids conversation history may also contain moderated replies until its own session cleanup.
 
 A voice-requested look runs inside the child's current turn, which then continues as usual.
 Look now never wakes Reachy or opens the microphone. There is no fallback voice, no barge-in
@@ -102,7 +111,8 @@ Code: `homebody/show_and_tell.py` (grammar, gate, transaction),
 
 ## Known limits
 
-- Hands are allowed, but a visible face makes Reachy decline. Hold the item close to the camera.
+- Provider-led recognition can be mistaken; a visible face is not a local blanket veto, but
+  identifying people and sensitive inferences remain prohibited by the provider instructions.
 - English and Dutch only.
 - Recognition quality, provider safety classification and real latency are untested.
 - No physical acceptance has been done. The evidence is synthetic unit tests, loopback aiohttp
