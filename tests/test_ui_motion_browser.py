@@ -146,6 +146,8 @@ def test_home_presence_pauses_when_hidden_and_drops_to_offline(ui):
     _apply(page, state, "speaking")
     page.wait_for_timeout(250)
     assert _scene(page, "hero-presence")["motion"] == "on" and _running(page, "#hero-presence") > 0
+    if page.locator("#tab-more").is_visible():  # phones: Settings is behind More
+        page.click("#tab-more")
     page.click("#tab-settings")
     page.wait_for_timeout(250)
     assert _scene(page, "hero-presence")["motion"] == "off" and _running(page, "#hero-presence") == 0
@@ -192,7 +194,7 @@ def test_home_hero_fits_and_power_controls_stay_hit_testable(ui, width, scheme):
                 doc: document.documentElement.scrollWidth}; }""")
     assert geometry["left"] >= geometry["hl"] and geometry["right"] <= geometry["hr"]
     assert geometry["doc"] <= width and geometry["w"] >= 140
-    for selector in ('.power-actions [data-power="standby"]', '.power-actions [data-power="sleep"]'):
+    for selector in ('#global-power-standby', '#global-power-awake'):
         page.locator(selector).focus()
         assert page.evaluate(HIT_TEST, selector)["ok"], selector
     page.evaluate("window.scrollTo(0, 0)")
@@ -254,15 +256,17 @@ def _native_fixture(page, runtime):
 
 
 def _open_native(page):
-    page.click("#agent-view-workspace")
     page.wait_for_function("!document.getElementById('workspace-start').disabled")
     page.click("#workspace-start")
     page.wait_for_function("!document.getElementById('workspace-native-bind').disabled")
 
 
 def _bench_shot(page, name):
+    # The bench lives in the Work pane; phones show it when Work is the selected segment.
+    if page.locator("#ws-seg-work").is_visible():
+        page.click("#ws-seg-work")
     page.locator("#workspace-native-scene").scroll_into_view_if_needed()
-    _shot(page, name, clip=page.locator(".workspace-native").bounding_box())
+    _shot(page, name, clip=page.locator("#workspace-pane-work").bounding_box())
 
 
 @pytest.mark.parametrize("width", [320, 390, 1280])
@@ -282,11 +286,13 @@ def test_workspace_bench_follows_native_state_without_inventing_progress(workspa
     fixture["binding"] = {"backend": "hermes", "project_id": "photo", "session_id": "native-secret-session"}
     held["routes"].pop().fulfill(json=fixture)
     page.wait_for_function("document.getElementById('workspace-native-bind').dataset.hbMotion === 'confirmed'")
+    page.evaluate("HomebodyWorkspace.pane('project')")  # opening lands on Chat on phones; measure the button
     assert page.evaluate(
         "document.getElementById('workspace-native-bind').getBoundingClientRect().height"
     ) == pytest.approx(height, rel=0, abs=0.001)
     page.wait_for_function(f"{BENCH} === 'discussing'")
     page.wait_for_function("!document.getElementById('workspace-native-bind').dataset.hbMotion", timeout=3000)
+    page.evaluate("HomebodyWorkspace.pane('work')")
     page.fill("#workspace-native-request", "Implement the private contract")
     page.click("#workspace-native-prepare")
     page.wait_for_function(f"{BENCH} === 'approval'")
@@ -301,10 +307,10 @@ def test_workspace_bench_follows_native_state_without_inventing_progress(workspa
     page.locator("#workspace-native-scene").scroll_into_view_if_needed()
     page.wait_for_function("document.querySelector('#workspace-native-scene .hb-scene').dataset.motion === 'on'")
     # Hidden (another view), the loop pauses; it is decoration, not a progress signal.
-    page.click("#agent-view-companion")
+    page.click("#tab-dashboard")
     page.wait_for_function("document.querySelector('#workspace-native-scene .hb-scene').dataset.motion === 'off'")
     assert _running(page, "#workspace-native-scene .hb-art") == 0
-    page.click("#agent-view-workspace")
+    page.click("#tab-agent")
     page.wait_for_function(f"{BENCH} === 'working'")
     _bench_shot(page, f"workspace-running-{width}")
     # "completed" text returned is not success; only the exact receipt check is "Ready to test".
@@ -413,7 +419,7 @@ def _camera_page(ui, width=390):
     state["config"].update(camera_feed_enabled=True, camera_controls_enabled=True)
     _apply(page, state, "waiting_for_wake_word", "awake", motors_enabled=True)
     page.evaluate(FAKE_CAMERA)
-    page.click("#tab-robot")
+    page.evaluate("document.getElementById('tab-robot').click()")
     return page, state, errors, camera_requests
 
 
@@ -519,7 +525,7 @@ def _updates_page(ui, width=390):
             route.fulfill(json=json.loads(json.dumps(catalog)))
 
     page.route("**/api/updates", updates)
-    page.click("#tab-settings")
+    page.evaluate("document.getElementById('tab-settings').click()")
     return page, catalog, control, errors
 
 
@@ -701,7 +707,7 @@ def test_motion_feedback_is_token_bound_and_reset_releases_everything(ui):
 
 def test_disclosure_entrances_are_opt_in_and_skip_reduced_motion(ui):
     page, state, posts, errors = ui
-    page.click("#tab-settings")
+    page.evaluate("document.getElementById('tab-settings').click()")
     assert 3 <= page.evaluate("document.querySelectorAll('details[data-hb-disclosure]').length") <= 8
     page.locator("#updates-card details summary").click()
     page.wait_for_function("document.getElementById('update-history').classList.contains('hb-enter')")
@@ -754,12 +760,17 @@ def test_scrolled_controls_clear_sticky_bars_and_keep_48px_targets(workspace_bro
     page.set_viewport_size({"width": width, "height": 700})
     _native_fixture(page, runtime)
     _open_native(page)
-    for selector in ("#workspace-start", "#workspace-native-stop", "#workspace-native-prepare"):
+    # Connect hides once connected, so measure the controls that stay: Open (Project) and the Work actions.
+    for selector in ("#workspace-native-bind", "#workspace-native-stop", "#workspace-native-prepare"):
+        page.evaluate("s => HomebodyWorkspace.pane(document.querySelector(s).closest('.workspace-pane').id"
+                      ".replace('workspace-pane-', ''))", selector)
         height = page.evaluate("s => document.querySelector(s).getBoundingClientRect().height", selector)
         assert height >= 48, (selector, height)
-    # Keyboard focus from far below lands each enabled control clear of the sticky top bar and the
-    # fixed phone tab bar.
-    for selector in ("#workspace-clear", "#workspace-native-bind", "#agent-view-companion", "#agent-view-workspace"):
+    # Keyboard focus from far below lands each enabled control clear of the sticky top bar, the sticky
+    # Workspace segments and the fixed phone tab bar (these controls live in the Project pane).
+    page.evaluate("HomebodyWorkspace.pane('project')")
+    for selector in ("#workspace-clear", "#workspace-native-bind", "#workspace-repositories-reload",
+                     "#agent-conversation-button"):  # the enabled route segment while Workspace is active
         page.evaluate(
             "s => { window.scrollTo(0, document.body.scrollHeight); document.querySelector(s).focus(); }", selector
         )

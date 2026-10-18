@@ -1,0 +1,195 @@
+/* App shell: three destinations, one compact status bar, and a Workspace built around one readable thread.
+   Loaded after style.css; it replaces layout, not the enclosure/display visual language. */
+
+/* Icons: one family (index.html sprite), 1.8 stroke, sized to the text beside them. */
+.icon { width: 1.15em; height: 1.15em; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: -.2em; }
+button .icon { margin-right: .4em; }
+.icon-button .icon { margin: 0; }
+.compact-status-line dt .icon { margin-right: .35em; width: 1.2em; height: 1.2em; }
+
+/* Navigation: Everyday · Workspace · Kids lead; tools and settings are quieter (behind More on phones). */
+.tabs { display: flex; align-items: center; gap: 18px; counter-reset: none; }
+.tabs-primary, .tabs-secondary { display: flex; align-items: center; gap: 4px; }
+.tabs-primary { padding: 4px; border: 1px solid var(--line-strong); border-radius: 999px; }
+.tab-button::before { display: none; }
+.tab-button .icon { margin-right: .35em; }
+.tab-primary { min-height: 40px; padding: 0 16px; font-size: .95rem; }
+.tab-secondary { min-height: 36px; padding: 0 10px; font-size: .82rem; font-weight: 500; }
+.tab-secondary.active { color: var(--ink); background: var(--btn2-hover); box-shadow: inset 0 0 0 1px var(--rule); }
+.tab-more { display: none; }
+@media (max-width: 900px) {
+  .tabs { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .tab-secondary .icon { display: none; }
+  .tab-primary { padding: 0 12px; }
+}
+.topbar { gap: 20px; }
+.topbar .agent-connection-badge { margin-left: 0; order: 3; }
+.topbar .tabs { margin-left: auto; order: 2; }
+
+/* One status bar on every destination: state, measured status, power, voice route and stops. */
+.global-robot-status { gap: 10px; margin-top: 12px; padding: 12px 14px; }
+.status-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+.status-row .power-now { flex: 1 1 200px; }
+.power-now .label { flex: 0 0 auto; margin: 0; }
+.power-now-mode { font-size: 1.45rem; }
+.compact-status-line { flex: 2 1 300px; }
+.compact-status-line dt { display: flex; align-items: center; }
+.global-adult-controls { padding-top: 10px; }
+/* Every control here keeps the app-wide 48 px touch target. */
+.global-robot-status :is(button, summary) { min-height: 48px; }
+.global-robot-status .voice-route { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0; padding: 10px 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none; }
+.voice-route > .label { margin: 0; }
+.voice-route .assistant-mode-switch { display: inline-grid; grid-template-columns: repeat(2, auto); gap: 0; margin: 0; padding: 3px; border: 1px solid var(--line-strong); border-radius: 999px; }
+.voice-route .assistant-mode-switch button { min-height: 48px; padding: 6px 16px; border: 0; border-radius: 999px; box-shadow: none; }
+.voice-route .assistant-mode-switch button small { display: none; }
+.voice-route .assistant-mode-switch button[aria-pressed="true"] { color: var(--paper); background: var(--ink); box-shadow: none; }
+.voice-route .assistant-mode-switch[data-confirmed="false"] button[aria-pressed="true"] { color: var(--ink); background: var(--btn2-hover); }
+.voice-route .assistant-mode-state { flex: 1 1 200px; margin: 0; font-size: .85rem; }
+.voice-route .assistant-mode-state strong { font-size: .9rem; }
+.voice-route .agent-mode-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 0 auto; padding: 0; border: 0; }
+.voice-route .agent-mode-bar button { min-height: 48px; padding: 0 14px; font-size: .85rem; }
+.voice-route .message:empty { display: none; }
+.voice-route .message { flex: 1 0 100%; margin: 0; }
+/* Stop is always reachable but not a shouting block: outlined danger, filled only on hover/focus. */
+.stop-agent { color: var(--danger-text); border-color: var(--danger) !important; }
+.stop-agent:hover:not(:disabled), .stop-agent:focus-visible { color: #fff; background: var(--danger); }
+#agent-approval-sheet { border-color: var(--orange); }
+@media (min-width: 900px) {
+  .global-robot-status { grid-template-columns: 1fr; }
+  .global-adult-controls { grid-template-columns: auto minmax(0, 1fr); }
+}
+/* Kids is its own experience: the adult route row stays out of it (main.js also hides .agent-card). */
+body[data-destination="kids"] .voice-route { display: none; }
+
+/* Everyday: live state first, then quick help, household and the companion. */
+#panel-dashboard { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+#panel-dashboard > :is(.everyday-card, .household-card, .conversation-card, .global-robot-status, .agent-approval-sheet) { grid-column: 1 / -1; }
+#panel-dashboard > .everyday-companion-view { grid-column: 1 / -1; min-width: 0; }
+#panel-dashboard > .install-card { grid-column: 1 / -1; order: 10; }
+.everyday-companion-view > .card, .everyday-companion-view > details { margin-top: 20px; }
+@media (max-width: 900px) { #panel-dashboard { grid-template-columns: 1fr; } }
+
+/* Workspace: compact header, then Chat · Work · Project. */
+#panel-agent { max-width: none; }
+#panel-agent .page-heading { padding-top: 16px; }
+.workspace-gate { display: grid; gap: 10px; justify-items: start; }
+.workspace-gate h2, .workspace-gate p { margin: 0; }
+#panel-agent:not([data-projects="true"]) :is(#agent-workspace-view, .workspace-segments, #workspace-mode-card) { display: none !important; }
+.workspace-header { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px 12px; margin-top: 12px; padding: 12px 16px; border-radius: 16px; color: var(--screen-ink); background: var(--screen); }
+.workspace-header h2 { margin: 0; font-size: clamp(1.3rem, 2.6vw, 1.8rem); overflow-wrap: anywhere; }
+.workspace-header-main .muted { margin: 2px 0 0; color: var(--screen-dim); font-size: .85rem; overflow-wrap: anywhere; }
+.workspace-header .badge { color: var(--screen-ink); border-color: rgba(244, 237, 225, .3); }
+.workspace-header #workspace-start { --btn-bg: var(--orange); --btn-fg: var(--orange-ink); min-height: 48px; }
+.workspace-header-more > summary { min-height: 48px; }
+.workspace-header-more { grid-column: 1 / -1; color: var(--screen-dim); font-size: .85rem; }
+.workspace-header-more > summary { min-height: 32px; color: var(--screen-dim); font-size: .8rem; }
+.workspace-header-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px 18px; margin: 8px 0 0; }
+.workspace-header-facts > div { min-width: 0; padding-left: 10px; border-left: 1.5px solid rgba(244, 237, 225, .25); }
+.workspace-header-facts dt { font-family: var(--mono); font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; }
+.workspace-header-facts dd { margin: 3px 0 0; color: var(--screen-ink); line-height: 1.35; overflow-wrap: anywhere; }
+
+.workspace-segments { display: none; }
+.workspace-layout { display: grid; gap: 16px; margin-top: 14px; grid-template-columns: minmax(240px, 290px) minmax(0, 1fr) minmax(280px, 360px); align-items: start; }
+.workspace-pane-project { order: 0; }
+.workspace-pane-chat { order: 1; }
+.workspace-pane-work { order: 2; }
+.workspace-pane { min-width: 0; padding: 16px 18px; border: 1.5px solid var(--rule); border-radius: 18px; }
+.pane-title { margin: 0 0 8px; font-size: 1.35rem; }
+.workspace-pane label { display: block; margin-top: 12px; font-weight: 600; font-size: .9rem; }
+.workspace-pane select, .workspace-pane textarea { width: 100%; max-width: 100%; }
+.workspace-pane .workspace-toolbar { margin: 8px 0; }
+.workspace-pane-project .workspace-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 48px; }
+.icon-button { display: inline-grid; place-items: center; min-width: 48px; min-height: 48px; padding: 0; }
+.workspace-open { width: 100%; margin-top: 14px; }
+.workspace-pane button, .workspace-pane summary { min-height: 48px; }
+.workspace-identity { margin: 12px 0 0; font-family: var(--mono); font-size: .76rem; color: var(--muted); overflow-wrap: anywhere; }
+.workspace-clear-row { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.workspace-clear-confirm { margin-top: 12px; }
+
+/* The thread: the only place conversation appears; it scrolls inside itself so the page stays put. */
+.workspace-pane-chat { display: grid; gap: 8px; }
+.workspace-pane-chat .compact-note { margin: 0; }
+.workspace-thread { margin: 4px 0 0; padding: 4px 2px; min-height: 280px; max-height: min(70vh, 780px); }
+.workspace-thread[data-stale] { opacity: .6; }
+.workspace-stale { margin: 0; padding: 8px 12px; border-radius: 10px; color: var(--orange-ink); background: var(--warn-bright); font-size: .86rem; }
+.workspace-live { margin: 0; padding: 6px 12px; border-left: 2px solid var(--orange); color: var(--muted); font-size: .86rem; }
+.workspace-event small { display: block; margin-top: 8px; color: var(--muted); font-size: .74rem; }
+.workspace-event details { margin-top: 10px; }
+.workspace-event details pre { max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .74rem; }
+.workspace-request { border-style: dashed; }
+.workspace-note { padding: 8px 12px; font-size: .8rem; color: var(--muted); text-align: center; }
+
+/* Work: request → review → run state → results, each visibly distinct (text plus edge colour). */
+.workspace-run-state { margin: 0 0 6px; padding: 10px 12px; border-radius: 12px; background: var(--inset); font-size: .9rem; line-height: 1.45; overflow-wrap: anywhere; }
+.workspace-run-state[data-status="running"], .workspace-run-state[data-status="verifying"], .workspace-run-state[data-status="stopping"] { box-shadow: inset 3px 0 0 var(--warn); }
+.workspace-run-state[data-status="ready"] { box-shadow: inset 3px 0 0 var(--ok); }
+.workspace-run-state:is([data-status="failed"], [data-status="verification_failed"], [data-status="uncertain"]) { box-shadow: inset 3px 0 0 var(--danger); }
+.workspace-pane-work .workspace-toolbar { display: grid; grid-template-columns: 1fr 1fr; }
+.workspace-native-approval { border-color: var(--orange); }
+.workspace-native-approval h3 { margin: 0 0 8px; }
+.workspace-review { display: grid; gap: 10px; margin: 0 0 12px; }
+.workspace-review dt { font-family: var(--mono); font-size: .64rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.workspace-review dd { margin: 3px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.workspace-review ul { margin: 0; padding-left: 1.1em; font-family: var(--mono); font-size: .78rem; }
+.workspace-results, .workspace-activity-log { margin-top: 14px; }
+.workspace-checks { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 6px; }
+.workspace-checks li { padding: 6px 10px; border-radius: 8px; font-family: var(--mono); font-size: .76rem; overflow-wrap: anywhere; box-shadow: inset 3px 0 0 var(--ok); background: var(--inset); }
+.workspace-checks li[data-ok="false"] { box-shadow: inset 3px 0 0 var(--danger); }
+#workspace-work-activity { max-height: 260px; overflow: auto; }
+.workspace-pane-work > .card { margin-top: 14px; padding: 14px 16px; }
+
+@media (max-width: 1180px) {
+  .workspace-layout { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
+  .workspace-pane-project { grid-column: 1 / -1; order: 3; }
+}
+/* Phones and small tablets: one pane at a time, chosen with the segmented control. */
+@media (max-width: 760px) {
+  .workspace-segments { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 10px; padding: 4px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--paper); }
+  .workspace-segments button { min-height: 48px; padding: 0 6px; border: 0; border-radius: 999px; color: var(--ink); background: transparent; box-shadow: none; font-size: .9rem; }
+  .workspace-segments button[aria-selected="true"] { color: var(--paper); background: var(--ink); }
+  .workspace-layout { grid-template-columns: 1fr; margin-top: 10px; }
+  .workspace-layout:not([data-pane="chat"]) > .workspace-pane-chat,
+  .workspace-layout:not([data-pane="work"]) > .workspace-pane-work,
+  .workspace-layout:not([data-pane="project"]) > .workspace-pane-project { display: none; }
+  .workspace-pane { padding: 14px; border-radius: 16px; }
+  .workspace-pane .pane-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .workspace-thread { max-height: none; min-height: 50vh; }
+  .workspace-header { grid-template-columns: minmax(0, 1fr) auto; }
+  .workspace-header .badge { display: none; }
+}
+@media (max-width: 650px) {
+  /* Bottom bar: the three destinations plus More; More opens Announce, Robot and Settings above it. */
+  .tabs { position: static; display: flex; margin: 0 0 0 auto; padding: 0; border-radius: 0; background: none; box-shadow: none; }
+  .tabs-primary { position: fixed; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); left: 12px; z-index: 100; display: grid; grid-template-columns: repeat(3, 1fr) .8fr; gap: 4px; padding: 6px; border: 0; border-radius: 22px; background: var(--ink); box-shadow: 0 16px 40px rgba(0, 0, 0, .35); }
+  .tab-primary, .tab-more { min-height: 52px; display: grid; justify-items: center; align-content: center; gap: 2px; padding: 4px 2px; font-size: min(.78rem, 3.3vw); font-weight: 700; white-space: nowrap; overflow-wrap: normal; hyphens: none; }
+  .tab-primary .icon, .tab-more .icon { width: 1.35em; height: 1.35em; margin: 0; }
+  .tab-more { color: var(--paper); background: transparent; border: 0; border-radius: 16px; }
+  .tab-more.active, .tab-more[aria-expanded="true"] { color: var(--orange-ink); background: var(--orange); }
+  .tabs-secondary { position: fixed; right: 12px; bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 101; display: none; flex-direction: column; align-items: stretch; min-width: 180px; padding: 6px; border-radius: 16px; background: var(--ink); box-shadow: 0 16px 40px rgba(0, 0, 0, .35); }
+  .tabs[data-more-open="true"] .tabs-secondary { display: flex; }
+  .tab-secondary { display: flex; justify-content: flex-start; min-height: 48px; padding: 0 14px; border-radius: 12px; color: var(--paper); font-size: .92rem; font-weight: 600; }
+  .tab-secondary:hover { color: var(--paper); background: rgba(241, 235, 224, .1); }
+  .tab-secondary.active { color: var(--orange-ink); background: var(--orange); box-shadow: none; }
+  /* One compact row: mark and connection dot (its text stays available to screen readers). */
+  .topbar { flex-wrap: nowrap; gap: 8px; padding: 8px 0; }
+  .topbar .agent-connection-badge { margin-left: auto; min-width: 44px; justify-content: center; padding: 8px; }
+  #agent-connection-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .page-heading { padding-top: 12px; }
+  .page-heading p { display: none; }
+  /* Compact status: state line, three power buttons, route switch and stops — no long help text. */
+  .power-now-detail { display: none; }
+  /* Phones: labels that only repeat what the values already say give way to the content below. */
+  .power-now .label, .voice-route > .label, .compact-status-line dt { font-size: .62rem; }
+  .voice-route > .label { display: none; }
+  .global-robot-status { gap: 8px; padding: 10px 12px; }
+  .global-adult-controls { padding-top: 8px; }
+  .workspace-header { padding: 10px 12px; gap: 6px 10px; }
+  /* The pressed route button already names the mode; the sentence returns only while unconfirmed. */
+  .voice-route .assistant-mode-state:is([data-mode="everyday"], [data-mode="workspace"]) { display: none; }
+  .compact-status-line dd { font-size: .78rem; }
+  .global-power-primary button { font-size: .8rem; padding: 6px; }
+  .global-power-primary button .icon { display: none; }
+  .voice-route .assistant-mode-state #assistant-mode-detail { display: none; }
+  .voice-route .agent-mode-bar { margin: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .voice-route .agent-mode-bar .badge { grid-column: 1 / -1; }
+}

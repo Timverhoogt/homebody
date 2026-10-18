@@ -95,7 +95,7 @@ def test_settings_offer_robot_provider_with_explicit_fallback(ui, provisioned):
                  "provisioned": provisioned}],
         "tts": [{"id": "configured", "label": "Hermes configured TTS", "models": [], "voices": []}],
     }))
-    page.click("#tab-settings")
+    page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
     page.evaluate("loadVoiceOptions()")
     page.wait_for_function("[...document.querySelectorAll('#stt_provider option')].some(o => o.value === 'robot')")
     # The saved/default selection is preserved; the fallback control stays hidden for host STT.

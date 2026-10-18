@@ -579,6 +579,13 @@ document.querySelectorAll("[data-kids-activity]").forEach((button) => {
 $("kids-activity-badge").textContent = kidsActivityLabels[selectedKidsActivity];
 $("kids-ispy-consent-row").hidden = selectedKidsActivity !== "ispy";
 
+/** Phones keep Announce, Robot and Settings behind More; wider screens always show them. */
+function setMoreOpen(open) {
+  $("tab-more").setAttribute("aria-expanded", String(open));
+  document.querySelector(".tabs").dataset.moreOpen = String(open);
+}
+$("tab-more").addEventListener("click", () => setMoreOpen($("tab-more").getAttribute("aria-expanded") !== "true"));
+
 function visibleTabButtons() {
   return [...document.querySelectorAll("[data-tab]")].filter((button) => !button.hidden);
 }
@@ -600,12 +607,17 @@ function activateTab(name, focus = false, recordHistory = false) {
   document.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== target.dataset.tab;
   });
+  // One status bar for every destination, placed under its heading (after the Everyday and Play together
+  // heroes) so each page still leads with what it is.
+  document.body.dataset.destination = target.dataset.tab;  // not data-tab: that selects the tab buttons
+  setMoreOpen(false);
+  $("tab-more").classList.toggle("active", target.classList.contains("tab-secondary"));
   const globalStatus = document.getElementById("global-robot-status");
   if (globalStatus) {
-    globalStatus.hidden = target.dataset.tab === "dashboard";
-    // On Kids the shared card follows the Play together hero so shared play leads the first screen.
     const panel = document.querySelector(`[data-panel="${target.dataset.tab}"]`);
-    (panel?.querySelector(":scope > .kids-hero") || panel?.querySelector(".page-heading"))?.insertAdjacentElement("afterend", globalStatus);
+    (panel?.querySelector(":scope > .kids-hero, :scope > .hero") || panel?.querySelector(".page-heading"))
+      ?.insertAdjacentElement("afterend", globalStatus);
+    globalStatus.insertAdjacentElement("afterend", $("agent-approval-sheet"));
   }
   document.title = `${target.textContent.trim()} · Homebody`;
   target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
@@ -624,7 +636,11 @@ function activateTab(name, focus = false, recordHistory = false) {
 
 const tabButtons = [...document.querySelectorAll("[data-tab]")];
 tabButtons.forEach((button, index) => {
-  button.addEventListener("click", () => activateTab(button.dataset.tab, false, true));
+  button.addEventListener("click", () => {
+    activateTab(button.dataset.tab, false, true);
+    // Only a real tap enters Workspace (route switch if needed, then connect); restores never do.
+    if (button.dataset.tab === "agent") window.HomebodyWorkspace?.enter();
+  });
   button.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
@@ -1145,8 +1161,8 @@ function updateStatus(payload, sequence = statusSequence) {
     agent: kidsActive
       ? ["warn", "Locked out"]
       : agentProfile === "agent"
-        ? ["on", "Agent session"]
-        : ["warn", "Conversation only"],
+        ? ["on", "Workspace"]
+        : ["warn", "Everyday"],
   });
   document.querySelectorAll("[data-power]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.power === powerMode));
@@ -1208,6 +1224,7 @@ function updateStatus(payload, sequence = statusSequence) {
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.hidden = kidsLocked && button.dataset.tab !== "kids";
   });
+  $("tab-more").hidden = kidsLocked;
   if (kidsLocked && document.querySelector('[data-tab="kids"]')?.getAttribute("aria-selected") !== "true") {
     activateTab("kids");
   }
@@ -1855,18 +1872,18 @@ const PRESENTATION_NEEDS = {
     { tab: "agent", companion: true, id: "initiative-policy-enabled" }],
   offers: ["Turn on Contextual offers in Initiative & Offers (after the initiative policy).", "Go to switch",
     { tab: "agent", companion: true, id: "contextual-offers-enabled" }],
-  workspace: ["Choose Workspace at the top of the Agent screen.", "Go to Workspace",
-    { tab: "agent", id: "agent-enable-button" }],
+  workspace: ["Choose Workspace as the voice route in the status bar.", "Go to Workspace",
+    { tab: "dashboard", id: "agent-enable-button" }],
   awake: ["Reachy must be Awake with motors on: use Wake up in the status bar.", "Go to Wake up",
-    { tab: "agent", id: "global-power-awake" }],
+    { tab: "dashboard", id: "global-power-awake" }],
   face: ["Turn off Local face following in Settings › Embodiment and privacy.", "Go to setting",
     { tab: "settings", id: "face_tracking_enabled" }],
   kids: ["Kids Mode is active or locked; presenting is unavailable.", "", null],
 };
 
 function goToControl({ tab, companion, id }) {
-  activateTab(tab, false, true);
-  if (companion && $("agent-companion-view").hidden) $("agent-view-companion").click();
+  activateTab(companion ? "dashboard" : tab, false, true);
+  if (companion) $("companion-advanced").open = true;
   const control = $(id);
   if (!control) return;
   const details = control.closest("details");
@@ -3023,8 +3040,8 @@ async function setAgentProfile(profile) {
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     modeWriteAccepted = true;
     message.textContent = profile === "agent"
-      ? "Workspace active. Reversible owner tools are available; consequential actions pause for exact phone approval."
-      : "Everyday active. Any approved project work keeps running; its details stay hidden until you return to Workspace, and Stop all Agent work stays available while it runs.";
+      ? "Workspace active. Actions with real consequences still ask for approval here."
+      : "Everyday active. Approved project work keeps running; Stop all work stays available.";
     notifyFeedback(message, "ok");
     // Still pending here: the projects view opens only once status confirms Workspace.
     if (profile === "agent") window.HomebodyWorkspace?.show();

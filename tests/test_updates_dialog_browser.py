@@ -345,7 +345,7 @@ def test_newest_completion_once_without_rotation_or_auto_ack(browser):
         assert not dialog_open(page), "closed completion re-opened or older one rotated in"
     assert fx.posts == []
     assert all(not h["acknowledged"] for h in body["history"])
-    page.click("#tab-settings")
+    page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
     page.locator("#updates-card details > summary").first.click()
     assert page.locator("#update-history > details").count() == 2
     page.locator("#update-history > details > summary").first.click()

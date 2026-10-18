@@ -128,7 +128,7 @@ def test_real_browser_timer_queue_and_hover(browser_page):
 
 def test_actual_settings_failure_and_tab_switch(browser_page):
     page, errors = browser_page
-    page.locator("#tab-settings").click()
+    page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
     # Submit the real form handler, with a fixture 503 response; not a robot write.
     page.locator("#settings-form").evaluate(
         "el => { el.noValidate=true; el.requestSubmit(el.querySelector('button[type=submit]')); }"

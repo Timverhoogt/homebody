@@ -12,13 +12,17 @@ def test_page_identity_home_only_hero_and_safe_navigation(browser_page, width):
     page.clock.resume()
     dest = Path(".pytest_cache/tab-hierarchy")
     dest.mkdir(parents=True, exist_ok=True)
-    for tab, label in [("dashboard", "Home"), ("agent", "Agent"), ("kids", "Kids"),
+    for tab, label in [("dashboard", "Everyday"), ("agent", "Workspace"), ("kids", "Kids"),
                        ("announce", "Announce"), ("robot", "Robot"), ("settings", "Settings")]:
+        if tab in {"announce", "robot", "settings"} and width < 650:
+            page.locator("#tab-more").click()  # phones keep tools and settings behind More
         page.locator(f"#tab-{tab}").click()
         assert page.locator(".page-heading h1:visible").inner_text() == label
         assert page.title() == f"{label} · Homebody"
         assert page.locator(".status-card").is_visible() == (tab == "dashboard")
-        assert page.locator("#global-robot-status").is_visible() == (tab != "dashboard")
+        # One status bar on every destination (the hero no longer carries its own power buttons).
+        assert page.locator("#global-robot-status").is_visible()
+        assert page.locator(".hero [data-power]").count() == 0
         assert page.locator(f"#tab-{tab}").get_attribute("aria-selected") == "true"
         box = page.locator(".page-heading h1:visible").bounding_box()
         assert 0 <= box["y"] < 240
@@ -26,14 +30,14 @@ def test_page_identity_home_only_hero_and_safe_navigation(browser_page, width):
         if tab in {"dashboard", "robot", "settings"}:
             page.evaluate("() => new Promise(requestAnimationFrame)")
             page.screenshot(path=str(dest / f"{tab}-{width}.png"), animations="disabled")
-    page.locator("#tab-settings").focus()
+    page.locator("#tab-dashboard").focus()  # Settings may be folded behind More on phones
     page.keyboard.press("Home")
     assert page.locator("#panel-dashboard").is_visible()
     page.keyboard.press("End")
     assert page.locator("#panel-settings").is_visible()
     page.go_back()
     assert page.locator("#panel-dashboard").is_visible()
-    page.locator("#tab-settings").click()
+    page.evaluate("document.getElementById('tab-settings').click()")
     page.clock.resume()
     page.evaluate("() => new Promise(requestAnimationFrame)")
     dest = Path(".pytest_cache/tab-hierarchy")
@@ -44,7 +48,7 @@ def test_page_identity_home_only_hero_and_safe_navigation(browser_page, width):
 
 def test_compact_status_and_kids_lock_are_authoritative(browser_page):
     page, errors = browser_page
-    page.locator("#tab-settings").click()
+    page.evaluate("document.getElementById('tab-settings').click()")
     page.evaluate("updateStatus({config:{camera_feed_enabled:true},runtime:{power_mode:'awake',motors_enabled:true,state:'listening'}})")
     assert page.locator("#compact-power-mode").inner_text() == "Awake"
     for name in ["mic", "camera", "motors"]:
@@ -64,7 +68,7 @@ def test_compact_status_and_kids_lock_are_authoritative(browser_page):
 @pytest.mark.parametrize("outcome", ["success", "unconfirmed", "network"])
 def test_shared_power_and_stop_use_visible_feedback(browser_page, outcome):
     page, errors = browser_page
-    page.locator("#tab-settings").click()
+    page.evaluate("document.getElementById('tab-settings').click()")
     # Suppress toast cards to exercise the actual inline fallback.
     page.evaluate("HomebodyNotifications.show = () => false")
     if outcome == "network":

@@ -36,10 +36,14 @@
       : mode === 'everyday' ? 'Fast home answers. No agent memory, projects or coding tools.'
         : mode === 'workspace' ? 'Project sessions on your agent host. Review planned coding work before approving it.'
           : unknownReason);
+    // Each route's details show only once status confirms it; the Workspace destination offers one way in.
     $('everyday-card').hidden = mode !== 'everyday';
     $('workspace-mode-card').hidden = mode !== 'workspace';
-    // Only a confirmed Workspace has a project surface; everything else fails closed to Companion.
-    document.querySelector('.agent-view-switch').hidden = mode !== 'workspace';
+    $('workspace-gate').hidden = mode === 'workspace';
+    text('workspace-gate-state', mode === 'pending' ? `Switching to ${MODE_LABELS[switchingTo]}…`
+      : mode === 'everyday' ? 'Voice is in Everyday. Workspace connects Reachy to your repositories and coding sessions.'
+        : unknownReason);
+    $('tab-dashboard').dataset.profileActive = String(mode === 'everyday');
     window.HomebodyWorkspace?.gate(mode);
     renderStop();
     sync();
@@ -53,13 +57,14 @@
   /** Repaint the Workspace card from the display and project lanes; display-only, never fetches. */
   function sync() {
     if ($('workspace-mode-card').hidden) return;
-    const display = window.HomebodyWorkspace?.state() || { showing: false, view: 'companion' };
+    const display = window.HomebodyWorkspace?.state() || { showing: false, view: 'other' };
     const native = window.HomebodyNativeWorkspace?.summary() || { session: 'unchecked', repository: '' };
-    text('workspace-mode-view', display.view === 'workspace' ? 'Conversation & projects' : 'Companion');
-    text('workspace-mode-display', display.showing ? 'Showing live · RAM only · not a project connection' : 'Off');
-    text('workspace-mode-repository', native.repository || 'None selected');
+    text('workspace-mode-display', display.showing ? 'Connected' : 'Not connected');
+    text('workspace-mode-repository', native.repository || (native.session === 'bound' ? native.label : 'No project open'));
+    $('workspace-mode-card').dataset.session = native.session;
+    $('workspace-mode-card').dataset.run = native.run || '';
     text('workspace-mode-session', {
-      unchecked: 'Not checked yet · Show conversation, then Open project',
+      unchecked: 'Not connected · tap Connect, then open a project',
       checking: 'Checking…',
       unconfirmed: 'Unconfirmed · reconnecting',
       bound: `Open · ${native.label}`,
@@ -74,21 +79,23 @@
       ? native.voice === 'native' ? `Your project session · ${native.label}`
         : 'Not sent · voice discussion is off for this session on the agent host'
       : native.session === 'unconfirmed' || native.session === 'checking' ? 'Unconfirmed'
-        : 'Not sent to a project · Show conversation, then Open project');
+        : 'Not sent to a project · connect, then open a project');
+    // The open session's own run is the most specific truth; the status-only badge covers the rest.
     text('workspace-mode-work', native.uncertain ? 'Project work status unconfirmed. Stop project work stays available.'
+      : native.session === 'bound' && native.run === 'ready' ? 'Ready to test · fixed checks passed.'
+      : native.session === 'bound' && native.run && native.run !== 'running' ? `Last run: ${native.run.replaceAll('_', ' ')}.`
       : badgeState === 'running' ? 'Project work running.'
         : badgeState === 'stopping' ? 'Project work stopping.'
           : badgeState === 'idle' ? 'No approved project run is reported. Native discussion uses its configured tools.'
             : 'Project work status not confirmed.');
-    $('workspace-mode-open').hidden = display.view === 'workspace';
   }
 
   function unconfirmed(reason) {
     confirmedMode = '';
     switchingTo = '';
-    text('workspace-mode-repository', 'None selected');
+    text('workspace-mode-repository', 'No project open');
     text('workspace-mode-session', 'Not checked');
-    text('workspace-mode-display', 'Off');
+    text('workspace-mode-display', 'Not connected');
     text('workspace-mode-route', 'Not checked yet');
     unknownReason = reason;
     renderMode();
@@ -257,7 +264,7 @@
       badgeState = body.running !== true ? 'idle' : body.status === 'stopping' ? 'stopping' : 'running';
       badgeWorkUnresolved = body.running === true;
     } catch {
-      // Preserved work may still be running; say so and keep Stop all Agent work reachable.
+      // Preserved work may still be running; say so and keep Stop all work reachable.
       if (token === generation && sequence === badgeSequence && !blocked) {
         $('native-work-badge').hidden = false;
         $('native-work-badge').dataset.status = 'waiting_approval';
@@ -344,8 +351,6 @@
       goToControl({ tab: 'settings', id: button.dataset.everydaySetting });
     });
   });
-
-  $('workspace-mode-open').addEventListener('click', () => window.HomebodyWorkspace?.show());
 
   window.HomebodyAssistantModes = {
     update, owner, sync,

@@ -59,7 +59,7 @@ def browser_page():
 
         page.route("**/*", respond)
         page.goto("http://homebody.test")
-        page.locator("#tab-settings").click()
+        page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
         yield page, state, calls, behavior
         browser.close()
 

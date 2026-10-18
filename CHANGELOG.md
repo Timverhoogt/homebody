@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.39] — Rebuilt app shell and Workspace
+
+- Organize the app around three destinations (Everyday, Workspace, Kids); Announce, Robot and Settings sit behind More on phones. One compact status bar carries Reachy's state, power, the Everyday/Workspace voice switch and the existing stop controls on every page.
+- Rebuild Workspace as a project header plus Chat, Work and Project panes (segmented on phones). A tap on the Workspace tab switches the voice route if needed and connects, once; startup and history restore never do.
+- Show one readable conversation: voice turns, session history and run events are reconciled by source instead of duplicated, repeated turns are kept, pipeline steps become a live status line, and work requests show the owner's request with the context collapsed. Messages keep their place and scroll position across polls.
+- Poll the project session on its own cadence (faster during work or a voice turn, none while hidden), keep the last messages visible and marked stale after a transient failure, and replace the thread when the session changes.
+- Show request review and run results in plain language with raw details collapsed. Add one local icon set, shorter consistent copy and 48 px touch targets. Refresh the UI shell cache. Backend behaviour is unchanged; automated checks do not establish live robot or session acceptance.
+
 ## [0.5.38] — Provider-led Kids vision and natural camera requests
 
 - Let the vision provider recognize ordinary objects and animals in consented Kids Show and Tell, instead of a toy/drawing/build whitelist. Distinguish unclear views, provider refusals and unavailable results.

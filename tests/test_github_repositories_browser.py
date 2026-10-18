@@ -56,8 +56,7 @@ def test_repositories_select_without_launch_and_unconfigured_blocks_wrong_projec
         route.fulfill(json=result)
 
     page.route("**/api/agent/workspace/native/*", reply)
-    page.click("#agent-view-workspace")
-    assert page.locator("#agent-view-workspace").inner_text() == "Conversation & projects"
+    assert page.locator("#tab-agent").inner_text() == "Workspace"
     page.click("#workspace-start")
     page.wait_for_function("document.getElementById('workspace-repository').options.length === 3")
     page.select_option("#workspace-repository", "Timverhoogt/private-project")
@@ -69,6 +68,7 @@ def test_repositories_select_without_launch_and_unconfigured_blocks_wrong_projec
     page.locator("#workspace-native-bind").scroll_into_view_if_needed()
     page.click("#workspace-native-bind")
     page.wait_for_function("!document.getElementById('workspace-native-prepare').disabled")
+    page.evaluate("HomebodyWorkspace.pane('project')")  # opening a project lands on Chat on phones
     page.select_option("#workspace-repository", "Timverhoogt/private-project")
     assert page.locator("#workspace-native-prepare").is_disabled()
     assert page.locator("#workspace-native-request").is_disabled()
@@ -78,7 +78,7 @@ def test_repositories_select_without_launch_and_unconfigured_blocks_wrong_projec
     assert not any(c[0] in {"prepare", "approve"} for c in calls)
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.select_option("#workspace-repository", "Timverhoogt/homebody")
-    page.locator("#workspace-native-heading").scroll_into_view_if_needed()
+    page.locator("#workspace-project-heading").scroll_into_view_if_needed()
     Path(".artifacts/repositories").mkdir(parents=True, exist_ok=True)
     page.screenshot(path=f".artifacts/repositories/picker-{width}.png")
     voice["enabled"] = False
@@ -102,7 +102,6 @@ def test_late_private_catalog_cannot_reappear_after_clear(repo_browser):
             )
 
     page.route("**/api/agent/workspace/native/*", reply)
-    page.click("#agent-view-workspace")
     with page.expect_request("**/api/agent/workspace/native/repositories"):
         page.click("#workspace-start")
     page.wait_for_timeout(100)

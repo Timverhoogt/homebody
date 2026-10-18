@@ -81,23 +81,22 @@ def test_mode_cards_have_room_for_labels_and_separate_help(ui, width, scheme, fo
     page, state, posts, errors = ui
     page.set_viewport_size({"width": width, "height": 1000})
     page.emulate_media(color_scheme=scheme)
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     page.evaluate("scale => document.documentElement.style.fontSize = `${16 * scale}px`", font_scale)
+    # The route switch is a compact two-segment control in the status bar: each label fits inside its
+    # 48 px target, and the explanatory help stays available to assistive technology.
     geometry = page.evaluate("""() => {
       const buttons = [...document.querySelectorAll('.assistant-mode-switch button')];
-      const group = document.querySelector('.assistant-mode-switch').getBoundingClientRect();
-      const help = document.querySelector('#assistant-mode-help').getBoundingClientRect();
-      return {gap: help.top - group.bottom, cards: buttons.map(button => {
+      return {help: document.querySelector('#assistant-mode-help').textContent, cards: buttons.map(button => {
         const box = button.getBoundingClientRect();
-        const first = button.querySelector('strong').getBoundingClientRect();
-        const last = button.querySelector('small').getBoundingClientRect();
-        return {height: box.height, top: first.top - box.top, bottom: box.bottom - last.bottom,
-          fits: [...button.children].every(child => child.scrollWidth <= child.clientWidth + 1)};
+        const label = button.querySelector('strong').getBoundingClientRect();
+        return {height: box.height, inside: label.top >= box.top && label.bottom <= box.bottom
+          && label.left >= box.left && label.right <= box.right,
+          fits: button.querySelector('strong').scrollWidth <= button.querySelector('strong').clientWidth + 1};
       })};
     }""")
-    assert geometry["gap"] >= 16
-    assert all(card["height"] >= 96 and card["top"] >= 12 and card["bottom"] >= 12
-               and card["fits"] for card in geometry["cards"]), geometry
+    assert "Everyday never uses" in geometry["help"]
+    assert all(round(card["height"]) >= 48 and card["inside"] and card["fits"] for card in geometry["cards"]), geometry
     overflow = page.evaluate("""() => [...document.querySelectorAll('body *')].filter(e => {
       const r=e.getBoundingClientRect(); return r.width && (r.right > innerWidth + 1 || r.left < -1);
     }).slice(0,12).map(e => ({tag:e.tagName,id:e.id,cls:e.className,width:e.getBoundingClientRect().width}))""")
@@ -112,7 +111,7 @@ def test_mode_cards_have_room_for_labels_and_separate_help(ui, width, scheme, fo
 def test_modes_stop_controls_and_everyday_disclosure(ui, width):
     page, state, posts, errors = ui
     page.set_viewport_size({"width": width, "height": 900})
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     page.wait_for_function("document.getElementById('everyday-badge').textContent === 'Tools ready'")
     assert page.locator("#agent-conversation-button").get_attribute("aria-pressed") == "true"
     assert "OpenAI Realtime" in page.locator("#everyday-voice").inner_text()
@@ -149,10 +148,11 @@ def test_unavailable_state_kids_exclusion_and_late_reply_after_owner_loss(ui):
     page, state, _posts, errors = ui
     state["capabilities"] = {**CAPABILITIES, "available": False, "error": "Everyday text provider key is missing"}
     state["badge"] = {"status": "idle", "running": False}
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     page.evaluate("HomebodyAssistantModes.owner(false); HomebodyAssistantModes.owner(true); refreshStatus()")
-    page.wait_for_function("document.getElementById('everyday-badge').textContent === 'Unavailable'")
-    assert "key is missing" in page.locator("#everyday-message").inner_text()
+    # The owner reset also shows "Unavailable", so wait for the capabilities reply itself.
+    page.wait_for_function("document.getElementById('everyday-message').textContent.includes('key is missing')")
+    assert page.locator("#everyday-badge").text_content() == "Unavailable"  # DOM text; CSS uppercases it
     assert not page.locator("#native-work-badge").is_visible()
 
     held = []
@@ -177,7 +177,7 @@ def test_unavailable_state_kids_exclusion_and_late_reply_after_owner_loss(ui):
                                            ("pipeline", "Pipeline")])
 def test_everyday_primary_label_follows_saved_voice_not_text_backend(ui, engine, label):
     page, state, posts, _ = ui
-    page.click("#tab-agent")
+    page.click("#tab-dashboard")
     state["config"].update(conversation_mode=engine, realtime_model="gpt-realtime-2.1", live_model="gpt-live-1")
     before = len(posts)
     page.evaluate("payload => HomebodyAssistantModes.update(payload)",
@@ -192,7 +192,7 @@ def test_everyday_primary_label_follows_saved_voice_not_text_backend(ui, engine,
 def test_advanced_engine_settings_save_exact_values_and_keep_existing_controls(ui, width):
     page, state, posts, errors = ui
     page.set_viewport_size({"width": width, "height": 900})
-    page.click("#tab-settings")
+    page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
     page.wait_for_function("document.getElementById('conversation_mode').value === 'realtime'")
     # A saved non-default Realtime model is preserved as a selectable value, not silently replaced.
     assert page.locator("#realtime_model").input_value() == "gpt-4o-realtime-preview"
