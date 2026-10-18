@@ -1,12 +1,14 @@
 """Opt-in household MCP robot attachment; never impersonates microphone input.
 
 The embedding app owns this coroutine's lifetime. It is not started on import and
-never changes config. Only an existing adult runtime/session may attach.
+never changes config. Idle transport grants no action authority; active tools require an adult runtime/session.
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
+import re
 import threading
 from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
@@ -14,7 +16,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 from websockets.asyncio.client import connect as _WebSocketConnect
-from websockets.exceptions import WebSocketException
+from websockets.exceptions import InvalidStatus, WebSocketException
 
 from .everyday_runtime import configured_local_tools
 
@@ -33,6 +35,71 @@ class HouseholdConnectionSettings(BaseModel):
     robot_credential: str = Field(default="", max_length=4096)
     enabled: bool
     acknowledged: bool
+
+
+class HouseholdConnectionError(RuntimeError):
+    """Categorical, safe-to-display transport failure."""
+
+
+def action_context_active(context):
+    get = context.get if isinstance(context, dict) else lambda key: getattr(context, key)
+    return (
+        get("capability_profile") == "conversation"
+        and not get("kids_mode_active")
+        and get("power_mode") == "awake"
+        and get("privacy_enabled")
+        and not get("emergency_stop_active")
+        and get("robot_available")
+    )
+
+
+def household_permissions(runtime):
+    c = runtime.config_loader()
+    return (
+        c.mcp_enabled,
+        c.mcp_vision_enabled,
+        c.local_vision_enabled,
+        c.camera_enabled,
+        c.power_tools_enabled,
+        c.robot_tools_enabled,
+        c.household_setup_version,
+        c.camera_natural_requests_enabled,
+        c.household_url,
+        c.household_api_key,
+        c.household_connection_enabled,
+    )
+
+
+class HouseholdIdleApproval:
+    """Inert connection pinned to a runtime snapshot; never upgrades to authority."""
+
+    def __init__(self, runtime):
+        self.runtime = runtime
+        self.context = runtime.agent_broker_context(explicit_private_intent=False)
+        self.fence = runtime.everyday_tool_fence()
+        self.permissions = household_permissions(self.runtime)
+        self.cancelled = threading.Event()
+        self.cancel_requested: Callable[[], bool] = lambda: False
+        self.names = []
+        self.seen = set()
+
+    def require_current(self):
+        if (
+            self.cancelled.is_set()
+            or self.cancel_requested()
+            or self.fence != self.runtime.everyday_tool_fence()
+            or self.permissions != household_permissions(self.runtime)
+        ):
+            self.cancelled.set()
+            raise HouseholdConnectionError("Household connection retired; reconnect explicitly")
+        now = self.runtime.agent_broker_context(explicit_private_intent=False)
+        # Status timestamps aren't authority. Every authorization field is pinned.
+        before, after = asdict(self.context), asdict(now)
+        before.pop("reachy_status", None)
+        after.pop("reachy_status", None)
+        if before != after:
+            self.cancelled.set()
+            raise HouseholdConnectionError("Household context changed; reconnect explicitly")
 
 
 class HouseholdRobotExecutor:
@@ -55,11 +122,7 @@ class HouseholdRobotExecutor:
         self.require_current()
 
     def _permissions(self):
-        c = self.runtime.config_loader()
-        return (c.mcp_enabled, c.mcp_vision_enabled, c.local_vision_enabled,
-                c.camera_enabled, c.power_tools_enabled, c.robot_tools_enabled,
-                c.household_setup_version, c.camera_natural_requests_enabled,
-                c.household_url, c.household_api_key, c.household_connection_enabled)
+        return household_permissions(self.runtime)
 
     def _names(self):
         c = self.runtime.config_loader()
@@ -70,6 +133,10 @@ class HouseholdRobotExecutor:
 
     def require_current(self):
         self.runtime._require_everyday_current(self.fence)
+        context = self.runtime.agent_broker_context(explicit_private_intent=False)
+        if context.power_mode != "awake":
+            self.cancelled.set()
+            raise RuntimeError("Household action authority is inactive")
         if not self.permissions[0] or self._permissions() != self.permissions:
             self.cancelled.set()
             raise RuntimeError("Household external-tool permission changed")
@@ -88,14 +155,34 @@ class HouseholdRobotExecutor:
             self.require_current()
         except (ValueError, RuntimeError):
             value = {"ok": False, "error": "Household call refused or cancelled"}
-        return {"content": [{"type": "text", "text": json.dumps(value)}],
-                "structuredContent": value, "isError": value.get("ok") is not True}
+        return {
+            "content": [{"type": "text", "text": json.dumps(value)}],
+            "structuredContent": value,
+            "isError": value.get("ok") is not True,
+        }
+
+
+def connection_approval(runtime):
+    context = runtime.agent_broker_context(explicit_private_intent=False)
+    if action_context_active(context):
+        try:
+            return HouseholdRobotExecutor(runtime)
+        except RuntimeError:
+            pass  # Stop or unapproved tools: authenticated transport only.
+    return HouseholdIdleApproval(runtime)
 
 
 async def household_callbacks(
-    runtime, *, bridge_url: str, robot_token: str, device_id: str, context, ready: asyncio.Event | None = None,
+    runtime,
+    *,
+    bridge_url: str,
+    robot_token: str,
+    device_id: str,
+    context,
+    ready: asyncio.Event | None = None,
+    approval=None,
 ):
-    """Attach one current adult generation, at most five minutes / thirty calls.
+    """Attach authenticated idle transport or one existing adult action generation.
 
     Return True only for the completed call quota, False for early clean EOF.
 
@@ -104,29 +191,67 @@ async def household_callbacks(
     Reattachment belongs to the embedding app, never the MCP caller.
     """
     parsed = urlsplit(bridge_url)
-    if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username or parsed.password:
+    if (
+        parsed.scheme not in {"https", "http"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
         raise ValueError("Explicit household host URL required")
     if parsed.scheme == "http" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
         raise ValueError("Non-loopback household callbacks require HTTPS")
-    if not robot_token or not device_id:
+    if (
+        not robot_token
+        or any(ord(c) < 33 or ord(c) == 127 for c in robot_token)
+        or not re.fullmatch(r"[A-Za-z0-9._:-]{1,96}", device_id)
+    ):
         raise ValueError("Robot credential and identity required")
-    url = urlunsplit(("wss" if parsed.scheme == "https" else "ws", parsed.netloc,
-                     parsed.path.rstrip("/") + "/v1/household/robot", "", ""))
-    executor = HouseholdRobotExecutor(runtime)
+    url = urlunsplit(
+        (
+            "wss" if parsed.scheme == "https" else "ws",
+            parsed.netloc,
+            parsed.path.rstrip("/") + "/v1/household/robot",
+            "",
+            "",
+        )
+    )
+    executor = connection_approval(runtime)
+    if approval is not None:
+        approval.require_current()
+        if type(executor) is not type(approval):
+            raise HouseholdConnectionError("Household authority changed; reconnect explicitly")
+    idle = isinstance(executor, HouseholdIdleApproval)
     owner_task = asyncio.current_task()
     executor.cancel_requested = lambda: owner_task is not None and owner_task.cancelling() > 0
     guard = None
     try:
-        async with asyncio.timeout(300), connect(
-            url, additional_headers={"Authorization": "Bearer " + robot_token, "X-Reachy-Device-Id": device_id},
-            open_timeout=5, close_timeout=1, max_size=64 * 1024,
-        ) as socket:
+        async with (
+            asyncio.timeout(300),
+            connect(
+                url,
+                additional_headers={"Authorization": "Bearer " + robot_token, "X-Reachy-Device-Id": device_id},
+                open_timeout=5,
+                close_timeout=1,
+                max_size=64 * 1024,
+            ) as socket,
+        ):
             executor.require_current()
             payload_context = asdict(context) if is_dataclass(context) and not isinstance(context, type) else context
-            await socket.send(json.dumps({"type": "household.attach", "local_tools": executor.names,
-                                          "context": payload_context}))
-            if json.loads(await socket.recv()) != {"type": "household.ready"}:
-                raise RuntimeError("Household attachment refused")
+            await socket.send(
+                json.dumps(
+                    {
+                        "type": "household.idle" if idle else "household.attach",
+                        "local_tools": executor.names,
+                        "context": payload_context,
+                    }
+                )
+            )
+            expected = {"type": "household.idle_ready" if idle else "household.ready"}
+            if json.loads(await socket.recv()) != expected:
+                raise HouseholdConnectionError("Household protocol incompatible or attachment refused")
+            executor.require_current()
             if ready is not None:
                 ready.set()
 
@@ -141,18 +266,25 @@ async def household_callbacks(
 
             guard = asyncio.create_task(boundary())
             async for raw in socket:
+                if isinstance(executor, HouseholdIdleApproval):
+                    raise HouseholdConnectionError("Inactive household transport received a tool call")
                 payload = json.loads(raw)
-                if (type(payload) is not dict or set(payload) != {"type", "call_id", "name", "arguments"}
-                        or payload["type"] != "everyday.tool_call"
-                        or type(payload["call_id"]) is not str or not 1 <= len(payload["call_id"]) <= 128):
+                if (
+                    type(payload) is not dict
+                    or set(payload) != {"type", "call_id", "name", "arguments"}
+                    or payload["type"] != "everyday.tool_call"
+                    or type(payload["call_id"]) is not str
+                    or not 1 <= len(payload["call_id"]) <= 128
+                ):
                     raise ValueError("Invalid household callback")
                 executor.require_current()
                 result = await asyncio.to_thread(
                     executor.call, payload["name"], payload["arguments"], payload["call_id"]
                 )
                 executor.require_current()
-                await socket.send(json.dumps({"type": "everyday.tool_result", "call_id": payload["call_id"],
-                                              "result": result}))
+                await socket.send(
+                    json.dumps({"type": "everyday.tool_result", "call_id": payload["call_id"], "result": result})
+                )
                 if len(executor.seen) >= 30:
                     break  # renew the transport, never replay a call
             return len(executor.seen) >= 30
@@ -163,14 +295,14 @@ async def household_callbacks(
             await asyncio.gather(guard, return_exceptions=True)
 
 
-async def household_connection(runtime, *, ready=None):
+async def household_connection(runtime, *, ready=None, approval=None):
     """Renew bounded leases only within the original Owner-approved authority.
 
     Transport failures get three retries; a completed lease renews without waking,
     capturing, or re-authorizing. Stop/privacy/Kids/settings changes permanently
     retire this task. Another Owner connect is needed after authority is revoked.
     """
-    approval = HouseholdRobotExecutor(runtime)
+    approval = approval if approval is not None else connection_approval(runtime)
     config = runtime.config_loader()
     if not config.household_connection_enabled:
         raise RuntimeError("Durable household connection is not approved")
@@ -178,19 +310,28 @@ async def household_connection(runtime, *, ready=None):
     while True:
         approval.require_current()
         connected = asyncio.Event()
+
         async def report_ready(connected=connected):
             await connected.wait()
             if ready is not None:
                 ready.set()
+
         reporter = asyncio.create_task(report_ready())
         try:
             completed = await household_callbacks(
-                runtime, bridge_url=config.household_endpoint, robot_token=config.household_credential,
+                runtime,
+                bridge_url=config.household_endpoint,
+                robot_token=config.household_credential,
                 device_id=config.instance_id,
-                context=runtime.agent_broker_context(explicit_private_intent=False), ready=connected)
+                context=runtime.agent_broker_context(explicit_private_intent=False),
+                ready=connected,
+                approval=approval,
+            )
             failures = 0 if completed is True else failures + 1
         except TimeoutError:
             failures = 0 if connected.is_set() else failures + 1
+        except (InvalidStatus, HouseholdConnectionError):
+            raise  # Credentials, redirects and protocol refusal need Owner intervention.
         except (OSError, RuntimeError, WebSocketException):
             failures += 1
         finally:
@@ -199,7 +340,7 @@ async def household_connection(runtime, *, ready=None):
         approval.require_current()
         if failures > 3:
             raise RuntimeError("Household reconnect limit reached")
-        await asyncio.sleep(min(2 ** failures, 8))
+        await asyncio.sleep(min(2**failures, 8))
 
 
 def install_household_connection_routes(app, runtime_loader, config_loader):
@@ -215,6 +356,8 @@ def install_household_connection_routes(app, runtime_loader, config_loader):
     from .owner_auth import owner_authenticated
 
     task = None
+    connection_state = None
+    connection_ready = asyncio.Event()
     lock = asyncio.Lock()
 
     @app.post("/api/household/tools/configure")
@@ -225,14 +368,19 @@ def install_household_connection_routes(app, runtime_loader, config_loader):
         if not request.acknowledged:
             raise HTTPException(status_code=400, detail="Acknowledge the connection disclosure first")
         from dataclasses import replace
+
         async with lock:
             try:
                 with config_transaction():
                     current = config_loader()
-                    saved = replace(current, household_url=request.url,
-                                    household_api_key=(request.robot_credential or current.household_api_key)
-                                    if request.url else "",
-                                    household_connection_enabled=request.enabled)
+                    saved = replace(
+                        current,
+                        household_url=request.url,
+                        household_api_key=(request.robot_credential or current.household_api_key)
+                        if request.url
+                        else "",
+                        household_connection_enabled=request.enabled,
+                    )
                     saved.validate()
                     save_config(saved)
             except ValueError:
@@ -241,18 +389,23 @@ def install_household_connection_routes(app, runtime_loader, config_loader):
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
                 task = None
-        return {"saved": True, "enabled": saved.household_connection_enabled,
-                "credential_configured": bool(saved.household_api_key)}
+        return {
+            "saved": True,
+            "enabled": saved.household_connection_enabled,
+            "credential_configured": bool(saved.household_api_key),
+        }
 
     @app.post("/api/household/tools/validate")
     async def validate_tools():
         from .hermes_client import HermesBridgeClient
+
         def check():
             client = HermesBridgeClient(config_loader())
             try:
                 client.everyday_capabilities()
             finally:
                 client.close()
+
         try:
             await asyncio.wait_for(asyncio.to_thread(check), 12)
         except Exception:
@@ -262,14 +415,27 @@ def install_household_connection_routes(app, runtime_loader, config_loader):
     @app.get("/api/household/tools/status")
     async def tools_status():
         config = config_loader()
-        return {"connected": task is not None and not task.done(),
-                "url": config.household_url,
-                "enabled": config.household_connection_enabled,
-                "credential_configured": bool(config.household_api_key)}
+        connected = task is not None and not task.done() and connection_ready.is_set()
+        active = False
+        if connected and connection_state is not None:
+            try:
+                connection_state.require_current()
+                active = isinstance(connection_state, HouseholdRobotExecutor)
+            except RuntimeError:
+                connected = False
+        return {
+            "connected": connected,
+            "tools_active": active,
+            "url": config.household_url,
+            "enabled": config.household_connection_enabled,
+            "credential_configured": bool(config.household_api_key),
+        }
 
     @app.post("/api/household/tools/connect")
     async def connect_tools():
-        nonlocal task
+        nonlocal task, connection_state
+        if not owner_authenticated.get():
+            raise HTTPException(status_code=403, detail="Owner approval required")
         async with lock:
             if task is not None and not task.done():
                 raise HTTPException(status_code=409, detail="Household tools are already connected")
@@ -278,32 +444,81 @@ def install_household_connection_routes(app, runtime_loader, config_loader):
                 raise HTTPException(status_code=409, detail="Voice runtime has not started")
             config = config_loader()
             context = runtime.agent_broker_context(explicit_private_intent=False)
-            ready = asyncio.Event()
+            connection_state = connection_approval(runtime)
+            connection_ready.clear()
+            ready = connection_ready
             if config.household_connection_enabled:
-                task = asyncio.create_task(household_connection(runtime, ready=ready))
+                task = asyncio.create_task(household_connection(runtime, ready=ready, approval=connection_state))
             else:
-                task = asyncio.create_task(household_callbacks(
-                    runtime, bridge_url=config.household_endpoint, robot_token=config.household_credential,
-                    device_id=config.instance_id, context=context, ready=ready))
+                task = asyncio.create_task(
+                    household_callbacks(
+                        runtime,
+                        bridge_url=config.household_endpoint,
+                        robot_token=config.household_credential,
+                        device_id=config.instance_id,
+                        context=context,
+                        ready=ready,
+                        approval=connection_state,
+                    )
+                )
             waiter = asyncio.create_task(ready.wait())
             try:
                 done, _ = await asyncio.wait([task, waiter], timeout=6, return_when=asyncio.FIRST_COMPLETED)
-                if task in done or waiter not in done:
-                    raise RuntimeError("Attachment failed")
-            except (RuntimeError, asyncio.CancelledError) as exc:
+                if task in done:
+                    await task
+                    raise HouseholdConnectionError("Household attachment closed before readiness")
+                if waiter not in done:
+                    raise TimeoutError("Household handshake timed out")
+                connection_state.require_current()
+            except (
+                RuntimeError,
+                ValueError,
+                OSError,
+                TimeoutError,
+                WebSocketException,
+                asyncio.CancelledError,
+            ) as exc:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
                 if isinstance(exc, asyncio.CancelledError):
                     raise
-                raise HTTPException(status_code=409, detail="Household attachment unavailable") from None
+                if isinstance(exc, ValueError):
+                    raise HTTPException(
+                        status_code=400, detail="Invalid household endpoint or credential configuration"
+                    ) from None
+                if isinstance(exc, InvalidStatus):
+                    status = exc.response.status_code
+                    detail = (
+                        "Household service rejected the robot credential"
+                        if status in {401, 403}
+                        else "Household service redirect refused"
+                        if 300 <= status < 400
+                        else "Household service rejected the handshake"
+                    )
+                elif isinstance(exc, TimeoutError):
+                    detail = "Household service handshake timed out"
+                else:
+                    detail = (
+                        str(exc)
+                        if isinstance(exc, HouseholdConnectionError)
+                        else "Household service handshake failed; check endpoint and compatible service"
+                    )
+                raise HTTPException(status_code=504 if isinstance(exc, TimeoutError) else 502, detail=detail) from None
             finally:
                 waiter.cancel()
                 await asyncio.gather(waiter, return_exceptions=True)
             # Retrieve eventual connection errors without logging tokens or payloads.
             task.add_done_callback(lambda done: None if done.cancelled() else done.exception())
             return JSONResponse(
-                {"connected": True, "device_id": config.instance_id,
-                 "homebody_context": asdict(context), "maximum_seconds": 300},
+                {
+                    "connected": True,
+                    "tools_active": isinstance(connection_state, HouseholdRobotExecutor),
+                    "device_id": config.instance_id,
+                    "homebody_context": asdict(context)
+                    if isinstance(connection_state, HouseholdRobotExecutor)
+                    else None,
+                    "maximum_seconds": 300,
+                },
                 headers={"Cache-Control": "no-store"},
             )
 
@@ -316,4 +531,3 @@ def install_household_connection_routes(app, runtime_loader, config_loader):
                 await asyncio.gather(task, return_exceptions=True)
                 task = None
             return {"connected": False}
-

@@ -61,11 +61,11 @@ it does not launch another robot process or invent a voice transcript.
    movement use their existing per-capability choices. External camera additionally requires
    `mcp_vision_enabled`, Camera access and local vision. Ordinary household speech camera
    approval is **not** external-client permission.
-3. While an adult Everyday session is current, an authenticated same-origin Owner client posts
+3. An authenticated same-origin Owner client (including in Standby) posts
    `POST /api/household/tools/connect` with the existing Owner cookie and CSRF header. This route
    uses only saved host settings and the runtime's actual context; request-body URLs, credentials
    and context cannot replace them. It connects, but never captures, moves or changes settings.
-4. The response confirms attachment only after the host acknowledgement and returns `device_id`,
+4. The response confirms attachment only after the host acknowledgement. An active response returns `device_id`,
    `homebody_context` and `maximum_seconds: 300`. Give the MCP caller that scope plus its separate
    caller credential. The dashboard provides Connect and Disconnect. With saved Owner renewal
    approval, five-minute/30-call leases renew within the original adult authority; transport
@@ -78,6 +78,23 @@ canonical tool **names**, never schemas or remote URLs. The host uses the existi
 Each call has a 15-second host deadline, messages are bounded, duplicates are refused and the
 robot attachment allows at most thirty robot calls in five minutes. These are external-tool
 calls, not microphone commands; no voice permission is borrowed.
+
+### Connected transport is not action authority
+
+Owner Connect also works in Standby: `connected: true`, `tools_active: false`,
+`homebody_context: null`. The UI says **Connected — tools inactive**. No wake,
+camera, movement, listening or broker action lease is created. Scoped tool lists
+and calls are refused, including host tools. Kids, privacy, Workspace and Stop
+cannot gain authority by connecting. Do not pass an idle response to the scoped smoke check.
+
+There is no automatic promotion from idle. Start a separately approved adult
+Everyday session using existing runtime controls, then Disconnect and Connect
+explicitly to obtain fresh action scope. A mode, generation, Stop or permission
+change retires the connection; restoring settings does not revive old work.
+Bounded transport renewal never grants fresh authority. Matching updated robot
+and household service code is required for idle connections; old services refuse
+the distinct idle handshake rather than silently granting tools. Active legacy
+handshakes retain the existing execution-time fences.
 
 ## One MCP endpoint
 
