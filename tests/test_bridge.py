@@ -82,7 +82,7 @@ def test_bridge_builds_authoritative_kids_policy_from_profile() -> None:
         language="nl",
     )
     assert "Speak in Dutch for a child aged 4-6" in prompt
-    assert "no tools, camera, personal memory" in prompt
+    assert "no tools, live camera view, personal memory" in prompt
     assert "interactive, reassuring story" in prompt
     assert "ask for or repeat a full name" in prompt
     assert "trusted adult" in prompt
