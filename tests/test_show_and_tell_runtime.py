@@ -380,12 +380,12 @@ def test_rate_and_busy_owner_deny_before_capture(rig, monkeypatch):
 # --- The real pipeline conversation loop ---------------------------------------------------------
 
 
-def pipeline(monkeypatch, saved, transcripts):
+def pipeline(monkeypatch, saved, transcripts, *, language="en"):
     events, hooks = [], {"transcripts": list(transcripts)}
     monkeypatch.setattr(show_and_tell, "MIN_LOOK_INTERVAL", 0.0)
     runtime = make_runtime(monkeypatch, saved, events, hooks)
     runtime._notify_bridge_kids_session_async = lambda *_args, **_kwargs: None
-    runtime.start_kids_mode(KidsProfile(duration_minutes=15), greet=False)
+    runtime.start_kids_mode(KidsProfile(duration_minutes=15, language=language), greet=False)
     config = runtime._kids_voice_config(AppConfig(api_key="test-key"))
     speech = list(transcripts)
 
@@ -400,14 +400,18 @@ def pipeline(monkeypatch, saved, transcripts):
     return runtime, config, events, hooks
 
 
-def test_conversation_loop_explicit_request_looks_once_then_follow_up_chats(monkeypatch, saved):
-    runtime, config, events, _ = pipeline(monkeypatch, saved, ["Look at my drawing!", "It is a dragon"])
+@pytest.mark.parametrize("words,language", [
+    ("Look at my drawing!", "en"), ("kijk eens!", "nl"),
+    ("kijk eens hier", "nl"), ("kijk wat ik heb", "nl"),
+])
+def test_conversation_loop_explicit_request_looks_once_then_follow_up_chats(monkeypatch, saved, words, language):
+    runtime, config, events, _ = pipeline(monkeypatch, saved, [words, "It is a dragon"], language=language)
     try:
         runtime._run_conversation(config)
-        assert ("chat", "Look at my drawing!") not in events  # the request never became a chat turn
+        assert ("chat", words) not in events  # the request never became a chat turn
         assert events.count("capture") == 1
         order = [events.index(item) for item in (
-            ("heard", "Look at my drawing!"), ("speak", "LOOKING"), "capture", "look", ("speak", RESULT),
+            ("heard", words), ("speak", "LOOKING"), "capture", "look", ("speak", RESULT),
             ("heard", "It is a dragon"), ("chat", "It is a dragon"), ("speak", "What a fun idea!"),
         )]
         assert order == sorted(order)  # the same continuous turn carries on with a moderated chat

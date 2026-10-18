@@ -104,7 +104,7 @@ def robot_url(host_header: str, scheme: str = "http") -> str:
 
 def render_guide(backend: str, base_url: str) -> str:
     """The setup guide for one agent, filled in for this robot and this Homebody version."""
-    if backend not in BACKENDS:
+    if backend not in {*BACKENDS, "household"}:
         raise FileNotFoundError(backend)
     template = (_GUIDE_DIR / f"{backend}.md").read_text(encoding="utf-8")
     files = "\n".join(f"| `{item['name']}` | `{item['sha256']}` |" for item in bridge_manifest())

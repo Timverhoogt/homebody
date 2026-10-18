@@ -108,8 +108,10 @@ class McpServer:
             return self._ok(request_id, {"tools": self.tools(config)})
         if method == "tools/call":
             name = params.get("name")
-            arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
-            if name not in {tool["name"] for tool in self.tools(config)}:
+            arguments = params.get("arguments", {})
+            if not isinstance(arguments, dict):
+                return self._error(request_id, -32602, "Tool arguments must be an object")
+            if not isinstance(name, str) or name not in {tool["name"] for tool in self.tools(config)}:
                 return self._error(request_id, -32602, f"Unknown tool: {name}")
             return self._ok(request_id, self.call(str(name), arguments, config))
         return self._error(request_id, -32601, f"Method not found: {method}")
@@ -241,6 +243,16 @@ class McpServer:
                     "annotations": {"readOnlyHint": True, "idempotentHint": False, "openWorldHint": False},
                 }
             )
+        # Canonical speech names share their exact schemas, not a parallel tool registry.
+        from .everyday_runtime import configured_local_tools, local_specs
+
+        allowed = set(configured_local_tools(config))
+        if not config.mcp_vision_enabled:
+            allowed -= {"capture_reachy_camera", "start_reachy_camera"}
+        tools.extend(
+            {"name": spec["name"], "description": spec["description"], "inputSchema": spec["parameters"]}
+            for spec in local_specs() if spec["name"] in allowed
+        )
         return tools
 
     def call(self, name: str, arguments: dict[str, Any], config: AppConfig) -> dict[str, Any]:
@@ -249,7 +261,9 @@ class McpServer:
             runtime = self._runtime()
             if runtime is None or not getattr(runtime, "control_ready", False):
                 raise _ToolRefused("Reachy is still starting up. Try again in a minute.")
-            if name == "get_status":
+            if name in {spec["name"] for spec in self._local_specs()}:
+                result = self._household_local(runtime, name, arguments, config)
+            elif name == "get_status":
                 result = self._get_status(runtime, config)
             elif name == "announce":
                 result = self._announce(runtime, arguments)
@@ -272,6 +286,34 @@ class McpServer:
             _LOGGER.exception("MCP tool %s failed", name)
             self._record(name, "error")
             return _text_result("Reachy could not complete that request.", error=True)
+
+    @staticmethod
+    def _local_specs():
+        from .everyday_runtime import local_specs
+        return local_specs()
+
+    def _household_local(self, runtime, name, arguments, config):
+        import json
+
+        from .everyday_runtime import EverydayRuntimeMixin, configured_local_tools
+
+        args = EverydayRuntimeMixin._validate_everyday_tool(name, arguments)
+        # Fresh config is obtained inside the guarded runtime too. External requests
+        # never fabricate a spoken transcript, consent scope, or voice callback.
+        if name not in configured_local_tools(config):
+            raise _ToolRefused("This household capability is disabled")
+        self._refuse_if_unavailable(runtime)
+        if name == "capture_reachy_camera":
+            # Agent camera permission is separate from household speech approval.
+            # Reuse the local-only vision gate; no cloud frame or voice consent bypass.
+            return self._look_and_describe(runtime, {"question": args["purpose"]}, config)
+        if name == "start_reachy_camera" and not config.mcp_vision_enabled:
+            raise _ToolRefused("The owner has not allowed agent camera access")
+        if name in {"move_reachy_head", "express_reachy_emotion", "dance_reachy"}:
+            if self._state(runtime)["power_mode"] != "awake":
+                raise _ToolRefused("Motion requires Awake; agent tools never wake for a gesture")
+        value = runtime.execute_everyday_tool(name, args, fence=runtime.everyday_tool_fence())
+        return _text_result(json.dumps(value), structured=value, error=value.get("ok") is not True)
 
     def _admit(self, name: str) -> None:
         now = self._clock()

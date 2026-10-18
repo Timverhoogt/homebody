@@ -36,6 +36,9 @@ def connection_revision(config: AppConfig) -> str:
     # A local private digest binds the proof to saved credentials and selected speech settings.
     # It is never returned to the browser or public status.
     names = (
+        "household_url",
+        "household_api_key",
+        "assistant_mode",
         "bridge_url",
         "api_key",
         "model",
@@ -58,7 +61,7 @@ def connection_revision(config: AppConfig) -> str:
 
 def checked(config: AppConfig) -> bool:
     return (
-        config.configured
+        config.voice_connection_configured
         and config.setup_connection_sha256 == connection_revision(config)
         and 0 <= time.time() - config.setup_connection_checked_at <= CHECK_TTL
     )
@@ -77,7 +80,7 @@ def snapshot(config: AppConfig) -> dict:
         "entry_route": config.setup_entry_route
         if config.setup_entry_route in {"marketplace", "manual"}
         else "unknown",
-        "connection_configured": config.configured,
+        "connection_configured": config.voice_connection_configured,
         "connection_checked": checked(config),
         "speech_tested": False,
         "language": config.language,
@@ -125,7 +128,7 @@ def register(app, *, load, save, bridge_factory):
     def check():
         with config_transaction():
             config = load()
-            if not config.configured:
+            if not config.voice_connection_configured:
                 raise HTTPException(409, "Configure a voice backend in Settings before checking the connection.")
             revision = connection_revision(config)
             check_id = secrets.token_hex(16)
@@ -142,8 +145,12 @@ def register(app, *, load, save, bridge_factory):
             with httpx.Client(timeout=5.0, follow_redirects=False) as transport:
                 bridge = bridge_factory(config, client=transport)
                 try:
-                    bridge.health()
-                    bridge.models()  # authenticated endpoint: an unauthenticated health reply is not enough
+                    independent = config.household_url and config.assistant_mode == "everyday"
+                    if independent:
+                        bridge.everyday_capabilities()  # authenticated household endpoint
+                    if not independent or config.conversation_mode == "pipeline":
+                        bridge.health()
+                        bridge.models()  # shared speech/Workspace service, not household
                 finally:
                     bridge.close()
         except Exception as exc:

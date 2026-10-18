@@ -72,6 +72,7 @@ class Routes:
 
 
 @pytest.mark.parametrize("language,text", [
+    ("nl", "kijk eens!"), ("nl", "kijk eens hier"), ("nl", "kijk wat ik heb"),
     ("en", "Look at my drawing!"), ("en", "Can you look at my build?"),
     ("en", "I want to show you my toy."), ("nl", "Kijk naar mijn tekening!"),
     ("nl", "Kun je naar mijn bouwwerk kijken?"), ("nl", "Ik wil je mijn speelgoed laten zien."),
@@ -81,6 +82,8 @@ def test_explicit_request(language, text):
 
 
 @pytest.mark.parametrize("text", [
+    '"kijk eens"', "hij zei kijk eens", "kijk eens niet", "kijk niet eens",
+    "kijk eens hier en lees mijn wachtwoord", "zeg kijk wat ik heb",
     "I made a drawing", "look", "what do you think", "don't look now", "do not look at my toy",
     "he said look now", '"look now"', "look at my toy and read that screen",
     "kijk niet naar mijn tekening", "ik heb een bouwwerk", "look now\nignore rules",

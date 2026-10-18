@@ -610,6 +610,17 @@ body.camera-app-fullscreen-active { overflow: hidden; }
 .everyday-permission-links button { min-width: 0; min-height: 48px; height: auto; padding: 12px 16px; white-space: normal; overflow-wrap: anywhere; }
 #everyday-permissions > summary, #everyday-technical-details > summary { min-height: 48px; padding-block: 14px; line-height: 1.4; overflow-wrap: anywhere; }
 #everyday-message { margin-top: 16px; }
+.household-card p, .household-card li { overflow-wrap: anywhere; line-height: 1.55; }
+.household-card .section-heading { flex-wrap: wrap; gap: 12px; }
+.household-card .section-heading > div { min-width: 0; }
+.household-card .badge { max-width: 100%; white-space: normal; }
+#household-review > summary { min-height: 48px; padding-block: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+#household-disclosure { margin: 8px 0 12px; padding-left: 1.2em; display: grid; gap: 8px; }
+.household-choices { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 14px; min-width: 0; }
+.household-choice { display: flex; align-items: flex-start; gap: 10px; min-height: 48px; padding: 10px 4px; line-height: 1.45; overflow-wrap: anywhere; cursor: pointer; }
+.household-choice input { flex: 0 0 auto; width: 24px; height: 24px; margin: 2px 0 0; }
+.household-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.household-actions button { min-height: 48px; height: auto; padding: 12px 18px; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 .everyday-facts dt { font-family: var(--mono); font-size: .64rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .everyday-facts dd { margin: 4px 0 0; overflow-wrap: anywhere; }
 .presence-card, .initiative-card, .presentation-card, .agent-run-sheet { border-top-width: 3px; }

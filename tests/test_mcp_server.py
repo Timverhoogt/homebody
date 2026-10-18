@@ -94,11 +94,12 @@ def test_initialize_negotiates_the_protocol_and_lists_safe_tools() -> None:
 
     listed = server.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}, enabled_config())
     names = [tool["name"] for tool in listed["result"]["tools"]]
-    assert names == ["get_status", "announce", "express_emotion", "get_volume", "set_volume", "set_mute"]
+    assert names[:6] == ["get_status", "announce", "express_emotion", "get_volume", "set_volume", "set_mute"]
+    assert "set_reachy_power_mode" in names
     with_vision = server.handle(
         {"jsonrpc": "2.0", "id": 4, "method": "tools/list"}, enabled_config(mcp_vision_enabled=True)
     )["result"]["tools"]
-    assert with_vision[-1]["name"] == "look_and_describe"
+    assert "look_and_describe" in {s["name"] for s in with_vision}
 
 
 def test_unknown_methods_and_tools_are_json_rpc_errors() -> None:

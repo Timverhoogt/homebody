@@ -115,6 +115,8 @@ def bare_bridge(monkeypatch, tmp_path, voice: dict[str, str]):
     module = load_bridge_module()
     bridge = module.Bridge.__new__(module.Bridge)
     bridge.profile = None
+    # This fixture models the legacy agent-backed bridge, not household-only mode.
+    bridge.backends = {"hermes": SimpleNamespace()}
     bridge.hermes_enabled = True
     bridge.hermes_url = "http://synthetic.invalid"
     bridge.http = None

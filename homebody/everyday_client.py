@@ -42,9 +42,9 @@ def everyday_session(
     seen = set()
     try:
         with connect(
-            everyday_url(config.bridge_url),
+            everyday_url(config.household_endpoint),
             additional_headers={
-                "Authorization": f"Bearer {config.api_key}",
+                "Authorization": f"Bearer {config.household_credential}",
                 "X-Reachy-Device-Id": config.instance_id,
             },
             open_timeout=5,

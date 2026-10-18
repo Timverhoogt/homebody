@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.35] — Household tools and natural camera requests
+
+- Add a standalone authenticated household tool service and composed MCP catalogue without exposing Workspace or the Hermes agent.
+- Separate household endpoint credentials from legacy Kids, speech and Workspace connections; add Owner configuration, validation and bounded approved attachment renewal.
+- Add persistent household consent, natural Everyday camera selection and direct controls after visual conversations while preserving camera-off, privacy and execution checks.
+- Recognize Dutch Kids Show and Tell requests including “kijk eens”, with truthful camera capability wording.
+- Include new-user installation, AI-agent instructions and a read-only MCP validation helper.
+- GPT-Live continues to use supported delegation and a narrow text tool-selector; native speech-model MCP and physical acceptance are not claimed.
+
+
 ## [0.5.34] — Kids following and conversation recovery
 
 - Reuse the existing local face-following setting in Kids activities when motion is enabled. Following yields to exclusive actions, searches, captures and folds; Stop, privacy and session changes retire stale tracking work.

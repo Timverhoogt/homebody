@@ -13,9 +13,9 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=104">
-  <link rel="stylesheet" href="/static/scene.css?v=104">
-  <link rel="stylesheet" href="/static/onboarding.css?v=104">
+  <link rel="stylesheet" href="/static/style.css?v=105">
+  <link rel="stylesheet" href="/static/scene.css?v=105">
+  <link rel="stylesheet" href="/static/onboarding.css?v=105">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -254,6 +254,51 @@
         </details>
         <div id="everyday-companion" class="everyday-companion"></div>
         <p id="everyday-message" class="muted compact-note" role="status" aria-live="polite">Names and providers are set on the Hermes host; keys and coordinates never reach this page.</p>
+      </section>
+
+      <section id="household-card" class="card household-card" aria-labelledby="household-heading" hidden>
+        <div class="section-heading">
+          <div><p class="label">Household</p><h2 id="household-heading">One-time household setup</h2></div>
+          <span id="household-badge" class="badge">Checking…</span>
+        </div>
+        <p id="household-state" role="status" aria-live="polite">Checking the saved household choices…</p>
+        <p id="household-camera-state" class="muted">Camera access not reported.</p>
+        <details id="household-review"><summary>Review and approve</summary>
+          <h3 id="household-disclosure-heading">What happens</h3>
+          <ul id="household-disclosure" aria-labelledby="household-disclosure-heading"></ul>
+          <p id="household-excluded" class="muted"></p>
+          <fieldset id="household-choices" class="household-choices">
+            <legend>Choose what this household allows</legend>
+            <label class="household-choice"><input type="checkbox" id="household-camera_on_request"> <span><strong>Camera on request</strong> — one still frame when someone asks something visual</span></label>
+            <label class="household-choice"><input type="checkbox" id="household-following_and_movement"> <span><strong>Following and movement</strong> — face following and gestures on Reachy</span></label>
+            <label class="household-choice"><input type="checkbox" id="household-voice_power_controls"> <span><strong>Voice power controls</strong> — “go to sleep”, “standby”</span></label>
+            <label class="household-choice"><input type="checkbox" id="household-kids_ispy_camera"> <span><strong>Kids I Spy camera</strong> — only in a Kids session a grown-up started; needs Camera on request</span></label>
+          </fieldset>
+          <label class="household-choice household-ack"><input type="checkbox" id="household-ack"> <span>I have read this, including that speech and visual requests can be processed by cloud services.</span></label>
+          <div class="household-actions">
+            <button type="button" id="household-approve" disabled>Save household choices</button>
+          </div>
+        </details>
+        <div class="household-actions">
+          <button type="button" id="household-camera-off" class="secondary">Turn camera off</button>
+          <button type="button" id="household-revoke" class="danger">Revoke household approval</button>
+        </div>
+        <details id="household-connection"><summary>Standalone household connection</summary>
+          <p>Everyday uses this independent service. Keep the existing bridge for Kids, pipeline STT/TTS and Workspace. No Hermes agent runtime is needed by the standalone service.</p>
+          <label>Household HTTPS URL <input id="household-url" type="url" autocomplete="off" placeholder="https://household.example.net"></label>
+          <label>Robot credential <input id="household-credential" type="password" autocomplete="new-password" placeholder="Leave blank to retain saved credential"></label>
+          <label><input id="household-durable" type="checkbox"> Renew external-tool connection while this adult authority remains valid</label>
+          <p>External tools must also be enabled in Settings. Each call checks current permissions. Stop, privacy, Kids or changed permissions disconnect; reconnect never wakes or captures. After revocation or app restart, use Connect again. Transport errors have bounded retries.</p>
+          <label><input id="household-connection-ack" type="checkbox"> I approve this host and connection policy. Saving does not start listening or grant camera permission.</label>
+          <div class="household-actions">
+            <button type="button" id="household-connection-save">Save connection</button>
+            <button type="button" id="household-connection-validate">Validate service</button>
+            <button type="button" id="household-connection-connect">Connect external tools</button>
+            <button type="button" id="household-connection-disconnect">Disconnect</button>
+          </div>
+          <p id="household-connection-message" role="status" aria-live="polite"></p>
+        </details>
+        <p id="household-message" class="muted compact-note" role="status" aria-live="polite">Saving never takes a picture or starts listening.</p>
       </section>
 
       <section id="workspace-mode-card" class="card workspace-mode-card" aria-labelledby="workspace-mode-heading" hidden>
@@ -1334,21 +1379,22 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=104"></script>
-  <script src="/static/scene.js?v=104"></script>
-  <script src="/static/motion.js?v=104"></script>
-  <script src="/static/onboarding.js?v=104"></script>
-  <script src="/static/owner.js?v=104"></script>
+  <script src="/static/notifications.js?v=105"></script>
+  <script src="/static/scene.js?v=105"></script>
+  <script src="/static/motion.js?v=105"></script>
+  <script src="/static/onboarding.js?v=105"></script>
+  <script src="/static/owner.js?v=105"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=104"></script>
-  <script src="/static/agent-connection.js?v=104"></script>
-  <script src="/static/native-workspace.js?v=104"></script>
-  <script src="/static/workspace.js?v=104"></script>
-  <script src="/static/ispy-input.js?v=104"></script>
-  <script src="/static/companion.js?v=104"></script>
-  <script src="/static/main.js?v=104"></script>
-  <script src="/static/updates.js?v=104"></script>
-  <script src="/static/volume.js?v=104"></script>
-  <script src="/static/assistant-modes.js?v=104"></script>
+  <script src="/static/camera.js?v=105"></script>
+  <script src="/static/agent-connection.js?v=105"></script>
+  <script src="/static/native-workspace.js?v=105"></script>
+  <script src="/static/workspace.js?v=105"></script>
+  <script src="/static/ispy-input.js?v=105"></script>
+  <script src="/static/companion.js?v=105"></script>
+  <script src="/static/main.js?v=105"></script>
+  <script src="/static/updates.js?v=105"></script>
+  <script src="/static/volume.js?v=105"></script>
+  <script src="/static/assistant-modes.js?v=105"></script>
+  <script src="/static/household.js?v=105"></script>
 </body>
 </html>

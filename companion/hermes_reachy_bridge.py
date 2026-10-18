@@ -34,7 +34,7 @@ from urllib.parse import quote, urlparse
 from aiohttp import ClientError, ClientSession, ClientTimeout, FormData, web
 
 
-def _load_look_intent() -> Callable[..., bool]:
+def _load_look_intent() -> Any:
     """Load the shared narrow visual-intent classifier by file, without importing the robot package.
 
     Dev tree: companion/../homebody/look_intent.py; wheel: homebody/bridge/../look_intent.py. When it
@@ -53,11 +53,24 @@ def _load_look_intent() -> Callable[..., bool]:
             if spec is not None and spec.loader is not None:
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
-                return module.looks_like_look_request  # type: ignore[no-any-return]
-    return lambda _text, *, engaged=False: False
+                return module
+    return None
 
 
-_looks_like_look_request = _load_look_intent()
+_look_intent_module = _load_look_intent()
+_looks_like_look_request: Callable[..., bool] = getattr(
+    _look_intent_module, "looks_like_look_request", lambda _text, *, engaged=False: False
+)
+# Direct controls and the natural-look provenance guard fail closed when the module is absent.
+_direct_control_intent: Callable[[str], str | None] = getattr(
+    _look_intent_module, "direct_control_intent", lambda _text: None
+)
+_natural_visual_words_ok: Callable[[str], bool] = getattr(
+    _look_intent_module, "natural_visual_words_ok", lambda _text: False
+)
+_direct_action_intent: Callable[[str], tuple[str, dict] | None] = getattr(
+    _look_intent_module, "direct_action_intent", lambda _text: None
+)
 
 try:
     from companion import kids_show_and_tell as _show_tell
@@ -97,7 +110,13 @@ try:
     from companion.kids_fixed_copy import MAX_SEGMENTS as _KIDS_FIXED_MAX_SEGMENTS
     from companion.kids_fixed_copy import render_segment as _render_kids_fixed_segment
     from companion.kids_fixed_copy import selector_ids as _kids_fixed_selector_ids
-    from companion.live_transport import DelegationFailure, DelegationResult, current_live_turn, serve_live
+    from companion.live_transport import (
+        DelegationFailure,
+        DelegationResult,
+        current_live_turn,
+        live_look_recall_available,
+        serve_live,
+    )
     from companion.llm_providers import LLMProviderConfigError, TextModelProvider, everyday_provider_from_env
     from companion.native_workspace import WorkspaceError
     from companion.native_workspace_routes import NativeWorkspaceRoutes
@@ -123,7 +142,7 @@ try:
         WarmAgentTurnError,
         WarmAgentUnavailable,
     )
-except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.path.
+except ImportError:  # Direct script execution may see an unrelated companion namespace.
     import kids_show_and_tell as _show_tell  # type: ignore[no-redef]
     from agent_backends import (  # type: ignore[no-redef]
         OpenClawBackend,
@@ -165,7 +184,13 @@ except ModuleNotFoundError:  # Direct script execution adds companion/ to sys.pa
     from kids_fixed_copy import MAX_SEGMENTS as _KIDS_FIXED_MAX_SEGMENTS  # type: ignore[no-redef]
     from kids_fixed_copy import render_segment as _render_kids_fixed_segment  # type: ignore[no-redef]
     from kids_fixed_copy import selector_ids as _kids_fixed_selector_ids  # type: ignore[no-redef]
-    from live_transport import DelegationFailure, DelegationResult, current_live_turn, serve_live  # type: ignore[no-redef]
+    from live_transport import (  # type: ignore[no-redef]
+        DelegationFailure,
+        DelegationResult,
+        current_live_turn,
+        live_look_recall_available,
+        serve_live,
+    )
     from llm_providers import (  # type: ignore[no-redef]
         LLMProviderConfigError,
         TextModelProvider,
@@ -1141,14 +1166,19 @@ def _build_bridge_kids_prompt(*, age_band: str, activity: str, language: str) ->
         f"Speak in {spoken_language} for a child aged {age_band}. "
         "Use warm, concrete, short spoken sentences. Ask only one question at a time. Never use Markdown. "
         "You are a friendly robot activity partner, not a parent, teacher, doctor, therapist, or emergency service. "
-        "You have no tools, camera, personal memory, files, devices, messages, purchases, web access, or ability to "
+        "This chat has no tools, live camera view, personal memory, files, devices, messages, purchases, web access, "
+        "or ability to "
         "contact anyone. Never claim otherwise. Never ask for or repeat a full name, address, school, phone number, "
         "email, precise location, passwords, photos, account details, family finances, or other identifying/private "
         "information. Never suggest moving the conversation elsewhere, meeting in person, keeping secrets from "
         "caregivers, or forming an exclusive relationship. Do not use guilt, pressure, emotional dependency, or "
         "claims "
         "that you need the child. Do not provide instructions for weapons, drugs, dangerous stunts, sexual content, "
-        "self-harm, or illegal activity. Camera access is disabled, so do not claim to see the room or child. If "
+        "self-harm, or illegal activity. Do not claim to see the room or child. The robot has a separate "
+        "Show and Tell feature in Kids Chat: only with saved grown-up camera permission and a direct look "
+        "request can it briefly look at a toy, drawing or build. You cannot activate it from chat or infer "
+        "whether permission is saved; suggest asking a grown-up if it is unavailable. Never claim the robot "
+        "has no camera or can never look. Only describe an earlier look when approved facts are supplied. If "
         "asked for disallowed or adult-only help, decline briefly and suggest asking a trusted grown-up. If the child "
         "mentions immediate danger, abuse, self-harm, being lost, severe illness, or another emergency, stay calm, "
         "tell them to get a nearby trusted adult now and contact local emergency services; do not investigate, "
@@ -2091,8 +2121,8 @@ class Bridge(NativeWorkspaceRoutes):
         warm_agents: WarmAgentPool | None = None,
     ) -> None:
         unknown = set(backends) - {"hermes", "openclaw"}
-        if not backends or unknown:
-            raise ValueError("Agent backends must be hermes and/or openclaw")
+        if unknown:
+            raise ValueError("Agent backends must be hermes and/or openclaw (empty for household only)")
         if "openclaw" in backends and openclaw is None:
             raise ValueError("The openclaw backend needs an OpenClaw Gateway configuration")
         self.api_key = api_key
@@ -2102,7 +2132,7 @@ class Bridge(NativeWorkspaceRoutes):
         self.hermes_enabled = "hermes" in self.backends
         self.openclaw = OpenClawBackend(openclaw) if "openclaw" in self.backends and openclaw else None
         # The bridge's own text-model calls (Agent Mode, Kids chat, I Spy): OpenAI or an EU router.
-        self.llm = llm or TextModelProvider.from_env(lambda name: _resolve_secret(name, profile))
+        self.llm = llm or TextModelProvider.from_env(self.resolve_secret)
         self.http: ClientSession | None = None
         self._kids_sessions: dict[str, dict[str, Any]] = {}
         self._kids_speech_approvals: dict[str, dict[str, Any]] = {}
@@ -2116,7 +2146,7 @@ class Bridge(NativeWorkspaceRoutes):
         # One in-flight I Spy selection per session; Stop, cancel or a newer selection makes it stale.
         self._ispy_selections: dict[str, object] = {}
         self._ispy_rng: random.Random = random.SystemRandom()
-        self.agent_broker = ReachyAgentBroker()
+        self.agent_broker = ReachyAgentBroker(household_only=not self.backends)
         self.agent_runs = AgentRunManager()
         # Everyday: narrow home/weather/time tools on a fast text model, never the Hermes agent.
         self.everyday_error = ""
@@ -2129,7 +2159,7 @@ class Bridge(NativeWorkspaceRoutes):
             self.everyday_error = f"Everyday configuration is invalid: {exc}"
         try:
             self.everyday_llm: TextModelProvider | None = everyday_provider_from_env(
-                lambda name: _resolve_secret(name, profile)
+                self.resolve_secret
             )
         except LLMProviderConfigError as exc:
             self.everyday_llm = None
@@ -2188,6 +2218,10 @@ class Bridge(NativeWorkspaceRoutes):
                 settings,
             )
         self.warm_agents = warm_agents
+
+    def resolve_secret(self, name: str) -> str:
+        # Household-only hosts never read a Hermes profile or require its runtime.
+        return _resolve_secret(name, self.profile) if self.backends else os.getenv(name, "").strip()
 
     def _issue_kids_speech_approval(self, session_id: str, text: str) -> str:
         """Create a short-lived, single-use capability for one exact moderated reply."""
@@ -2300,7 +2334,7 @@ class Bridge(NativeWorkspaceRoutes):
             self.http = SubscriptionHttp(self.http, self.llm)
         await self.start_native_workspace(
             lambda name: (
-                _resolve_api_key("", self.profile) if name == "API_SERVER_KEY" else _resolve_secret(name, self.profile)
+                _resolve_api_key("", self.profile) if name == "API_SERVER_KEY" else self.resolve_secret(name)
             ),
             _hermes_home(self.profile),
         )
@@ -2341,8 +2375,8 @@ class Bridge(NativeWorkspaceRoutes):
         """Forward one changed, normalized HA occupancy state to Reachy."""
         if self.http is None:
             return False
-        hass_url = _resolve_secret("HASS_URL", self.profile).rstrip("/")
-        hass_token = _resolve_secret("HASS_TOKEN", self.profile)
+        hass_url = self.resolve_secret("HASS_URL").rstrip("/")
+        hass_token = self.resolve_secret("HASS_TOKEN")
         if not hass_url or not hass_token or not self._presence_entity_id or not self._presence_url:
             return False
         entity_path = quote(self._presence_entity_id, safe="._-")
@@ -2452,8 +2486,8 @@ class Bridge(NativeWorkspaceRoutes):
         if not isinstance(authority, dict) or authority.get("source_revision") != enrollment.source_revision:
             self._sources_last_error = "Source authority changed; re-save sources from the owner dashboard."
             return []
-        hass_url = _resolve_secret("HASS_URL", self.profile).rstrip("/")
-        hass_token = _resolve_secret("HASS_TOKEN", self.profile)
+        hass_url = self.resolve_secret("HASS_URL").rstrip("/")
+        hass_token = self.resolve_secret("HASS_TOKEN")
         if not hass_url or not hass_token:
             if self._sources_last_error != "hass":
                 _LOGGER.warning("Companion sources need HASS_URL and HASS_TOKEN on the Hermes host")
@@ -2559,7 +2593,7 @@ class Bridge(NativeWorkspaceRoutes):
             for item in self._companion_calendars
             if re.fullmatch(r"calendar\.[a-z0-9_]+", item)
         ]
-        hass_ready = bool(_resolve_secret("HASS_URL", self.profile) and _resolve_secret("HASS_TOKEN", self.profile))
+        hass_ready = bool(self.resolve_secret("HASS_URL") and self.resolve_secret("HASS_TOKEN"))
         setup: list[str] = []
         if not self._sources_path:
             setup.append("Set REACHY_COMPANION_SOURCES_FILE on the Hermes host (host-owned enrollment file).")
@@ -2731,7 +2765,7 @@ class Bridge(NativeWorkspaceRoutes):
         return web.json_response({"ok": True, "state": state, "kids_live": self.kids_session_live()})
 
     def _llm_key(self) -> str:
-        return self.llm.api_key(lambda name: _resolve_secret(name, self.profile))
+        return self.llm.api_key(lambda name: self.resolve_secret(name))
 
     def _llm_headers(self, unavailable: str) -> dict[str, str]:
         key = self._llm_key()
@@ -2802,14 +2836,14 @@ class Bridge(NativeWorkspaceRoutes):
                 **legacy,
                 "agent_api": agent_ok,
                 "agent_backends": backends,
-                "realtime_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
+                "realtime_available": bool(self.resolve_secret("OPENAI_API_KEY")),
                 # Kids Mode needs the text provider plus OpenAI moderation.
-                "kids_chat_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile) and self._llm_key()),
-                "kids_ispy_available": bool(_resolve_secret("OPENAI_API_KEY", self.profile) and self._llm_key()),
+                "kids_chat_available": bool(self.resolve_secret("OPENAI_API_KEY") and self._llm_key()),
+                "kids_ispy_available": bool(self.resolve_secret("OPENAI_API_KEY") and self._llm_key()),
                 "agent_model_available": bool(self._llm_key()),
                 "text_provider": self.llm.public_status(),
                 "kids_ispy_vision": "local" if os.getenv("REACHY_ISPY_VISION_URL", "").strip() else "openai",
-                "kids_tts_streaming_available": bool(_resolve_secret("ELEVENLABS_API_KEY", self.profile)),
+                "kids_tts_streaming_available": bool(self.resolve_secret("ELEVENLABS_API_KEY")),
                 "realtime_model": "gpt-realtime-2.1",
                 "warm_agents": {
                     "enabled": self.warm_agents.settings.enabled,
@@ -2851,7 +2885,7 @@ class Bridge(NativeWorkspaceRoutes):
         self.require_auth(request)
         if self.http is None:
             raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
-        eleven_key = _resolve_secret("ELEVENLABS_API_KEY", self.profile)
+        eleven_key = self.resolve_secret("ELEVENLABS_API_KEY")
         # "configured" and "local" speech run through Hermes Agent's own tools on this host.
         options: dict[str, object] = {
             "stt": (
@@ -3181,7 +3215,7 @@ class Bridge(NativeWorkspaceRoutes):
         self.require_auth(request)
         if self.http is None:
             raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
-        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        openai_key = self.resolve_secret("OPENAI_API_KEY")
         if not openai_key:
             raise web.HTTPServiceUnavailable(text="Kids Mode safety screening (OpenAI moderation) is not configured")
         if not self._llm_key():
@@ -3596,7 +3630,7 @@ class Bridge(NativeWorkspaceRoutes):
         self.require_auth(request)
         if self.http is None:
             raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
-        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        openai_key = self.resolve_secret("OPENAI_API_KEY")
         if not openai_key:
             raise web.HTTPServiceUnavailable(text="I Spy vision is not configured")
         try:
@@ -3637,7 +3671,7 @@ class Bridge(NativeWorkspaceRoutes):
         self.require_auth(request)
         if self.http is None:
             raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
-        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        openai_key = self.resolve_secret("OPENAI_API_KEY")
         if not openai_key or not self._llm_key():
             raise web.HTTPServiceUnavailable(text="I Spy observation is not configured")
         try:
@@ -3937,7 +3971,7 @@ class Bridge(NativeWorkspaceRoutes):
     async def kids_ispy_clue(self, request: web.Request) -> web.Response:
         """Issue exact-text speech approvals for the server-owned colour clue."""
         self.require_auth(request)
-        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        openai_key = self.resolve_secret("OPENAI_API_KEY")
         if not openai_key:
             raise web.HTTPServiceUnavailable(text="I Spy safety screening is not configured")
         try:
@@ -3994,7 +4028,7 @@ class Bridge(NativeWorkspaceRoutes):
         age band, activity and language are pinned here or by its chat/I Spy profile.
         """
         self.require_auth(request)
-        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        openai_key = self.resolve_secret("OPENAI_API_KEY")
         if not openai_key:
             raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is not configured")
         try:
@@ -4227,7 +4261,7 @@ class Bridge(NativeWorkspaceRoutes):
     async def kids_show_tell_permit(self, request: web.Request) -> web.Response:
         """Mint one short-lived look permit plus the approved pre-capture announcement."""
         self.require_auth(request)
-        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        openai_key = self.resolve_secret("OPENAI_API_KEY")
         if not openai_key:
             raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is not configured")
         try:
@@ -4312,7 +4346,7 @@ class Bridge(NativeWorkspaceRoutes):
     async def kids_show_tell_look(self, request: web.Request) -> web.Response:
         """Consume one permit and one transient frame; return only moderated, approved fixed copy."""
         self.require_auth(request)
-        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        openai_key = self.resolve_secret("OPENAI_API_KEY")
         if not openai_key or not self._llm_key():
             raise web.HTTPServiceUnavailable(text="Show and Tell is not configured")
         try:
@@ -5356,7 +5390,7 @@ class Bridge(NativeWorkspaceRoutes):
     def _everyday_key(self) -> str:
         if self.everyday_llm is None:
             return ""
-        return self.everyday_llm.api_key(lambda name: _resolve_secret(name, self.profile))
+        return self.everyday_llm.api_key(lambda name: self.resolve_secret(name))
 
     async def everyday_answer(
         self,
@@ -5370,12 +5404,16 @@ class Bridge(NativeWorkspaceRoutes):
         is_current: Callable[[], bool] = lambda: True,
         local_tools: list[dict[str, Any]] | None = None,
         local_executor: LocalExecutor | None = None,
+        natural_camera: bool = False,
+        look_recall: bool = False,
     ) -> dict[str, object]:
         """One Everyday text turn (Pipeline and GPT-Live): fast model plus Everyday tools only."""
         if self.http is None:
             raise BrokerUnavailableError("Bridge HTTP client is not ready")
         if self.kids_session_live() or not is_current():
             raise BrokerValidationError("stale_session")
+        if not self.backends and (original_context is None or original_context.capability_profile != "conversation"):
+            raise BrokerValidationError("A current household context is required")
         # The original immutable context is authority; session_key is only reasoner state.
         # Never let an unbound legacy request borrow the current device lease.
         fence = (
@@ -5451,6 +5489,8 @@ class Bridge(NativeWorkspaceRoutes):
             allow_host_extensions=fence is not None,
             # Camera consent is only ever the current request's own words, never earlier context.
             consent_text=text,
+            natural_camera=natural_camera and local_tools is not None,
+            look_recall=look_recall and natural_camera and local_tools is not None,
             **local_options,
         )
 
@@ -5879,7 +5919,7 @@ class Bridge(NativeWorkspaceRoutes):
                     },
                 },
                 "voice": {
-                    "openai_key_configured": bool(_resolve_secret("OPENAI_API_KEY", self.profile)),
+                    "openai_key_configured": bool(self.resolve_secret("OPENAI_API_KEY")),
                     "realtime_models": ["gpt-realtime-2.1", "gpt-realtime-2.1-mini"],
                     "live_models": ["gpt-live-1"],
                     "provider": "OpenAI (direct from the Hermes host)",
@@ -5893,7 +5933,7 @@ class Bridge(NativeWorkspaceRoutes):
         same bounded Workspace answer as Realtime. Never full Hermes, camera or movement."""
         self.require_auth(request)
         device_id = _device_id(request)
-        key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        key = self.resolve_secret("OPENAI_API_KEY")
         if not key:
             raise web.HTTPServiceUnavailable(text="OPENAI_API_KEY is not configured on the Hermes host")
         session_key = f"{device_id}:live:{secrets.token_hex(8)}"
@@ -5909,6 +5949,8 @@ class Bridge(NativeWorkspaceRoutes):
             return None
 
         async def allowed(config: dict[str, Any]) -> bool:
+            if not self.backends and config.get("assistant_mode") != "everyday":
+                return False
             if self.kids_session_live():
                 return False
             context = workspace_context(config)
@@ -5922,7 +5964,7 @@ class Bridge(NativeWorkspaceRoutes):
                         return self.agent_broker.everyday_read_fence(device_id, original) is not None
                     except BrokerValidationError:
                         return False
-                return True  # legacy clients retain their pre-existing transport behavior
+                return bool(self.backends)  # unbound legacy transport is unavailable on household-only hosts
             try:
                 await self.agent_broker.assert_current(device_id, int(context.get("session_generation") or 0))
             except BrokerValidationError:
@@ -5943,7 +5985,12 @@ class Bridge(NativeWorkspaceRoutes):
                 else None
             )
             local_options = (
-                {"local_tools": local_tool_specs(config.get("local_tools", [])), "local_executor": local_executor}
+                {
+                    "local_tools": local_tool_specs(config.get("local_tools", [])),
+                    "local_executor": local_executor,
+                    # Household approval advertised by the robot; the robot re-checks it per capture.
+                    "natural_camera": config.get("camera_natural") is True,
+                }
                 if local_executor is not None
                 else {}
             )
@@ -5957,6 +6004,7 @@ class Bridge(NativeWorkspaceRoutes):
                     context=earlier,
                     original_context=original,
                     is_current=lambda: (original_fence is None or original_fence()) and current_live_turn(),
+                    look_recall=live_look_recall_available(),
                     **local_options,
                 )
                 return str(result["text"])
@@ -6017,6 +6065,8 @@ class Bridge(NativeWorkspaceRoutes):
             allowed=allowed,
             look_request=_looks_like_look_request,
             answer_with_local=answer,
+            control_intent=_direct_control_intent,
+            action_intent=_direct_action_intent,
         )
 
     async def realtime(self, request: web.Request) -> web.StreamResponse:
@@ -6030,7 +6080,7 @@ class Bridge(NativeWorkspaceRoutes):
         """
         self.require_auth(request)
         device_id = _device_id(request)
-        openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+        openai_key = self.resolve_secret("OPENAI_API_KEY")
         if not openai_key:
             raise web.HTTPServiceUnavailable(
                 text=json.dumps({"error": {"message": "OPENAI_API_KEY is not configured on the Hermes host"}}),
@@ -6075,9 +6125,13 @@ class Bridge(NativeWorkspaceRoutes):
         if assistant_mode == "workspace" and agent_context.get("capability_profile") != "agent":
             assistant_mode = "everyday"  # Workspace authority comes only from the adult Agent profile
         everyday = assistant_mode == "everyday"
+        if not self.backends and (not everyday or "local_tools" not in config):
+            await client.send_json({"type": "bridge.error", "error": "A bound Everyday session is required"})
+            await client.close()
+            return client
         if everyday:
             agent_tools_enabled = False  # no ask_hermes, memory or project tools in Everyday
-        agent_tool_name, agent_label = self._agent_identity(agent_model)
+        agent_tool_name, agent_label = ("", "Homebody") if everyday else self._agent_identity(agent_model)
         local_names: set[str] = set()
         realtime_tools = _build_realtime_tools(
             camera_enabled,
@@ -6130,6 +6184,13 @@ class Bridge(NativeWorkspaceRoutes):
             "The camera is still-image-only. When the user explicitly asks you to look, see, read, identify, "
             "inspect, or answer from Reachy's current view, call capture_reachy_camera before answering and "
             "describe only that fresh frame. Never capture speculatively, repeatedly, or for monitoring. "
+            + (
+                "This household approved natural visual requests: also call it once when the person's own "
+                "request needs a fresh look, such as how an outfit looks or what they are holding, without "
+                "asking for special words or permission. Never identify people. "
+                if config.get("camera_natural") is True and everyday
+                else ""
+            )
             if camera_enabled
             else "Do not claim to see the physical environment because camera access is disabled. "
         )
@@ -6143,7 +6204,7 @@ class Bridge(NativeWorkspaceRoutes):
         power_instruction = (
             (
                 "When the user explicitly asks Reachy to enter Standby, Awake, Meeting, or Sleep, call "
-                f"set_reachy_power_mode instead of {agent_tool_name}. "
+                "set_reachy_power_mode directly. "
                 "Use 30 minutes for Meeting when no duration is given. "
                 "Standby, Meeting, and Sleep end the current conversation immediately. Sleep also disables the wake "
                 "word, so never claim the user can wake Reachy by voice from Sleep; the UI or a physical control is "
@@ -6233,6 +6294,7 @@ class Bridge(NativeWorkspaceRoutes):
                     lifecycle = RealtimeResponseLifecycle(send_upstream_json)
                     tool_tasks: set[asyncio.Task[None]] = set()
                     visual_scope = [False]
+                    spoken_words = [""]
                     visual_pending: dict[str, tuple[int, float]] = {}
                     visual_results: dict[str, int] = {}
                     visual_seen: set[str] = set()
@@ -6521,7 +6583,27 @@ class Bridge(NativeWorkspaceRoutes):
                                         },
                                     }
                                 )
-                            if visual_scope[0] and completed_tool and item.get("name") != "capture_reachy_camera":
+                            if event.get("type") == "conversation.item.input_audio_transcription.completed":
+                                spoken_words[0] = str(event.get("transcript") or "")
+                            try:
+                                requested = json.loads(item.get("arguments") or "{}")
+                                requested = requested if isinstance(requested, dict) else {}
+                            except (AttributeError, TypeError, ValueError):
+                                requested = {}
+                            # The person's own latest words (Standby/Sleep, or a short direct command
+                            # with exactly these arguments) still reach the robot's guarded handlers
+                            # after a look; nothing image- or model-derived does.
+                            direct_power = (
+                                item.get("name") == "set_reachy_power_mode"
+                                and requested.get("mode") in {"sleep", "standby"}
+                                and _direct_control_intent(spoken_words[0]) == requested.get("mode")
+                            ) or _direct_action_intent(spoken_words[0]) == (item.get("name"), requested)
+                            if (
+                                visual_scope[0]
+                                and completed_tool
+                                and item.get("name") != "capture_reachy_camera"
+                                and not direct_power
+                            ):
                                 call_id = str(item.get("call_id") or "")
                                 if call_id and call_id not in handled_hermes_call_ids:
                                     handled_hermes_call_ids.add(call_id)
@@ -6706,7 +6788,7 @@ class Bridge(NativeWorkspaceRoutes):
             if provider == "elevenlabs":
                 if self.http is None:
                     raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
-                eleven_key = _resolve_secret("ELEVENLABS_API_KEY", self.profile)
+                eleven_key = self.resolve_secret("ELEVENLABS_API_KEY")
                 if not eleven_key:
                     raise web.HTTPBadRequest(text="ElevenLabs is not configured on the Hermes host")
                 model = options.get("model") or "scribe_v2"
@@ -6795,7 +6877,7 @@ class Bridge(NativeWorkspaceRoutes):
         if _KIDS_SESSION_ID_RE.fullmatch(session_id) is None or not approval_token:
             raise web.HTTPForbidden(text="Kids Mode speech requires a moderated-response approval")
 
-        eleven_key = _resolve_secret("ELEVENLABS_API_KEY", self.profile)
+        eleven_key = self.resolve_secret("ELEVENLABS_API_KEY")
         if not eleven_key:
             raise web.HTTPServiceUnavailable(text="ElevenLabs is not configured on the Hermes host")
         # Language is bound to the exact single-use moderated-text approval, never speech payload.
@@ -6860,7 +6942,7 @@ class Bridge(NativeWorkspaceRoutes):
         if self.kids_session_live():
             # A child may be listening: screen system notices like any child-facing output.
             text = str(payload.get("input") or payload.get("text") or "").strip()
-            openai_key = _resolve_secret("OPENAI_API_KEY", self.profile)
+            openai_key = self.resolve_secret("OPENAI_API_KEY")
             if not openai_key:
                 raise web.HTTPServiceUnavailable(text="Kids Mode safety screening is not configured")
             if text and await self._moderation_flagged(text, openai_key):
@@ -6898,7 +6980,7 @@ class Bridge(NativeWorkspaceRoutes):
         if provider == "elevenlabs":
             if self.http is None:
                 raise web.HTTPServiceUnavailable(text="Bridge HTTP client is not ready")
-            eleven_key = _resolve_secret("ELEVENLABS_API_KEY", self.profile)
+            eleven_key = self.resolve_secret("ELEVENLABS_API_KEY")
             if not eleven_key:
                 raise web.HTTPBadRequest(text="ElevenLabs is not configured on the Hermes host")
             voice = str(payload.get("voice") or "pNInz6obpgDQGcFmaJgB").strip()
@@ -6979,6 +7061,18 @@ def create_app(
     )
     app.on_startup.append(bridge.start)
     app.on_cleanup.append(bridge.stop)
+    try:
+        from companion.household_mcp import household_mcp
+    except ImportError:
+        try:
+            from .household_mcp import household_mcp
+        except ImportError:
+            from household_mcp import household_mcp
+
+    async def tools_endpoint(request):
+        return await household_mcp(bridge, request)
+
+    app.router.add_post("/v1/household/mcp", tools_endpoint)
     app.router.add_get("/health", bridge.health)
     app.router.add_get("/v1/models", bridge.models)
     app.router.add_get("/v1/voice-options", bridge.voice_options)

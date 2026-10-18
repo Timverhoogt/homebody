@@ -30,7 +30,7 @@ from .kids_acknowledgements import (
     stage_clips,
 )
 from .kids_acknowledgements import catalog as kids_ack_catalog
-from .look_intent import looks_like_look_request
+from .look_intent import direct_action_intent, direct_control_intent, looks_like_look_request
 from .robot_stt import RobotSttCancelled, RobotSttClient, RobotSttUnavailable
 from .stt_routing import (
     SttInfrastructureError,
@@ -369,7 +369,25 @@ class PipelineVoiceMixin:
                     continue  # the ordinary continuous Kids turn; never a new wake
                 with self._agent_lock:
                     agent_profile_active = self._capability_profile == "agent"
-                visual_help = not client.config.kids_mode_enabled and (
+                # A direct control in the person's own words wins over the tool-free look follow-up.
+                control = (
+                    direct_control_intent(transcript)
+                    if not client.config.kids_mode_enabled and self.look_context_live()
+                    else None
+                )
+                control_reply = self._voice_direct_control(control) if control is not None else None
+                if control is not None and control_reply is None:
+                    break  # Stop/Standby/Sleep ended this conversation: no late reply or relisten
+                # A short direct command ("set the volume to 30", "dance") also runs as said after a
+                # look, through the guarded Everyday tool path, never via the image follow-up.
+                direct = (
+                    direct_action_intent(transcript)
+                    if control is None and not client.config.kids_mode_enabled and self.look_context_live()
+                    else None
+                )
+                if direct is not None:
+                    control, control_reply = direct[0], self._voice_direct_action(*direct)
+                visual_help = control is None and not client.config.kids_mode_enabled and (
                     looks_like_look_request(transcript, engaged=self.look_context_live()) or self.look_context_live()
                 )
                 # Name the route actually taken below; Everyday never reaches the full Hermes agent.
@@ -392,7 +410,9 @@ class PipelineVoiceMixin:
                     ),
                 )
 
-                if visual_help:
+                if control_reply is not None:
+                    response_text = control_reply
+                elif visual_help:
                     if looks_like_look_request(transcript, engaged=self.look_context_live()):
                         self._set_status("looking", "Looking at what you are showing", transcript=transcript)
                         response_text = self.voice_look_turn(transcript)

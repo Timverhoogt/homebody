@@ -754,7 +754,7 @@ class HermesVoiceRuntime(
                 self.stop_event.wait(0.05)
                 continue
 
-            if not config.configured and not config.home_assistant_assist_enabled:
+            if not config.voice_connection_configured and not config.home_assistant_assist_enabled:
                 self._set_status("waiting_for_configuration", "Open the app settings and configure the Hermes bridge")
                 self.stop_event.wait(1.0)
                 continue

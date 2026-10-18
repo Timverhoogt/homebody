@@ -15,7 +15,12 @@ from dataclasses import dataclass
 
 from .audio import resample_linear
 from .config import AppConfig
-from .everyday_runtime import EverydayCallbackScope, completed_everyday_call
+from .everyday_runtime import (
+    POST_LOOK_REFUSAL,
+    EverydayCallbackScope,
+    completed_everyday_call,
+    natural_camera_requests,
+)
 from .kids_acknowledgements import output_quarantined
 from .realtime_client import RealtimeBridgeError, RealtimeBridgeSession
 from .robot_tools import completed_robot_tool_call
@@ -288,7 +293,7 @@ class RealtimeVoiceMixin:
         if output_quarantined(self):
             return  # direct entry: same common audio-quarantine gate as the dispatcher
         from .companion import LOOK_CONTEXT_TTL_SECONDS
-        from .look_intent import looks_like_look_request
+        from .look_intent import direct_control_intent, looks_like_look_request, natural_visual_words_ok
 
         local_closed = threading.Event()
         local_tools_closed = threading.Event()
@@ -541,10 +546,32 @@ class RealtimeVoiceMixin:
                             )
                             continue
                         handled_local_call_ids.add(call_id)
+                        # After a look only this utterance's own short direct command (same arguments)
+                        # runs; the callback gate below re-checks it against the same words.
+                        if visual_deadline and not EverydayCallbackScope(transcript=spoken_text).direct_control(
+                            name, args
+                        ):
+                            session.send_tool_result(call_id, {"ok": False, "error": POST_LOOK_REFUSAL})
+                            continue
                         if visual_deadline:
-                            session.send_tool_result(
-                                call_id,
-                                {"ok": False, "error": "Looking together is tool-free"},
+                            # The pre-look fence was revoked when image analysis entered; a direct
+                            # command gets a fresh session-bound fence and keeps the visual gate.
+                            latched = threading.Event()
+                            latched.set()
+                            self.launch_everyday_tool(
+                                name,
+                                args,
+                                fence=self.everyday_tool_fence(local_closed),
+                                call_id=call_id,
+                                deliver=lambda result, identifier=call_id: session.send_tool_result(
+                                    identifier, result
+                                ),
+                                is_current=lambda: not (
+                                    local_closed.is_set()
+                                    or self._turn_stop_requested()
+                                    or self._privacy_requested.is_set()
+                                ),
+                                scope=EverydayCallbackScope(transcript=spoken_text, visual=latched),
                             )
                             continue
                         self.launch_everyday_tool(
@@ -559,7 +586,11 @@ class RealtimeVoiceMixin:
                         )
                     elif power_call is not None and power_call.call_id not in handled_power_call_ids:
                         handled_power_call_ids.add(power_call.call_id)
-                        if visual_deadline:
+                        # The current input item's own words may still say Standby/Sleep after a look.
+                        if visual_deadline and not (
+                            direct_control_intent(spoken_text) == getattr(power_call, "mode", None)
+                            and getattr(power_call, "mode", None) in {"sleep", "standby"}
+                        ):
                             session.send_tool_result(
                                 power_call.call_id,
                                 {
@@ -585,8 +616,11 @@ class RealtimeVoiceMixin:
                                 session.send_camera_error(camera_call_id, "Too many pending camera requests")
                             continue  # transcription may complete after tool selection; never guess consent
                         handled_camera_call_ids.add(camera_call_id)
-                        if spoken_revision == captured_revision or not looks_like_look_request(
-                            spoken_text, engaged=self.look_context_live()
+                        # Household approval: the model may choose one look for this utterance's own
+                        # direct request; otherwise only the explicit look phrases admit a capture.
+                        if spoken_revision == captured_revision or not (
+                            looks_like_look_request(spoken_text, engaged=self.look_context_live())
+                            or (natural_camera_requests(config) and natural_visual_words_ok(spoken_text))
                         ):
                             session.send_camera_error(camera_call_id, "Ask explicitly for one look or a fresh look")
                             continue

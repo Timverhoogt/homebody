@@ -64,6 +64,12 @@ Start through the Reachy dashboard. For managed appliances use the [managed-upda
 
 ## Connect speech and host capabilities
 
+**Install your own household MCP server (unreleased preview, no Hermes required for Everyday):**
+[start with the installation runbook](homebody/agent_guides/household.md), including copyable
+AI-agent instructions and a read-only smoke check. This is a separate development trial,
+not a drop-in replacement for the shared Kids/Pipeline/Workspace bridge. See the
+[protocol and current limits](docs/standalone-household-tools.md).
+
 **Basic connection:** Settings → **Connect your agent** creates a one-time message for Hermes Agent or OpenClaw. Review the plan before approving it. The agent downloads the robot-served bridge, checks its manifest, creates a restricted conversation profile and pairs. [Agent-led setup](docs/agent-setup.md) explains the security model and manual alternative.
 
 **This is not zero-setup subscription or native Workspace provisioning.** The bundle follows your *installed robot release*. It does not automatically configure saved Codex authentication, install subscription entry points or register native project sessions. Use the explicit [subscription and native setup guide](docs/subscription-reasoning.md), alongside the [companion bridge guide](companion/README.md).

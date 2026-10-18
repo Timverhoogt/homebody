@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 # Match the existing registered app ID; pip canonicalizes hyphens/underscores equally.
 name = "reachy_mini_homebody"
-version = "0.5.34"
+version = "0.5.35"
 description = "Homebody: an always-on, privacy-first home companion app for Reachy Mini with pluggable agent backends"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -40,8 +40,12 @@ Documentation = "https://hermes-agent.nousresearch.com/docs/user-guide/features/
 Repository = "https://github.com/Timverhoogt/homebody"
 "Standalone I Spy" = "https://github.com/Timverhoogt/reachy-mini-i-spy"
 
+[project.optional-dependencies]
+household = ["aiohttp>=3.10,<4"]
+
 [project.scripts]
 homebody = "homebody.main:run_cli"
+homebody-household = "homebody.household_launcher:main"
 # Pre-rename command, kept so existing scripts and services keep working.
 reachy-mini-hermes = "homebody.main:run_cli"
 

@@ -77,6 +77,29 @@ def configured():
     save_config(merge_config(load_config(), {"api_key": "private-test-key", "bridge_url": "http://127.0.0.1:9999"}))
 
 
+@pytest.mark.parametrize("mode", ["realtime", "live"])
+def test_fresh_household_voice_onboarding_needs_no_agent_bridge(setup, monkeypatch, mode):
+    client, headers, app = setup
+    body = {"url": "https://house.invalid", "robot_credential": "synthetic-house-key",
+            "enabled": False, "acknowledged": True}
+    assert client.post("/api/household/tools/configure", json=body, headers=headers).status_code == 200
+    save_config(merge_config(load_config(), {"conversation_mode": mode}))
+    assert not load_config().configured and load_config().voice_connection_configured
+    bridge = Mock()
+    monkeypatch.setattr(main_module, "HermesBridgeClient", Mock(return_value=bridge))
+    result = client.post("/api/onboarding/check", headers=headers)
+    assert result.status_code == 200 and result.json()["connection_checked"]
+    bridge.everyday_capabilities.assert_called_once()
+    bridge.health.assert_not_called()
+    bridge.models.assert_not_called()
+    assert "synthetic-house-key" not in result.text
+    done = client.post("/api/onboarding/finish", json={"confirm": "restart"}, headers=headers)
+    assert done.status_code == 200 and not load_config().setup_pending
+    assert app._runtime is None and done.json()["speech_tested"] is False
+    save_config(merge_config(load_config(), {"household_api_key": "rotated-synthetic"}))
+    assert not client.get("/api/onboarding").json()["connection_checked"]
+
+
 def test_owner_checked_connection_is_not_acoustic_acceptance(setup, monkeypatch):
     client, headers, app = setup
     configured()

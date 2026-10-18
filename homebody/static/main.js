@@ -1049,6 +1049,7 @@ function updateStatus(payload, sequence = statusSequence) {
   $("agent-enable-button").setAttribute("aria-pressed", String(agentProfile === "agent"));
   $("agent-stop-button").disabled = agentRequestPending;
   window.HomebodyAssistantModes?.update(payload);
+  window.HomebodyHousehold?.update(payload);
   renderAgentRun();
   const robotBusy = Boolean(runtime.robot_action_busy);
   const motorsEnabled = runtime.motors_enabled;

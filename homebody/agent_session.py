@@ -149,7 +149,7 @@ class AgentSessionMixin:
     def _publish_remote_agent_session(self) -> None:
         """Best-effort invalidation of the Hermes-hosted device lease."""
         config = self.config_loader()
-        if not config.api_key:
+        if not config.api_key and not config.household_api_key:
             return
         context = self.agent_broker_context(explicit_private_intent=False)
         with self._agent_lock:
