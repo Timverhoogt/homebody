@@ -36,6 +36,10 @@ from dataclasses import replace
 from homebody.config import AppConfig
 from homebody.show_and_tell import Authority, SessionGate, explicit_look_request, Unavailable
 assert explicit_look_request('Kijk naar mijn tekening!', 'nl')
+assert explicit_look_request('kijk eens!', 'nl')
+assert explicit_look_request('kijk eens hier', 'nl')
+assert explicit_look_request('kijk wat ik heb', 'nl')
+assert not explicit_look_request('hij zei kijk eens', 'nl')
 assert not explicit_look_request('do not look now', 'en')
 assert AppConfig().camera_enabled is False  # fresh installs keep the camera approval off
 state = {'authority': Authority('synthetic', 1, 1, 1, 1000, 'buddy', 'en')}

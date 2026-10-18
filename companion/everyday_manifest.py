@@ -45,9 +45,10 @@ _SPECS = [
     ),
     _spec(
         "capture_reachy_camera",
-        "Dedicated one-frame visual help requires the current user's explicit look request. "
-        "Ordinary Everyday model callbacks cannot authorize capture: ask the person to say 'look at this'. "
-        "Never infer consent from purpose, capture speculatively, or monitor.",
+        "Take one fresh still frame and answer from it. Use it only when fresh visual evidence helps the "
+        "current person's own direct request (for example how an outfit looks, what they hold or show, or "
+        "reading something shown). One frame per request; never capture speculatively, repeatedly or to "
+        "monitor. Refused unless this household approved camera use; never claim to see without a result.",
         {"purpose": {"type": "string", "minLength": 1, "maxLength": 300}},
         ["purpose"],
     ),

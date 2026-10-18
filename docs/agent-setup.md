@@ -13,6 +13,12 @@ This automates the **basic restricted conversation connection** in [`companion/R
 
 ## Choose the setup path
 
+- **Install your own standalone household MCP (unreleased):** use the
+  [installation and AI-agent runbook](../homebody/agent_guides/household.md). Everyday does not
+  require Hermes. The matching robot serves it at `/agent-setup/household.md`; the existing
+  agent guides link there. This is not the one-time agent pairing wizard, nor a unified
+  Kids/Pipeline/Workspace replacement. Begin with a separate loopback health-only trial.
+
 - **Basic voice conversation / OpenClaw compatibility:** follow the one-time message steps below.
 - **Everyday:** configure its narrow host backend and allowlists using [Everyday / Workspace](everyday-workspace.md). It has no full-agent/private-memory fallback; a restricted conversation profile is not its backend.
 - **Native project Workspace:** explicitly register the project and exact Hermes session on the host, enable discussion/approved execution as needed, then select it in the paired owner UI. Native session identity/history are distinct from broker discussion. Exact phone approvals and verifier/artifact receipts gate the planned execution flow, alongside normal Hermes approvals. Native discussion still uses the worker's configured tools: “discuss only” is an instruction, **not enforcement**, and those execution approvals do not universally gate its tool calls. Configure owner-scoped read-only tools if discussion must be read-only; CWD is **not a sandbox**. Follow [native Workspace](native-workspace.md).

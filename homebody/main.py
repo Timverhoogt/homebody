@@ -38,6 +38,7 @@ from .config import AppConfig, config_transaction, default_config_path, load_con
 from .contextual_offers import ContextualOffer
 from .gpio_buttons import ButtonEvent, ButtonName, GpioButtonService
 from .hermes_client import HermesBridgeClient, HermesBridgeError
+from .household import HouseholdSetupRequest, household_revocation, household_status, household_updates
 from .kids_mode import LANGUAGE_NAMES, SESSION_VOICE_LANGUAGES, KidsProfile
 from .kids_runtime import ISpyInputUnavailable, valid_kids_voice_proof
 from .local_vision import LocalVisionClient, LocalVisionError
@@ -1851,6 +1852,58 @@ class Homebody(ReachyMiniApp):
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except RuntimeError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        # Explicit Owner-only attachment to the standalone household tool surface.
+        # Uses saved host settings; never starts a second robot or Hermes runtime.
+        from .household_client import install_household_connection_routes
+
+        install_household_connection_routes(self.settings_app, lambda: self._runtime, load_config)
+
+        # One-time household setup: Owner pairing + same-origin CSRF come from the owner boundary;
+        # pairing alone is not consent. Saving never captures, listens or starts a session.
+        @self.settings_app.get("/api/household/setup")
+        def household_setup_status() -> JSONResponse:
+            return JSONResponse(household_status(load_config()), headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.post("/api/household/setup")
+        def household_setup_apply(request: HouseholdSetupRequest) -> JSONResponse:
+            if getattr(self._runtime, "kids_controls_locked", False):
+                raise HTTPException(status_code=423, detail="Household setup is unavailable while Kids Mode is active")
+            try:
+                updates = household_updates(request)
+                with config_transaction():
+                    saved = merge_config(load_config(), updates)
+                    save_config(saved)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except OSError as exc:
+                raise HTTPException(status_code=500, detail="The household setup could not be saved") from exc
+            return JSONResponse(household_status(saved), headers={"Cache-Control": "no-store"})
+
+        def _household_reduce(updates: dict[str, object], failure: str) -> JSONResponse:
+            # Reductions are allowed even during Kids Mode. Fail closed in RAM first: a pending look
+            # and any preapproved I Spy grant end before the file write can fail.
+            if self._runtime is not None:
+                for name in ("revoke_everyday_camera", "kids_revoke_preapproved_camera"):
+                    revoke = getattr(self._runtime, name, None)
+                    if callable(revoke):
+                        revoke()
+            try:
+                with config_transaction():
+                    saved = merge_config(load_config(), updates)
+                    save_config(saved)
+            except (OSError, ValueError) as exc:
+                raise HTTPException(status_code=500, detail=failure) from exc
+            return JSONResponse(household_status(saved), headers={"Cache-Control": "no-store"})
+
+        @self.settings_app.post("/api/household/revoke")
+        def household_setup_revoke() -> JSONResponse:
+            return _household_reduce(household_revocation(), "The household revocation could not be saved")
+
+        @self.settings_app.post("/api/household/camera-off")
+        def household_camera_off() -> JSONResponse:
+            # The explicit global off: every look, window and approval is inert until turned on again.
+            return _household_reduce({"camera_enabled": False}, "Camera access could not be turned off")
 
         # Show and Tell: owner-only caregiver controls (pairing + same-origin CSRF from the owner
         # boundary). Responses are categorical booleans; never a session id, frame or description.

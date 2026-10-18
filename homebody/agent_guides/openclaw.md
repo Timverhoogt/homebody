@@ -1,5 +1,10 @@
 # Connect Reachy Mini (Homebody {{VERSION}}) to OpenClaw
 
+> Looking for **standalone household MCP without an Everyday agent** instead? Read
+> [the installation and AI-agent runbook]({{ROBOT_URL}}/agent-setup/household.md).
+> This unreleased manual trial is not this pairing flow. Do not switch an existing
+> shared bridge URL: Kids, Pipeline STT/TTS and Workspace still need their existing routes.
+
 You are an OpenClaw agent, running on your owner's computer. Your owner asked you to connect their Reachy Mini robot to OpenClaw. The robot runs the Homebody app at **{{ROBOT_URL}}**. Your owner's message gave you a one-time **setup code**.
 
 When you are done:

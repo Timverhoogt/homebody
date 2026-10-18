@@ -18,7 +18,7 @@ import numpy as np
 from websockets.exceptions import ConnectionClosedOK
 from websockets.sync.client import connect
 
-from .everyday_runtime import configured_local_tools
+from .everyday_runtime import configured_local_tools, natural_camera_requests
 from .realtime_client import RealtimeBridgeError, RealtimeBridgeSession, RealtimeEvent
 
 _START_TIMEOUT_SECONDS = 15.0
@@ -74,11 +74,14 @@ class LiveBridgeSession(RealtimeBridgeSession):
         self.started = threading.Event()
 
     def start(self) -> None:
+        everyday = self.assistant_mode == "everyday"
+        endpoint = self.config.household_endpoint if everyday else self.config.bridge_url
+        credential = self.config.household_credential if everyday else self.config.api_key
         try:
             self._socket = connect(
-                live_url(self.config.bridge_url),
+                live_url(endpoint),
                 additional_headers={
-                    "Authorization": f"Bearer {self.config.api_key}",
+                    "Authorization": f"Bearer {credential}",
                     "X-Reachy-Device-Id": self.config.instance_id,
                 },
                 open_timeout=10,
@@ -93,6 +96,8 @@ class LiveBridgeSession(RealtimeBridgeSession):
                 "timeout_seconds": self.config.live_session_timeout_seconds,
                 "assistant_mode": self.assistant_mode,
                 "local_tools": configured_local_tools(self.config) if self.assistant_mode == "everyday" else [],
+                # Household approval for model-selected one-frame looks; the robot still fences each look.
+                "camera_natural": self.assistant_mode == "everyday" and natural_camera_requests(self.config),
                 "language": self.config.language,
                 "agent_context": asdict(self.agent_context) if self.agent_context is not None else {},
             }))

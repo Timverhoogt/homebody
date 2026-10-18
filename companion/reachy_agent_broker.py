@@ -398,7 +398,7 @@ class BrokerConfig:
     projects: ProjectCatalog = field(default_factory=ProjectCatalog)
 
     @classmethod
-    def from_env(cls) -> BrokerConfig:
+    def from_env(cls, *, household_only: bool = False) -> BrokerConfig:
         entity_config = _json_object(os.getenv("REACHY_AGENT_HA_ALLOWLIST", ""))
         entities = {
             str(entity): frozenset(str(attribute) for attribute in attributes)
@@ -407,10 +407,14 @@ class BrokerConfig:
         }
         return cls(
             home_entities=entities,
-            projects=ProjectCatalog.from_json(os.getenv("REACHY_AGENT_PROJECTS_JSON", "")),
-            note_roots=_configured_roots("REACHY_AGENT_NOTE_ROOTS"),
-            personal_roots=_configured_roots("REACHY_AGENT_PERSONAL_ROOTS"),
-            history_roots=_configured_roots("REACHY_AGENT_HISTORY_ROOTS"),
+            projects=(
+                ProjectCatalog()
+                if household_only
+                else ProjectCatalog.from_json(os.getenv("REACHY_AGENT_PROJECTS_JSON", ""))
+            ),
+            note_roots=({} if household_only else _configured_roots("REACHY_AGENT_NOTE_ROOTS")),
+            personal_roots=({} if household_only else _configured_roots("REACHY_AGENT_PERSONAL_ROOTS")),
+            history_roots=({} if household_only else _configured_roots("REACHY_AGENT_HISTORY_ROOTS")),
             hass_url=os.getenv("HASS_URL", "").strip().rstrip("/"),
             hass_token=os.getenv("HASS_TOKEN", "").strip(),
             search_url=os.getenv("REACHY_AGENT_SEARCH_URL", "http://127.0.0.1:8888/search").strip(),
@@ -491,8 +495,8 @@ def capability_requires_private_intent(capability_id: str) -> bool:
 class ReachyAgentBroker:
     """Execute only the fixed owner surface and retain sanitized activity."""
 
-    def __init__(self, config: BrokerConfig | None = None) -> None:
-        self.config = config or BrokerConfig.from_env()
+    def __init__(self, config: BrokerConfig | None = None, *, household_only: bool = False) -> None:
+        self.config = config or BrokerConfig.from_env(household_only=household_only)
         self._activity: deque[dict[str, object]] = deque(maxlen=50)
         self._activity_lock = asyncio.Lock()
         self._leases: dict[str, _DeviceLease] = {}

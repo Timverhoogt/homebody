@@ -372,7 +372,7 @@ class CompanionMixin:
         with self._camera_control_lock:
             if self._camera_control_session_live_locked():
                 return "Camera control is active; stop it before asking Reachy to look"
-        if not config.local_vision_enabled and not config.configured:
+        if not config.local_vision_enabled and not config.household_configured:
             return "Connect the Hermes bridge or enable local vision before asking Reachy to look"
         return ""
 
@@ -598,8 +598,8 @@ class CompanionMixin:
             self._companion_teardown("follow_up_revoked")
             raise LookCancelled("The earlier look is no longer authorized")
         config = self.config_loader()
-        if not config.configured:
-            raise RuntimeError("Connect the Hermes bridge before asking follow-up questions")
+        if not config.household_configured:
+            raise RuntimeError("Connect the household service before asking follow-up questions")
         owns_voice_slot = origin != "voice"
         if owns_voice_slot and not self._voice_activity_lock.acquire(blocking=False):
             raise RuntimeError("Reachy is busy with a voice interaction; try again in a moment")

@@ -77,7 +77,8 @@ def test_pipeline_real_everyday_model_loop_over_http():
     "variant",
     ["valid", "invalid_args", "unadvertised", "schema_override", "stale", "unknown_result", "duplicate_result"],
 )
-def test_realtime_advertisement_canonical_and_admission(monkeypatch, variant):
+@pytest.mark.parametrize("standalone", [False, True])
+def test_realtime_advertisement_canonical_and_admission(monkeypatch, variant, standalone):
     monkeypatch.setenv("OPENAI_API_KEY", "fixture-only")
     module = load_bridge_module()
 
@@ -129,7 +130,11 @@ def test_realtime_advertisement_canonical_and_admission(monkeypatch, variant):
                     return self.session.ws_connect(upstream.make_url("/v1/realtime"), **kwargs)
 
             monkeypatch.setattr(module, "ClientSession", Redirect)
-            bridge = module.Bridge(api_key="bridge-secret", hermes_url="http://127.0.0.1:1")
+            bridge = module.Bridge(api_key="bridge-secret", hermes_url="http://127.0.0.1:1",
+                                   backends=() if standalone else ("hermes",))
+            if standalone:
+                bridge._agent_identity = lambda *a: pytest.fail("Everyday must not resolve an agent")
+                bridge._agent_answer = lambda *a, **k: pytest.fail("Everyday must not invoke an agent")
             bridge.http = real_session()
             host = web.Application()
             host.router.add_post("/v1/agent/session", bridge.broker_session)
@@ -151,6 +156,9 @@ def test_realtime_advertisement_canonical_and_admission(monkeypatch, variant):
                             t for t in upstream_requests[0]["session"]["tools"] if t["name"] == "set_reachy_volume"
                         )
                         assert spec == local_tool_specs(["set_reachy_volume"])[0]
+                        assert not {"ask_hermes", "ask_openclaw"} & {
+                            t["name"] for t in upstream_requests[0]["session"]["tools"]
+                        }
                         if variant == "schema_override":
                             await ws.send_json({"type": "session.update", "session": {"tools": [{"name": "shell"}]}})
                         if variant == "stale":

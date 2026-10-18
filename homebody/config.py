@@ -18,6 +18,8 @@ _CONFIG_LOCK = threading.RLock()
 _CONFIG_ENV = "HOMEBODY_CONFIG"
 # Pre-rename (Reachy Mini Hermes) override, still honoured so existing robots keep their settings.
 _LEGACY_CONFIG_ENV = "REACHY_MINI_HERMES_CONFIG"
+# Disclosure revision of the one-time household setup; a new revision needs a new Owner approval.
+HOUSEHOLD_SETUP_VERSION = 1
 
 
 def default_config_path() -> Path:
@@ -41,6 +43,10 @@ class AppConfig:
 
     bridge_url: str = "http://127.0.0.1:8643"
     api_key: str = ""
+    # Independent household transport. Empty pair retains the legacy shared bridge.
+    household_url: str = ""
+    household_api_key: str = ""
+    household_connection_enabled: bool = False
     model: str = "hermes-agent"
     # Voice engine (transport): pipeline | realtime | live. Independent of the assistant purpose.
     conversation_mode: str = "pipeline"
@@ -78,6 +84,14 @@ class AppConfig:
     camera_enabled: bool = False
     # Kids Chat Show and Tell opt-out: effective only inside the camera_enabled approval above.
     kids_show_and_tell_enabled: bool = True
+    # One-time Owner household setup (docs/household-setup.md). 0 means never completed: an upgrade
+    # keeps every saved choice and enables nothing. Choices below are inert while camera_enabled is off.
+    household_setup_version: int = 0
+    household_setup_completed_at: float = 0.0
+    # The Everyday model may take one fresh look when a direct request needs it (no magic words).
+    camera_natural_requests_enabled: bool = False
+    # Grown-up-started Kids I Spy rounds skip the repeated camera prompt; moderation and gates stay.
+    kids_ispy_camera_preapproved: bool = False
     camera_feed_enabled: bool = False
     camera_controls_enabled: bool = False
     camera_controls_handedness: str = "right"
@@ -159,6 +173,8 @@ class AppConfig:
     def __post_init__(self) -> None:
         self.bridge_url = self.bridge_url.strip().rstrip("/")
         self.api_key = self.api_key.strip()
+        self.household_url = self.household_url.strip().rstrip("/")
+        self.household_api_key = self.household_api_key.strip()
         self.model = self.model.strip() or "hermes-agent"
         self.conversation_mode = self.conversation_mode.strip().lower() or "pipeline"
         self.assistant_mode = str(self.assistant_mode).strip().lower() or "everyday"
@@ -193,6 +209,14 @@ class AppConfig:
             revision and (len(revision) != 32 or any(c not in "0123456789abcdef" for c in revision))
         ):
             raise ValueError("companion_sources_revision must be empty or 32 lowercase hex characters")
+        if self.household_url:
+            household = urlparse(self.household_url)
+            if (household.scheme not in {"http", "https"} or not household.hostname
+                    or household.username or household.password or household.query or household.fragment
+                    or (household.scheme == "http" and household.hostname not in {"localhost", "127.0.0.1", "::1"})):
+                raise ValueError("household_url requires HTTPS (HTTP only on loopback), without URL credentials")
+        if bool(self.household_url) != bool(self.household_api_key):
+            raise ValueError("Set both household URL and robot credential, or neither")
         parsed = urlparse(self.bridge_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("bridge_url must be an absolute http(s) URL")
@@ -263,6 +287,9 @@ class AppConfig:
             raise ValueError("Unsupported realtime reasoning effort")
         if self.camera_controls_handedness not in {"left", "right"}:
             raise ValueError("Unsupported camera control handedness")
+        version = self.household_setup_version
+        if type(version) is not int or not 0 <= version <= HOUSEHOLD_SETUP_VERSION:
+            raise ValueError("Unsupported household setup version")
         if not 1024 <= int(self.home_assistant_port) <= 65535:
             raise ValueError("home_assistant_port must be between 1024 and 65535")
         identity = (self.home_assistant_device_name, self.home_assistant_node_name, self.home_assistant_mac_address)
@@ -325,6 +352,25 @@ class AppConfig:
                 raise ValueError("Unsupported Kids Mode activity")
 
     @property
+    def voice_connection_configured(self) -> bool:
+        if (self.assistant_mode == "everyday" and not self.kids_mode_enabled
+                and self.conversation_mode in {"live", "realtime"}):
+            return self.household_configured
+        return self.configured
+
+    @property
+    def household_configured(self) -> bool:
+        return bool(self.household_endpoint and self.household_credential)
+
+    @property
+    def household_endpoint(self) -> str:
+        return self.household_url or self.bridge_url
+
+    @property
+    def household_credential(self) -> str:
+        return self.household_api_key if self.household_url else self.api_key
+
+    @property
     def configured(self) -> bool:
         return bool(self.bridge_url and self.api_key)
 
@@ -343,6 +389,8 @@ class AppConfig:
         payload.pop("setup_check_id", None)
         payload["api_key"] = "********" if self.api_key else ""
         payload["api_key_configured"] = bool(self.api_key)
+        payload.pop("household_api_key", None)
+        payload["household_api_key_configured"] = bool(self.household_api_key)
         payload.pop("mcp_token_sha256", None)
         payload["mcp_token_configured"] = bool(self.mcp_token_sha256)
         payload.pop("kids_session_id", None)
@@ -401,7 +449,7 @@ def merge_config(current: AppConfig, updates: dict[str, object]) -> AppConfig:
     for key, value in updates.items():
         if key not in allowed or key == "instance_id":
             continue
-        if key == "api_key" and isinstance(value, str) and (not value or set(value) == {"*"}):
+        if key in {"api_key", "household_api_key"} and isinstance(value, str) and (not value or set(value) == {"*"}):
             continue
         payload[key] = value
     return AppConfig(**payload)

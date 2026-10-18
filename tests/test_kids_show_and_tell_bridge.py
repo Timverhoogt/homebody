@@ -233,7 +233,10 @@ def test_permit_announcement_one_frame_and_moderated_follow_up(monkeypatch):
             assert messages[1]["role"] == "system" and "colour blue" in messages[1]["content"]
             assert (await cancel(client)).status == 200  # Stop: context cleared, grant kept
             assert (await client.post("/v1/kids/chat", headers=AUTH, json=chat)).status == 200
-            assert not any("Show and Tell" in str(m.get("content")) for m in bridge.http.requests[-1]["messages"])
+            cleared = bridge.http.requests[-1]["messages"]
+            assert not any("colour blue" in str(m.get("content")) for m in cleared)
+            assert not any("only approved facts" in str(m.get("content")) for m in cleared)
+            assert sum(m["role"] == "system" for m in cleared) == 1  # policy only, no prior-frame context
             assert bridge._show_tell_records()[SESSION]["serial"] == 1
         finally:
             bridge.http = original

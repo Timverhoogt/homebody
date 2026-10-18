@@ -33,6 +33,7 @@ _REQUESTS = {
     }),
     "nl": frozenset({
         "kijk nu", "kijk nu alsjeblieft", "kijk naar mijn speelgoed",
+        "kijk eens", "kijk eens hier", "kijk wat ik heb",
         "kijk naar mijn tekening", "kijk naar mijn bouwwerk",
         "kun je naar mijn speelgoed kijken", "kun je naar mijn tekening kijken",
         "kun je naar mijn bouwwerk kijken", "ik wil je mijn speelgoed laten zien",

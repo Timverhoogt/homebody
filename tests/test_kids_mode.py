@@ -633,8 +633,8 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     assert "homebody-shell-v" in worker
     # Companion card assets advance with the shell revision.
     for asset in ("style.css", "camera.js", "main.js", "companion.js"):
-        assert f"/static/{asset}?v=104" in html
-        assert f'"/static/{asset}?v=104"' in worker
+        assert f"/static/{asset}?v=105" in html
+        assert f'"/static/{asset}?v=105"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

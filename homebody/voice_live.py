@@ -15,7 +15,7 @@ from collections.abc import Callable
 
 from .audio import resample_linear
 from .config import AppConfig
-from .everyday_runtime import EverydayCallbackScope
+from .everyday_runtime import EverydayCallbackScope, natural_camera_requests
 from .kids_acknowledgements import output_quarantined
 from .live_client import LiveBridgeSession, bridge_error_text
 from .realtime_client import RealtimeBridgeError
@@ -35,11 +35,16 @@ class LiveVoiceMixin:
     def _live_camera_scope(self, config, original_fence, closed) -> Callable[[], bool]:
         # Freeze before session startup, not after a blocking microphone/provider read.
         # Never refresh a look authority or a tool advertisement inside the old session.
-        enabled = config.camera_enabled
+        enabled = (config.camera_enabled, natural_camera_requests(config))
 
         def current() -> bool:
             loader = getattr(self, "config_loader", None)
-            changed = callable(loader) and loader().camera_enabled != enabled
+            latest_config = loader() if callable(loader) else None
+            # Revoking the household approval retires an open session just like Camera access off.
+            changed = latest_config is not None and (
+                latest_config.camera_enabled,
+                natural_camera_requests(latest_config),
+            ) != enabled
             if original_fence is not None:
                 latest = self.everyday_tool_fence()
                 # A general Stop/new wake already has its own original-fence refusals.
@@ -245,6 +250,11 @@ class LiveVoiceMixin:
                 if kind == "bridge.error":
                     raise RealtimeBridgeError(bridge_error_text(payload, "Live session failed"))
                 if kind == "session.closed":
+                    return
+                if kind == "bridge.conversation_stop":
+                    # The person's own direct "Stop" (bridge-classified input transcript): the same
+                    # local Stop as the button, so pending looks and playback end without a late reply.
+                    self._request_conversation_stop()
                     return
                 if kind == "everyday.tool_call":
                     identifier = payload.get("call_id")

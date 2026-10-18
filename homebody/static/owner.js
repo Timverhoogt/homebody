@@ -8,6 +8,7 @@
     window.HomebodyNotifications?.setSuppressed("owner", !session.owner);
     window.HomebodyVolume?.owner(session.owner);
     window.HomebodyAssistantModes?.owner(session.owner);
+    window.HomebodyHousehold?.owner(session.owner);  // owner loss: clear and drop admitted setup replies
     window.HomebodyStatusLifecycle?.owner(session.owner);  // owner loss: invalidate admitted status replies
     window.HomebodyCompanion?.owner(session.owner);  // owner loss: drop admitted look replies
     window.HomebodyOnboarding?.owner(session.owner);

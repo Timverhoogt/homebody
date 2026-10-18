@@ -43,11 +43,17 @@ except ModuleNotFoundError:
 
 _LOGGER = logging.getLogger(__name__)
 _TURN_CURRENT: ContextVar[Callable[[], bool]] = ContextVar("live_turn_current", default=lambda: True)
+_LOOK_RECALL: ContextVar[bool] = ContextVar("live_look_recall", default=False)
 
 
 def current_live_turn() -> bool:
     """Original delegation revision shared by host tools as well as local RPCs."""
     return _TURN_CURRENT.get()()
+
+
+def live_look_recall_available() -> bool:
+    """This approved Live turn follows an earlier look whose description is withheld from planning."""
+    return _LOOK_RECALL.get()
 
 
 LIVE_URL = "wss://api.openai.com/v1/live/sessions"
@@ -171,11 +177,28 @@ def _never_look(_text: str, *, engaged: bool = False) -> bool:
     return False
 
 
+def _no_control(_text: str) -> str | None:
+    return None
+
+
+def _no_action(_text: str) -> tuple[str, dict] | None:
+    return None
+
+
 @dataclass(slots=True)
 class LiveSessionState:
     look_request: Callable[..., bool] = _never_look
+    control_intent: Callable[[str], str | None] = _no_control
+    action_intent: Callable[[str], tuple[str, dict] | None] = _no_action
+    # The latest look answer: only ever given to the vision path (a fresh look's question or a
+    # follow-up), never to action planning.
+    last_look_text: str = ""
     look_timeout: float = 45.0
     look_engaged: bool = False
+    # Household-approved natural camera requests: the Everyday model may choose one fenced look.
+    natural_camera: bool = False
+    # A spoken "stop looking"/"camera off" prevails for the rest of this session.
+    camera_stopped: bool = False
     look_waiters: dict[str, Any] = field(default_factory=dict)
     closed: asyncio.Event = field(default_factory=asyncio.Event)
     seen: set[str] = field(default_factory=set)
@@ -282,6 +305,44 @@ Answer = Callable[[str, str], Awaitable["str | DelegationResult"]]
 
 LOOK_RESULT_TIMEOUT_SECONDS = 45.0
 _LOOK_FAILED = "Reachy could not take the requested look right now. Nothing was done."
+_LOOK_TOOL_FAILED = "No fresh camera frame was available, so nothing was seen. Do not describe the view."
+_CONTROL_MODES = {"sleep": "Sleep", "standby": "Standby"}
+_CONTROL_UNAVAILABLE = "That control is not available in this conversation. Nothing was changed."
+_ACTION_DONE = {
+    "set_reachy_volume": "Okay, the volume is changed.",
+    "dance_reachy": "Okay.",
+    "move_reachy_head": "Okay.",
+    "express_reachy_emotion": "Okay.",
+}
+_ACTION_FAILED = "That did not work, so nothing is confirmed."
+# Fixed bridge text (never image-derived) for action planning after a look.
+_EARLIER_LOOK_HINT = (
+    "Reachy looked at something earlier in this conversation; that description is withheld here. "
+    "For a question about what was shown earlier call recall_reachy_look; call capture_reachy_camera "
+    "when a fresh view is needed."
+)
+_LIVE_LOCAL_INSTRUCTIONS = (
+    "Delegate camera, speaker, robot status, power and gesture requests to the client. Delegate Stop, "
+    "Stop looking, Standby and Sleep requests immediately, also after a look. Never claim an operation "
+    "succeeded without a delegated result. Personal memory is unavailable."
+)
+_LIVE_NATURAL_CAMERA = (
+    " Reachy has a camera the client can use for one fresh look. Delegate any request where seeing the "
+    "person or what they show would help, such as how an outfit looks, what they are holding, or reading "
+    "something shown, without asking for special words or permission. Never describe what Reachy sees "
+    "without a delegated look result, and never identify people. A follow-up about an earlier look may be "
+    "answered from that look result; delegate when a fresh look or an action is needed."
+)
+
+
+def live_instructions(*, local: bool, natural_camera: bool) -> str:
+    """Fixed bridge policy only; never model, user or tool output."""
+    if not local:
+        return LIVE_INSTRUCTIONS
+    return LIVE_INSTRUCTIONS.replace(
+        "Camera, robot movement and personal memory are unavailable in this session.",
+        _LIVE_LOCAL_INSTRUCTIONS + (_LIVE_NATURAL_CAMERA if natural_camera else ""),
+    )
 
 
 _no_look = _never_look
@@ -300,6 +361,8 @@ async def serve_live(
     look_request: Callable[..., bool] = _no_look,
     look_timeout: float = LOOK_RESULT_TIMEOUT_SECONDS,
     answer_with_local: Callable[[dict[str, Any], LocalExecutor], Answer] | None = None,
+    control_intent: Callable[[str], str | None] = _no_control,
+    action_intent: Callable[[str], tuple[str, dict] | None] = _no_action,
 ) -> web.WebSocketResponse:
     """Relay one robot Live session. ``answer(config)`` returns the narrow backend for its mode;
     ``allowed(config)`` re-checks Kids/generation/authorization and ends the session when false.
@@ -308,11 +371,16 @@ async def serve_live(
     delegated words are a deliberate look request, the robot is asked (``bridge.look_request``) to take
     one fenced look and answer with text (``client.look_result``). No frame, tool or project session is
     involved; the text is appended as the delegation result like any other backend reply.
+
+    ``control_intent(text)`` classifies the same trusted user words (input transcript, never model
+    output) as a direct Stop/Stop-looking/Standby/Sleep command; it runs before any visual routing.
     """
     client = web.WebSocketResponse(heartbeat=20, max_msg_size=_MAX_MESSAGE_BYTES)
     await client.prepare(request)
     state = LiveSessionState()
     state.look_request = look_request
+    state.control_intent = control_intent
+    state.action_intent = action_intent
     state.look_timeout = look_timeout
     transcript = LiveTranscript()
     tasks: set[asyncio.Task[None]] = set()
@@ -396,6 +464,14 @@ async def _relay(
         config.get("local_tools", []) if config.get("assistant_mode") == "everyday" else [], client.send_json
     )
     active_turn: ContextVar[tuple[int, float]] = ContextVar("live_local_turn")
+    # (delegation id, the person's own current words) for a model-selected look in this turn.
+    look_turn: ContextVar[tuple[str, str]] = ContextVar("live_look_turn")
+    state.natural_camera = (
+        config.get("camera_natural") is True
+        and "capture_reachy_camera" in local.names
+        and answer_with_local is not None
+    )
+    robot_look_ref: list[Callable[..., Awaitable[DelegationResult]]] = []
 
     async def local_execute(name: str, arguments: dict) -> dict:
         revision, deadline = active_turn.get()
@@ -405,7 +481,40 @@ async def _relay(
 
         if not current() or not await allowed(config):
             raise PermissionError("stale Live operation")
-        if state.look_engaged and name != "stop_reachy_camera":
+        if name == "capture_reachy_camera" and state.natural_camera:
+            # The model chose to look; the robot's own fenced one-frame look runs with the person's
+            # words as the question. Only its bounded text answer returns; the frame never leaves.
+            identifier, words = look_turn.get()
+            if state.camera_stopped:
+                return {"ok": False, "verified": False, "error": "The camera was turned off in this conversation."}
+            # "Does it look better with this jacket?": the vision path may see the earlier look answer
+            # so references keep their meaning; action planning never does.
+            question = (
+                f"{words} (Earlier look, for reference only: {state.last_look_text})"
+                if state.last_look_text
+                else words
+            )
+            try:
+                seen = await robot_look_ref[0](identifier, question)
+            except DelegationFailure:
+                return {"ok": False, "verified": False, "error": _LOOK_TOOL_FAILED}
+            if not current() or not await allowed(config):
+                raise PermissionError("stale Live result")
+            return {"ok": True, "fresh_frame": True, "text": seen.text}
+        if name == "recall_reachy_look":
+            # Bridge-only, tool-free follow-up from the earlier look; no new frame is taken.
+            identifier, words = look_turn.get()
+            if not (state.natural_camera and state.look_engaged) or state.camera_stopped:
+                return {"ok": False, "verified": False, "error": "No earlier look is available."}
+            try:
+                seen = await robot_look_ref[0](identifier, words, follow_up=True)
+            except DelegationFailure:
+                return {"ok": False, "verified": False, "error": "The earlier look is no longer available."}
+            if not current() or not await allowed(config):
+                raise PermissionError("stale Live result")
+            return {"ok": True, "from_earlier_look": True, "text": seen.text}
+        # Without household approval a look keeps the rest of the session tool-free (legacy scope).
+        if state.look_engaged and not state.natural_camera and name != "stop_reachy_camera":
             raise PermissionError("looking together is tool-free")
         result = await local.execute(name, arguments, deadline=deadline, current=current)
         if not current() or not await allowed(config):
@@ -431,15 +540,9 @@ async def _relay(
                     "session.start",
                     session={
                         "model": model,
-                        "instructions": (
-                            LIVE_INSTRUCTIONS.replace(
-                                "Camera, robot movement and personal memory are unavailable in this session.",
-                                "Delegate explicit camera, speaker, robot status, power and gesture requests "
-                                "to the client. Never claim an operation succeeded without a delegated result. "
-                                "Personal memory is unavailable.",
-                            )
-                            if local.names and answer_with_local is not None
-                            else LIVE_INSTRUCTIONS
+                        "instructions": live_instructions(
+                            local=bool(local.names) and answer_with_local is not None,
+                            natural_camera=state.natural_camera,
                         ),
                         "store": False,
                         "audio": {"format": {"type": "audio/pcm", "rate": 24000}, "output": {"voice": voice}},
@@ -480,13 +583,122 @@ async def _relay(
                 text = result.get("text")
                 if isinstance(text, str) and text.strip():
                     state.look_engaged = True
+                    if not follow_up:
+                        state.last_look_text = utf8_clip(" ".join(text.split()), 300)
                     return DelegationResult(utf8_clip(text, 1200), "answered")
                 raise DelegationFailure("look_failed", _LOOK_FAILED)
+
+            robot_look_ref.append(robot_look)
+
+            def cancel_looks() -> None:
+                # A pending look never answers after a control: its waiter is cancelled silently.
+                for waiter in list(state.look_waiters.values()):
+                    if not waiter.done():
+                        waiter.cancel()
+
+            async def control(identifier: str, action: str) -> None:
+                """A direct spoken control from the person's own words; never queued behind a turn."""
+                cancel_looks()
+                if action == "stop":
+                    await client.send_json({"type": "bridge.conversation_stop"})
+                    state.closed.set()  # no late commentary, look, relisten or wake from this socket
+                    return
+                if action == "stop_looking":
+                    state.camera_stopped = True
+                    if "stop_reachy_camera" not in local.names:
+                        await append("session.commentary.append", identifier, _CONTROL_UNAVAILABLE)
+                        await client.send_json({"type": "bridge.delegation", "state": "failed"})
+                        return
+                    name, arguments = "stop_reachy_camera", {}
+                else:
+                    if "set_reachy_power_mode" not in local.names:
+                        await append("session.commentary.append", identifier, _CONTROL_UNAVAILABLE)
+                        await client.send_json({"type": "bridge.delegation", "state": "failed"})
+                        return
+                    name, arguments = "set_reachy_power_mode", {"mode": action}
+                await client.send_json({"type": "bridge.delegation", "state": "started"})
+
+                def current() -> bool:
+                    return not state.closed.is_set() and not client.closed
+
+                try:
+                    if not await allowed(config):
+                        raise PermissionError("not allowed")
+                    result = await local.execute(
+                        name,
+                        arguments,
+                        deadline=asyncio.get_running_loop().time() + EVERYDAY_TURN_TIMEOUT_SECONDS,
+                        current=current,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except PermissionError:
+                    state.closed.set()
+                    return
+                except Exception as exc:
+                    _LOGGER.warning("Live control failed (category=unexpected %s)", type(exc).__name__)
+                    result = {"ok": False}
+                if state.closed.is_set():
+                    return
+                if action in _CONTROL_MODES:
+                    if result.get("verified") is True and result.get("mode") == action:
+                        # Standby/Sleep already ended the robot's turn and folded it: say nothing late.
+                        state.closed.set()
+                        return
+                    spoken = f"I could not switch to {_CONTROL_MODES[action]}. Nothing is confirmed."
+                    outcome = "failed"
+                elif result.get("ok") is True:
+                    spoken, outcome = "Okay, I stopped looking. The camera stays off in this conversation.", "answered"
+                else:
+                    spoken, outcome = "I could not confirm the camera stopped. Nothing is confirmed.", "failed"
+                await append("session.commentary.append", identifier, spoken)
+                await client.send_json({"type": "bridge.delegation", "state": outcome})
+
+            async def direct_action(identifier: str, revision: int, name: str, arguments: dict) -> None:
+                await client.send_json({"type": "bridge.delegation", "state": "started"})
+
+                def current() -> bool:
+                    return not state.closed.is_set() and not client.closed and state.revision == revision
+
+                try:
+                    if not await allowed(config):
+                        raise PermissionError("not allowed")
+                    result = await local.execute(
+                        name,
+                        dict(arguments),
+                        deadline=asyncio.get_running_loop().time() + EVERYDAY_TURN_TIMEOUT_SECONDS,
+                        current=current,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except PermissionError:
+                    state.closed.set()
+                    return
+                except Exception as exc:
+                    _LOGGER.warning("Live direct action failed (category=unexpected %s)", type(exc).__name__)
+                    result = {"ok": False}
+                if state.closed.is_set() or not current():
+                    return
+                done = result.get("ok") is True
+                spoken = _ACTION_DONE.get(name, "Okay.") if done else _ACTION_FAILED
+                await append("session.commentary.append", identifier, spoken)
+                await client.send_json({"type": "bridge.delegation", "state": "answered" if done else "failed"})
 
             async def delegate(identifier: str, offset_ms: int, revision: int) -> None:
                 await wait_for_transcript(transcript, offset_ms, transcript_grace)
                 text, context = transcript.request(offset_ms)
                 transcript.consume(offset_ms)
+                action = state.control_intent(text) if text and not state.closed.is_set() else None
+                if action is not None:
+                    # Before the backend lock and any visual routing: Stop is never delayed by a look.
+                    await control(identifier, action)
+                    return
+                direct = state.action_intent(text) if text and state.look_engaged else None
+                if direct is not None and direct[0] in local.names:
+                    # After a look, a short direct command in the person's own words runs as said,
+                    # without any model planning; the robot re-checks it against its own transcript.
+                    await direct_action(identifier, revision, *direct)
+                    return
                 async with backend_lock:
                     if state.closed.is_set():
                         return
@@ -515,18 +727,32 @@ async def _relay(
                         current_token = _TURN_CURRENT.set(
                             lambda: not state.closed.is_set() and not client.closed and state.revision == revision
                         )
+                        look_token = look_turn.set((identifier, text))
+                        recall_token = _LOOK_RECALL.set(
+                            state.natural_camera and state.look_engaged and not state.camera_stopped
+                        )
                         try:
-                            if state.look_request(text, engaged=state.look_engaged):
+                            if not state.camera_stopped and state.look_request(text, engaged=state.look_engaged):
                                 reply = await robot_look(identifier, text)
-                            elif state.look_engaged:
+                            elif state.look_engaged and not state.natural_camera:
                                 reply = await robot_look(identifier, text, follow_up=True)
                             elif local.names and answer_with_local is not None:
+                                # After a look, earlier context can carry image-derived text: the model
+                                # then sees only the person's current words plus a fixed note, so images
+                                # authorize nothing; the vision path keeps the reference meaning.
+                                earlier = (
+                                    (_EARLIER_LOOK_HINT if state.natural_camera and not state.camera_stopped else "")
+                                    if state.look_engaged
+                                    else context
+                                )
                                 async with asyncio.timeout(EVERYDAY_TURN_TIMEOUT_SECONDS):
-                                    reply = await backend(text, context)
+                                    reply = await backend(text, earlier)
                             else:
                                 # Legacy and Workspace retain their existing backend budgets.
                                 reply = await backend(text, context)
                         finally:
+                            _LOOK_RECALL.reset(recall_token)
+                            look_turn.reset(look_token)
                             _TURN_CURRENT.reset(current_token)
                             active_turn.reset(token)
                         if not await allowed(config):

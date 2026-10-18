@@ -16,7 +16,7 @@ import numpy as np
 from websockets.sync.client import ClientConnection, connect
 
 from .config import AppConfig
-from .everyday_runtime import configured_local_tools
+from .everyday_runtime import configured_local_tools, natural_camera_requests
 from .hermes_client import AgentBrokerContext
 
 _LOGGER = logging.getLogger(__name__)
@@ -68,11 +68,14 @@ class RealtimeBridgeSession:
         self._closed = threading.Event()
 
     def start(self) -> None:
+        everyday = self.assistant_mode == "everyday"
+        endpoint = self.config.household_endpoint if everyday else self.config.bridge_url
+        credential = self.config.household_credential if everyday else self.config.api_key
         try:
             self._socket = connect(
-                realtime_url(self.config.bridge_url),
+                realtime_url(endpoint),
                 additional_headers={
-                    "Authorization": f"Bearer {self.config.api_key}",
+                    "Authorization": f"Bearer {credential}",
                     "X-Reachy-Device-Id": self.config.instance_id,
                 },
                 open_timeout=10,
@@ -93,6 +96,8 @@ class RealtimeBridgeSession:
                             configured_local_tools(self.config) if self.assistant_mode == "everyday" else []
                         ),
                         "camera_enabled": self.config.camera_enabled,
+                        # Household approval only guides the model; the robot re-admits each capture.
+                        "camera_natural": natural_camera_requests(self.config),
                         "robot_tools_enabled": self.config.robot_tools_enabled,
                         "agent_tools_enabled": self.config.agent_tools_enabled,
                         "power_tools_enabled": self.config.power_tools_enabled,

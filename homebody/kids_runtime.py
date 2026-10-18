@@ -20,7 +20,7 @@ import numpy as np
 
 from . import kids_acknowledgements
 from .audio import resample_linear
-from .config import AppConfig
+from .config import HOUSEHOLD_SETUP_VERSION, AppConfig
 from .hermes_client import HermesBridgeClient, HermesBridgeError
 from .ispy import ISpyCancelled, ISpyTarget
 from .kids_acknowledgements import AckSelector
@@ -1140,6 +1140,23 @@ class KidsModeMixin:
             )
             return True
 
+    def _kids_ispy_preapproved(self) -> bool:
+        """Owner household approval for hosted I Spy; never the adult natural-look policy."""
+        config = self.config_loader()
+        return bool(
+            config.camera_enabled
+            and config.kids_ispy_camera_preapproved
+            and config.household_setup_version >= HOUSEHOLD_SETUP_VERSION
+        )
+
+    def kids_revoke_preapproved_camera(self) -> None:
+        """Household revocation also withdraws a camera grant that came only from the preapproval."""
+        with self._kids_lock:
+            profile = self._kids_profile
+            if getattr(self, "_kids_preapproved_grant", False) and profile is not None and profile.camera_consent:
+                self._kids_profile = replace(profile, camera_consent=False)
+            self._kids_preapproved_grant = False
+
     def kids_host_select(self, activity: str, *, camera_consent: bool = False) -> dict[str, object]:
         """Caregiver direct selection inside a hosted session (owner route). May grant I Spy consent."""
         with self._kids_lock:
@@ -1148,6 +1165,9 @@ class KidsModeMixin:
                 raise RuntimeError("No hosted Kids play session is active")
             if activity not in available_activities(camera_consent=True):
                 raise ValueError("Unsupported Kids Mode activity")
+            if activity == "ispy" and not (profile.camera_consent or camera_consent) and self._kids_ispy_preapproved():
+                camera_consent = True
+                self._kids_preapproved_grant = True
             if activity == "ispy" and not (profile.camera_consent or camera_consent):
                 raise ValueError("Camera opt-in is required for I Spy")
             if activity == "ispy" and camera_consent and not profile.camera_consent:
@@ -1162,6 +1182,11 @@ class KidsModeMixin:
             if not self._kids_host_current(generation) or self._kids_profile is None:
                 return
             profile = self._kids_profile
+            if activity == "ispy" and not profile.camera_consent and self._kids_ispy_preapproved():
+                # The grown-up's one-time household approval covers exactly I Spy in a hosted session;
+                # the child's choice only picks that approved activity. Safe-target gates still apply.
+                self._kids_profile = profile = replace(profile, camera_consent=True)
+                self._kids_preapproved_grant = True
             if activity == "ispy" and not profile.camera_consent:
                 # A child's voice never authorizes the camera; tell them and the caregiver precisely.
                 self._kids_host_notice = "camera_consent_needed"

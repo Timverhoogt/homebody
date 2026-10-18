@@ -2,6 +2,11 @@
 
 > Version 0.5.15 delivers the first onboarding slice. It is not complete terminal-free onboarding or a claim of native marketplace/platform acceptance.
 
+For **your own standalone household MCP server**, see the separate
+[installation and AI-agent runbook](../homebody/agent_guides/household.md).
+It is an unreleased development preview, not installed by the marketplace wizard.
+Everyday needs no Hermes runtime, but this host is not a drop-in Kids/Pipeline/Workspace bridge.
+
 ## If you found Homebody in Reachy Mini Control
 
 1. Connect your Lite over USB or connect to your Wireless robot using the official Reachy setup.

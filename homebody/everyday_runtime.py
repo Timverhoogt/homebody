@@ -13,8 +13,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from .config import AppConfig
-from .look_intent import requests_camera_session
+from .config import HOUSEHOLD_SETUP_VERSION, AppConfig
+from .look_intent import direct_action_intent, direct_control_intent, requests_camera_session
 
 
 def local_specs() -> list[dict]:
@@ -57,6 +57,33 @@ def configured_local_tools(config: AppConfig) -> list[str]:
     return names
 
 
+def natural_camera_requests(config: AppConfig) -> bool:
+    """Owner-approved household setup lets the Everyday model choose one look for a direct request.
+
+    Camera access off always wins; an older ``camera_enabled`` approval alone never broadens to this.
+    Kids sessions never use it (their camera policies are separate).
+    """
+    return bool(
+        getattr(config, "camera_enabled", False) is True
+        and getattr(config, "camera_natural_requests_enabled", False) is True
+        and getattr(config, "household_setup_version", 0) >= HOUSEHOLD_SETUP_VERSION
+        and not getattr(config, "kids_mode_enabled", False)
+    )
+
+
+POST_LOOK_REFUSAL = (
+    "Looking together is tool-free except direct spoken commands. Say one directly, for example "
+    "'set the volume to 30', 'mute', 'dance', 'look left', 'stop looking' or 'go to sleep', "
+    "or Stop and wake Reachy again for other help."
+)
+_DIRECT_ACTION_REPLY = {
+    "set_reachy_volume": "Okay, the volume is changed.",
+    "dance_reachy": "Okay.",
+    "move_reachy_head": "Okay.",
+    "express_reachy_emotion": "Okay.",
+}
+
+
 GENERIC_CAPTURE_REFUSAL = (
     "Model-selected camera captures are refused; nothing was captured. "
     "Ask Reachy directly, for example 'look at this', for one fresh look."
@@ -75,9 +102,28 @@ class EverydayCallbackScope:
     transcript: str = ""
     visual: threading.Event | None = field(default=None, compare=False)
 
-    def refusal(self, name: object) -> str:
-        if self.visual is not None and self.visual.is_set() and name != "stop_reachy_camera":
-            return "Looking together is tool-free; Stop and wake again for other help"
+    def direct_control(self, name: object, arguments: object) -> bool:
+        """The robot's own transcript of this turn is exactly this call: Standby/Sleep, or a short
+        direct command ("set the volume to 30", "mute", "dance", "look left", "nod") with the same
+        arguments. Image text and model output can never satisfy this."""
+        action = direct_control_intent(self.transcript)
+        if (
+            name == "set_reachy_power_mode"
+            and action in {"sleep", "standby"}
+            and isinstance(arguments, dict)
+            and arguments.get("mode") == action
+        ):
+            return True
+        return isinstance(arguments, dict) and direct_action_intent(self.transcript) == (name, arguments)
+
+    def refusal(self, name: object, arguments: object = None) -> str:
+        if (
+            self.visual is not None
+            and self.visual.is_set()
+            and name != "stop_reachy_camera"
+            and not self.direct_control(name, arguments)
+        ):
+            return POST_LOOK_REFUSAL
         if name == "capture_reachy_camera":
             return GENERIC_CAPTURE_REFUSAL
         if name == "start_reachy_camera" and not requests_camera_session(self.transcript):
@@ -416,10 +462,46 @@ class EverydayRuntimeMixin:
         capture never reaches the camera here, and starting the temporary window needs the
         person to have asked for it in this transcript.
         """
-        refusal = scope.refusal(name)
+        refusal = scope.refusal(name, arguments)
         if refusal:
             return {"ok": False, "verified": False, "error": refusal}
         return self.execute_everyday_tool(name, arguments, fence=fence, call_id=call_id)
+
+    def _voice_direct_control(self, action: str) -> str | None:
+        """Apply one direct spoken control (the person's own words) through the guarded transitions.
+
+        ``None`` means the conversation ended (Stop, or a verified Standby/Sleep, which already
+        stopped the turn and folded): nothing more may be spoken. Otherwise the fixed reply text.
+        Standby is requested even when the mode already reads Standby, so it still folds.
+        """
+        if action == "stop":
+            self._request_conversation_stop()
+            return None
+        if action == "stop_looking":
+            self.revoke_everyday_camera()
+            return "Okay, I stopped looking."
+        if action not in {"sleep", "standby"}:
+            return None
+        label = "Sleep" if action == "sleep" else "Standby"
+        if not self.config_loader().power_tools_enabled:
+            return f"Voice power controls are off in Reachy settings, so {label} was not changed."
+        try:
+            status = self.set_power_mode(action)
+        except (RuntimeError, ValueError):
+            status = {}
+        if status.get("power_mode") == action:
+            return None
+        return f"I could not switch to {label}. Nothing is confirmed."
+
+    def _voice_direct_action(self, name: str, arguments: dict[str, object]) -> str:
+        """One short direct command in the person's own words, through the guarded Everyday tool path.
+
+        Settings, Kids Mode, privacy and power gates all still apply; failure is never claimed done.
+        """
+        result = self.execute_everyday_tool(name, dict(arguments))
+        if result.get("ok") is True:
+            return _DIRECT_ACTION_REPLY.get(name, "Okay.")
+        return "That did not work, so nothing is confirmed."
 
     def launch_everyday_tool(
         self,
@@ -435,7 +517,7 @@ class EverydayRuntimeMixin:
         """Keep camera/network/movement work off the live microphone pump."""
         # Without the caller's actual transcript no camera callback is ever admitted.
         scope = scope if scope is not None else EverydayCallbackScope()
-        refusal = scope.refusal(name)
+        refusal = scope.refusal(name, args)
         if refusal:
             if is_current():
                 deliver({"ok": False, "verified": False, "error": refusal})

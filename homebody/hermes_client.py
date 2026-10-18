@@ -101,6 +101,9 @@ class HermesBridgeClient:
             "X-Hermes-Session-Key": f"agent:main:reachy-mini:{self.config.instance_id}",
         }
 
+    def _household_headers(self) -> dict[str, str]:
+        return {**self._headers(), "Authorization": f"Bearer {self.config.household_credential}"}
+
     def _rotate_session_if_stale(self) -> None:
         now = time.monotonic()
         if self._last_turn_at and now - self._last_turn_at > self.config.conversation_timeout_seconds:
@@ -473,23 +476,32 @@ class HermesBridgeClient:
         ``park_native`` marks an explicit owner switch to Everyday: the host hides native display
         and drafts but keeps approved durable work (Kids/privacy still revoke it host-side).
         """
-        response = self._client.post(
-            f"{self.config.bridge_url}/v1/agent/session",
-            headers=self._headers(),
-            json={
+        household_primary = bool(self.config.household_url and context.capability_profile == "conversation")
+        targets = []
+        if self.config.household_url:
+            targets.append((self.config.household_endpoint + "/v1/household/session",
+                            self._household_headers(), {"context": asdict(context)}, household_primary))
+        if self.config.api_key or not self.config.household_url:
+            targets.append((self.config.bridge_url + "/v1/agent/session", self._headers(), {
                 "context": asdict(context),
                 **({"preserve_native": True} if preserve_native else {}),
                 **({"park_native": True} if park_native else {}),
-            },
-        )
-        self._raise_for_error(response, "Agent Mode session update")
-        payload = response.json()
-        if (
-            not isinstance(payload, dict)
-            or payload.get("ok") is not True
-            or payload.get("session_generation") != context.session_generation
-        ):
-            raise HermesBridgeError("Hermes returned an invalid Agent Mode session acknowledgement")
+            }, not household_primary))
+        failed = False
+        for url, headers, body, required in targets:
+            try:
+                response = self._client.post(url, headers=headers, json=body, timeout=5.0)
+                self._raise_for_error(response, "Session update")
+                payload = response.json()
+                if (not isinstance(payload, dict) or payload.get("ok") is not True
+                        or payload.get("session_generation") != context.session_generation):
+                    raise HermesBridgeError("Invalid session acknowledgement")
+            except Exception:
+                # Always attempt both revocation destinations, even if one is offline.
+                # Only the mode's own service is required for admission.
+                failed = failed or required
+        if failed:
+            raise HermesBridgeError("Required session service is unavailable")
 
     def native_workspace_action(self, action: str, context: AgentBrokerContext | None = None, **fields):
         if action not in {"read", "show", "bind", "prepare", "approve", "stop", "cancel", "repositories"}:
@@ -670,8 +682,8 @@ class HermesBridgeClient:
             raise HermesBridgeError("Look frame bounds were not met")
         response = guarded_json_post(
             self._client,
-            f"{self.config.bridge_url}/v1/everyday/look",
-            headers=self._headers(),
+            f"{self.config.household_endpoint}/v1/everyday/look",
+            headers=self._household_headers(),
             current=is_current,
             json={
                 "question": " ".join(question.split())[:500],
@@ -696,8 +708,8 @@ class HermesBridgeClient:
         """Tool-free host answer about an earlier look's text analysis; no image, no tools, no memory."""
         response = guarded_json_post(
             self._client,
-            f"{self.config.bridge_url}/v1/everyday/look/follow-up",
-            headers=self._headers(),
+            f"{self.config.household_endpoint}/v1/everyday/look/follow-up",
+            headers=self._household_headers(),
             current=is_current,
             json={
                 "analysis": " ".join(analysis.split())[:1200],
@@ -764,8 +776,8 @@ class HermesBridgeClient:
             self.last_answer_source = {"kind": "everyday"}
             return text
         response = self._client.post(
-            f"{self.config.bridge_url}/v1/everyday/turn",
-            headers=self._headers(),
+            f"{self.config.household_endpoint}/v1/everyday/turn",
+            headers=self._household_headers(),
             json={
                 "text": transcript,
                 "language": self.config.language,
@@ -786,8 +798,8 @@ class HermesBridgeClient:
         if not jpeg or len(jpeg) > 1_000_000 or not isinstance(purpose, str) or not 1 <= len(purpose) <= 300:
             raise HermesBridgeError("Everyday vision input exceeded its bounds")
         response = self._client.post(
-            f"{self.config.bridge_url}/v1/everyday/vision",
-            headers=self._headers(),
+            f"{self.config.household_endpoint}/v1/everyday/vision",
+            headers=self._household_headers(),
             json={
                 "image": base64.b64encode(jpeg).decode("ascii"),
                 "purpose": purpose,
@@ -804,7 +816,8 @@ class HermesBridgeClient:
 
     def everyday_capabilities(self) -> dict[str, object]:
         response = self._client.get(
-            f"{self.config.bridge_url}/v1/everyday/capabilities", headers=self._headers(), timeout=10.0
+            f"{self.config.household_endpoint}/v1/everyday/capabilities",
+            headers=self._household_headers(), timeout=10.0
         )
         self._raise_for_error(response, "Everyday capabilities")
         payload = response.json()
