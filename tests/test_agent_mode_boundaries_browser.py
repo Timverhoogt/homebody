@@ -157,7 +157,7 @@ def test_workspace_to_everyday_leaves_only_the_everyday_surface(agent, width):
     page, state, errors = agent
     page.set_viewport_size({"width": width, "height": 900})
     _enter_workspace(page, state)
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("!document.getElementById('workspace-repository').disabled")
     assert page.locator("#workspace-repository").is_visible()
     page.evaluate("document.getElementById('agent-conversation-button').click()")  # behind the Everyday tab
@@ -254,7 +254,7 @@ def test_everyday_keeps_a_truthful_badge_and_global_stop_for_real_or_uncertain_w
 
 
 def _open_project(page):
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("document.getElementById('workspace-repository').options.length === 3")
     page.select_option("#workspace-repository", "Timverhoogt/homebody")
     page.click("#workspace-native-bind")
@@ -297,7 +297,7 @@ def test_workspace_guidance_separates_display_connection_and_voice(agent, width)
     assert "Not connected" in page.inner_text("#workspace-mode-session")
     voice = page.text_content("#workspace-mode-voice")
     assert "Hey Homebody" in voice and "Listening" not in voice  # waiting for wake word is not listening
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("document.getElementById('workspace-repository').options.length === 3")
     assert "Connected" in page.text_content("#workspace-mode-display")
     session = page.inner_text("#workspace-mode-session")
@@ -328,7 +328,7 @@ def test_labels_name_homebody_not_full_hermes(agent):
     _enter_workspace(page, state)
     assert "talk to Hermes" not in page.inner_text("#agent-workspace-view")
     assert "with Hermes" not in page.inner_text("#workspace-mode-card")
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     state["display"]["events"] = [{"id": 1, "role": "user", "text": "Hi"},
                                   {"id": 2, "role": "assistant", "text": "Hello"}]
     page.evaluate("refreshStatus()")
@@ -378,7 +378,7 @@ def test_agent_polls_stop_during_switch_and_late_replies_cannot_repaint(agent):
 def test_project_connection_copy_does_not_promise_backend_tool_permissions(agent):
     page, state, errors = agent
     _enter_workspace(page, state)
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("document.getElementById('workspace-native-target').options.length === 1")
     help_text = page.inner_text("#workspace-native-bind-help")
     assert "does not submit work" in help_text

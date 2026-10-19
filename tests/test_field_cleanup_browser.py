@@ -56,7 +56,7 @@ def test_tabs_drive_the_voice_route_and_restore_never_switches(ui, width):
     page.click("#tab-agent")
     page.wait_for_function("document.getElementById('panel-agent').dataset.assistantMode === 'workspace'")
     assert _profiles(posts) == [{"profile": "agent", "preserve_work": False}]
-    assert "Workspace active" in page.locator("#agent-message").inner_text()
+    assert "Workspace route active" in page.locator("#agent-message").inner_text()
     assert page.locator("#assistant-mode-current").inner_text() == "Workspace"
     # A real tap on Everyday brings it back, preserving approved project work; repeated taps post once.
     page.click("#tab-dashboard")

@@ -53,7 +53,7 @@ def test_show_bind_voice_route_clear_reopen_and_stale_replies(route_browser, wid
 
     # 2. Connect is the conversation display only, not a project connection.
     page.wait_for_function("!document.getElementById('workspace-start').disabled")
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("document.getElementById('workspace-badge').textContent === 'Live'")
     page.wait_for_function("!document.getElementById('workspace-native-bind').disabled")
     assert text(page, "workspace-mode-display") == "Connected"
@@ -100,7 +100,7 @@ def test_show_bind_voice_route_clear_reopen_and_stale_replies(route_browser, wid
 
     # 6. Reopen: the server cleared the binding, so the route stays "not sent" until Open project.
     native.update(binding=None, _hold=False)
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("document.getElementById('workspace-badge').textContent === 'Live'")
     page.wait_for_function("!document.getElementById('workspace-native-bind').disabled")
     assert "Not sent to a project" in text(page, "workspace-mode-route")

@@ -57,7 +57,7 @@ def test_repositories_select_without_launch_and_unconfigured_blocks_wrong_projec
 
     page.route("**/api/agent/workspace/native/*", reply)
     assert page.locator("#tab-agent").inner_text() == "Workspace"
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("document.getElementById('workspace-repository').options.length === 3")
     page.select_option("#workspace-repository", "Timverhoogt/private-project")
     assert "no project session is configured" in page.inner_text("#workspace-repository-state")
@@ -103,7 +103,7 @@ def test_late_private_catalog_cannot_reappear_after_clear(repo_browser):
 
     page.route("**/api/agent/workspace/native/*", reply)
     with page.expect_request("**/api/agent/workspace/native/repositories"):
-        page.click("#workspace-start")
+        page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_timeout(100)
     assert held
     voice["enabled"] = False

@@ -259,7 +259,7 @@ def _native_fixture(page, runtime):
 
 def _open_native(page):
     page.wait_for_function("!document.getElementById('workspace-start').disabled")
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("!document.getElementById('workspace-native-bind').disabled")
 
 

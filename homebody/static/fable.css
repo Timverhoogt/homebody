@@ -189,6 +189,8 @@ body[data-destination="dashboard"] .global-robot-status .status-row { display: n
 
 /* ---------- Workspace ---------- */
 .workspace-gate { padding-top: 24px; }
+/* Layout display rules must not revive a gate hidden by confirmed route state. */
+.workspace-gate[hidden] { display: none !important; }
 .workspace-gate h2 { font-size: 1.6rem; }
 .workspace-header { color: var(--ink); background: transparent; border-radius: 0; padding: 14px 0 8px; }
 .workspace-header h2 { font-family: var(--mono); font-size: 1rem; font-weight: 600; display: inline-block; padding: 8px 14px; border-radius: 999px; background: var(--paper-2); }
@@ -462,6 +464,52 @@ body[data-destination="dashboard"] .global-robot-status .voice-route { border-to
 @media (max-width: 650px) {
   main { padding-bottom: calc(var(--fable-row) + 40px + env(safe-area-inset-bottom)); scroll-padding-bottom: calc(var(--fable-row) + 24px); }
   .tabs-primary { bottom: calc(8px + env(safe-area-inset-bottom)); }
+}
+
+/* ---------- Workspace project flow: state blocks, one hairline, a segment bar that never overlaps ---------- */
+#panel-agent:not([data-connection="on"]) .ws-when-on { display: none !important; }
+#panel-agent[data-connection="on"] .ws-when-off { display: none !important; }
+#panel-agent:not([data-project="open"]) #workspace-native-identity { display: none; }
+#workspace-native-identity { display: inline-block; margin: 10px 0 0; padding: 8px 14px; border-radius: 999px; background: var(--paper-2); color: var(--ink); font-size: .8rem; }
+.ws-when-off { display: grid; gap: 8px; margin-top: 10px; }
+#workspace-project-connect { width: 100%; min-height: 52px; margin: 0; }
+#workspace-project-connect:disabled { opacity: .55; }
+#panel-agent[data-connection="error"] #workspace-project-connect { border: 1.5px solid var(--danger); background: transparent; color: var(--ink); }
+#panel-agent[data-connection="pending"] #workspace-project-connect { background: var(--paper-3); color: var(--ink-2); }
+/* Open stays while a project is open: it is also how another session is switched to. */
+#panel-agent[data-project="empty"] #workspace-repository, #panel-agent[data-project="error"] #workspace-repository { display: none; }
+#panel-agent:is([data-project="empty"], [data-project="error"]) .workspace-pane-project .workspace-toolbar { grid-template-columns: 1fr; }
+#panel-agent:is([data-project="empty"], [data-project="error"]) #workspace-repositories-reload { width: 100%; }
+#panel-agent:is([data-project="empty"], [data-project="error"]) #workspace-repositories-reload::after { content: "Reload repositories"; margin-left: 8px; }
+#panel-agent[data-project="error"] #workspace-repository-state { color: var(--danger); }
+.workspace-pane-project .workspace-clear-row { margin-top: 16px; padding-top: 12px; }
+#panel-agent:not([data-connection="on"]) #workspace-clear { border: 0; background: transparent; color: var(--ink-2); text-decoration: underline; text-underline-offset: 4px; font-size: .88rem; font-weight: 500; padding: 0 4px; }
+.workspace-about { margin-top: 10px; border-top: 0; }
+.workspace-about > summary { justify-content: flex-start; color: var(--ink-3); font-size: .85rem; min-height: 40px; }
+/* While nothing is connected the Connect block is the explanation; the picker hint would be stale. */
+#panel-agent:not([data-connection="on"]) #workspace-mode-help { display: none; }
+.workspace-header-more, .workspace-header .badge { font-size: .8rem; }
+/* Project owns Connect when visible; keep the Android/header id and its single handler for Chat/Work. */
+#panel-agent:has(.workspace-layout[data-pane="project"]) #workspace-start { display: none; }
+@media (min-width: 761px) { #panel-agent #workspace-start { display: none; } }
+/* Secondary safety actions remain reachable even when work status is unknown. No dashboard-sized row. */
+body[data-destination="agent"] .voice-route .agent-mode-bar { gap: 4px 16px; }
+body[data-destination="agent"] .voice-route .agent-mode-bar button { flex: 0 1 auto; min-height: 44px; padding: 0 4px; border: 0; background: transparent; font-size: .82rem; }
+body[data-destination="agent"] .voice-route .agent-mode-bar #agent-stop-button { color: var(--danger); }
+/* Header Connect never clips its pending label; the Clear dialog's buttons wrap instead of overflowing. */
+.workspace-header #workspace-start { white-space: nowrap; padding: 0 14px; font-size: .9rem; }
+.workspace-clear-confirm .workspace-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.workspace-clear-confirm .workspace-toolbar button { flex: 1 1 auto; }
+/* Header card: compact, no double rule against the segments or the panes. */
+.workspace-header { margin-top: 8px; padding: 10px 0 6px; border-top: 0; }
+.workspace-pane-project .pane-title + .compact-note { margin-top: 0; }
+@media (max-width: 760px) {
+  /* The app already has fixed bottom navigation. A second sticky bar bisects
+     project text and dialogs while scrolling; let these local tabs scroll. */
+  .workspace-segments { position: relative; top: auto; z-index: auto; margin-top: 8px; }
+  .workspace-segments::before { content: none; }
+  .workspace-layout { margin-top: 12px; }
+  .workspace-pane { padding-top: 4px; }
 }
 
 /* ---------- misc tidy ---------- */

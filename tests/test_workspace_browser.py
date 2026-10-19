@@ -65,7 +65,7 @@ def test_companion_default_and_conversation_layout(workspace_browser, width):
     assert page.locator("#agent-workspace-view").is_visible()
     page.wait_for_function("!document.getElementById('workspace-start').disabled")
     assert not page.locator(".agent-run-sheet").is_visible()
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("document.getElementById('workspace-badge').textContent === 'Live'")
     fixture["events"] = [
         {"id": 1, "role": "user", "text": "Hello Homebody"},
@@ -96,7 +96,7 @@ def test_companion_default_and_conversation_layout(workspace_browser, width):
 def test_text_only_and_privacy_clears_dom(workspace_browser):
     page, fixture, runtime, errors = workspace_browser
     page.wait_for_function("!document.getElementById('workspace-start').disabled")
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("document.getElementById('workspace-badge').textContent === 'Live'")
     fixture["events"] = [{"id": 1, "role": "assistant", "text": "<img src=x onerror=alert(1)> adult text"}]
     page.evaluate("refreshStatus()")

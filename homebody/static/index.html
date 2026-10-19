@@ -13,11 +13,11 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=112">
-  <link rel="stylesheet" href="/static/scene.css?v=112">
-  <link rel="stylesheet" href="/static/onboarding.css?v=112">
-  <link rel="stylesheet" href="/static/shell.css?v=112">
-  <link rel="stylesheet" href="/static/fable.css?v=112">
+  <link rel="stylesheet" href="/static/style.css?v=113">
+  <link rel="stylesheet" href="/static/scene.css?v=113">
+  <link rel="stylesheet" href="/static/onboarding.css?v=113">
+  <link rel="stylesheet" href="/static/shell.css?v=113">
+  <link rel="stylesheet" href="/static/fable.css?v=113">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -581,20 +581,30 @@
       <div id="agent-workspace-view" class="workspace-layout" data-pane="chat">
         <section id="workspace-pane-project" class="workspace-pane workspace-pane-project" aria-labelledby="workspace-project-heading">
           <h2 id="workspace-project-heading" class="pane-title">Project</h2>
+          <!-- State-driven: #panel-agent[data-connection] (off | pending | error | on) and [data-project]
+               (none | loading | empty | ready | open | error) choose which block shows. -->
           <p id="workspace-mode-help" class="muted compact-note">Connect to load your repositories.</p>
-          <label for="workspace-repository">GitHub repository</label>
-          <div class="workspace-toolbar">
-            <select id="workspace-repository" aria-label="GitHub repository"></select>
-            <button type="button" id="workspace-repositories-reload" class="secondary icon-button" aria-label="Reload repositories"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+          <div class="ws-when-off" role="group" aria-label="Not connected">
+            <button type="button" id="workspace-project-connect" class="workspace-open"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg>Connect</button>
+            <p id="workspace-project-connect-help" class="muted compact-note">Shows the conversation and loads your repositories. Nothing starts.</p>
           </div>
-          <p id="workspace-repository-state" class="muted compact-note" role="status">Connect to load your repositories.</p>
-          <div id="workspace-native-target-row" hidden>
-            <label for="workspace-native-target">Project session</label>
-            <select id="workspace-native-target" aria-label="Project and native session"></select>
+          <div class="ws-when-on">
+            <label for="workspace-repository">GitHub repository</label>
+            <div class="workspace-toolbar">
+              <select id="workspace-repository" aria-label="GitHub repository"></select>
+              <button type="button" id="workspace-repositories-reload" class="secondary icon-button" aria-label="Reload repositories"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+            </div>
+            <p id="workspace-repository-state" class="muted compact-note" role="status">Connect to load your repositories.</p>
+            <div id="workspace-native-target-row" hidden>
+              <label for="workspace-native-target">Project session</label>
+              <select id="workspace-native-target" aria-label="Project and native session"></select>
+            </div>
+            <button type="button" id="workspace-native-bind" class="workspace-open" aria-describedby="workspace-native-bind-help"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Open project</button>
+            <p id="workspace-native-bind-help" class="muted compact-note" role="status">Connect first.</p>
           </div>
-          <button type="button" id="workspace-native-bind" class="workspace-open" aria-describedby="workspace-native-bind-help"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Open project</button>
-          <p id="workspace-native-bind-help" class="muted compact-note" role="status">Connect first.</p>
           <p id="workspace-native-identity" class="workspace-identity">No project open.</p>
+          <!-- Clear keeps its exact scope (abort the poll, stop selected work, disconnect) in every state;
+               it is quiet while nothing is connected and a plain secondary button once something is. -->
           <div class="workspace-clear-row">
             <button type="button" id="workspace-clear" class="secondary" aria-controls="workspace-clear-confirm">Clear &amp; disconnect…</button>
           </div>
@@ -606,7 +616,9 @@
               <button type="button" id="workspace-clear-cancel" class="secondary">Keep everything</button>
             </div>
           </section>
-          <p class="muted compact-note">This view is kept in memory for up to an hour. Session history stays on the agent host.</p>
+          <details class="more workspace-about"><summary><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>About this view</summary>
+            <p class="muted compact-note">This view is kept in memory for up to an hour. Session history stays on the agent host. Clear &amp; disconnect erases the conversation shown here, stops the project's work and disconnects it.</p>
+          </details>
         </section>
 
         <section id="workspace-pane-chat" class="workspace-pane workspace-pane-chat" aria-labelledby="workspace-chat-heading">
@@ -1449,23 +1461,23 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=112"></script>
-  <script src="/static/scene.js?v=112"></script>
-  <script src="/static/motion.js?v=112"></script>
-  <script src="/static/onboarding.js?v=112"></script>
-  <script src="/static/owner.js?v=112"></script>
+  <script src="/static/notifications.js?v=113"></script>
+  <script src="/static/scene.js?v=113"></script>
+  <script src="/static/motion.js?v=113"></script>
+  <script src="/static/onboarding.js?v=113"></script>
+  <script src="/static/owner.js?v=113"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=112"></script>
-  <script src="/static/agent-connection.js?v=112"></script>
-  <script src="/static/workspace-thread.js?v=112"></script>
-  <script src="/static/native-workspace.js?v=112"></script>
-  <script src="/static/workspace.js?v=112"></script>
-  <script src="/static/ispy-input.js?v=112"></script>
-  <script src="/static/companion.js?v=112"></script>
-  <script src="/static/main.js?v=112"></script>
-  <script src="/static/updates.js?v=112"></script>
-  <script src="/static/volume.js?v=112"></script>
-  <script src="/static/assistant-modes.js?v=112"></script>
-  <script src="/static/household.js?v=112"></script>
+  <script src="/static/camera.js?v=113"></script>
+  <script src="/static/agent-connection.js?v=113"></script>
+  <script src="/static/workspace-thread.js?v=113"></script>
+  <script src="/static/native-workspace.js?v=113"></script>
+  <script src="/static/workspace.js?v=113"></script>
+  <script src="/static/ispy-input.js?v=113"></script>
+  <script src="/static/companion.js?v=113"></script>
+  <script src="/static/main.js?v=113"></script>
+  <script src="/static/updates.js?v=113"></script>
+  <script src="/static/volume.js?v=113"></script>
+  <script src="/static/assistant-modes.js?v=113"></script>
+  <script src="/static/household.js?v=113"></script>
 </body>
 </html>

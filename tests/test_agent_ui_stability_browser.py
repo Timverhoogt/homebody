@@ -88,7 +88,7 @@ def picker(picker_browser):
         route.fulfill(json=state["catalog"] if action == "repositories" else state["native"])
 
     page.route("**/api/agent/workspace/native/*", reply)
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("document.getElementById('workspace-repository').options.length === 3")
     page.wait_for_function("!document.getElementById('workspace-repository').disabled")
     yield page, voice, runtime, state, errors
