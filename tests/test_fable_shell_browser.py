@@ -53,7 +53,7 @@ def test_shell_row_gear_and_every_destination(ui, width, scheme):
     assert page.locator("#tab-more").is_hidden() and page.locator("#tab-announce").is_hidden()
     assert page.locator("#tab-settings").is_visible()
     rail = page.evaluate("getComputedStyle(document.querySelector('.topbar')).position")
-    assert rail == ("fixed" if width >= 900 else "sticky")
+    assert rail == ("fixed" if width >= 900 else "static")  # phones: the header scrolls away, never over the hero
     # Workspace last: tapping it switches the voice route for real, so every earlier screenshot shows
     # one coherent idle state and no "Workspace active" notice over Kids.
     for tab in ["dashboard", "kids", "robot", "settings", "agent"]:
@@ -174,8 +174,8 @@ def test_robot_and_settings_keep_every_control_reachable(ui, width):
       .map(b => { const r = b.getBoundingClientRect(); return [b.textContent.trim().slice(0, 8), Math.round(r.width),
         Math.round(r.height)]; })""")
     assert len(pad) == 12 and all(entry[1] >= 48 and entry[2] >= 48 for entry in pad), pad
-    for selector in ("#motor-wake-button", "#motor-standby-button", "#robot-stop-button", "#emotion-button",
-                     "#camera-live-start"):
+    for selector in ("#robot-power #global-power-awake", "#robot-power #global-power-standby", "#robot-stop-button",
+                     "#emotion-button", "#camera-live-start"):
         assert page.locator(selector).is_visible(), selector
     # Precision, gamepad and buttons stay one disclosure away.
     for selector in (".precision-group", ".bluetooth-card", ".gpio-card"):

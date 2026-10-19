@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.42] — Everyday structure
+
+- Everyday leads with one primary action taken from the live state: Stop (or Stop speaking) during a voice turn, Standby while Awake, Wake up from Standby, Meeting or Sleep, a disabled "Reconnecting…" while status is unreachable. It forwards a single click to the existing control, so there is one dispatch and one Stop per context; Stop all work still appears only when project work is really running.
+- Power controls (live status row, Wake up / Standby / Stop movement, Meeting · Sleep) move to a power section at the top of the Robot page; the motor bar keeps only Stop action. Look / Announce / Move become small chips. On phones the header scrolls with the page so it never covers the hero, and the bottom row keeps clear of the last control. Readiness hints that need Wake up now open the Robot page. No permission, restriction or backend behaviour changed.
+
 ## [0.5.41] — Everyday field cleanup
 
 - The Everyday / Workspace tabs now carry the voice route: a tap on Workspace switches and connects as before, a tap on Everyday switches back through the same profile API with approved project work preserved and the same error feedback. The duplicate route switch leaves the visible flow (its buttons stay for scripts); the confirmed route is named in one line. Restoring a tab (startup, hash, Android restore) never switches.

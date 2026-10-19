@@ -174,10 +174,10 @@ def test_shared_power_card_names_mode_and_exposes_common_actions(ui, width, sche
     page.set_viewport_size({"width": width, "height": 800})
     state["config"]["camera_feed_enabled"] = True
     state["runtime"].update(power_mode="standby", motors_enabled=False, head_safely_folded=True)
-    page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
+    page.evaluate("document.getElementById('tab-robot').click()")  # power lives in the Robot page's power section
     page.evaluate("refreshStatus()")
     page.wait_for_function("document.getElementById('compact-power-mode').textContent === 'Standby'")
-    card = page.locator("#global-robot-status")
+    card = page.locator("#robot-power")
     assert "wake word" in page.locator("#compact-power-detail").inner_text().lower()
     camera = page.locator("#compact-camera").inner_text()
     assert "allowed" in camera.lower() and "not open" in camera.lower(), camera
@@ -187,7 +187,7 @@ def test_shared_power_card_names_mode_and_exposes_common_actions(ui, width, sche
     assert "Meeting" in summary and "Sleep" in summary
     assert page.locator('#global-power-controls [data-power="meeting"]').is_hidden()
     assert card.locator('[data-power="standby"]').get_attribute("aria-pressed") == "true"
-    assert small_targets(page, "#global-robot-status") == []
+    assert small_targets(page, "#robot-power") == []
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     card.screenshot(path=str(SHOTS / f"power-standby-{width}-{scheme}.png"))
     page.locator("#global-power-controls > summary").click()

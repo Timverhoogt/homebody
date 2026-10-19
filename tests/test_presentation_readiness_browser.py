@@ -85,6 +85,8 @@ def test_greyed_start_lists_unmet_requirements_and_navigates_without_writes(ui, 
     page.wait_for_function("document.activeElement && document.activeElement.id === 'initiative-policy-enabled'")
     page.click("#presentation-requirements li[data-need='awake'] button")
     page.wait_for_function("document.activeElement && document.activeElement.id === 'global-power-awake'")
+    assert page.locator("#panel-robot").is_visible()  # Wake up lives on the Robot page
+    page.evaluate("activateTab('dashboard', false, true)")  # back to the presentation card, navigation only
     assert posts == before, "navigation must not save settings, wake Reachy or start a window"
 
     # Every gate satisfied: Start becomes available; the server still re-checks on press.

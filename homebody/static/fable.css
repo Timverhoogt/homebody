@@ -172,7 +172,7 @@ body[data-destination="dashboard"] .global-robot-status .status-row { display: n
 .everyday-card h2, .companion-card h2 { font-size: 1.25rem; }
 #everyday-summary { color: var(--ink-2); }
 .everyday-permission-links button { min-height: 48px; }
-.companion-look-row button { min-height: 48px; }
+.companion-look-row button { min-height: 49px; } /* 48 can round to 47.99 at some layouts */
 .companion-grid { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 6px 0 10px; font-size: .9rem; color: var(--ink-2); }
 .companion-grid div { display: flex; gap: 6px; }
 .companion-grid dt::after { content: ":"; }
@@ -413,6 +413,56 @@ body[data-destination="dashboard"] .global-robot-status { margin-top: 4px; paddi
 .hero { padding-bottom: 10px; }
 /* The shortcut card now lives in Settings. */
 #panel-settings > .install-card { margin-top: 18px; }
+
+/* ---------- Everyday structure (dark field shot): hero, one primary, small secondaries ---------- */
+/* Phones: the header scrolls with the page so it never bisects the hero; the row stays fixed below. */
+@media (max-width: 899px) { .topbar { position: static; } }
+.hero { grid-template-columns: 140px minmax(0, 1fr); grid-template-areas: "face copy" "primary primary" "actions actions"; gap: 12px 14px; align-items: center; padding: 6px 0 14px; }
+.hero > .hero-face { grid-area: face; }
+.hero > .hero-copy { grid-area: copy; }
+.hero > .everyday-primary-row { grid-area: primary; }
+.hero > .everyday-actions { grid-area: actions; }
+.hero-face .hb-scene { max-width: 140px; }
+.hero-label { display: flex; }
+.everyday-primary-row { display: grid; gap: 6px; margin-top: 6px; }
+.everyday-primary { display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 56px; padding: 0 22px; border: 0; border-radius: 999px; background: var(--orange); color: var(--orange-ink); font-size: 1.05rem; font-weight: 700; }
+.everyday-primary .icon { width: 1.3em; height: 1.3em; margin: 0; }
+.everyday-primary[data-target="voice-stop-button"] { background: var(--ink); color: var(--paper); }
+.everyday-primary:disabled { background: var(--paper-3); color: var(--ink-3); opacity: 1; filter: none; }
+.everyday-primary-hint { margin: 0; font-size: .85rem; color: var(--ink-2); }
+.everyday-primary-hint:empty { display: none; }
+/* Secondary actions as small chips, not tiles. */
+.hero .everyday-actions { display: flex; flex-wrap: wrap; gap: 8px; max-width: none; margin: 0; }
+.hero .everyday-actions button { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: 999px; background: transparent; color: var(--ink); font-size: .92rem; }
+.hero .everyday-actions button .icon { width: 1.15em; height: 1.15em; margin: 0; }
+@media (min-width: 900px) {
+  .hero { grid-template-columns: 150px minmax(0, 1fr) auto; grid-template-areas: "face copy primary" "face copy actions"; align-items: center; }
+  .everyday-primary { width: auto; min-width: 220px; }
+}
+/* Everyday's voice strip: the route line, the work badge and Stop all work (when work runs), messages.
+   Stop speaking is reached through the primary while a turn is active; the real button stays for scripts. */
+body[data-destination="dashboard"] .global-robot-status { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+body[data-destination="dashboard"] .global-robot-status #voice-stop-button { display: none; }
+body[data-destination="dashboard"] .global-robot-status .voice-route { border-top: 0; padding-top: 0; }
+.voice-route .assistant-mode-state { font-size: .85rem; }
+/* Power on Robot: status row, Wake / Standby / Stop movement, Meeting · Sleep. */
+.robot-power { display: grid; gap: 10px; padding: 12px 0 8px; }
+.robot-power .status-row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
+.robot-power .power-now-mode { font-family: var(--serif); font-size: 1.3rem; }
+.robot-power .power-now-detail { display: block; color: var(--ink-2); font-size: .85rem; }
+.robot-power .compact-status-line dd { font-weight: 600; }
+.robot-power .global-adult-controls { display: grid; gap: 8px; padding-top: 4px; }
+.robot-power .global-power-primary button, .robot-power summary { min-height: 48px; }
+.robot-power .message:empty { display: none; }
+#panel-robot > .global-robot-status { margin-top: 24px; }
+/* The power section above already carries Wake / Standby; the motor bar keeps only Stop action. */
+#motor-wake-button, #motor-standby-button { display: none; }
+.motor-safety-actions { display: grid; gap: 8px; }
+/* Bottom row clearance: the page scrolls past the last control and any text box. */
+@media (max-width: 650px) {
+  main { padding-bottom: calc(var(--fable-row) + 40px + env(safe-area-inset-bottom)); scroll-padding-bottom: calc(var(--fable-row) + 24px); }
+  .tabs-primary { bottom: calc(8px + env(safe-area-inset-bottom)); }
+}
 
 /* ---------- misc tidy ---------- */
 .setup-intro { border-radius: var(--radius-card); background: var(--paper-2); border: 0; }

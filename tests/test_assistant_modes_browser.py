@@ -122,7 +122,10 @@ def test_modes_stop_controls_and_everyday_disclosure(ui, width):
     SHOTS.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(SHOTS / f"agent-everyday-{width}.png"), full_page=True)
 
-    page.click("#voice-stop-button")
+    # On Everyday the Stop for an active turn is the primary action, which forwards to the real Stop.
+    page.evaluate("updateStatus({config: {}, runtime: {power_mode: 'awake', state: 'speaking', kids_mode: {},"
+                  " agent: {profile: 'conversation'}}})")
+    page.click("#everyday-primary")
     page.wait_for_function("document.getElementById('agent-message').textContent.includes('Stopped speaking')")
     assert ("/api/voice/stop", {}) in posts and not any(p == "/api/agent/stop" for p, _ in posts)
 

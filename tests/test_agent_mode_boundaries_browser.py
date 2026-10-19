@@ -169,7 +169,10 @@ def test_workspace_to_everyday_leaves_only_the_everyday_surface(agent, width):
     assert _visible_project_surface(page) == []
     assert page.locator("#everyday-card").is_visible()
     assert page.locator("#agent-companion-view").is_visible()  # existing Companion presence stays
-    assert page.locator("#voice-stop-button").is_visible() and page.locator("#voice-stop-button").is_enabled()
+    # Stop stays in reach on Everyday: the primary action (Stop during a turn, otherwise the power step)
+    # is shown and enabled, and the real Stop speaking it forwards to is enabled.
+    assert page.locator("#everyday-primary").is_visible() and page.locator("#everyday-primary").is_enabled()
+    assert page.locator("#voice-stop-button").is_enabled()
     _try_to_reveal(page)
     assert _visible_project_surface(page) == []
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
