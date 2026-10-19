@@ -194,9 +194,11 @@ def test_home_hero_fits_and_power_controls_stay_hit_testable(ui, width, scheme):
                 doc: document.documentElement.scrollWidth}; }""")
     assert geometry["left"] >= geometry["hl"] and geometry["right"] <= geometry["hr"]
     assert geometry["doc"] <= width and geometry["w"] >= 140
+    page.evaluate("activateTab('robot')")  # power controls live in the Robot page's power section
     for selector in ('#global-power-standby', '#global-power-awake'):
         page.locator(selector).focus()
         assert page.evaluate(HIT_TEST, selector)["ok"], selector
+    page.evaluate("activateTab('dashboard')")
     page.evaluate("window.scrollTo(0, 0)")
     _shot(page, f"home-hero-listening-{width}-{scheme}", clip=page.locator(".status-card").bounding_box())
     assert not errors
@@ -714,10 +716,12 @@ def test_disclosure_entrances_are_opt_in_and_skip_reduced_motion(ui):
     page.wait_for_function("document.getElementById('update-history').classList.contains('hb-enter')")
     page.wait_for_timeout(400)
     assert not page.evaluate("document.getElementById('update-history').classList.contains('hb-enter')")
-    # Not opted in: no entrance class is ever added.
+    # Not opted in: no entrance class is ever added (Meeting · Sleep lives on the Robot page).
+    page.evaluate("activateTab('robot')")
     page.locator("#global-power-controls summary").click()
     assert page.evaluate("document.querySelectorAll('#global-power-controls .hb-enter').length") == 0
     page.emulate_media(reduced_motion="reduce")
+    page.evaluate("activateTab('settings')")
     page.locator("#updates-card details summary").click()
     page.locator("#updates-card details summary").click()
     assert not page.evaluate("document.getElementById('update-history').classList.contains('hb-enter')")

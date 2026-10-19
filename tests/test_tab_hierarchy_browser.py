@@ -56,7 +56,8 @@ def test_compact_status_and_kids_lock_are_authoritative(browser_page):
     assert page.locator("#compact-power-mode").inner_text() == "Awake"
     for name in ["mic", "camera", "motors"]:
         assert page.locator(f"#compact-{name}").inner_text() == page.locator(f"#tele-{name}").inner_text()
-    page.locator("#global-power-controls summary").click()
+    page.evaluate("activateTab('robot')")  # power controls live on Robot now
+    page.locator("#robot-power #global-power-controls summary").click()
     assert page.locator('#global-power-controls [data-power="sleep"]').is_visible()
     page.evaluate("updateStatus({runtime:{kids_mode:{locked:true,active:true}}})")
     assert page.locator(".page-heading h1:visible").inner_text() == "Kids"
@@ -71,7 +72,7 @@ def test_compact_status_and_kids_lock_are_authoritative(browser_page):
 @pytest.mark.parametrize("outcome", ["success", "unconfirmed", "network"])
 def test_shared_power_and_stop_use_visible_feedback(browser_page, outcome):
     page, errors = browser_page
-    page.evaluate("document.getElementById('tab-settings').click()")
+    page.evaluate("document.getElementById('tab-robot').click()")  # power controls live on Robot now
     # Suppress toast cards to exercise the actual inline fallback.
     page.evaluate("HomebodyNotifications.show = () => false")
     if outcome == "network":

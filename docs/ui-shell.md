@@ -20,12 +20,23 @@ Production: `homebody/static/index.html` plus `fable.css`, which is loaded last 
 - Wide screens (≥ 900 px): the header becomes a left rail; Settings sits at its foot.
 - Announce is an Everyday action (`#everyday-announce-link`) with a back link; its tab button is kept,
   hidden, so `#announce` deep links and `activateTab("announce")` still work.
-- Workspace still requires an explicit tap; hash restore never enters it or starts work.
+- The tabs carry the voice route: a real tap on Workspace switches to the agent profile and connects
+  (`HomebodyWorkspace.enter()`); a real tap on Everyday switches back through the same profile API with
+  approved project work preserved. The two route buttons remain in the DOM (hidden) for the Workspace
+  gate and scripts; the confirmed route is named in the status strip ("Voice goes to …"). Programmatic
+  navigation (`activateTab`, hash restore, Android restore) never switches the route.
+- The home-screen shortcut card and the remembered-device controls live in Settings; the shortcut card
+  is hidden inside the Android app's WebView (`runningInWrapper()`).
 
 ## Pages
 
-- Everyday: hero with Look / Announce / Move (each only opens an existing control), last exchange,
-  then the shared status strip (power, route switch, the three Stop controls, once each).
+- Everyday: hero (live scene and state), one primary action derived from the live state (Stop /
+  Stop speaking during a voice turn, Standby while Awake, Wake up from Standby / Meeting / Sleep,
+  disabled "Reconnecting…" when status is unreachable, hidden in Kids) that forwards one click to the
+  real control, three small chips (Look / Announce / Move), then the voice strip (route line, work badge,
+  Stop all work when work runs) and the last exchange. Power controls (status row, Wake up / Standby /
+  Stop movement, Meeting · Sleep) live in the Robot page's power section; the motor bar keeps Stop action.
+  On phones the header scrolls with the page so it never covers the hero.
 - Workspace: project chip, Chat / Work / Project (segmented on phones, side by side wider). Reachy's
   turns are serif prose, yours are bubbles, evidence stays in Work.
 - Kids: stage first, "What shall we play?", Start playing (opens the unchanged grown-up check where

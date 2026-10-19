@@ -13,11 +13,11 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=111">
-  <link rel="stylesheet" href="/static/scene.css?v=111">
-  <link rel="stylesheet" href="/static/onboarding.css?v=111">
-  <link rel="stylesheet" href="/static/shell.css?v=111">
-  <link rel="stylesheet" href="/static/fable.css?v=111">
+  <link rel="stylesheet" href="/static/style.css?v=112">
+  <link rel="stylesheet" href="/static/scene.css?v=112">
+  <link rel="stylesheet" href="/static/onboarding.css?v=112">
+  <link rel="stylesheet" href="/static/shell.css?v=112">
+  <link rel="stylesheet" href="/static/fable.css?v=112">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -211,7 +211,13 @@
         <li><i id="tele-motors-led" aria-hidden="true"></i><span>Motors</span><strong id="tele-motors">—</strong></li>
         <li><i id="tele-agent-led" aria-hidden="true"></i><span>Agent</span><strong id="tele-agent">—</strong></li>
       </ul>
-      <!-- Everyday actions: each opens an existing control, nothing starts by itself. -->
+      <!-- One primary action from the live state (Wake up / Standby / Stop). It forwards one click to the
+           real control (power buttons on Robot, Stop speaking in the voice strip): one dispatch, no copy. -->
+      <div class="everyday-primary-row">
+        <button type="button" id="everyday-primary" class="everyday-primary" data-target="" disabled><svg class="icon" aria-hidden="true"><use id="everyday-primary-icon" href="#i-power"/></svg><span id="everyday-primary-label">Connecting…</span></button>
+        <p id="everyday-primary-hint" class="everyday-primary-hint" role="status"></p>
+      </div>
+      <!-- Secondary actions: each opens an existing control, nothing starts by itself. -->
       <div class="everyday-actions" role="group" aria-label="Everyday actions">
         <button type="button" id="everyday-look-link" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-camera"/></svg>Look</button>
         <button type="button" id="everyday-announce-link" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg>Announce</button>
@@ -873,6 +879,9 @@
 
     <div id="panel-robot" class="tab-panel" role="tabpanel" aria-labelledby="tab-robot" data-panel="robot" hidden>
       <header class="page-heading"><h1>Robot</h1><p>Camera, movement and hardware controls.</p></header>
+      <!-- Power lives here: main.js moves the live status row, Wake / Standby / Stop movement, Meeting · Sleep
+           and their messages into this section at start-up. Everyday forwards its one primary action here. -->
+      <section id="robot-power" class="card robot-power" aria-label="Reachy power"></section>
       <section class="card robot-control-card" aria-busy="false" data-action-busy="false">
         <div class="section-heading">
           <div><p class="label">Remote motor control</p><h2>Move Reachy</h2></div>
@@ -1440,23 +1449,23 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=111"></script>
-  <script src="/static/scene.js?v=111"></script>
-  <script src="/static/motion.js?v=111"></script>
-  <script src="/static/onboarding.js?v=111"></script>
-  <script src="/static/owner.js?v=111"></script>
+  <script src="/static/notifications.js?v=112"></script>
+  <script src="/static/scene.js?v=112"></script>
+  <script src="/static/motion.js?v=112"></script>
+  <script src="/static/onboarding.js?v=112"></script>
+  <script src="/static/owner.js?v=112"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=111"></script>
-  <script src="/static/agent-connection.js?v=111"></script>
-  <script src="/static/workspace-thread.js?v=111"></script>
-  <script src="/static/native-workspace.js?v=111"></script>
-  <script src="/static/workspace.js?v=111"></script>
-  <script src="/static/ispy-input.js?v=111"></script>
-  <script src="/static/companion.js?v=111"></script>
-  <script src="/static/main.js?v=111"></script>
-  <script src="/static/updates.js?v=111"></script>
-  <script src="/static/volume.js?v=111"></script>
-  <script src="/static/assistant-modes.js?v=111"></script>
-  <script src="/static/household.js?v=111"></script>
+  <script src="/static/camera.js?v=112"></script>
+  <script src="/static/agent-connection.js?v=112"></script>
+  <script src="/static/workspace-thread.js?v=112"></script>
+  <script src="/static/native-workspace.js?v=112"></script>
+  <script src="/static/workspace.js?v=112"></script>
+  <script src="/static/ispy-input.js?v=112"></script>
+  <script src="/static/companion.js?v=112"></script>
+  <script src="/static/main.js?v=112"></script>
+  <script src="/static/updates.js?v=112"></script>
+  <script src="/static/volume.js?v=112"></script>
+  <script src="/static/assistant-modes.js?v=112"></script>
+  <script src="/static/household.js?v=112"></script>
 </body>
 </html>

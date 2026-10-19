@@ -666,6 +666,59 @@ const initialTab = window.location.hash.slice(1) || window.localStorage.getItem(
 activateTab(initialTab);
 window.addEventListener("popstate", () => activateTab(window.location.hash.slice(1) || "dashboard"));
 
+// Power is a Robot matter: the live status row, Wake / Standby / Stop movement, Meeting · Sleep and their
+// messages move into the Robot page once. The voice strip (route line, work badge, Stop speaking / Stop
+// all work, agent message) stays in #global-robot-status and still follows the destination.
+["global-power-message", "global-stop-message"].forEach((id) => $("robot-power").prepend($(id)));
+$("robot-power").prepend($("global-adult-controls"));
+$("robot-power").prepend(document.querySelector("#global-robot-status .status-row"));
+
+// Everyday's one primary action, derived from the live state. It forwards a single click to the real
+// control so there is exactly one dispatch: Stop speaking while a voice turn is active, otherwise the
+// power transition that makes sense (Wake up from Standby / Meeting / Sleep, Standby while Awake).
+const VOICE_ACTIVE_STATES = new Set(["listening", "transcribing", "thinking", "speaking", "looking"]);
+function renderEverydayPrimary(runtime) {
+  const button = $("everyday-primary");
+  const label = $("everyday-primary-label");
+  const hint = $("everyday-primary-hint");
+  const kids = Boolean(runtime?.kids_mode?.active || runtime?.kids_mode?.locked);
+  let target = null;
+  let text = "Reconnecting…";
+  let icon = "i-power";
+  let note = runtime ? "" : "Reachy is out of reach. Power and Stop return when live status does.";
+  if (runtime && !kids) {
+    const state = String(runtime.state || "");
+    const mode = String(runtime.power_mode || "");
+    if (VOICE_ACTIVE_STATES.has(state)) {
+      target = $("voice-stop-button");
+      text = state === "speaking" ? "Stop speaking" : "Stop";
+      icon = "i-stop";
+      note = state === "speaking" ? "Cuts the reply short." : "Ends this voice turn.";
+    } else if (mode === "awake") {
+      target = $("global-power-standby");
+      text = "Standby";
+      icon = "i-moon";
+      note = "Folds Reachy; it still hears the wake word.";
+    } else if (mode) {
+      target = $("global-power-awake");
+      text = "Wake up";
+      icon = "i-power";
+      note = mode === "standby" ? "Motors on, listening for the wake word." : "Ends Meeting / Sleep; motors on and listening.";
+    }
+  }
+  button.dataset.target = target ? target.id : "";
+  button.disabled = !target || target.disabled;
+  button.hidden = kids;
+  label.textContent = text;
+  $("everyday-primary-icon").setAttribute("href", `#${icon}`);
+  hint.textContent = note;
+  hint.hidden = !note;
+}
+$("everyday-primary").addEventListener("click", () => {
+  const target = $("everyday-primary").dataset.target ? $($("everyday-primary").dataset.target) : null;
+  if (target && !target.disabled) target.click();
+});
+
 // The remembered-device controls and the home-screen shortcut belong with the host lifecycle in Settings,
 // not in the Everyday conversation flow.
 $("lifecycle-card").insertAdjacentElement("beforebegin", $("owner-device-controls"));
@@ -1273,6 +1326,7 @@ function updateStatus(payload, sequence = statusSequence) {
   document.querySelectorAll("[data-kids-activity], #kids-nickname, #kids-age-band, #kids-duration, #kids-language, #kids-motion-enabled").forEach((control) => {
     control.disabled = kidsActive || kidsRequestPending;
   });
+  renderEverydayPrimary(runtime);  // after the power buttons' own disabled state is settled above
   window.ReachyCamera?.setPolicy({
     enabled: !kidsActive && !kidsLocked && Boolean(payload.config?.camera_feed_enabled),
     controlsEnabled: Boolean(payload.config?.camera_controls_enabled),
@@ -1500,6 +1554,7 @@ async function refreshStatus() {
     renderStateHeadline("disconnected");
     $("runtime-detail").textContent = String(error);
     document.body.dataset.runtimeState = "disconnected";
+    renderEverydayPrimary(null);
     renderTelemetry({ mic: ["off", "Unknown"], camera: ["off", "Unknown"], motors: ["off", "Unknown"], agent: ["off", "Unreachable"] });
     $("status-dot").className = "status-dot error";
     $("robot-mode-badge").textContent = "offline";
@@ -1906,8 +1961,8 @@ const PRESENTATION_NEEDS = {
     { tab: "agent", companion: true, id: "contextual-offers-enabled" }],
   workspace: ["Open the Workspace tab; a tap there switches the voice route.", "Go to Workspace",
     { tab: "dashboard", id: "tab-agent" }],
-  awake: ["Reachy must be Awake with motors on: use Wake up in the status bar.", "Go to Wake up",
-    { tab: "dashboard", id: "global-power-awake" }],
+  awake: ["Reachy must be Awake with motors on: use Wake up on the Robot page.", "Go to Wake up",
+    { tab: "robot", id: "global-power-awake" }],
   face: ["Turn off Local face following in Settings › Embodiment and privacy.", "Go to setting",
     { tab: "settings", id: "face_tracking_enabled" }],
   kids: ["Kids Mode is active or locked; presenting is unavailable.", "", null],
