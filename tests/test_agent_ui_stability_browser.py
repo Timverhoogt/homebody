@@ -319,14 +319,14 @@ def test_current_mode_is_unambiguous_and_shows_only_its_content(ui, width, schem
         "everyday": True,
         "workspace": False,
     }, everyday
-    assert page.locator(".assistant-mode-switch").is_visible()
+    assert page.locator("#assistant-mode-state").is_visible()  # the route is named; the tabs switch it
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     SHOTS.mkdir(parents=True, exist_ok=True)
     _shot(page, f"everyday-{width}-{scheme}", "#workspace-gate")
 
     held = []
     page.route("**/api/agent/profile", lambda route: held.append(route))
-    page.click("#agent-enable-button")
+    page.evaluate("document.getElementById('agent-enable-button').click()")  # the call behind the Workspace tab
     page.wait_for_timeout(100)
     assert held
     pending = page.evaluate(MODE)
@@ -356,12 +356,12 @@ def test_current_mode_is_unambiguous_and_shows_only_its_content(ui, width, schem
     # Display is off, so the binding was never read: not connected, rather than "none" or "open".
     assert "Not connected" in page.inner_text("#workspace-mode-session")
     assert "Project work running." in facts  # from the status-only badge fixture, not from selection
-    assert page.locator(".assistant-mode-switch").is_visible()
+    assert page.locator("#assistant-mode-state").is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     _shot(page, f"workspace-{width}-{scheme}", "#workspace-mode-card")
 
-    page.click("#tab-dashboard")
-    assert page.evaluate(MODE)["mode"] == "workspace"  # navigation is not the mode switch
+    page.evaluate("activateTab('dashboard', false, true)")  # restore / programmatic navigation
+    assert page.evaluate(MODE)["mode"] == "workspace"  # only a real tab tap switches the route
     page.evaluate("activateTab('agent', false, true)")  # navigation only; tab taps also enter Workspace
 
     page.route("**/api/status", lambda route: route.fulfill(status=503, json={}))
@@ -420,7 +420,7 @@ def test_successful_switch_waits_for_status_not_an_old_inflight_read(ui):
     page.evaluate("void refreshStatus()")
     page.wait_for_timeout(100)
     assert status_reads
-    page.click("#agent-enable-button")
+    page.evaluate("document.getElementById('agent-enable-button').click()")
     page.wait_for_timeout(100)
     assert writes
     state["runtime"]["agent"]["profile"] = "agent"

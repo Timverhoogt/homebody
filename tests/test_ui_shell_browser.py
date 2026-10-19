@@ -379,7 +379,9 @@ def test_one_tap_entry_switches_route_and_connects_once(native, start_profile):
         page.wait_for_function("document.getElementById('workspace-badge').textContent === 'Live'")
         page.wait_for_timeout(1600)
         assert len(_posts(requests, "/api/agent/workspace/start")) == 1
-        expected = 0 if start_profile == "agent" else 1
+        # The tabs carry the route: the Everyday tap above switched an active Workspace route back
+        # (one post), and the Workspace tap switched it again (one post); starting in Everyday needs one.
+        expected = 2 if start_profile == "agent" else 1
         assert len(_posts(requests, "/api/agent/profile")) == expected
         assert page.locator("#workspace-repository").is_visible()  # lands on Project to choose a repository
     assert not errors

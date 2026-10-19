@@ -75,7 +75,7 @@ def test_companion_card_in_everyday_shows_truth_and_looks_once(ui, width):  # no
     page.set_viewport_size({"width": width, "height": 900})
     SHOTS.mkdir(parents=True, exist_ok=True)
     open_card(page, state)
-    assert page.locator("#agent-enable-button").is_visible()  # Workspace picker preserved
+    assert page.locator("#tab-agent").is_visible()  # the Workspace tab is the way into the Workspace route
     assert page.locator("#companion-presence").inner_text() == "Someone is here"
     assert "not in use" in page.locator("#companion-camera").inner_text()
     assert "permitted" in page.locator("#companion-camera").inner_text()

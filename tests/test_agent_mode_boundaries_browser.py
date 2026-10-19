@@ -124,7 +124,7 @@ def _mode(page, mode):
 
 
 def _enter_workspace(page, state):
-    page.click("#agent-enable-button")
+    page.evaluate("document.getElementById('agent-enable-button').click()")  # the route call behind the Workspace tab
     _mode(page, "workspace")
     page.locator("#agent-workspace-view").wait_for(state="visible")
 
@@ -160,7 +160,7 @@ def test_workspace_to_everyday_leaves_only_the_everyday_surface(agent, width):
     page.click("#workspace-start")
     page.wait_for_function("!document.getElementById('workspace-repository').disabled")
     assert page.locator("#workspace-repository").is_visible()
-    page.click("#agent-conversation-button")
+    page.evaluate("document.getElementById('agent-conversation-button').click()")  # behind the Everyday tab
     _mode(page, "everyday")
     page.locator("#agent-workspace-view").wait_for(state="hidden")
     assert _visible_project_surface(page) == []
@@ -184,7 +184,7 @@ def test_unconfirmed_states_fail_closed_on_project_content(agent, boundary):
     assert page.locator("#workspace-start").is_visible()
     if boundary == "pending":
         state["hold"].add("/api/agent/profile")
-        page.click("#agent-conversation-button")
+        page.evaluate("document.getElementById('agent-conversation-button').click()")  # behind the Everyday tab
         _mode(page, "pending")
     elif boundary == "offline":
         state["status_code"] = 503
@@ -207,7 +207,7 @@ def test_unconfirmed_states_fail_closed_on_project_content(agent, boundary):
 def test_pending_entry_reveals_projects_only_after_confirmation(agent):
     page, state, errors = agent
     state["hold"].add("/api/agent/profile")
-    page.click("#agent-enable-button")
+    page.evaluate("document.getElementById('agent-enable-button').click()")  # the route call behind the Workspace tab
     _mode(page, "pending")
     _try_to_reveal(page)
     assert _visible_project_surface(page) == []
@@ -331,7 +331,7 @@ def test_labels_name_homebody_not_full_hermes(agent):
     page.evaluate("refreshStatus()")
     page.wait_for_function("document.querySelectorAll('#workspace-timeline .workspace-event').length === 2")
     assert page.text_content("#workspace-timeline .workspace-assistant strong") == "Homebody"
-    page.click("#agent-conversation-button")
+    page.evaluate("document.getElementById('agent-conversation-button').click()")  # behind the Everyday tab
     _mode(page, "everyday")
     assert "Hermes" not in page.inner_text("#assistant-mode-detail")
     assert not errors
@@ -345,7 +345,7 @@ def test_agent_polls_stop_during_switch_and_late_replies_cannot_repaint(agent):
     page.wait_for_timeout(100)
     assert state["held"], "a Workspace poll is genuinely in flight"
     state["hold"] = {"/api/agent/profile"}
-    page.click("#agent-conversation-button")
+    page.evaluate("document.getElementById('agent-conversation-button').click()")  # behind the Everyday tab
     _mode(page, "pending")
     mark = len(state["requests"])
     page.evaluate("void refreshAgentActivity()")  # the interval firing during the switch
