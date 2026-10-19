@@ -62,8 +62,13 @@ def test_host_end_chat_start_has_explicit_single_route_and_no_stale_consent(ui, 
 
 def test_end_is_single_flight_even_before_next_status(ui):
     page, state, posts, errors = ui
+    # A fixture/bootstrap poll can still carry the inactive Kids state.
+    # refreshStatus deliberately coalesces overlapping polls, so wait for that
+    # poll before requesting and observing the active state used by this test.
+    page.wait_for_function('!statusRefreshPending')
     state['runtime'] = hosted('playing', activity='story')
     page.evaluate('refreshStatus()')
+    page.wait_for_function("!document.getElementById('kids-stop-button').disabled")
     held = []
     page.route('**/api/kids/stop', lambda route: held.append(route))
     page.evaluate("document.getElementById('kids-stop-button').click(); "
