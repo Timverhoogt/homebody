@@ -55,8 +55,9 @@ def test_first_kids_screen_leads_with_play_together_and_reviewed_setup(ui, width
     page.wait_for_timeout(300)
     page.screenshot(path=str(SHOTS / f"kids-first-{width}-{scheme}.png"))
     hero = page.locator(".kids-hero")
-    assert "Play together" in hero.locator("h2").inner_text()
-    assert "game master" in hero.inner_text().lower()
+    assert hero.locator("h2").inner_text() == "What shall we play?"
+    assert "makes it up with you" in hero.inner_text().lower()
+    assert hero.locator("#kids-stage .hb-scene").is_visible()  # Reachy's stage leads, above the question
     assert "Choose an activity below" not in page.locator("#panel-kids").inner_text()
     # The idle stage previews the host world, still (no loop) until a session really starts.
     stage = page.evaluate("""() => { const s = document.querySelector('#kids-stage .hb-scene');

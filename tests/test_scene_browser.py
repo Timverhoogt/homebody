@@ -100,7 +100,8 @@ def test_kids_stage_switches_scenes_and_fits(ui, width, scheme):
         const r = document.querySelector('#kids-stage .hb-scene-canvas').getBoundingClientRect();
         return {left: r.left, right: r.right, width: r.width, doc: document.documentElement.scrollWidth};}""")
     assert geometry["left"] >= 0 and geometry["right"] <= width and geometry["doc"] <= width
-    assert geometry["width"] >= min(260, width - 64)
+    # Fable's compact phone stage intentionally leaves room for play controls.
+    assert geometry["width"] >= min(200, width - 64)
     _apply(page, state, "listening", _kids("story"))
     page.wait_for_timeout(700)
     page.locator(".kids-hero").scroll_into_view_if_needed()

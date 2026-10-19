@@ -14,9 +14,12 @@ def test_page_identity_home_only_hero_and_safe_navigation(browser_page, width):
     dest.mkdir(parents=True, exist_ok=True)
     for tab, label in [("dashboard", "Everyday"), ("agent", "Workspace"), ("kids", "Kids"),
                        ("announce", "Announce"), ("robot", "Robot"), ("settings", "Settings")]:
-        if tab in {"announce", "robot", "settings"} and width < 650:
-            page.locator("#tab-more").click()  # phones keep tools and settings behind More
-        page.locator(f"#tab-{tab}").click()
+        if tab == "announce":  # Announce is an Everyday action (and the #announce deep link), not a tab
+            page.locator("#tab-dashboard").click()
+            page.locator("#everyday-announce-link").click()
+        else:
+            page.locator(f"#tab-{tab}").click()  # four-button row plus the Settings gear, no More menu
+        assert page.locator("#tab-more").is_hidden()
         assert page.locator(".page-heading h1:visible").inner_text() == label
         assert page.title() == f"{label} · Homebody"
         assert page.locator(".status-card").is_visible() == (tab == "dashboard")

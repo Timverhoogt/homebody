@@ -288,18 +288,17 @@ def _shot(page, name, below):
     page.wait_for_timeout(700)
     page.evaluate("document.querySelectorAll('.notification-dismiss').forEach(b => b.click())")
     page.wait_for_timeout(400)
-    top = page.locator(".agent-card").bounding_box()
-    bottom = page.locator(below).bounding_box()
+    # The mode card sits in the shared status strip, which the Fable shell places at the foot of every page
+    # except Everyday; clip from whichever of the two boxes is higher to whichever ends lower.
+    boxes = [page.locator(".agent-card").bounding_box(), page.locator(below).bounding_box()]
+    top = max(0, min(box["y"] for box in boxes) - 8)
+    end = max(box["y"] + box["height"] for box in boxes) + 8
+    end = min(end, page.evaluate("document.documentElement.scrollHeight"))  # clip must stay inside the page
     SHOTS.mkdir(parents=True, exist_ok=True)
     page.screenshot(
         path=str(SHOTS / f"{name}.png"),
         animations="disabled",
-        clip={
-            "x": 0,
-            "y": top["y"] - 8,
-            "width": size["width"],
-            "height": bottom["y"] + bottom["height"] - top["y"] + 16,
-        },
+        clip={"x": 0, "y": top, "width": size["width"], "height": end - top},
     )
     page.set_viewport_size(size)
 

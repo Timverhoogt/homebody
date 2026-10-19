@@ -14,6 +14,8 @@ def test_kids_start_guidance_matches_first_listen(ui, width):
     page.click("#tab-kids")
     guide = page.locator(".kids-guide-card")
     guide.scroll_into_view_if_needed()
+    assert not guide.evaluate("el => el.open")  # folded by default: play leads, the grown-up note waits
+    guide.locator("> summary").click()
     text = guide.inner_text()
     assert "first answer automatically" in text
     assert "no wake phrase needed" in text
