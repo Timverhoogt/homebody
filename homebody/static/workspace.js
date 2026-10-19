@@ -12,11 +12,21 @@
   // Set only by HomebodyAssistantModes: 'workspace' once status confirms it; anything else fails closed.
   let mode = "unknown";
   const visible = () => !byId("panel-agent").hidden && !document.hidden;
+  let connectFailed = false;
+  let connecting = false;
   function controls() {
     byId("workspace-start").disabled = blocked || pending || showing;
     byId("workspace-start").hidden = showing;
     byId("workspace-clear").disabled = blocked || writing;
     if (byId("workspace-clear").disabled) byId("workspace-clear-confirm").hidden = true;
+    // The Project pane reads one attribute; its Connect forwards to the header button (one dispatch).
+    byId("panel-agent").dataset.connection = showing ? "on" : connecting ? "pending" : connectFailed ? "error" : "off";
+    const connect = byId("workspace-project-connect");
+    connect.disabled = byId("workspace-start").disabled;
+    connect.lastChild.textContent = connecting ? "Connecting…" : connectFailed ? "Retry Connect" : "Connect";
+    byId("workspace-project-connect-help").textContent = connecting ? "Connecting to your agent host…"
+      : connectFailed ? byId("workspace-state").textContent
+        : "Shows the conversation and loads your repositories. Nothing starts.";
     window.HomebodyAssistantModes?.sync();
   }
   function reset(message = "Not connected. Tap Connect to show this conversation.") {
@@ -58,6 +68,7 @@
     if (action === "read" && !visible()) { window.HomebodyNativeWorkspace?.away(); return; }
     pending = true;
     writing = action !== "read";
+    connecting = action === "start";
     const abort = new AbortController();
     controller = abort;
     const timer = setTimeout(() => abort.abort(), 8000);
@@ -74,6 +85,7 @@
       const payload = await response.json();
       if (mine !== epoch) return;
       if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+      if (action === "start") connectFailed = payload.enabled !== true;
       render(payload);
       if (payload.enabled === true) outcome = "confirmed";
       // Clear keeps its backend scope (stop + disconnect); say exactly what is needed to continue.
@@ -82,8 +94,12 @@
           + "is disconnected. To continue, tap Connect, then Open project again.";
       }
     } catch (error) {
-      if (mine === epoch) outcome = "failed";
-      if (mine === epoch) reset("Conversation unavailable. Reconnect as owner to continue.");
+      if (mine !== epoch) return;
+      outcome = "failed";
+      if (action === "start") connectFailed = true;
+      reset(action === "start"
+        ? `Could not connect: ${String(error.message || error)}. Tap Retry Connect.`
+        : "Conversation unavailable. Reconnect as owner to continue.");
       if (action !== "read") window.HomebodyNotifications?.show(String(error.message || error), {
         id: "workspace", title: "Conversation display", kind: "error",
       });
@@ -94,6 +110,7 @@
         controller = null;
         pending = false;
         writing = false;
+        connecting = false;
         controls();
       }
     }
@@ -117,6 +134,10 @@
     if (!showing && !pending) request("start");
   }
   byId("workspace-start").addEventListener("click", () => request("start"));
+  // The Project pane's Connect is the same action: it forwards one click to the header button.
+  byId("workspace-project-connect").addEventListener("click", () => {
+    if (!byId("workspace-start").disabled) byId("workspace-start").click();
+  });
   // Clear is destructive beyond the display, so it states its scope and asks first.
   byId("workspace-clear").addEventListener("click", () => {
     const confirm = byId("workspace-clear-confirm");

@@ -108,7 +108,7 @@ def native(shell):
 
 
 def _connect_and_open(page, voice, target="photo"):
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("document.getElementById('workspace-repository').options.length === 2")
     page.select_option("#workspace-repository", "Timverhoogt/photo")
     # Two sessions for this repository: the session picker appears; one session needs none.

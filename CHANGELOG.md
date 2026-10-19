@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.43] — Workspace connection flow
+
+- Project now offers Connect before showing repository/session controls, with pending, retry and empty-catalogue states. Mode-selection feedback is inline rather than an overlapping success toast.
+- Keep one visible Connect action per pane, correct a CSS rule that exposed the hidden Everyday gate, and let mobile Chat/Work/Project tabs scroll without covering project text or dialogs. Preserve clear/cancel, work-stop and Android integration controls.
+- Add browser walkthrough coverage for connection, project selection, chat, work, errors and confirmation dialogs.
+
 ## [0.5.42] — Everyday structure
 
 - Everyday leads with one primary action taken from the live state: Stop (or Stop speaking) during a voice turn, Standby while Awake, Wake up from Standby, Meeting or Sleep, a disabled "Reconnecting…" while status is unreachable. It forwards a single click to the existing control, so there is one dispatch and one Stop per context; Stop all work still appears only when project work is really running.

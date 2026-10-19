@@ -56,7 +56,7 @@ def test_native_session_exact_approval_and_verified_receipt(native_browser, widt
 
     page.route("**/api/agent/workspace/native/*", native)
     page.wait_for_function("!document.getElementById('workspace-start').disabled")
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function("!document.getElementById('workspace-native-bind').disabled")
     assert not any(action == "approve" for action, _body in calls)
     page.click("#workspace-native-bind")
@@ -124,7 +124,7 @@ def test_native_connection_unknown_keeps_stop_available(native_browser):
 
     page.route("**/api/agent/workspace/native/*", fail)
     page.wait_for_function("!document.getElementById('workspace-start').disabled")
-    page.click("#workspace-start")
+    page.click("#workspace-start:visible, #workspace-project-connect:visible")
     page.wait_for_function(
         "document.getElementById('workspace-native-state').textContent.includes('may still be running')"
     )

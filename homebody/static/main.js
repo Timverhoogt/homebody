@@ -3127,9 +3127,10 @@ async function setAgentProfile(profile) {
     if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
     modeWriteAccepted = true;
     message.textContent = profile === "agent"
-      ? "Workspace active. Actions with real consequences still ask for approval here."
+      ? "Workspace route active. Connect to show the conversation and your repositories."
       : "Everyday active. Approved project work keeps running; Stop all work stays available.";
-    notifyFeedback(message, "ok");
+    // A route switch is not a connection: say it inline where the route is named, without a toast.
+    message.className = "message ok";
     // Still pending here: the projects view opens only once status confirms Workspace.
     if (profile === "agent") window.HomebodyWorkspace?.show();
   } catch (error) {

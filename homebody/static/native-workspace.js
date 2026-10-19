@@ -108,10 +108,11 @@
   }
   function controls() {
     const busy = active.has(payload?.run?.status);
-    const modeActive = byId("agent-enable-button").getAttribute("aria-pressed") === "true";
     byId("workspace-enable-mode").disabled = byId("agent-enable-button").disabled;
-    byId("workspace-mode-help").textContent = !modeActive ? "Voice is in Everyday."
-      : !enabled ? "Connect to load your repositories." : "Choose a repository, then open it. Opening never starts work.";
+    // Route truth belongs to AssistantModes, not the legacy switch button's render order.
+    // This hint describes only the project/connection step.
+    byId("workspace-mode-help").textContent = !enabled ? "Connect to load your repositories."
+      : "Choose a repository, then open it. Opening never starts work.";
     setDisabled("workspace-repository", !enabled || pending || busy || !repositories?.available);
     setDisabled("workspace-repositories-reload", !enabled || pending || busy);
     setDisabled("workspace-native-bind", !enabled || pending || busy || uncertain || !payload || !byId("workspace-native-target").options.length);
@@ -120,6 +121,12 @@
     setDisabled("workspace-native-stop", !enabled || (!busy && !pending && !uncertain));
     setDisabled("workspace-native-target", !enabled || pending || busy);
     setDisabled("workspace-native-request", !enabled || pending || busy || (!payload?.binding || !selectionMatchesBinding()));
+    // One attribute for the Project pane's state blocks; derived only from what is already known.
+    byId("panel-agent").dataset.project = !enabled ? "none"
+      : !repositories ? "loading"
+        : repositories.available === false ? "error"
+          : payload?.binding && selectionMatchesBinding() ? "open"
+            : !(repositories.repositories || []).length ? "empty" : "ready";
     renderBindHelp();
     renderBench();
     window.HomebodyAssistantModes?.sync();
