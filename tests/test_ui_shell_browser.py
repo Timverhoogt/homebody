@@ -385,15 +385,18 @@ def test_one_tap_entry_switches_route_and_connects_once(native, start_profile):
     assert not errors
 
 
-def test_phone_more_menu_and_compact_status(native):
+def test_phone_row_settings_gear_and_compact_status(native):
     page, _voice, _runtime, _state, errors = native
     page.set_viewport_size({"width": 390, "height": 844})
     page.click("#tab-dashboard")
-    assert page.locator("#tab-settings").is_hidden()
-    page.click("#tab-more")
+    # Four destinations in the fixed row, Settings as the gear in the header, no More menu anywhere.
+    assert page.locator("#tab-more").is_hidden()
+    row = [b.strip() for b in page.locator(".tabs-primary button:visible").all_inner_texts()]
+    assert row == ["Everyday", "Workspace", "Kids", "Robot"]
+    assert page.locator("#tab-settings").is_visible()
     page.click("#tab-settings")
-    assert page.locator("#panel-settings").is_visible() and page.locator("#tab-settings").is_hidden()
-    assert page.locator("#tab-more").get_attribute("class").count("active") == 1
+    assert page.locator("#panel-settings").is_visible()
+    assert page.locator("#tab-settings").get_attribute("aria-selected") == "true"
     page.click("#tab-dashboard")
     status = page.locator("#global-robot-status").bounding_box()
     assert status["height"] < 420, status  # one compact bar, not a stack of cards

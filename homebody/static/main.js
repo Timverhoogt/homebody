@@ -615,8 +615,12 @@ function activateTab(name, focus = false, recordHistory = false) {
   const globalStatus = document.getElementById("global-robot-status");
   if (globalStatus) {
     const panel = document.querySelector(`[data-panel="${target.dataset.tab}"]`);
-    (panel?.querySelector(":scope > .kids-hero, :scope > .hero") || panel?.querySelector(".page-heading"))
-      ?.insertAdjacentElement("afterend", globalStatus);
+    // Everyday keeps the strip under its hero. Every other page leads with its own content and carries
+    // the same strip (power, voice route, the Stop controls) at its foot.
+    const anchor = target.dataset.tab === "dashboard"
+      ? panel?.querySelector(":scope > .hero") || panel?.querySelector(".page-heading")
+      : [...(panel?.children || [])].filter((el) => el !== globalStatus && el.id !== "agent-approval-sheet").at(-1);
+    anchor?.insertAdjacentElement("afterend", globalStatus);
     globalStatus.insertAdjacentElement("afterend", $("agent-approval-sheet"));
   }
   document.title = `${target.textContent.trim()} · Homebody`;
@@ -657,6 +661,20 @@ tabButtons.forEach((button, index) => {
 const initialTab = window.location.hash.slice(1) || window.localStorage.getItem("homebody-tab") || "dashboard";
 activateTab(initialTab);
 window.addEventListener("popstate", () => activateTab(window.location.hash.slice(1) || "dashboard"));
+
+// The remembered-device controls belong with the host lifecycle in Settings, not above the header.
+$("lifecycle-card").insertAdjacentElement("beforebegin", $("owner-device-controls"));
+
+// Everyday actions and the Announce screen's way back. Each is navigation only: nothing starts, the
+// existing control (Look, Announce now, the Robot look pad) still needs its own tap.
+$("everyday-announce-link").addEventListener("click", () => activateTab("announce", false, true));
+$("announce-back").addEventListener("click", () => activateTab("dashboard", false, true));
+$("everyday-robot-link").addEventListener("click", () => activateTab("robot", true, true));
+$("everyday-look-link").addEventListener("click", () => {
+  const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  $("companion-card").scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" });
+  $("companion-question").focus({ preventScroll: true });
+});
 
 function runningStandalone() {
   return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;

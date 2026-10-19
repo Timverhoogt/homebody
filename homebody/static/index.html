@@ -13,10 +13,11 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=109">
-  <link rel="stylesheet" href="/static/scene.css?v=109">
-  <link rel="stylesheet" href="/static/onboarding.css?v=109">
-  <link rel="stylesheet" href="/static/shell.css?v=109">
+  <link rel="stylesheet" href="/static/style.css?v=110">
+  <link rel="stylesheet" href="/static/scene.css?v=110">
+  <link rel="stylesheet" href="/static/onboarding.css?v=110">
+  <link rel="stylesheet" href="/static/shell.css?v=110">
+  <link rel="stylesheet" href="/static/fable.css?v=110">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -76,18 +77,20 @@
         <span>Homebody</span>
       </div>
       <button type="button" id="agent-connection-badge" class="agent-connection-badge" data-state="unknown"><span class="agent-connection-dot" aria-hidden="true"></span><span id="agent-connection-label" role="status" aria-live="polite">Connection unknown</span></button>
-      <!-- Three destinations lead; Announce, Robot and Settings sit behind More on phones. -->
+      <!-- Four destinations in one row (Everyday, Workspace, Kids, Robot). Settings is the gear beside the
+           connection dot. Announce is an Everyday action and a deep link (#announce); its tab stays for
+           routing only. More is retired: kept in the DOM for the lock logic, never shown. -->
       <nav class="tabs" role="tablist" aria-label="Homebody">
         <span class="tabs-primary" role="none">
           <button type="button" class="tab-button tab-primary active" id="tab-dashboard" role="tab" aria-selected="true" aria-controls="panel-dashboard" data-tab="dashboard"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg>Everyday</button>
           <button type="button" class="tab-button tab-primary" id="tab-agent" role="tab" aria-selected="false" aria-controls="panel-agent" data-tab="agent"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg>Workspace</button>
           <button type="button" class="tab-button tab-primary" id="tab-kids" role="tab" aria-selected="false" aria-controls="panel-kids" data-tab="kids"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>Kids</button>
-          <button type="button" class="tab-button tab-more" id="tab-more" aria-expanded="false" aria-controls="tabs-secondary"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg>More</button>
+          <button type="button" class="tab-button tab-primary" id="tab-robot" role="tab" aria-selected="false" aria-controls="panel-robot" data-tab="robot"><svg class="icon" aria-hidden="true"><use href="#i-robot"/></svg>Robot</button>
+          <button type="button" class="tab-button tab-more" id="tab-more" aria-expanded="false" aria-controls="tabs-secondary" hidden><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg>More</button>
         </span>
         <span class="tabs-secondary" id="tabs-secondary" role="none">
           <button type="button" class="tab-button tab-secondary" id="tab-announce" role="tab" aria-selected="false" aria-controls="panel-announce" data-tab="announce"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg>Announce</button>
-          <button type="button" class="tab-button tab-secondary" id="tab-robot" role="tab" aria-selected="false" aria-controls="panel-robot" data-tab="robot"><svg class="icon" aria-hidden="true"><use href="#i-robot"/></svg>Robot</button>
-          <button type="button" class="tab-button tab-secondary" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings"><svg class="icon" aria-hidden="true"><use href="#i-gear"/></svg>Settings</button>
+          <button type="button" class="tab-button tab-secondary" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" aria-label="Settings"><svg class="icon" aria-hidden="true"><use href="#i-gear"/></svg><span>Settings</span></button>
         </span>
       </nav>
     </header>
@@ -208,6 +211,12 @@
         <li><i id="tele-motors-led" aria-hidden="true"></i><span>Motors</span><strong id="tele-motors">—</strong></li>
         <li><i id="tele-agent-led" aria-hidden="true"></i><span>Agent</span><strong id="tele-agent">—</strong></li>
       </ul>
+      <!-- Everyday actions: each opens an existing control, nothing starts by itself. -->
+      <div class="everyday-actions" role="group" aria-label="Everyday actions">
+        <button type="button" id="everyday-look-link" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-camera"/></svg>Look</button>
+        <button type="button" id="everyday-announce-link" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg>Announce</button>
+        <button type="button" id="everyday-robot-link" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-robot"/></svg>Move</button>
+      </div>
     </section>
 
       <section class="card conversation-card">
@@ -672,25 +681,29 @@
       </div><!-- workspace layout -->
     </div>
 
-    <div id="panel-kids" class="tab-panel kids-panel" role="tabpanel" aria-labelledby="tab-kids" data-panel="kids" hidden>
+    <div id="panel-kids" class="tab-panel kids-panel" role="tabpanel" aria-labelledby="tab-kids" data-panel="kids" data-kids-session="idle" hidden>
       <header class="page-heading"><h1>Kids</h1><p>Games and stories with a grown-up nearby.</p></header>
+      <!-- Play first: Reachy's stage, one question, one orange button. The grown-up check (kids-setup)
+           opens below it; the guide is folded. Order matters for main.js, which places the status strip
+           after this hero. -->
       <section class="card kids-hero display">
+        <div id="kids-stage" class="kids-stage"></div>
         <div class="kids-hero-copy">
           <p class="label">Kids Mode · Supervised play</p>
-          <h2>Play together</h2>
+          <h2>What shall we play?</h2>
+          <p class="kids-lead">Just start talking. Reachy makes it up with you.</p>
           <div id="kids-hero-actions" class="kids-hero-actions">
-            <button type="button" id="kids-host-setup-link" class="kids-host-start" aria-controls="kids-setup">Set up Play together</button>
-            <button type="button" id="kids-single-link" class="secondary" aria-controls="kids-activity-picker">Or one activity</button>
+            <button type="button" id="kids-host-setup-link" class="kids-host-start" aria-controls="kids-setup">Start playing</button>
+            <button type="button" id="kids-single-link" class="secondary" aria-controls="kids-activity-picker">Just one game</button>
           </div>
-          <p class="kids-lead">Reachy is the game master for one session you set up: it offers two games, switches when your child asks, and finishes on time or when anyone says “stop”.</p>
           <div class="kids-status-line">
             <span id="kids-status-badge" class="badge">Off</span>
             <strong id="kids-timer">Not started · a grown-up checks the setup first</strong>
           </div>
           <div class="kids-progress" role="progressbar" aria-label="Kids Mode time remaining" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="kids-progress-bar"></span></div>
+          <!-- Live session detail only (what the session is doing); the standing restrictions are in the grown-up note. -->
           <p id="kids-session-detail" class="muted compact-note">Camera, personal Hermes memory, smart-home control, messaging, purchases, and power controls are unavailable to the child session.</p>
         </div>
-        <div id="kids-stage" class="kids-stage"></div>
       </section>
 
       <section id="kids-setup" class="card kids-setup-card">
@@ -778,21 +791,20 @@
         </div>
       </section>
 
-      <section class="card kids-guide-card">
-        <div class="section-heading"><div><p class="label">For grown-ups</p><h2>How Kids Mode works</h2></div><span class="badge">Beta</span></div>
+      <!-- One folded note for grown-ups instead of a wall of cards. The facts are unchanged. -->
+      <details class="kids-guide-card" id="kids-guide">
+        <summary><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg><h2>For grown-ups: how it works</h2><span class="badge">Beta</span></summary>
+        <p class="muted compact-note kids-guide-scope">Camera, personal Hermes memory, smart-home control, messaging, purchases, and power controls are unavailable to the child session.</p>
         <div class="kids-guide-grid">
-          <div><strong>How to talk</strong><p class="muted">After Reachy's greeting, it listens for the first answer automatically—no wake phrase needed. Kids can keep answering while it is listening. To interrupt or resume after listening stops, say <b>Hey Homebody</b>, <b>Hey Hermes</b>, <b>Okay Nabu</b>, or <b>Hey Reachy</b>.</p></div>
-          <div><strong>Adult supervision</strong><p class="muted">Generative AI can still make mistakes. Keep a grown-up nearby, especially for younger children or sensitive topics.</p></div>
-          <div><strong>Voice</strong><p class="muted">Replies start playing as soon as the first audio arrives.</p></div>
-          <div><strong>Cloud processing</strong><p class="muted">Child audio/text—and the optional nickname in the greeting—go to the configured STT provider, OpenAI moderation/chat, and ElevenLabs speech. No Hermes memory does not mean provider non-retention; review those providers' terms.</p></div>
-          <div><strong>Emergency boundary</strong><p class="muted">Reachy is not an emergency service, therapist, or babysitter. In danger, contact a trusted adult and local emergency services.</p></div>
-          <div><strong>Stopping</strong><p class="muted">End now cancels voice and motion, clears queued speech, then folds Reachy safely.</p></div>
+          <div><strong>How to talk</strong><p class="muted">After Reachy's greeting, it listens for the first answer automatically—no wake phrase needed. Kids can keep answering while it is listening. To interrupt or resume after listening stops, say <b>Hey Homebody</b>, <b>Hey Hermes</b>, <b>Okay Nabu</b>, or <b>Hey Reachy</b>. Saying “stop”, or End now, cancels voice and motion and folds Reachy safely.</p></div>
+          <div><strong>Adult supervision</strong><p class="muted">Generative AI can still make mistakes, and Reachy is not an emergency service, therapist or babysitter. Stay close, especially with younger children or sensitive topics. Child speech, and the optional nickname, go to the configured speech recognition, OpenAI moderation/chat and ElevenLabs speech providers; no Hermes memory does not mean those providers keep nothing, so review their terms.</p></div>
         </div>
-      </section>
+      </details>
     </div>
 
     <div id="panel-announce" class="tab-panel" role="tabpanel" aria-labelledby="tab-announce" data-panel="announce" hidden>
       <header class="page-heading"><h1>Announce</h1><p>Send a message for Reachy to speak.</p></header>
+      <button type="button" id="announce-back" class="fable-back"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg>Back to Everyday</button>
       <section class="card announcement-card">
         <div class="section-heading">
           <div><p class="label">Text to speech</p><h2>Reachy announcements</h2></div>
@@ -1170,6 +1182,13 @@
 
     <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" hidden>
       <header class="page-heading"><h1>Settings</h1><p>Configure voice, behaviour and connections.</p></header>
+      <nav class="settings-index" aria-label="Settings sections">
+        <a href="#voice-card"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Voice and agent<small>Bridge, language, voice, embodiment, camera, local vision, MCP, Home Assistant</small></span></a>
+        <a href="#agent-setup-card"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg><span>Connect your agent<small>One-time setup message</small></span></a>
+        <a href="#speaker-card"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg><span>Speaker</span></a>
+        <a href="#updates-card"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg><span>Updates</span></a>
+        <a href="#lifecycle-card"><svg class="icon" aria-hidden="true"><use href="#i-power"/></svg><span>App and host</span></a>
+      </nav>
       <section class="setup-review-entry"><button id="setup-review-open" type="button" class="secondary">Review setup / repair connection</button><p>Resume setup without reinstalling Homebody or resetting owner devices.</p></section>
       <section class="card" id="speaker-card" aria-labelledby="speaker-title">
         <p class="label">Sound</p><h2 id="speaker-title">Speaker volume</h2>
@@ -1228,7 +1247,7 @@
         <p id="agent-setup-status" class="message" role="status" aria-live="polite"></p>
       </section>
 
-      <section class="card">
+      <section class="card" id="voice-card">
         <p class="label">Configuration</p>
         <h2>Agent connection and voice</h2>
         <p class="muted">Run the companion bridge on the machine hosting Hermes Agent or OpenClaw (or both), then enter its trusted LAN URL and API key. The API key is the bridge's <code>API_SERVER_KEY</code> environment variable — the same key your agent uses to reach the bridge.</p>
@@ -1392,7 +1411,7 @@
         </form>
       </section>
 
-      <section class="card danger-zone">
+      <section class="card danger-zone" id="lifecycle-card">
         <p class="label">Danger zone</p>
         <h2>App and host lifecycle</h2>
         <p class="muted">Stopping the app requires Reachy Control to start it again. Shutting down the robot computer disconnects this page until it is powered back on.</p>
@@ -1419,23 +1438,23 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=109"></script>
-  <script src="/static/scene.js?v=109"></script>
-  <script src="/static/motion.js?v=109"></script>
-  <script src="/static/onboarding.js?v=109"></script>
-  <script src="/static/owner.js?v=109"></script>
+  <script src="/static/notifications.js?v=110"></script>
+  <script src="/static/scene.js?v=110"></script>
+  <script src="/static/motion.js?v=110"></script>
+  <script src="/static/onboarding.js?v=110"></script>
+  <script src="/static/owner.js?v=110"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=109"></script>
-  <script src="/static/agent-connection.js?v=109"></script>
-  <script src="/static/workspace-thread.js?v=109"></script>
-  <script src="/static/native-workspace.js?v=109"></script>
-  <script src="/static/workspace.js?v=109"></script>
-  <script src="/static/ispy-input.js?v=109"></script>
-  <script src="/static/companion.js?v=109"></script>
-  <script src="/static/main.js?v=109"></script>
-  <script src="/static/updates.js?v=109"></script>
-  <script src="/static/volume.js?v=109"></script>
-  <script src="/static/assistant-modes.js?v=109"></script>
-  <script src="/static/household.js?v=109"></script>
+  <script src="/static/camera.js?v=110"></script>
+  <script src="/static/agent-connection.js?v=110"></script>
+  <script src="/static/workspace-thread.js?v=110"></script>
+  <script src="/static/native-workspace.js?v=110"></script>
+  <script src="/static/workspace.js?v=110"></script>
+  <script src="/static/ispy-input.js?v=110"></script>
+  <script src="/static/companion.js?v=110"></script>
+  <script src="/static/main.js?v=110"></script>
+  <script src="/static/updates.js?v=110"></script>
+  <script src="/static/volume.js?v=110"></script>
+  <script src="/static/assistant-modes.js?v=110"></script>
+  <script src="/static/household.js?v=110"></script>
 </body>
 </html>

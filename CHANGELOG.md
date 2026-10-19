@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.40] — Fable visual direction
+
+- New visual direction ("the robot is the interface"): every page opens with Reachy's live scene and a serif state line; pages are set on warm paper with hairlines instead of stacked cards. One stylesheet (`fable.css`) carries the palette, three type voices (serif for Reachy and headings, sans for controls, mono for work evidence) and one icon family.
+- Navigation: four destinations in one row (Everyday, Workspace, Kids, Robot) with Settings as the gear beside the connection dot; the More menu is gone. Announce is an Everyday action with its own screen and keeps its `#announce` deep link. Wide screens use a left rail.
+- Everyday: scene, state, three actions (Look, Announce, Move) that only open existing controls, then the last exchange and the status strip. Kids: Reachy's stage leads, the six activities become an idea cloud of starters, Start playing opens the unchanged grown-up check, and the guide folds into one note. Robot: look pad, expressions and dances first; precision, gamepad and buttons folded. Settings: an index list above the unchanged sections.
+- Behaviour unchanged: Stop controls, the Everyday/Workspace route switch, kids start/stop/Look now, Workspace connect/open/review/approve, owner pairing and all DOM ids. Browser tests cover the shell at 390 and 1440 with screenshots.
+
 ## [0.5.39] — Rebuilt app shell and Workspace
 
 - Organize the app around three destinations (Everyday, Workspace, Kids); Announce, Robot and Settings sit behind More on phones. One compact status bar carries Reachy's state, power, the Everyday/Workspace voice switch and the existing stop controls on every page.
