@@ -367,6 +367,53 @@ body[data-destination="kids"] .global-robot-status :is(.status-row, #global-powe
 .announcement-status-card { padding-top: 14px; }
 .announcement-status-card .quote { font-size: 1.1rem; }
 
+/* ---------- field cleanup (0.5.40 feedback): empty, scrolled and disconnected states ---------- */
+/* The voice route follows the tabs (Everyday / Workspace taps call the same profile API). The two route
+   buttons stay in the DOM for scripts and the Workspace gate, but are not part of the visible flow. */
+.voice-route .assistant-mode-switch { display: none !important; }
+.voice-route { gap: 8px 12px; padding-top: 10px; }
+.voice-route .assistant-mode-state { display: block !important; flex: 1 1 100%; margin: 0; font-size: .88rem; color: var(--ink-2); }
+.voice-route .assistant-mode-state::before { content: "Voice goes to "; }
+.voice-route .assistant-mode-state strong { font-size: .88rem; color: var(--ink); }
+.voice-route .agent-mode-bar { display: flex !important; flex-wrap: wrap; gap: 8px; width: 100%; margin: 0; }
+.voice-route .agent-mode-bar button { flex: 1 1 auto; }
+.voice-route .agent-mode-bar .badge { flex: 1 1 100%; }
+.voice-route .warning-note { padding: 10px 12px; font-size: .9rem; }
+/* Conversation: one line until something has been said, then the two turns. */
+.conversation-card { padding: 14px 0 10px; gap: 12px; }
+.conversation-empty { margin: 0; color: var(--ink-2); font-size: .95rem; }
+.conversation-card:not([data-empty="true"]) .conversation-empty { display: none; }
+.conversation-card[data-empty="true"] > div { display: none; }
+/* Companion: short hints beside the controls; sources and diagnostics stay folded and tight. */
+.companion-suggestions > p.compact-note:not(#companion-why) { display: none; }
+#companion-why, #companion-look-reason { margin: 6px 0 0; font-size: .82rem; color: var(--ink-3); }
+.companion-suggestions { margin-top: 10px; }
+.companion-suggestions label { font-size: .95rem; }
+.companion-look-row { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+@media (max-width: 650px) {
+  .companion-look-row { grid-template-columns: 1fr 1fr 1fr; }
+  .companion-look-row input { grid-column: 1 / -1; }
+}
+.everyday-companion-view > details, #companion-details { margin: 6px 0 0; padding: 0; }
+.everyday-companion-view > details > summary, #companion-details > summary { min-height: 48px; font-size: .92rem; font-weight: 600; color: var(--ink-2); }
+.everyday-companion-view > .card { margin-top: 12px; }
+.card { padding-bottom: 4px; }
+/* Phone header: the connection state is a dot with an accessible name, still a 44 px target that opens
+   the connection details in Settings. */
+@media (max-width: 650px) {
+  .topbar .agent-connection-badge { min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; justify-content: center; }
+  .agent-connection-dot { width: 12px; height: 12px; }
+}
+/* Flatten the companion facts and checkbox rows to the hairline system; empty status lines take no room. */
+.companion-grid > div { padding: 0; border: 0; background: none; }
+.companion-card .checkbox-row, .presence-controls .checkbox-row { padding: 8px 0; border: 0; border-radius: 0; background: none; }
+.presence-controls { display: grid; gap: 0; margin: 4px 0 10px; }
+.everyday-companion-view .message:empty, .conversation-card .message:empty, .everyday-card .message:empty { display: none; }
+body[data-destination="dashboard"] .global-robot-status { margin-top: 4px; padding-top: 10px; }
+.hero { padding-bottom: 10px; }
+/* The shortcut card now lives in Settings. */
+#panel-settings > .install-card { margin-top: 18px; }
+
 /* ---------- misc tidy ---------- */
 .setup-intro { border-radius: var(--radius-card); background: var(--paper-2); border: 0; }
 .update-notice { border-radius: var(--radius-card); }

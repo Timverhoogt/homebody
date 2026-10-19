@@ -83,20 +83,15 @@ def test_mode_cards_have_room_for_labels_and_separate_help(ui, width, scheme, fo
     page.emulate_media(color_scheme=scheme)
     page.click("#tab-dashboard")
     page.evaluate("scale => document.documentElement.style.fontSize = `${16 * scale}px`", font_scale)
-    # The route switch is a compact two-segment control in the status bar: each label fits inside its
-    # 48 px target, and the explanatory help stays available to assistive technology.
-    geometry = page.evaluate("""() => {
-      const buttons = [...document.querySelectorAll('.assistant-mode-switch button')];
-      return {help: document.querySelector('#assistant-mode-help').textContent, cards: buttons.map(button => {
-        const box = button.getBoundingClientRect();
-        const label = button.querySelector('strong').getBoundingClientRect();
-        return {height: box.height, inside: label.top >= box.top && label.bottom <= box.bottom
-          && label.left >= box.left && label.right <= box.right,
-          fits: button.querySelector('strong').scrollWidth <= button.querySelector('strong').clientWidth + 1};
-      })};
-    }""")
+    # The voice route follows the Everyday / Workspace tabs. The two route buttons stay in the DOM for
+    # the Workspace gate and scripts but are not shown; the confirmed route is named in one line.
+    geometry = page.evaluate("""() => ({
+      help: document.querySelector('#assistant-mode-help').textContent,
+      switchShown: getComputedStyle(document.querySelector('.assistant-mode-switch')).display !== 'none',
+      stateShown: document.querySelector('#assistant-mode-state').getBoundingClientRect().height > 0,
+      current: document.querySelector('#assistant-mode-current').textContent})""")
     assert "Everyday never uses" in geometry["help"]
-    assert all(round(card["height"]) >= 48 and card["inside"] and card["fits"] for card in geometry["cards"]), geometry
+    assert not geometry["switchShown"] and geometry["stateShown"] and geometry["current"] == "Everyday", geometry
     overflow = page.evaluate("""() => [...document.querySelectorAll('body *')].filter(e => {
       const r=e.getBoundingClientRect(); return r.width && (r.right > innerWidth + 1 || r.left < -1);
     }).slice(0,12).map(e => ({tag:e.tagName,id:e.id,cls:e.className,width:e.getBoundingClientRect().width}))""")
@@ -131,10 +126,10 @@ def test_modes_stop_controls_and_everyday_disclosure(ui, width):
     page.wait_for_function("document.getElementById('agent-message').textContent.includes('Stopped speaking')")
     assert ("/api/voice/stop", {}) in posts and not any(p == "/api/agent/stop" for p, _ in posts)
 
-    page.click("#agent-enable-button")
+    page.evaluate("document.getElementById('agent-enable-button').click()")  # what the Workspace tab tap calls
     page.wait_for_function("document.getElementById('agent-enable-button').getAttribute('aria-pressed') === 'true'")
     assert ("/api/agent/profile", {"profile": "agent", "preserve_work": False}) in posts
-    page.click("#agent-conversation-button")
+    page.evaluate("document.getElementById('agent-conversation-button').click()")  # what the Everyday tab tap calls
     page.wait_for_function("document.getElementById('agent-message').textContent.includes('Everyday active')")
     assert ("/api/agent/profile", {"profile": "conversation", "preserve_work": True}) in posts
 

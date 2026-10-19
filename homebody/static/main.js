@@ -644,6 +644,10 @@ tabButtons.forEach((button, index) => {
     activateTab(button.dataset.tab, false, true);
     // Only a real tap enters Workspace (route switch if needed, then connect); restores never do.
     if (button.dataset.tab === "agent") window.HomebodyWorkspace?.enter();
+    // A real tap on Everyday brings the voice route back the same way (same confirm, same feedback,
+    // approved project work preserved). The route buttons stay in the DOM but off screen.
+    if (button.dataset.tab === "dashboard" && $("agent-enable-button").getAttribute("aria-pressed") === "true"
+        && !$("agent-conversation-button").disabled) $("agent-conversation-button").click();
   });
   button.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -662,8 +666,10 @@ const initialTab = window.location.hash.slice(1) || window.localStorage.getItem(
 activateTab(initialTab);
 window.addEventListener("popstate", () => activateTab(window.location.hash.slice(1) || "dashboard"));
 
-// The remembered-device controls belong with the host lifecycle in Settings, not above the header.
+// The remembered-device controls and the home-screen shortcut belong with the host lifecycle in Settings,
+// not in the Everyday conversation flow.
 $("lifecycle-card").insertAdjacentElement("beforebegin", $("owner-device-controls"));
+$("lifecycle-card").insertAdjacentElement("beforebegin", $("install-card"));
 
 // Everyday actions and the Announce screen's way back. Each is navigation only: nothing starts, the
 // existing control (Look, Announce now, the Robot look pad) still needs its own tap.
@@ -680,11 +686,17 @@ function runningStandalone() {
   return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
 }
 
+/** Inside the Android app's WebView (Chromium marks it "; wv)"); a home-screen install makes no sense there. */
+function runningInWrapper() {
+  return /; wv\)/.test(window.navigator.userAgent) || typeof window.HomebodyAndroid !== "undefined";
+}
+
 function updateInstallUi() {
   const button = $("install-button");
   const status = $("install-status");
   const message = $("install-message");
   const help = $("install-help");
+  $("install-card").hidden = runningInWrapper();
   if (runningStandalone()) {
     button.hidden = true;
     status.textContent = "Installed";
@@ -919,6 +931,8 @@ function updateStatus(payload, sequence = statusSequence) {
   document.body.dataset.runtimeState = state;
   $("last-transcript").textContent = runtime.transcript || "—";
   $("last-response").textContent = runtime.response_preview || "—";
+  // One short line while nothing has been said; the two turns show as soon as either exists.
+  document.querySelector(".conversation-card").dataset.empty = String(!runtime.transcript && !runtime.response_preview);
   const powerMode = runtime.power_mode || "unknown";
   currentPowerMode = powerMode;
   const homeAssistant = runtime.home_assistant || {};
@@ -1890,8 +1904,8 @@ const PRESENTATION_NEEDS = {
     { tab: "agent", companion: true, id: "initiative-policy-enabled" }],
   offers: ["Turn on Contextual offers in Initiative & Offers (after the initiative policy).", "Go to switch",
     { tab: "agent", companion: true, id: "contextual-offers-enabled" }],
-  workspace: ["Choose Workspace as the voice route in the status bar.", "Go to Workspace",
-    { tab: "dashboard", id: "agent-enable-button" }],
+  workspace: ["Open the Workspace tab; a tap there switches the voice route.", "Go to Workspace",
+    { tab: "dashboard", id: "tab-agent" }],
   awake: ["Reachy must be Awake with motors on: use Wake up in the status bar.", "Go to Wake up",
     { tab: "dashboard", id: "global-power-awake" }],
   face: ["Turn off Local face following in Settings › Embodiment and privacy.", "Go to setting",

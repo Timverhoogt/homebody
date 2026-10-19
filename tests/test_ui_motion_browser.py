@@ -306,11 +306,12 @@ def test_workspace_bench_follows_native_state_without_inventing_progress(workspa
     page.wait_for_function(f"{BENCH} === 'working'")
     page.locator("#workspace-native-scene").scroll_into_view_if_needed()
     page.wait_for_function("document.querySelector('#workspace-native-scene .hb-scene').dataset.motion === 'on'")
-    # Hidden (another view), the loop pauses; it is decoration, not a progress signal.
-    page.click("#tab-dashboard")
+    # Hidden (another view), the loop pauses; it is decoration, not a progress signal. Navigation only:
+    # a real Everyday tap would also switch the voice route back and reset the project display.
+    page.evaluate("activateTab('dashboard', false, true)")
     page.wait_for_function("document.querySelector('#workspace-native-scene .hb-scene').dataset.motion === 'off'")
     assert _running(page, "#workspace-native-scene .hb-art") == 0
-    page.click("#tab-agent")
+    page.evaluate("activateTab('agent', false, true)")
     page.wait_for_function(f"{BENCH} === 'working'")
     _bench_shot(page, f"workspace-running-{width}")
     # "completed" text returned is not success; only the exact receipt check is "Ready to test".
@@ -770,7 +771,7 @@ def test_scrolled_controls_clear_sticky_bars_and_keep_48px_targets(workspace_bro
     # Workspace segments and the fixed phone tab bar (these controls live in the Project pane).
     page.evaluate("HomebodyWorkspace.pane('project')")
     for selector in ("#workspace-clear", "#workspace-native-bind", "#workspace-repositories-reload",
-                     "#agent-conversation-button"):  # the enabled route segment while Workspace is active
+                     "#tab-dashboard"):  # the Everyday tab is the way back while Workspace is active
         page.evaluate(
             "s => { window.scrollTo(0, document.body.scrollHeight); document.querySelector(s).focus(); }", selector
         )

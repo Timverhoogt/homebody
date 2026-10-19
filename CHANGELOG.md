@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.41] — Everyday field cleanup
+
+- The Everyday / Workspace tabs now carry the voice route: a tap on Workspace switches and connects as before, a tap on Everyday switches back through the same profile API with approved project work preserved and the same error feedback. The duplicate route switch leaves the visible flow (its buttons stay for scripts); the confirmed route is named in one line. Restoring a tab (startup, hash, Android restore) never switches.
+- Everyday shows one short line until something has been said, then the last exchange. The home-screen shortcut and remembered-device controls move to Settings; the shortcut is hidden inside the Android app's WebView. Companion hints are shorter, folded sections tighter, empty status lines collapse, and the phone connection badge is a small dot with an accessible name. No permission, restriction or Stop control changed.
+
 ## [0.5.40] — Fable visual direction
 
 - New visual direction ("the robot is the interface"): every page opens with Reachy's live scene and a serif state line; pages are set on warm paper with hairlines instead of stacked cards. One stylesheet (`fable.css`) carries the palette, three type voices (serif for Reachy and headings, sans for controls, mono for work evidence) and one icon family.
