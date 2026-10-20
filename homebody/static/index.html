@@ -13,11 +13,11 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=116">
-  <link rel="stylesheet" href="/static/scene.css?v=116">
-  <link rel="stylesheet" href="/static/onboarding.css?v=116">
-  <link rel="stylesheet" href="/static/shell.css?v=116">
-  <link rel="stylesheet" href="/static/fable.css?v=116">
+  <link rel="stylesheet" href="/static/style.css?v=117">
+  <link rel="stylesheet" href="/static/scene.css?v=117">
+  <link rel="stylesheet" href="/static/onboarding.css?v=117">
+  <link rel="stylesheet" href="/static/shell.css?v=117">
+  <link rel="stylesheet" href="/static/fable.css?v=117">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -573,15 +573,14 @@
 
     <div id="panel-announce" class="tab-panel" role="tabpanel" aria-labelledby="tab-announce" data-panel="announce" hidden>
       <header class="page-heading"><h1>Announce</h1><p>Send a message for Reachy to speak.</p></header>
-      <button type="button" id="announce-back" class="fable-back"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg>Back to Everyday</button>
+      <button type="button" id="announce-back" class="fable-back"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg>Everyday</button>
       <section class="card announcement-card">
         <div class="section-heading">
-          <div><p class="label">Text to speech</p><h2>Reachy announcements</h2></div>
+          <div><p class="label">Text to speech</p><h2>What should Reachy say?</h2></div>
           <span id="announcement-badge" class="badge">Ready</span>
         </div>
-        <p class="muted">Type what Reachy should say.</p>
 
-        <label for="announcement-text">Announcement text</label>
+        <label for="announcement-text" class="sr-only">Announcement text</label>
         <textarea id="announcement-text" maxlength="15000" rows="6" placeholder="Dinner is ready. Please come downstairs."></textarea>
         <div class="announcement-meta"><span id="announcement-count">0 / 15,000</span><span>Ctrl/⌘ + Enter to announce</span></div>
 
@@ -592,36 +591,42 @@
           <button type="button" class="secondary announcement-template" data-announcement-template="This is a test announcement from Homebody.">Test</button>
         </div>
 
-        <div class="grid-two announcement-options">
-          <label>TTS provider
-            <select id="announcement-provider"><option value="">Use app voice setting</option></select>
-          </label>
-          <label>TTS model
-            <select id="announcement-model"><option value="">Use app model</option></select>
-          </label>
-          <label>Voice
-            <select id="announcement-voice"><option value="">Use app voice</option></select>
-          </label>
-          <label>Physical behavior
-            <select id="announcement-behavior">
-              <option value="wake_and_return">Wake, speak, then fold to Standby</option>
-              <option value="voice_only">Voice only · do not change power state</option>
-              <option value="wake_and_stay">Wake, speak, and remain Awake</option>
-            </select>
-          </label>
-          <label>Repeat
-            <input id="announcement-repeat" type="number" min="1" max="10" step="1" value="1" />
-          </label>
-          <label>Pause between repeats (seconds)
-            <input id="announcement-pause" type="number" min="0" max="60" step="0.5" value="1" />
-          </label>
-        </div>
+        <!-- Movement is always visible: the behaviour choice says what Reachy will physically do. Voice
+             provider, model, repeat and pause are advanced and fold away; the app defaults apply. -->
+        <label class="announcement-behavior-row">Reachy will
+          <select id="announcement-behavior">
+            <option value="wake_and_return">Wake, speak, then fold to Standby</option>
+            <option value="voice_only">Voice only · do not change power state</option>
+            <option value="wake_and_stay">Wake, speak, and remain Awake</option>
+          </select>
+        </label>
 
         <div class="actions announcement-actions">
           <button type="button" id="announcement-send"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg>Announce now</button>
           <button type="button" id="announcement-stop" class="danger"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop &amp; clear queue</button>
         </div>
         <p id="announcement-message" class="message" role="status" aria-live="polite"></p>
+
+        <details class="announcement-options-disclosure">
+          <summary>Voice and repeat options</summary>
+          <div class="grid-two announcement-options">
+            <label>TTS provider
+              <select id="announcement-provider"><option value="">Use app voice setting</option></select>
+            </label>
+            <label>TTS model
+              <select id="announcement-model"><option value="">Use app model</option></select>
+            </label>
+            <label>Voice
+              <select id="announcement-voice"><option value="">Use app voice</option></select>
+            </label>
+            <label>Repeat
+              <input id="announcement-repeat" type="number" min="1" max="10" step="1" value="1" />
+            </label>
+            <label>Pause between repeats (seconds)
+              <input id="announcement-pause" type="number" min="0" max="60" step="0.5" value="1" />
+            </label>
+          </div>
+        </details>
       </section>
 
       <section class="card announcement-status-card display">
@@ -645,12 +650,11 @@
       <section id="robot-power" class="card robot-power" aria-label="Reachy power"></section>
       <section class="card robot-control-card" aria-busy="false" data-action-busy="false">
         <div class="section-heading">
-          <div><h2>Move Reachy</h2></div>
+          <div><h2>Move Reachy</h2><p class="muted compact-note">Keep space around Reachy clear.</p></div>
           <span id="robot-mode-badge" class="badge" hidden>—</span>
         </div>
-        <p class="muted">Keep space around Reachy clear.</p>
 
-        <div class="motor-command-bar display">
+        <div class="motor-command-bar">
           <div class="motor-state-summary">
             <span id="motor-state-dot" class="motor-state-dot" aria-hidden="true"></span>
             <div>
@@ -849,11 +853,10 @@
 
       <section class="card camera-card">
         <div class="section-heading">
-          <div><h2>Reachy camera</h2></div>
+          <div><h2>Camera</h2><p class="muted compact-note">Live video stays between this device and Reachy.</p></div>
           <div class="camera-status-cluster"><span id="camera-lens" class="camera-lens" aria-hidden="true"></span><span id="camera-live-status" class="badge">Off</span></div>
         </div>
-        <p id="camera-connectivity-message" class="muted" role="status">Pair an Owner device to check camera transport. No camera starts during pairing.</p>
-        <p class="muted">Live video stays between this device and Reachy. With camera controls on, drag to look around and release to hold.</p>
+        <p id="camera-connectivity-message" class="muted compact-note" role="status">Pair an Owner device to check camera transport. No camera starts during pairing.</p>
         <div id="camera-viewer" class="camera-viewer">
           <video id="reachy-camera-video" autoplay playsinline muted aria-label="Live Reachy camera feed"></video>
           <div class="camera-vision-overlay" aria-hidden="true">
@@ -921,8 +924,8 @@
           <div><dt>Control response</dt><dd id="camera-diag-control">No commands sent</dd></div>
           <div><dt>Direct connection</dt><dd id="camera-diag-ice">Not connected</dd></div></dl>
           <p class="muted compact-note">Frame freshness is time since this browser received a decoded frame, not full camera-to-screen latency. Details stay on this device.</p>
+          <p class="muted compact-note">The live viewer is opt-in, works only while Reachy is Awake, and stops when you leave this tab, background the app, enter Meeting, or enter Sleep. Movement holds automatically when decoded video stops arriving. HTTPS is a reduced-rate backup; it starts in Careful speed.</p>
         </details>
-        <p class="muted compact-note">The live viewer is opt-in, works only while Reachy is Awake, and stops when you leave this tab, background the app, enter Meeting, or enter Sleep. Movement holds automatically when decoded video stops arriving. HTTPS is a reduced-rate backup; it starts in Careful speed.</p>
         <form id="local-vision-ask" class="local-vision-ask" hidden>
           <label for="local-vision-question">Ask the local vision model</label>
           <div class="local-vision-row">
@@ -1480,24 +1483,24 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=116"></script>
-  <script src="/static/scene.js?v=116"></script>
-  <script src="/static/motion.js?v=116"></script>
-  <script src="/static/onboarding.js?v=116"></script>
-  <script src="/static/owner.js?v=116"></script>
+  <script src="/static/notifications.js?v=117"></script>
+  <script src="/static/scene.js?v=117"></script>
+  <script src="/static/motion.js?v=117"></script>
+  <script src="/static/onboarding.js?v=117"></script>
+  <script src="/static/owner.js?v=117"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=116"></script>
-  <script src="/static/agent-connection.js?v=116"></script>
-  <script src="/static/workspace-thread.js?v=116"></script>
-  <script src="/static/native-workspace.js?v=116"></script>
-  <script src="/static/workspace.js?v=116"></script>
-  <script src="/static/ispy-input.js?v=116"></script>
-  <script src="/static/companion.js?v=116"></script>
-  <script src="/static/settings-layout.js?v=116"></script>
-  <script src="/static/main.js?v=116"></script>
-  <script src="/static/updates.js?v=116"></script>
-  <script src="/static/volume.js?v=116"></script>
-  <script src="/static/assistant-modes.js?v=116"></script>
-  <script src="/static/household.js?v=116"></script>
+  <script src="/static/camera.js?v=117"></script>
+  <script src="/static/agent-connection.js?v=117"></script>
+  <script src="/static/workspace-thread.js?v=117"></script>
+  <script src="/static/native-workspace.js?v=117"></script>
+  <script src="/static/workspace.js?v=117"></script>
+  <script src="/static/ispy-input.js?v=117"></script>
+  <script src="/static/companion.js?v=117"></script>
+  <script src="/static/settings-layout.js?v=117"></script>
+  <script src="/static/main.js?v=117"></script>
+  <script src="/static/updates.js?v=117"></script>
+  <script src="/static/volume.js?v=117"></script>
+  <script src="/static/assistant-modes.js?v=117"></script>
+  <script src="/static/household.js?v=117"></script>
 </body>
 </html>
