@@ -185,8 +185,8 @@ def test_robot_and_settings_keep_every_control_reachable(ui, width):
     _shot(page, f"robot-{width}-light", full_page=True)
     page.click("#tab-settings")
     links = page.locator(".settings-index a")
-    assert links.count() == 7
-    assert page.locator('.settings-index a[href="#household-card"]').count() == 1
+    assert links.count() == 4
+    assert page.locator('.settings-index a[href="#settings-everyday"]').count() == 1
     for i in range(links.count()):
         target = links.nth(i).get_attribute("href").lstrip("#")
         assert page.locator(f"#{target}").count() == 1, target

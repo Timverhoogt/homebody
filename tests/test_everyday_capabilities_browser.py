@@ -69,7 +69,7 @@ def test_compact_permissions_geometry_and_navigation(ui, width, scheme, scale):
     assert page.locator('#everyday-card').is_hidden()
     page.click('#tab-settings')
     # Isolated card crops hide fixed chrome only during capture; real hit-testing below retains it.
-    page.locator("#everyday-card").screenshot(
+    page.locator("#everyday-settings-card").screenshot(
         path=str(SHOTS / f"compact-{width}-{scheme}-{scale}.png"),
         style=".topbar, .tabs { visibility: hidden !important; }",
     )

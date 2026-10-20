@@ -115,6 +115,7 @@ def test_shortcut_and_device_controls_live_in_settings_and_webview_hides_install
     assert page.locator("#panel-settings #install-card").count() == 1
     assert page.locator("#panel-settings #owner-device-controls").count() == 1
     page.click("#tab-settings")
+    page.locator('.settings-index a[href="#settings-system"]').click()
     card = page.locator("#install-card")
     assert card.is_visible()  # ordinary Chromium: the shortcut card is available in Settings
     assert page.locator("#install-help").count() == 1

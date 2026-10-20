@@ -1973,8 +1973,9 @@ function goToControl({ tab, companion, id }) {
   if (companion) $("companion-advanced").open = true;
   const control = $(id);
   if (!control) return;
-  const details = control.closest("details");
-  if (details && !details.open) details.open = true;
+  for (let parent = control.parentElement; parent; parent = parent.parentElement) {
+    if (parent.tagName === "DETAILS") parent.open = true;
+  }
   control.scrollIntoView({ block: "center" });
   control.focus({ preventScroll: true });
 }

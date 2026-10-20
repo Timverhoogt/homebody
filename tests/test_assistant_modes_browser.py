@@ -138,6 +138,7 @@ def test_modes_stop_controls_and_everyday_disclosure(ui, width):
     assert ("/api/agent/profile", {"profile": "conversation", "preserve_work": True}) in posts
 
     page.click("#tab-settings")
+    page.locator("#settings-connections > summary").click()
     page.click("#assistant-mode-notice-ack")
     page.wait_for_function("document.getElementById('assistant-mode-notice').hidden")
     assert ("/api/settings", {"assistant_mode_notice": ""}) in posts
@@ -192,7 +193,8 @@ def test_everyday_primary_label_follows_saved_voice_not_text_backend(ui, engine,
 def test_advanced_engine_settings_save_exact_values_and_keep_existing_controls(ui, width):
     page, state, posts, errors = ui
     page.set_viewport_size({"width": width, "height": 900})
-    page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
+    page.click("#tab-settings")
+    page.locator("#settings-connections > summary").click()
     page.wait_for_function("document.getElementById('conversation_mode').value === 'realtime'")
     # A saved non-default Realtime model is preserved as a selectable value, not silently replaced.
     assert page.locator("#realtime_model").input_value() == "gpt-4o-realtime-preview"

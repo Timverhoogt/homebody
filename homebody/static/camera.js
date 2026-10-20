@@ -939,8 +939,9 @@
     if (!tab || tab.hidden) return;
     tab.click();
     const setting = byId("camera_controls_enabled");
-    const section = setting.closest("details");
-    if (section) section.open = true;
+    for (let parent = setting.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === "DETAILS") parent.open = true;
+    }
     setting.scrollIntoView({ block: "center" });
     setting.focus({ preventScroll: true });
   }
