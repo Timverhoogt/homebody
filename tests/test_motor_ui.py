@@ -17,7 +17,8 @@ def test_robot_tab_exposes_motor_state_and_safe_power_controls() -> None:
     assert 'aria-describedby="robot-stop-help"' in html
     assert 'id="motor-state-live"' in html
     assert 'aria-live="polite"' in html
-    assert html.index('id="robot-stop-button"') < html.index('class="robot-control-grid"')
+    assert html.index('id="look-d-pad"') < html.index('id="robot-stop-button"')
+    assert html.index('id="robot-stop-button"') < html.index('class="robot-gestures"')
     assert "Wake &amp; enable" in html
     assert "Fold &amp; disable" in html
     assert "Stop movement" in html
@@ -101,6 +102,6 @@ def test_motor_ui_serializes_power_transitions_and_reports_confirmed_state() -> 
     assert "position: fixed" in style
     assert 'data-action-busy="false"' in html
     assert "homebody-shell-v" in worker
-    assert "/static/style.css?v=119" in html
-    assert "/static/camera.js?v=119" in html
-    assert "/static/main.js?v=119" in html
+    assert "/static/style.css?v=120" in html
+    assert "/static/camera.js?v=120" in html
+    assert "/static/main.js?v=120" in html

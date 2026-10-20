@@ -4,6 +4,7 @@
 from pathlib import Path
 
 import pytest
+from settings_ui_helpers import choose
 from test_assistant_modes_browser import ui  # noqa: F401
 from test_kids_stt_status_browser import show
 
@@ -96,6 +97,8 @@ def test_settings_offer_robot_provider_with_explicit_fallback(ui, provisioned):
         "tts": [{"id": "configured", "label": "Hermes configured TTS", "models": [], "voices": []}],
     }))
     page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
+    choose(page,"voice")
+    page.locator("#speech-provider-details > summary").click()
     page.evaluate("loadVoiceOptions()")
     page.wait_for_function("[...document.querySelectorAll('#stt_provider option')].some(o => o.value === 'robot')")
     # The saved/default selection is preserved; the fallback control stays hidden for host STT.

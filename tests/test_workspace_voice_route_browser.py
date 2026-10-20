@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 import test_workspace_browser as browser_fixtures
+from settings_ui_helpers import choose
 
 route_browser = browser_fixtures.workspace_browser
 SHOTS = Path(__file__).resolve().parents[1] / ".artifacts" / "browser-screens" / "workspace-live-repair"
@@ -127,7 +128,8 @@ def test_face_status_is_requested_not_running_and_failure_is_explicit(route_brow
     assert "No face in view is not a failure" in status and "not in this app's cache" in status
     assert "running." not in status.replace("not confirmed running", "")
     page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
-    page.locator("summary", has_text="Embodiment and privacy").click()
+    choose(page,"everyday")
+    assert page.locator("#settings-everyday").is_visible()
     target = page.locator("#face-tracking-status")
     target.wait_for(state="visible")
     for width in (390, 1440):

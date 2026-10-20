@@ -2,6 +2,7 @@
 
 
 def choose(page, key):
+    page.locator("#panel-settings").wait_for(state="visible")
     picker = page.locator("#settings-category-select")
     if picker.is_visible():
         picker.select_option(key)

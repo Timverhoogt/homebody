@@ -430,5 +430,5 @@ def test_announcement_ui_exposes_full_tts_controls_and_private_routes() -> None:
     assert "Voice only · do not change power state" in html
     assert "homebody-shell-v" in worker
     # Companion card assets advance with the shell revision.
-    assert "/static/main.js?v=119" in html
-    assert "/static/companion.js?v=119" in html
+    assert "/static/main.js?v=120" in html
+    assert "/static/companion.js?v=120" in html

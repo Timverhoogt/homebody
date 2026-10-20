@@ -805,7 +805,8 @@ details.card > summary.section-heading .label { display: none; }
 #panel-agent[data-connection="off"] .workspace-thread { min-height: 0; padding: 0; }
 #workspace-state { margin: 0; }
 .workspace-empty { padding: 24px 12px; opacity: 1; color: var(--ink-3); }
-body[data-destination="agent"] .voice-route .assistant-mode-state { display: none !important; }
+/* Keep the confirmed voice destination readable even while browsing a different Workspace pane. */
+body[data-destination="agent"] .voice-route .assistant-mode-state { display: block !important; }
 .workspace-header { margin-top: 6px; padding: 10px 0 4px; }
 .workspace-header-main { display: grid; gap: 6px; justify-items: start; }
 .workspace-header h2 { font-size: .95rem; padding: 8px 14px; }

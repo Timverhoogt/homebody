@@ -46,8 +46,8 @@ def test_task_grouped_settings_and_nested_links(ui, width, theme):
 def test_settings_layout_is_cached_and_geared():
     html = Path('homebody/static/index.html').read_text()
     sw = Path('homebody/static/service-worker.js').read_text()
-    assert '/static/settings-layout.js?v=119' in html
-    assert '/static/settings-layout.js?v=119' in sw
-    assert 'homebody-shell-v119' in sw
+    assert '/static/settings-layout.js?v=120' in html
+    assert '/static/settings-layout.js?v=120' in sw
+    assert 'homebody-shell-v120' in sw
     gear = html.split('<symbol id="i-gear"', 1)[1].split('</symbol>', 1)[0]
     assert 'r="3"' in gear and 'M12 3v2.5' not in gear

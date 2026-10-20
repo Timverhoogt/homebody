@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
+from settings_ui_helpers import choose
 from test_assistant_modes_browser import ui  # noqa: F401
 from test_workspace_browser import workspace_browser  # noqa: F401
 
@@ -149,6 +150,7 @@ def test_home_presence_pauses_when_hidden_and_drops_to_offline(ui):
     if page.locator("#tab-more").is_visible():  # phones: Settings is behind More
         page.click("#tab-more")
     page.click("#tab-settings")
+    choose(page,"system")
     page.wait_for_timeout(250)
     assert _scene(page, "hero-presence")["motion"] == "off" and _running(page, "#hero-presence") == 0
     page.click("#tab-dashboard")
@@ -529,6 +531,7 @@ def _updates_page(ui, width=390):
 
     page.route("**/api/updates", updates)
     page.evaluate("document.getElementById('tab-settings').click()")
+    choose(page,"system")
     return page, catalog, control, errors
 
 
@@ -711,6 +714,7 @@ def test_motion_feedback_is_token_bound_and_reset_releases_everything(ui):
 def test_disclosure_entrances_are_opt_in_and_skip_reduced_motion(ui):
     page, state, posts, errors = ui
     page.evaluate("document.getElementById('tab-settings').click()")
+    choose(page,"system")
     assert 3 <= page.evaluate("document.querySelectorAll('details[data-hb-disclosure]').length") <= 8
     page.locator("#updates-card details summary").click()
     page.wait_for_function("document.getElementById('update-history').classList.contains('hb-enter')")

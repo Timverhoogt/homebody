@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
+from settings_ui_helpers import choose
 
 
 def test_updates_in_chromium(tmp_path):
@@ -76,6 +77,7 @@ def test_updates_in_chromium(tmp_path):
         page.evaluate("HomebodyUpdates.refresh()")
         assert not page.locator("#update-dialog").is_visible()
         page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
+        choose(page,"system")
         assert page.locator("#update-preview").is_disabled()
         for _ in range(2):
             page.locator("#update-check").click()

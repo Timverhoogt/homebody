@@ -5,6 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
+from settings_ui_helpers import choose
 from test_assistant_modes_browser import CAPABILITIES, ui  # noqa: F401, F811
 
 SHOTS = Path(__file__).resolve().parents[1] / ".artifacts/browser-screens/everyday-capabilities"
@@ -68,6 +69,7 @@ def test_compact_permissions_geometry_and_navigation(ui, width, scheme, scale):
     SHOTS.mkdir(parents=True, exist_ok=True)
     assert page.locator('#everyday-card').is_hidden()
     page.click('#tab-settings')
+    choose(page,"privacy")
     # Isolated card crops hide fixed chrome only during capture; real hit-testing below retains it.
     page.locator("#everyday-settings-card").screenshot(
         path=str(SHOTS / f"compact-{width}-{scheme}-{scale}.png"),
@@ -77,6 +79,7 @@ def test_compact_permissions_geometry_and_navigation(ui, width, scheme, scale):
         page.evaluate("scrollTo(0,0)")
         page.screenshot(path=str(SHOTS / f"page-{width}-{scheme}.png"), full_page=True)
     page.click("#tab-settings")
+    choose(page,"privacy")
     page.locator("#everyday-permissions > summary").click()
     assert "movement: off" in page.locator("#everyday-robot-permissions").inner_text()
     assert "Camera access: allowed" in page.locator("#everyday-camera-permission").inner_text()
@@ -164,6 +167,7 @@ def test_private_copies_and_held_permissions_cannot_return_after_teardown(ui, tr
     body["devices"]["controls"] = ["private-room-device"]
     refresh(page, state, body)
     page.click("#tab-settings")
+    choose(page,"privacy")
     page.locator("#everyday-permissions > summary").click()
     page.locator("#everyday-technical-details > summary").click()
     held = []
@@ -249,11 +253,12 @@ def test_single_camera_permission_uses_existing_settings_without_activating_view
     page.click("#tab-dashboard")
     refresh(page, state, snapshot())
     page.click("#tab-settings")
+    choose(page,"privacy")
     page.locator("#everyday-permissions > summary").click()
     page.click("[data-everyday-setting=camera_enabled]")
     assert not page.locator("#camera_enabled").is_checked()
     page.check("#camera_enabled")
-    page.locator("#settings-form button[type=submit]").first.click()
+    page.locator("#settings-save-button").click()
     wait_text(page, "#form-message", "Saved")
     saved = [body for path, body in posts if path == "/api/settings"][-1]
     assert saved["camera_enabled"] is True

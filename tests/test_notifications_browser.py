@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
+from settings_ui_helpers import choose
 
 
 @pytest.fixture
@@ -128,11 +129,11 @@ def test_real_browser_timer_queue_and_hover(browser_page):
 
 def test_actual_settings_failure_and_tab_switch(browser_page):
     page, errors = browser_page
-    page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
+    page.click("#tab-settings")
+    choose(page,"voice")
     # Submit the real form handler, with a fixture 503 response; not a robot write.
-    page.locator("#settings-form").evaluate(
-        "el => { el.noValidate=true; el.requestSubmit(el.querySelector('button[type=submit]')); }"
-    )
+    page.locator("#settings-form").evaluate("el => { el.noValidate=true; }")
+    page.click("#settings-save-button")
     page.wait_for_function("document.querySelector('.notification-error') !== null")
     assert "Fixture: settings server unavailable" in page.locator(".notification-error").inner_text()
     page.locator("#tab-dashboard").click()

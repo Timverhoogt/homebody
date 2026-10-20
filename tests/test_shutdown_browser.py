@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from settings_ui_helpers import choose
 from test_assistant_modes_browser import ui  # noqa: F401
 
 ORIGIN = 'https://timverhoogtnano.tail51823f.ts.net'
@@ -22,6 +23,7 @@ def phone(ui, width=390):
     page.goto(ORIGIN + '/')
     page.wait_for_function("HomebodyOwner.isOwner() && !document.querySelector('main').hidden")
     page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
+    choose(page,"system")
     page.wait_for_function("!document.getElementById('shutdown-button').hidden")
     page.on('dialog', lambda dialog: dialog.accept('SHUTDOWN'))
     return page, state, posts, errors
