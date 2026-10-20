@@ -74,7 +74,8 @@ def test_observe_then_guess_only_retained_object_and_child_confirmation(monkeypa
         assert observed == {"observed": True, "candidate_count": 3, "view_token": token}
         assert "ispy_view_token" not in h.state
         assert h.state["ispy_player_scans"] == 1
-        assert all(any(item["object_name"] in text for text in h.moderated) for item in [CHAIR, LAMP, CUSHION])
+        assert all(h.module._ispy_candidate_moderation_text(item) not in h.moderated
+                   for item in [CHAIR, LAMP, CUSHION])
         assert not any("data:image" in str(value) for value in h.state.values())
         h.vision.reply = {"candidate_index": 1}
         guessed = await h.chat("It gives light")
@@ -171,7 +172,7 @@ def test_observation_localizes_names_and_fixed_copy(monkeypatch, language, name)
         assert schema["properties"]["candidates"]["minItems"] == 0
         name_schema = schema["properties"]["candidates"]["items"]["properties"]["object_name"]
         assert h.module._KIDS_LANGUAGE_NAMES[language] in name_schema["description"]
-        assert h.module._ispy_response_schema(language)["properties"]["candidates"]["minItems"] == 1
+        assert h.module._ispy_response_schema(language)["properties"]["candidates"]["minItems"] == 0
         h.vision.reply = {"candidate_index": 0}
         result = await h.chat("blue")
         assert result["text"] == h.module._kids_copy(language, "ispy_guess", guess=name)
@@ -183,7 +184,7 @@ def test_observation_localizes_names_and_fixed_copy(monkeypatch, language, name)
     asyncio.run(scenario())
 
 
-def test_filters_unsafe_pool_and_moderates_every_retained_candidate(monkeypatch):
+def test_observation_trusts_model_objects_without_second_moderation(monkeypatch):
     h = VisualHarness(monkeypatch)
 
     async def scenario():
@@ -191,16 +192,12 @@ def test_filters_unsafe_pool_and_moderates_every_retained_candidate(monkeypatch)
         h.flagged = ("lamp",)
         h.moderated.clear()
         result = await h.observe([candidate("knife"), CHAIR, LAMP, CUSHION])
-        assert result["candidate_count"] == 2
-        assert len(h.moderated) == 3
-        assert [item["object_name"] for item in h.state["ispy_player_candidates"]] == ["chair", "cushion"]
-        h.vision.reply = {"candidate_index": None}
-        await h.chat("round")
-        result = await h.observe([candidate("person"), candidate("phone")])
-        assert result["candidate_count"] == 0
+        assert result["candidate_count"] == 4
+        assert h.moderated == []
+        assert [item["object_name"] for item in h.state["ispy_player_candidates"]] == [
+            "knife", "chair", "lamp", "cushion"]
 
     asyncio.run(scenario())
-
 
 @pytest.mark.parametrize("failure", ["flagged", "unavailable"])
 @pytest.mark.parametrize("refresh", [False, True])
@@ -296,7 +293,7 @@ def test_camera_admission_is_bounded_authenticated_and_never_creates_state(monke
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("stage", ["vision", "moderation", "guess", "output"])
+@pytest.mark.parametrize("stage", ["vision", "guess", "output"])
 @pytest.mark.parametrize("invalidate", ["end", "cancel", "replace", "supersede", "expire"])
 def test_held_results_cannot_revive_stale_player_views(monkeypatch, stage, invalidate):
     h = VisualHarness(monkeypatch)
@@ -522,9 +519,8 @@ def test_observation_failure_does_not_loop_scans_or_keep_old_pool(monkeypatch):
         await h.observe([CHAIR])
         h.vision.reply = {"candidate_index": None}
         refresh = await h.chat("round")
-        h.moderation_unavailable = True
-        h.vision.reply = {"candidates": [LAMP]}
-        with pytest.raises(h.module.web.HTTPServiceUnavailable):
+        h.vision.reply = {"candidates": "malformed"}
+        with pytest.raises(h.module.web.HTTPBadGateway):
             await h.bridge.kids_ispy_observe(h.observation(refresh["ispy_view_token"]))
         assert h.state["ispy_player_candidates"] == []
         assert h.state["ispy_player_scans"] == 2

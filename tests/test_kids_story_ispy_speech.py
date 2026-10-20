@@ -65,7 +65,7 @@ def test_vision_prompt_states_the_bound_for_instruction_only_schema_providers(mo
     harness.vision.post = capture  # type: ignore[method-assign]
     harness.run()
     [text] = prompts
-    assert text.startswith(f"List at most {harness.module._ISPY_MAX_CANDIDATES} ")
+    assert text.startswith(f"Choose up to {harness.module._ISPY_MAX_CANDIDATES} ")
 
 
 # --- Story: bounded model turn, localized retry, held-result Stop ------------------------------

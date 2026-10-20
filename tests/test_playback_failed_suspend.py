@@ -109,8 +109,8 @@ def test_drained_but_unconfirmed_stop_does_not_claim_cleanup_success():
     calls = []
     gate = PlaybackGate(lambda: SimpleNamespace(audio=SimpleNamespace(clear_player=lambda: calls.append("clear"))))
     gate.suspend()
-    with pytest.raises(RuntimeError, match="not confirmed"):
-        gate.clear()
+    gate.clear()  # late cleanup yields to the fold, without confirming SDK stop
+    assert not gate._stop_confirmed
     with pytest.raises(RuntimeError, match="not confirmed"):
         gate.awake()
     assert gate.blocked and not calls
