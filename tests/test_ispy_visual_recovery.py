@@ -15,17 +15,13 @@ def test_abandoned_view_consumes_budget_and_rejects_replay_or_late_result(monkey
         token = await h.begin()
         pending = None
         release = asyncio.Event()
-        entered = []
         if stage == "completed":
             await h.observe([CHAIR])
         elif stage == "held":
-            async def moderation(*_):
-                entered.append(True)
-                await release.wait()
-                return False
-            monkeypatch.setattr(h.bridge, "_moderation_flagged", moderation)
+            h.vision.gate = release
+            h.vision.requests.clear()
             pending = asyncio.create_task(h.observe([CHAIR]))
-            await until(lambda: bool(entered))
+            await until(lambda: bool(h.vision.requests))
         request = Request({"session_id": SESSION, "view_token": token})
         receipt = json.loads((await h.bridge.kids_ispy_cancel(request)).text)
         assert receipt == {"cancelled": True, "view_token": token}

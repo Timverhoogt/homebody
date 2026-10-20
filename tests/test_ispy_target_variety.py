@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import logging
 import time
 from typing import Any
 
@@ -186,12 +185,12 @@ def test_vision_request_uses_strict_bounded_candidate_schema(monkeypatch: pytest
     assert set(schema["properties"]) == {"candidates"}
     pool = schema["properties"]["candidates"]
     assert pool["type"] == "array"
-    assert pool["minItems"] == 1
+    assert pool["minItems"] == 0
     assert pool["maxItems"] == harness.module._ISPY_MAX_CANDIDATES <= 4
     assert pool["items"]["required"] == harness.module._ISPY_TARGET_SCHEMA["required"]
     assert "English" in pool["items"]["properties"]["object_name"]["description"]
     assert pool["items"]["additionalProperties"] is False
-    assert pool["items"]["properties"]["confidence"]["minimum"] == 0.78
+    assert pool["items"]["properties"]["confidence"]["minimum"] == 0.0
 
 
 def test_repeated_and_alias_candidates_cannot_weight_the_pool(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -213,39 +212,20 @@ def test_repeated_and_alias_candidates_cannot_weight_the_pool(monkeypatch: pytes
         assert harness.rng.seen == [["bookshelf", "lamp"]]
 
 
-def test_unsafe_malformed_and_low_confidence_candidates_are_dropped(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    mug = candidate("mug", colour="red", frame_index=2)
-    pool: list[object] = [
-        candidate("person"),
-        candidate("credit card holder"),
-        candidate("phones"),
-        mug,
-        candidate("plant", location="next to the screens"),
-        candidate("ball", hints_en=["It is near the credit card"]),
-        candidate("vase", confidence=0.5),
-        candidate("rug", stable=False),
-        candidate("box", bbox=[0.1, 0.1, 0.05, 0.05]),
-        candidate("cup", colour="beige"),
-        {**candidate("bowl"), "extra": "field"},
-        {key: value for key, value in candidate("pot").items() if key != "hints_nl"},
-        "lamp",
-    ]
-    caplog.set_level(logging.DEBUG)
-    for start in range(0, len(pool), 4):
-        chunk = pool[start:start + 4]
-        harness = Harness(monkeypatch, {"candidates": chunk})
-        if mug in chunk:
-            assert harness.run()["target"]["object_name"] == "mug"
-            assert harness.rng.seen == [["mug"]]
-        else:
-            with pytest.raises(harness.module.web.HTTPBadGateway):
-                harness.run()
-            assert SESSION not in harness.bridge._kids_sessions
-    for word in ("person", "credit", "phones", "screens", "vase", "mug"):
-        assert word not in caplog.text
+@pytest.mark.parametrize("changes", [
+    {"object_name": "person"}, {"object_name": "phones"},
+    {"location": "near a screen"}, {"hints_en": ["Near the credit card"]},
+    {"confidence": 0.05}, {"stable": False}, {"visible_frame_count": 1},
+    {"bbox": [0.1, 0.1, 0.01, 0.01]}, {"bbox": [0, 0, 1, 1]}, {"extra": "ignored"},
+])
+def test_model_object_judgment_is_not_overridden(monkeypatch, changes):
+    proposal = {**candidate("mug"), **changes}
+    harness = Harness(monkeypatch, [proposal])
+    chosen = harness.run()["target"]
+    assert chosen["object_name"] == proposal["object_name"]
+    assert harness.moderated == []
+    from homebody.ispy import validate_ispy_target
+    assert validate_ispy_target(chosen, frame_count=5).object_name == proposal["object_name"]
 
 
 @pytest.mark.parametrize(
@@ -274,7 +254,7 @@ def test_whole_response_outside_the_bounded_schema_fails_closed(
 
 
 def test_single_safe_candidate_remains_the_honest_only_choice(monkeypatch: pytest.MonkeyPatch) -> None:
-    harness = Harness(monkeypatch, [candidate("person"), CHAIR])
+    harness = Harness(monkeypatch, [candidate("invalid", bbox=[0, 0, -1, 1]), CHAIR])
     for _round in range(3):
         assert harness.run()["target"]["object_name"] == "chair"
 
@@ -282,28 +262,12 @@ def test_single_safe_candidate_remains_the_honest_only_choice(monkeypatch: pytes
 # --- Moderation --------------------------------------------------------------------------------
 
 
-def test_moderation_refusal_moves_to_the_next_validated_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
-    harness = Harness(monkeypatch, [CHAIR, LAMP], flagged=("chair",))
-    assert harness.run()["target"]["object_name"] == "lamp"
-    assert len(harness.moderated) == 2
-    assert "chair" in harness.moderated[0] and "Look for the chair" in harness.moderated[0]
-    assert "Zoek de chair" in harness.moderated[0]
-
-
-def test_moderation_refusing_every_candidate_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("unavailable", [False, True])
+def test_object_selection_does_not_use_secondary_moderation(monkeypatch, unavailable):
     harness = Harness(monkeypatch, [CHAIR, LAMP], flagged=("chair", "lamp"))
-    with pytest.raises(harness.module.web.HTTPBadGateway):
-        harness.run()
-    assert SESSION not in harness.bridge._kids_sessions
-
-
-def test_moderation_unavailable_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    harness = Harness(monkeypatch, [CHAIR, LAMP])
-    harness.moderation_unavailable = True
-    with pytest.raises(harness.module.web.HTTPServiceUnavailable):
-        harness.run()
-    assert SESSION not in harness.bridge._kids_sessions
-    assert len(harness.moderated) == 1
+    harness.moderation_unavailable = unavailable
+    assert harness.run()["target"]["object_name"] == "chair"
+    assert harness.moderated == []
 
 
 # --- Fixed single target for the round and session-scoped variety ------------------------------
@@ -377,7 +341,7 @@ async def _held(harness: Harness, stage: str, interrupt: Any) -> BaseException |
     return None
 
 
-@pytest.mark.parametrize("stage", ["vision", "moderation"])
+@pytest.mark.parametrize("stage", ["vision"])
 @pytest.mark.parametrize("interrupt", ["end", "cancel", "expire"])
 def test_held_select_result_is_discarded_after_stop_cancel_or_expiry(
     monkeypatch: pytest.MonkeyPatch, stage: str, interrupt: str

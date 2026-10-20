@@ -90,7 +90,11 @@ class PlaybackGate:
                 if not cleanup or self._stop_confirmed:
                     return
                 if not self._cleanup_allowed:
-                    raise RuntimeError("Playback stop is not confirmed; cleanup remains pending")
+                    # A fold has drained producers and owns SDK stop/clear now. Late
+                    # voice finalizers must not race that stop or mask session.close().
+                    # This does not confirm the stop or reopen playback; awake() still
+                    # requires the real stop receipt (and reports failed stops).
+                    return
             self._active += 1
         try:
             operation()

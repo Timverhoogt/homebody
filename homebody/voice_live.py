@@ -126,9 +126,12 @@ class LiveVoiceMixin:
             # Local Stop wins: flush the speaker before any cloud finalization can fail or stall.
             local_closed.set()
             self._end_companion_voice()
-            self._clear_streamed_audio()
-            session.close()
-            timings.end()
+            try:
+                self._clear_streamed_audio()
+            finally:
+                # A local audio failure must never leak the provider session.
+                session.close()
+                timings.end()
             self._workspace_event(workspace_generation, "activity", "Live voice session ended")
             if agent_request_id:
                 self._finish_agent_request(agent_request_id, broker_context.session_generation, succeeded=completed)

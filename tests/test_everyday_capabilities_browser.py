@@ -74,6 +74,7 @@ def test_compact_permissions_geometry_and_navigation(ui, width, scheme, scale):
     if scale == 1:
         page.evaluate("scrollTo(0,0)")
         page.screenshot(path=str(SHOTS / f"page-{width}-{scheme}.png"), full_page=True)
+    page.click("#tab-settings")
     page.locator("#everyday-permissions > summary").click()
     assert "movement: off" in page.locator("#everyday-robot-permissions").inner_text()
     assert "Camera access: allowed" in page.locator("#everyday-camera-permission").inner_text()
@@ -97,7 +98,7 @@ def test_compact_permissions_geometry_and_navigation(ui, width, scheme, scale):
                   hit:hit === e || e.contains(hit)};
         }""")
         assert round(geometry["height"], 2) >= 48 and geometry["fits"] and geometry["hit"], geometry
-    page.locator("#everyday-card").screenshot(
+    page.locator("#everyday-settings-card").screenshot(
         path=str(SHOTS / f"permissions-{width}-{scheme}-{scale}.png"),
         style=".topbar, .tabs { visibility: hidden !important; }",
     )
@@ -160,6 +161,7 @@ def test_private_copies_and_held_permissions_cannot_return_after_teardown(ui, tr
     body["text_provider"]["model"] = "private-model-name"
     body["devices"]["controls"] = ["private-room-device"]
     refresh(page, state, body)
+    page.click("#tab-settings")
     page.locator("#everyday-permissions > summary").click()
     page.locator("#everyday-technical-details > summary").click()
     held = []
@@ -244,6 +246,7 @@ def test_single_camera_permission_uses_existing_settings_without_activating_view
     state["config"].update(camera_enabled=False)
     page.click("#tab-dashboard")
     refresh(page, state, snapshot())
+    page.click("#tab-settings")
     page.locator("#everyday-permissions > summary").click()
     page.click("[data-everyday-setting=camera_enabled]")
     assert not page.locator("#camera_enabled").is_checked()

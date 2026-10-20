@@ -141,7 +141,9 @@ def test_late_real_runtime_clear_cannot_restart_playback_between_stop_and_remove
     assert stopped.wait(2)
     cleanup = threading.Thread(target=rt._clear_streamed_audio)
     cleanup.start()
-    assert cleanup.is_alive()
+    cleanup.join(1)
+    assert not cleanup.is_alive()  # fold owns cleanup; finalizers must not stall
+    assert rt._playback.blocked and not rt._playback._stop_confirmed
     finish_stop.set()
     sleeper.join(2)
     cleanup.join(2)

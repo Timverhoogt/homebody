@@ -93,11 +93,16 @@ def test_turn_off_and_on_are_single_clicks_and_store_nothing_in_the_browser(ui):
     page.on("dialog", lambda dialog: (dialogs.append(dialog.message), dialog.dismiss()))
     page.click("#tab-kids")
     show(page, state, kids())
-    page.route("**/api/kids/show-and-tell/setting", lambda route: (
-        posts.append(("/api/kids/show-and-tell/setting", json.loads(route.request.post_data))),
-        route.fulfill(json=show_tell(enabled=json.loads(route.request.post_data)["enabled"],
-                                     available=json.loads(route.request.post_data)["enabled"])),
-    ))
+    def save_setting(route):
+        body = json.loads(route.request.post_data)
+        posts.append(("/api/kids/show-and-tell/setting", body))
+        saved = show_tell(enabled=body["enabled"], available=body["enabled"])
+        # Persist before acknowledging, as the real endpoint does. Otherwise a
+        # subsequent status poll can truthfully return the fixture's stale "on".
+        state["runtime"] = kids(state=saved)
+        route.fulfill(json=saved)
+
+    page.route("**/api/kids/show-and-tell/setting", save_setting)
     page.click("#kids-show-tell-toggle")
     page.wait_for_function("document.getElementById('kids-show-tell-message').textContent.includes('is off')")
     state["runtime"] = kids(state=show_tell(enabled=False, available=False))

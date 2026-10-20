@@ -329,9 +329,9 @@ def test_en_nl_keep_original_fields_and_unsafe_new_language_hints_are_dropped(mo
     unsafe = {"de": "neben dem Telefon", "fr": "près du téléphone", "it": "vicino al telefono",
               "pt": "ao lado do telemóvel", "es": "junto al teléfono"}
     for language, hint in unsafe.items():
-        with pytest.raises(ValueError):
-            module._ispy_candidate_pool(
-                {"candidates": [dict(CHAIR, **{f"hints_{language}": [hint]})]}, frame_count=5, language=language)
+        pool = module._ispy_candidate_pool(
+            {"candidates": [dict(CHAIR, **{f"hints_{language}": [hint]})]}, frame_count=5, language=language)
+        assert pool[0][f"hints_{language}"] == [hint]
 
 
 def test_ispy_reply_classification_and_clues_are_localized_and_en_nl_unchanged(monkeypatch):

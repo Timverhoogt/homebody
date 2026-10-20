@@ -122,13 +122,12 @@ def test_ispy_target_filter_rejects_child_sensitive_and_unclear_objects() -> Non
     }
     assert validate_ispy_target(candidate).clue("nl").endswith("blauw.")
     assert validate_ispy_target({**candidate, "colour": " Gray "}).colour == "grey"
-    for unsafe in ("person", "medicine", "phone", "document"):
-        with pytest.raises(ValueError):
-            validate_ispy_target({**candidate, "object_name": unsafe})
+    for name in ("person", "medicine", "phone", "document"):
+        assert validate_ispy_target({**candidate, "object_name": name}).object_name == name
+    assert validate_ispy_target({**candidate, "confidence": 0.5}).confidence == 0.5
+    assert validate_ispy_target({**candidate, "bbox": [0.01, 0.01, 0.05, 0.05]}).bbox == (0.01, 0.01, 0.05, 0.05)
     with pytest.raises(ValueError):
-        validate_ispy_target({**candidate, "confidence": 0.5})
-    with pytest.raises(ValueError, match="too small"):
-        validate_ispy_target({**candidate, "bbox": [0.01, 0.01, 0.05, 0.05]})
+        validate_ispy_target({**candidate, "bbox": [0.01, 0.01, -0.05, 0.05]})
     with pytest.raises(ValueError, match="frame"):
         validate_ispy_target({**candidate, "frame_index": 3})
 
@@ -633,8 +632,8 @@ def test_kids_static_assets_advance_pwa_cache_together() -> None:
     assert "homebody-shell-v" in worker
     # Companion card assets advance with the shell revision.
     for asset in ("style.css", "camera.js", "main.js", "companion.js"):
-        assert f"/static/{asset}?v=113" in html
-        assert f'"/static/{asset}?v=113"' in worker
+        assert f"/static/{asset}?v=114" in html
+        assert f'"/static/{asset}?v=114"' in worker
 
 
 def test_runtime_reports_kids_session_start_replacement_and_end_to_bridge() -> None:

@@ -221,7 +221,7 @@
     text('everyday-badge', body.available === true ? 'Tools ready' : 'Unavailable');
     $('everyday-badge').dataset.status = body.available === true ? 'completed' : 'failed';
     text('everyday-message', body.available === true
-      ? 'Names and providers are set on the Hermes host; keys and coordinates never reach this page.'
+      ? ''
       : `Everyday is unavailable: ${String(body.error || 'not configured on the Hermes host')}`);
   }
 

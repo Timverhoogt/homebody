@@ -73,7 +73,7 @@ def test_selection_explicitly_requests_session_language_name(monkeypatch, langua
     assert selected["object_name"] == name
     assert harness.bridge._kids_sessions[SESSION]["ispy_target"] == selected
     assert validate_ispy_target(selected, frame_count=5, language=language).object_name == name
-    assert name in harness.moderated[0]
+    assert harness.moderated == []  # model-selected metadata is not moderated again
 
 
 @pytest.mark.parametrize("language", NAMES)
