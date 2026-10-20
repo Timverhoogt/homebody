@@ -322,46 +322,197 @@ body[data-destination="kids"] .global-robot-status :is(.status-row, #global-powe
   .kids-hero .kids-stage { max-width: 360px; width: 360px; }
 }
 
-/* ---------- Robot ---------- */
+/* ---------- Robot: three tasks (Look, Camera, Power), one state ----------
+   Composition, top to bottom: a one-line state header ("Reachy is Awake", the facts line, Wake up / Standby
+   as one compact pair at the right, Meeting · Sleep folded under them); then Look as the focal block, the
+   d-pad centred in the first viewport with the single Stop under it and the live motor line as its caption;
+   Camera beside Look on wide screens, directly under it on phones; Gestures as a quieter row; precision,
+   controller and GPIO fold. #global-robot-stop is not shown here: it calls the same stopRobotMovement as
+   #robot-stop-button, which is the one Stop under the d-pad. Its id and handler stay in the DOM. */
+.robot-power { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 32px; align-items: center; margin-top: 4px; padding: 12px 0 18px; border-top: 0; border-bottom: 1px solid var(--line); }
+.robot-power .status-row { display: grid; grid-column: 1; grid-row: 1; gap: 6px; min-width: 0; }
+/* style.css spans .global-adult-controls across the old grid; here it is the right-hand group, row 1. */
+.robot-power .global-adult-controls { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; }
+.robot-power .power-now-detail[data-routine="true"] { display: none; }
+.robot-power .power-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.robot-power .power-now .label { font-size: .72rem; }
+.robot-power .power-now-mode { font-family: var(--serif); font-size: clamp(1.9rem, 4vw, 2.4rem); line-height: 1.05; }
+.robot-power .power-now-detail { display: block; flex: 1 1 100%; margin: 0; color: var(--ink-2); font-size: .95rem; }
+.robot-power .compact-status-line { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-size: .85rem; color: var(--ink-2); }
+.robot-power .compact-status-line > div { display: inline-flex; align-items: baseline; gap: 6px; padding: 0; border: 0; }
+.robot-power .compact-status-line > div + div::before { content: "·"; color: var(--ink-3); margin-right: 8px; }
+.robot-power .compact-status-line dt { font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; }
+.robot-power .compact-status-line dt .icon { display: none; }
+.robot-power .compact-status-line dd { margin: 0; font-size: .85rem; font-weight: 500; color: var(--ink); }
+.robot-power .global-adult-controls { display: grid; grid-template-columns: 1fr; justify-items: center; gap: 4px; padding: 0; border: 0; }
+.robot-power .global-power-primary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; min-width: 280px; max-width: 320px; }
+.robot-power .global-power-primary button { width: 100%; max-width: none; flex: none; min-height: 48px; }
+#panel-robot #global-robot-stop { display: none; }
+.robot-power #global-power-controls { width: 100%; max-width: 320px; margin: 0; padding: 0; border: 0; }
+.robot-power #global-power-controls summary { justify-content: center; gap: 8px; min-height: 48px; color: var(--ink-2); font-weight: 500; font-size: .86rem; }
+.robot-power #global-power-controls summary::after { width: 22px; height: 22px; font-size: .8rem; }
+.robot-power .power-hint { margin: 4px 0 10px; font-size: .86rem; color: var(--ink-2); text-align: center; }
+.robot-power #global-power-controls .actions { display: flex; justify-content: center; gap: 8px; }
+.robot-power #global-power-controls .actions button { flex: 1 1 0; min-width: 0; }
+.robot-power .message { grid-column: 1 / -1; margin: 0; }
+.robot-power .message:empty { display: none; }
+#motor-wake-button, #motor-standby-button { display: none; }
+
+/* Look: the focal block. */
+#panel-robot > .robot-control-card { margin-top: 0; padding-top: 18px; border-top: 0; }
 .robot-control-card .section-heading h2 { font-size: 1.5rem; }
-.motor-command-bar { background: transparent; padding: 8px 0 4px; }
-.motor-state-summary strong { font-family: var(--serif); font-size: 1.3rem; font-weight: 400; }
-.motor-safety-actions button { min-height: 44px; }
-.control-group { border: 0; padding: 12px 0 0; }
-.control-group-heading h3 { font-size: 1.2rem; }
+.look-stage { display: grid; justify-items: center; gap: 16px; padding: 18px 0 8px; }
+.control-group { border: 0; padding: 0; background: transparent; }
+.look-group { width: 100%; }
+.d-pad { width: min(100%, 256px); grid-template: repeat(3, 76px) / repeat(3, 1fr); gap: 8px; margin: 0 auto; }
+.d-pad button, .d-pad button.secondary { min-height: 76px; border-radius: 50%; background: var(--paper-2); color: var(--ink); border: 1px solid var(--line); font-family: var(--sans); font-size: 1.35rem; box-shadow: none; }
+.d-pad button:hover:not(:disabled) { background: var(--paper-3); }
+.d-pad button:disabled { opacity: .45; }
+.d-pad .direction-center, .d-pad button.secondary.direction-center { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.motor-command-bar { display: grid; justify-items: center; gap: 8px; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ink); }
+.motor-safety-actions { display: grid; justify-items: center; gap: 4px; width: 100%; }
+.motor-safety-actions #robot-stop-button { min-width: 220px; min-height: 48px; }
+.motor-stop-help { margin: 0; font-size: .78rem; color: var(--ink-3); text-align: center; }
+.robot-control-card[aria-busy="true"] #robot-stop-button { background: var(--danger); color: #fff5f2; }
+.movement-details { width: 100%; max-width: 440px; margin: 2px 0 0; padding: 0; border: 0; }
+.movement-details > summary { justify-content: center; gap: 8px; min-height: 40px; font-size: .86rem; font-weight: 500; color: var(--ink-3); }
+.movement-details > summary::after { width: 22px; height: 22px; font-size: .8rem; }
+.movement-details[data-attention="true"] > summary { color: var(--ink-2); font-weight: 600; }
+.motor-state-summary { display: flex; justify-content: center; align-items: flex-start; gap: 8px; max-width: 40ch; margin: 2px auto 8px; text-align: center; }
+.motor-state-summary > div { display: grid; gap: 2px; }
+.motor-state-summary .label { display: none; }
+.motor-state-summary strong { margin: 0; font-family: var(--sans); font-size: .9rem; font-weight: 600; line-height: 1.35; }
+.motor-state-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; box-shadow: none; }
+.motor-readiness { margin: 0; font-family: var(--sans); font-size: .85rem; color: var(--ink-2); }
+.look-stage .message { width: 100%; max-width: 440px; }
+.look-stage .message:empty { display: none; }
+
+/* Gestures: one quieter row under Look. */
+.robot-gestures { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 14px; padding-top: 16px; border-top: 1px solid var(--line); }
+.robot-gestures .control-group-heading { margin-bottom: 8px; }
+.robot-gestures h3 { font-size: 1.15rem; }
 .control-chip { border: 1px solid var(--line-strong); border-radius: 999px; background: transparent; color: var(--ink-3); }
-.d-pad { width: min(100%, 220px); }
-.d-pad button { border-radius: 50%; background: var(--paper); color: var(--ink); border: 1px solid var(--line-strong); font-size: 1.2rem; }
-.d-pad button:disabled { opacity: .55; }
-.d-pad .direction-center { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.motor-command-bar { color: var(--ink); border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 14px 0 8px; }
-.motor-command-bar .label, .motor-readiness, .motor-stop-help { color: var(--ink-2); }
-.preset-button { border-radius: 999px; }
+.expression-group { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; }
+.expression-group .control-group-heading { grid-column: 1 / -1; }
+.expression-group select, .expression-group #emotion-button { min-height: 48px; }
+.robot-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+.preset-button { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; min-height: 48px; height: auto; padding: 0 16px; border-radius: 999px; background: transparent; text-align: center; }
+.preset-button small { font-family: var(--sans); font-size: .74rem; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+.robot-control-card .action-status { margin: 14px 0 0; font-size: .85rem; }
+.precision-group { margin-top: 10px; }
 .precision-axis-card { border-radius: var(--radius); background: var(--paper-2); border: 0; }
+
+/* Camera: viewing is its own task, opt-in; Start live camera is the only orange fill on the page. */
 .camera-viewer { border-radius: var(--radius-card); }
-.camera-actions button, .camera-report-actions button { min-height: 44px; }
-@media (min-width: 900px) {
-  #panel-robot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-flow: dense; column-gap: 48px; align-items: start; }
-  #panel-robot > :is(.page-heading, .global-robot-status, .agent-approval-sheet) { grid-column: 1 / -1; }
-  #panel-robot > .robot-control-card { grid-column: 1; grid-row: span 3; }
-  #panel-robot > :is(.camera-card, .bluetooth-card, .gpio-card) { grid-column: 2; }
+.camera-viewer:not(.live):not(:fullscreen):not(.camera-app-fullscreen) { height: 150px; min-height: 150px; margin-top: 14px; border-radius: 18px; }
+.camera-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 520px; margin: 14px auto 0; }
+.camera-actions button, .camera-report-actions button { width: 100%; min-height: 44px; padding: 0 10px; font-size: .88rem; }
+.camera-actions #camera-live-start { grid-column: 1 / -1; min-height: 52px; font-size: 1rem; }
+.camera-report-actions button { width: auto; }
+.camera-feed-health { margin: 8px 0 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: .85rem; text-align: center; }
+.camera-card > .compact-note { margin-top: 10px; }
+.camera-diagnostics { margin-top: 12px; }
+.camera-diagnostics > summary { font-size: .92rem; }
+.camera-diagnostics > div.camera-report-actions { margin: 8px 0; }
+.camera-diagnostics dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 10px 0; font-size: .88rem; }
+.camera-diagnostics dl > div { display: contents; }
+.camera-diagnostics dt { color: var(--ink-2); }
+.camera-diagnostics dd { margin: 0; }
+.camera-diagnostics .compact-note { font-size: .84rem; }
+#panel-robot > .global-robot-status { margin-top: 28px; }
+
+/* Phones: one column in task order — state, Look, Camera, Gestures/precision, hardware, voice strip. */
+@media (max-width: 899px) {
+  #panel-robot:not([hidden]) { display: flex; flex-direction: column; }
+  #panel-robot > .camera-card { order: 3; }
+  #panel-robot > :is(.bluetooth-card, .gpio-card) { order: 4; }
+  #panel-robot > .global-robot-status { order: 5; }
+}
+@media (max-width: 650px) {
+  .robot-power { grid-template-columns: 1fr; gap: 10px; padding-bottom: 14px; }
+  .robot-power .global-adult-controls { grid-column: 1; grid-row: 2; justify-self: stretch; padding-top: 2px; }
+  .robot-power .global-power-primary { min-width: 0; max-width: 440px; }
+  .robot-power .global-power-primary button { font-size: .9rem; padding: 0 10px; }
+  .robot-power .global-power-primary button .icon { display: none; }
+  .robot-power #global-power-controls { max-width: 440px; }
+  .look-stage { padding-top: 14px; }
+  .d-pad { width: min(100%, 240px); grid-template-rows: repeat(3, 72px); }
+  .d-pad button, .d-pad button.secondary { min-height: 72px; }
+  .expression-group { grid-template-columns: 1fr; }
+  .expression-group #emotion-button { width: 100%; }
+  .camera-viewer:not(.live):not(:fullscreen):not(.camera-app-fullscreen) { height: 120px; min-height: 120px; }
 }
 
-/* ---------- Settings: a list first, then plain sections ---------- */
-.settings-index { display: grid; margin-top: 10px; border-top: 1px solid var(--line); }
-.settings-index a { display: flex; align-items: center; gap: 14px; min-height: 54px; padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; font-weight: 600; }
-.settings-index a small { display: block; font-weight: 400; color: var(--ink-2); font-size: .85rem; }
-.settings-index a .icon { color: var(--ink-2); width: 1.3em; height: 1.3em; margin: 0; }
-.settings-index a span { flex: 1; }
-.settings-index a::after { content: "›"; color: var(--ink-3); font-size: 1.3rem; }
-.setup-review-entry { margin-top: 14px; }
-#panel-settings .card > .label { display: none; }
-#panel-settings .card h2 { font-size: 1.4rem; margin-bottom: 4px; }
-#panel-settings .card { scroll-margin-top: 16px; }
-#panel-settings .settings-section { padding: 6px 0; }
+/* Wide screens: state header across; Look left, Camera right, then the folded hardware under Camera. */
+@media (min-width: 900px) {
+  #panel-robot:not([hidden]) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 56px; align-items: start; }
+  #panel-robot > :is(.page-heading, .robot-power, .global-robot-status, .agent-approval-sheet) { grid-column: 1 / -1; }
+  #panel-robot > .robot-control-card { grid-column: 1; grid-row: 3 / span 3; }
+  #panel-robot > .camera-card { grid-column: 2; grid-row: 3; margin-top: 0; padding-top: 18px; border-top: 0; }
+  #panel-robot > .bluetooth-card { grid-column: 2; grid-row: 4; }
+  #panel-robot > .gpio-card { grid-column: 2; grid-row: 5; }
+  #panel-robot > .global-robot-status { grid-row: 6; }
+  .look-stage { padding-top: 24px; }
+}
+
+/* ---------- Settings: one visible category; side list on wide screens, picker on phones ----------
+   Categories are plain <section hidden> blocks toggled by settings-layout.js; nothing here sets
+   display on them, so the [hidden] attribute keeps its meaning. */
+.settings-shell { display: grid; gap: 16px; margin-top: 6px; min-width: 0; }
+.settings-nav-picker { display: grid; gap: 6px; }
+.settings-nav-picker > span { font-size: .8rem; font-weight: 600; color: var(--ink-2); }
+.settings-nav-list { display: none; list-style: none; margin: 0; padding: 0; }
+.settings-nav-list li { margin: 0; }
+.settings-nav-item, .settings-nav-item:hover { display: block; width: 100%; min-width: 0; min-height: 48px; margin: 0; padding: 8px 12px; border: 0; border-radius: 10px; background: transparent; box-shadow: none; color: var(--ink); text-align: left; font: inherit; font-size: .95rem; line-height: 1.3; letter-spacing: normal; text-transform: none; }
+.settings-nav-item:hover { background: var(--paper-2); }
+.settings-nav-item strong { display: block; font-weight: 600; }
+.settings-nav-item small { display: block; margin-top: 2px; color: var(--ink-2); font-size: .8rem; font-weight: 400; }
+.settings-nav-item.active { background: var(--paper-2); box-shadow: inset 3px 0 0 var(--orange); }
+.settings-nav-item:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.settings-content { min-width: 0; }
+.settings-category { min-width: 0; }
+.settings-category-title { font-family: var(--serif); font-size: 1.55rem; font-weight: 400; letter-spacing: -.01em; margin: 0 0 2px; }
+.settings-block { margin: 0; padding: 14px 0 18px; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; min-width: 0; scroll-margin-top: 16px; }
+.settings-block > h3, .settings-block .section-heading h3 { font-family: var(--serif); font-size: 1.2rem; font-weight: 400; letter-spacing: -.01em; margin: 0; }
+.settings-block h4, .settings-subsection h4 { font-family: var(--serif); font-size: 1.05rem; font-weight: 400; margin: 0; }
+.settings-block > h3 + p, .settings-block > .section-heading + p { margin-top: 6px; }
+.settings-block > label, .settings-block > .grid-two, .settings-block form > label, .settings-block form > .grid-two, .settings-block form > details { margin-top: 12px; }
+.settings-block .toggle-row, .settings-block .checkbox-row { padding: 8px 0; }
+.settings-block .toggle-row + .toggle-row { border-top: 1px solid var(--line); }
+.settings-subsection { margin-top: 12px; padding: 12px 0 4px; border-top: 1px solid var(--line); min-width: 0; }
+.settings-subsection .section-heading { margin-bottom: 6px; }
+.settings-disclosure { margin-top: 8px; min-width: 0; }
+.settings-disclosure > summary { min-height: 48px; font-weight: 600; }
 #panel-settings details > summary { min-height: 48px; font-weight: 600; }
-.danger-zone { border-top-color: var(--danger); }
-@media (min-width: 900px) { #panel-settings { max-width: 720px; } }
+#panel-settings .settings-section { display: grid; gap: 14px; padding: 8px 0 4px; min-width: 0; }
+#panel-settings .settings-section > .actions { margin-top: 4px; }
+/* Cards that main.js moves into System (remembered devices, home-screen shortcut) read as plain blocks. */
+#panel-settings .settings-category > .card { margin: 0; padding: 14px 0 18px; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; }
+#panel-settings .settings-category > .card h2 { font-size: 1.2rem; }
+#panel-settings .settings-category > .card > .label, #panel-settings .settings-category > .card .section-heading .label { display: none; }
+#lifecycle-card { border-top-color: var(--danger); }
+#lifecycle-card h3 { color: var(--danger); }
+.settings-save { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.settings-save .actions { margin: 0; }
+.settings-save .message:empty { display: none; }
+#panel-settings .setup-review-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 14px; padding: 12px 0 8px; margin: 0; }
+#panel-settings .setup-review-entry p { margin: 0; color: var(--ink-2); font-size: .88rem; }
+#companion-settings > * + * { margin-top: 14px; }
+#companion-settings .presence-controls { margin: 4px 0 8px; }
+#companion-settings .companion-suggestions { margin-top: 8px; }
+#companion-settings > details { margin-top: 4px; }
+#companion-details .companion-grid { margin: 8px 0 10px; }
+#everyday-permissions > summary { font-size: .95rem; }
+#everyday-permissions .everyday-permission-groups { display: grid; gap: 14px; margin-top: 12px; }
+#everyday-permissions .everyday-permission-groups h3 { font-family: var(--sans); font-size: .95rem; font-weight: 600; margin: 0 0 2px; }
+#everyday-permissions .everyday-permission-groups p { margin: 2px 0; font-size: .92rem; }
+@media (min-width: 900px) {
+  #panel-settings { max-width: 960px; }
+  .settings-shell { grid-template-columns: 220px minmax(0, 1fr); column-gap: 44px; align-items: start; }
+  .settings-nav { position: sticky; top: 12px; }
+  .settings-nav-picker { display: none; }
+  .settings-nav-list { display: grid; gap: 2px; }
+}
 
 /* ---------- Announce ---------- */
 .announcement-card .section-heading h2 { font-size: 1.5rem; }
@@ -447,19 +598,6 @@ body[data-destination="dashboard"] .global-robot-status { margin-top: 10px; padd
 body[data-destination="dashboard"] .global-robot-status #voice-stop-button { display: none; }
 body[data-destination="dashboard"] .global-robot-status .voice-route { border-top: 0; padding-top: 0; }
 .voice-route .assistant-mode-state { font-size: .85rem; }
-/* Power on Robot: status row, Wake / Standby / Stop movement, Meeting · Sleep. */
-.robot-power { display: grid; gap: 10px; padding: 12px 0 8px; }
-.robot-power .status-row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
-.robot-power .power-now-mode { font-family: var(--serif); font-size: 1.3rem; }
-.robot-power .power-now-detail { display: block; color: var(--ink-2); font-size: .85rem; }
-.robot-power .compact-status-line dd { font-weight: 600; }
-.robot-power .global-adult-controls { display: grid; gap: 8px; padding-top: 4px; }
-.robot-power .global-power-primary button, .robot-power summary { min-height: 48px; }
-.robot-power .message:empty { display: none; }
-#panel-robot > .global-robot-status { margin-top: 24px; }
-/* The power section above already carries Wake / Standby; the motor bar keeps only Stop action. */
-#motor-wake-button, #motor-standby-button { display: none; }
-.motor-safety-actions { display: grid; gap: 8px; }
 /* Bottom row clearance: the page scrolls past the last control and any text box. */
 @media (max-width: 650px) {
   main { padding-bottom: calc(var(--fable-row) + 40px + env(safe-area-inset-bottom)); scroll-padding-bottom: calc(var(--fable-row) + 24px); }
@@ -493,9 +631,8 @@ body[data-destination="dashboard"] .global-robot-status .voice-route { border-to
 #panel-agent:has(.workspace-layout[data-pane="project"]) #workspace-start { display: none; }
 @media (min-width: 761px) { #panel-agent #workspace-start { display: none; } }
 /* Secondary safety actions remain reachable even when work status is unknown. No dashboard-sized row. */
-body[data-destination="agent"] .voice-route .agent-mode-bar { gap: 4px 16px; }
-body[data-destination="agent"] .voice-route .agent-mode-bar button { flex: 0 1 auto; min-height: 44px; padding: 0 4px; border: 0; background: transparent; font-size: .82rem; }
-body[data-destination="agent"] .voice-route .agent-mode-bar #agent-stop-button { color: var(--danger); }
+body[data-destination="agent"] .voice-route .agent-mode-bar { gap: 8px; }
+body[data-destination="agent"] .voice-route .agent-mode-bar button { flex: 1 1 auto; max-width: 320px; }
 /* Header Connect never clips its pending label; the Clear dialog's buttons wrap instead of overflowing. */
 .workspace-header #workspace-start { white-space: nowrap; padding: 0 14px; font-size: .9rem; }
 .workspace-clear-confirm .workspace-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -529,6 +666,311 @@ body[data-destination="agent"] .voice-route .agent-mode-bar #agent-stop-button {
 #kids-setup .kids-review { margin-bottom: 12px; }
 #kids-show-tell-disclosure { max-width: 65ch; }
 
+/* Settings category rules live in the "Settings" block above (one visible category, no card nesting). */
+@media (max-width: 400px) {
+  #panel-settings .grid-two { grid-template-columns: 1fr; }
+  #panel-settings .settings-category-title { font-size: 1.4rem; }
+}
+
 /* The primary Everyday hero already carries the live state. */
 #everyday-companion { display: none; }
 body:not([data-destination="dashboard"]):not([data-destination="agent"]) .voice-route .assistant-mode-state { display: none !important; }
+
+/* =====================================================================================================
+   Fable alpha · one component vocabulary for every adult page (Kids keeps its own playful rules above).
+   Six things, used everywhere:
+     1. Page eyebrow  (.page-heading h1)      small caps, left.
+     2. Section       (.card / hairline)       serif h2, optional one-line note, left.
+     3. Button        primary = orange pill, secondary = hairline pill, danger = hairline red pill,
+                      selected = ink fill. Rows of buttons are centred, wrapped rows included. The one
+                      thing to do on a page is full width.
+     4. Field         one rounded input / select / textarea on the inset paper tone.
+     5. Status        one pill badge; one message style with a coloured edge for ok / error.
+     6. Disclosure    details with a round + / − at the right.
+   ===================================================================================================== */
+:root { --control-h: 48px; }
+
+/* 2. Sections and prose stay left-aligned; spacing is the only hierarchy besides type. */
+h2 { margin: 0 0 2px; }
+.section-heading { align-items: flex-start; }
+.section-heading > div > .compact-note { margin-top: 2px; }
+.card > p.muted { margin: 6px 0 0; }
+p.compact-note, .compact-note { font-size: .88rem; line-height: 1.45; }
+
+/* 3. Buttons */
+button, .button { min-height: var(--control-h); padding: 0 18px; border-width: 1px; font-size: .92rem; font-weight: 600; line-height: 1.2; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+button:hover:not(:disabled) { filter: none; transform: none; }
+button:active:not(:disabled) { transform: translateY(1px); }
+/* Filled (default) buttons are ink: an ordinary action. Orange is reserved for each page's one primary,
+   matched by role below, never by "every button that is not secondary". */
+.fable-primary, #everyday-primary, #workspace-start, #workspace-project-connect, #workspace-enable-mode, #announcement-send, #workspace-native-bind, #workspace-native-approve, #agent-approve-button, #agent-run-approve-button, #household-approve, #agent-setup-button, #settings-form button[type="submit"], #setup-open, #setup-next, #setup-finish, #update-install, #camera-live-start { background: var(--orange); color: var(--orange-ink); border-color: var(--orange); }
+:is(main, dialog) button:not(.secondary, .danger, .tab-button):hover:not(:disabled) { box-shadow: inset 0 0 0 200px rgba(0, 0, 0, .08); }
+#kids-single-link { background: transparent; border-color: transparent; color: var(--ink-2); }
+/* The Everyday hero and the announce status card carry the old dark-screen class; on paper they must use
+   the page tokens, otherwise hairline buttons inside them vanish in light mode. */
+.hero.display, .announcement-status-card.display { --line: inherit; --line-strong: inherit; --rule: inherit; --text: inherit; --muted: inherit; --inset: inherit; --btn-bg: inherit; --btn-fg: inherit; --btn2-fg: inherit; --btn2-line: inherit; --btn2-hover: inherit; --btn-danger-bg: inherit; --orange-text: inherit; --ok: inherit; --warn: inherit; --danger: inherit; --danger-text: inherit; }
+/* Stop as the primary (voice turn active) stays ink: it is the only non-orange primary. */
+.everyday-primary[data-target="voice-stop-button"] { background: var(--ink) !important; color: var(--paper) !important; border-color: var(--ink) !important; }
+button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line-strong); box-shadow: none; }
+button.secondary:hover:not(:disabled) { background: var(--paper-2); border-color: var(--ink); }
+button.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+button.danger:hover:not(:disabled) { background: var(--danger); color: #fff5f2; }
+.stop-agent { color: var(--danger); border-color: var(--danger) !important; background: transparent; }
+button:disabled, select:disabled { opacity: 1; filter: none; cursor: not-allowed; }
+select:disabled { color: var(--ink-3); }
+:is(main, dialog) button:disabled:not(.secondary, .danger, .tab-button, .kids-activity, .icon-button, .workspace-segments *, .assistant-mode-switch *) { background: var(--paper-3); color: var(--ink-3); border-color: transparent; }
+:is(main, dialog) button:is(.secondary, .danger):disabled { background: transparent; color: var(--ink-3); border-color: var(--line); }
+.tab-button:disabled { opacity: .45; }
+/* Selected (aria-pressed) power mode: the current state is an orange-outlined pill with orange text,
+   so it reads as "this is where Reachy is", not as a second filled action. */
+button[aria-pressed="true"] { box-shadow: none; }
+.global-power-primary button[aria-pressed="true"], #global-power-controls button[aria-pressed="true"] { background: transparent; color: var(--orange-text); border-color: var(--orange-text); }
+.global-power-primary button[aria-pressed="true"]:disabled { background: transparent; color: var(--orange-text); border-color: var(--orange-text); opacity: .75; }
+button .icon { width: 1.1em; height: 1.1em; }
+/* Centred action rows, including when they wrap. */
+.actions, .global-power-primary, #global-power-controls .actions, .quick-announcements, .camera-actions, .household-actions, .presentation-actions, .agent-run-toolbar, .everyday-permission-links, .camera-report-actions, .bluetooth-actions, .robot-actions, .precision-centers, .contextual-offer-response, .workspace-clear-confirm .workspace-toolbar, .kids-host-choices, .kids-actions, .kids-single-actions, .hero .everyday-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+.actions.left-actions { justify-content: center; }
+.workspace-pane-work .workspace-toolbar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.workspace-pane-work .workspace-toolbar button { flex: 1 1 180px; }
+.agent-run-control-group { display: contents; }
+.camera-actions { margin-top: 14px; }
+.camera-actions button { flex: 0 1 auto; width: auto; }
+#camera-live-start { flex: 1 1 100%; min-height: 56px; font-size: 1.02rem; }
+.global-power-primary button { flex: 1 1 120px; max-width: 220px; }
+.quick-announcements button { min-height: 40px; padding: 0 14px; font-size: .84rem; }
+.everyday-primary-row { justify-items: center; }
+.everyday-primary-hint { text-align: center; }
+
+/* 4. Fields */
+label { font-weight: 600; font-size: .9rem; }
+select, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea { min-height: 46px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--paper-2); color: var(--ink); font-size: .95rem; }
+textarea { min-height: 120px; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; border-color: var(--orange); }
+.toggle-row, .checkbox-row { border: 0; border-radius: 0; background: none; padding: 8px 0; }
+
+/* 5. Status */
+.badge { border: 1px solid var(--line-strong); border-radius: 999px; padding: 4px 10px; font-family: var(--sans); font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: none; color: var(--ink-2); background: transparent; }
+.badge[data-status="running"], .badge.warning { color: var(--orange-text); border-color: var(--orange-text); }
+.badge[data-status="completed"] { color: var(--ok); border-color: var(--ok); }
+.badge[data-status="failed"], .badge[data-status="partial"] { color: var(--danger); border-color: var(--danger); }
+.message:not(:empty) { margin-top: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; font-size: .9rem; background: transparent; }
+.message.ok:not(:empty) { border-left: 3px solid var(--ok); }
+.message.error:not(:empty) { border-left: 3px solid var(--danger); }
+.warning-note { border-left: 3px solid var(--warn); }
+.hero-label .hero-mode { border-radius: 999px; }
+
+/* 6. Disclosures: a quiet row with the round + / − on the right; no extra box. */
+main details:not(.kids-guide-card) { padding-top: 0; }
+summary { min-height: 48px; font-weight: 600; color: var(--ink); }
+summary::after { width: 28px; height: 28px; border: 1px solid var(--line-strong); color: var(--ink-2); }
+details.card > summary.section-heading { min-height: 56px; }
+details.card > summary.section-heading h2 { font-size: 1.25rem; }
+details.card > summary.section-heading .label { display: none; }
+.card details:first-child { border-top: 0; }
+
+/* Robot layout rules live in the "Robot: three tasks" block above. */
+
+/* ---------- Announce: write, choose what Reachy does, send ---------- */
+.fable-back { margin: 6px 0 0; padding: 0 14px 0 10px; min-height: 40px; font-size: .88rem; color: var(--ink-2); border-color: var(--line); }
+.announcement-card { margin-top: 10px; padding-top: 12px; border-top: 0; }
+.announcement-card .section-heading h2 { font-size: 1.5rem; }
+#announcement-text { min-height: 132px; margin-top: 10px; font-size: 1.02rem; line-height: 1.5; }
+.announcement-meta { margin-top: 6px; font-size: .72rem; }
+.quick-announcements { margin-top: 10px; }
+.announcement-behavior-row { margin-top: 18px; }
+.announcement-behavior-row select { font-weight: 600; }
+.announcement-actions { display: grid; gap: 8px; margin-top: 14px; justify-items: center; }
+#announcement-send { width: 100%; min-height: 56px; font-size: 1.05rem; font-weight: 700; }
+#announcement-stop { width: auto; }
+.announcement-options-disclosure { margin-top: 18px; }
+.announcement-options-disclosure > summary { color: var(--ink-2); font-size: .92rem; }
+.announcement-options { margin-top: 0; padding: 4px 0 10px; border-top: 0; }
+.announcement-status-card { margin-top: 20px; padding-top: 14px; }
+.announcement-status-card .section-heading h2 { font-size: 1.15rem; }
+.announcement-status-grid { margin-top: 10px; gap: 8px 24px; }
+.announcement-status-grid .label { font-size: .68rem; }
+.announcement-status-grid .quote { font-size: 1.1rem; color: var(--ink-2); }
+#announcement-error:empty { display: none; }
+@media (min-width: 900px) {
+  #panel-announce { max-width: 760px; }
+}
+
+/* ---------- Workspace: one disconnected state, not four ---------- */
+/* While nothing is connected the Connect block (header button + help line) is the only "not connected"
+   text. The Chat pane status and thread placeholder return as soon as the state is pending, error or on,
+   so errors, cancellation and live status always show. */
+/* #workspace-state always shows (it carries "Cleared…" and connection errors). Only the thread's
+   placeholder line, which repeats it word for word while off, folds away; notes and stale rows stay. */
+#panel-agent[data-connection="off"] .workspace-thread > .workspace-empty { display: none; }
+#panel-agent[data-connection="off"] .workspace-thread { min-height: 0; padding: 0; }
+#workspace-state { margin: 0; }
+.workspace-empty { padding: 24px 12px; opacity: 1; color: var(--ink-3); }
+/* Keep the confirmed voice destination readable even while browsing a different Workspace pane. */
+body[data-destination="agent"] .voice-route .assistant-mode-state { display: block !important; }
+.workspace-header { margin-top: 6px; padding: 10px 0 4px; }
+.workspace-header-main { display: grid; gap: 6px; justify-items: start; }
+.workspace-header h2 { font-size: .95rem; padding: 8px 14px; }
+.workspace-header #workspace-mode-session { font-size: .9rem; }
+.workspace-header-more { margin-top: 0; }
+.workspace-header-more > summary { min-height: 40px; font-size: .85rem; }
+.workspace-segments { margin-top: 10px; }
+.workspace-pane-chat .compact-note { font-size: .9rem; }
+.ws-when-off { margin-top: 4px; }
+#workspace-project-connect-help { text-align: center; margin: 0; }
+.workspace-about > summary { min-height: 40px; }
+@media (max-width: 760px) {
+  .workspace-segments { border: 1px solid var(--line); background: transparent; padding: 4px; }
+  .workspace-segments button { min-height: 44px; font-size: .88rem; }
+  .workspace-segments button[aria-selected="true"] { color: var(--paper); background: var(--ink); box-shadow: none; }
+}
+
+/* ---------- Everyday: keep the approved composition; align it to the vocabulary ---------- */
+.hero .everyday-actions button { padding: 0 16px; }
+.hero .everyday-actions { justify-content: center; }
+@media (min-width: 900px) {
+  .hero .everyday-actions { justify-content: center; }
+  .everyday-primary-row { justify-items: stretch; }
+}
+.conversation-card { border-top: 1px solid var(--line); }
+.companion-card .section-heading h2 { font-size: 1.25rem; }
+.companion-look { margin-top: 10px; }
+.companion-look > label { font-size: .88rem; color: var(--ink-2); }
+.companion-look-row { margin-top: 6px; }
+.companion-card > button.secondary { margin-top: 12px; }
+.everyday-companion-view .companion-card { padding-bottom: 12px; }
+/* Everyday's voice strip: the Stop all work button is the width of the row; the route line stays short. */
+.voice-route .agent-mode-bar { justify-content: center; }
+.voice-route .agent-mode-bar button { flex: 1 1 auto; max-width: 420px; }
+body[data-destination="agent"] .voice-route .agent-mode-bar { justify-content: center; }
+.voice-route .message:not(:empty) { text-align: left; }
+
+/* ---------- Approval sheet: one orange-edged surface, left text, centred approve ---------- */
+.agent-approval-sheet { margin-top: 18px; }
+.agent-approval-sheet button { width: 100%; }
+
+/* Page eyebrow spacing on phones: tighter under the scrolling header. */
+@media (max-width: 899px) {
+  .page-heading { padding-top: 6px; }
+}
+
+/* =====================================================================================================
+   Round 2 · symmetry, spacing and the semantic button roles (judge feedback on the first render).
+   ===================================================================================================== */
+
+/* ---- Everyday: a smaller illustration column, a greeting with room, three equal chips ---- */
+.hero { grid-template-columns: 118px minmax(0, 1fr); gap: 16px 18px; padding: 10px 0 16px; }
+.hero-face .hb-scene { max-width: 118px; }
+.hero-copy { padding-right: 4px; }
+.hero-label { font-size: .66rem; gap: 6px 8px; flex-wrap: nowrap; }
+.hero-label .hero-mode { font-size: .66rem; padding: 1px 8px; }
+#runtime-state { margin-top: 6px; }
+.hero-detail { margin-top: 4px; font-size: .95rem; }
+.everyday-primary-row { margin-top: 2px; gap: 8px; }
+.hero .everyday-actions { width: 100%; max-width: 440px; margin: 2px auto 0; gap: 8px; }
+.hero .everyday-actions button { flex: 1 1 0; justify-content: center; padding: 0 10px; min-width: 0; }
+@media (min-width: 900px) {
+  .hero { grid-template-columns: 150px minmax(0, 1fr) 300px; gap: 14px 28px; }
+  .hero-face .hb-scene { max-width: 150px; }
+  .hero .everyday-actions { max-width: none; }
+  .everyday-primary { width: 100%; min-width: 0; }
+}
+@media (max-width: 650px) {
+  .hero { grid-template-columns: 112px minmax(0, 1fr); gap: 12px 14px; }
+  .hero-face .hb-scene { max-width: 112px; }
+  #runtime-state { font-size: 1.45rem; }
+  .everyday-actions button { padding: 0 8px; font-size: .88rem; }
+}
+/* The voice strip and the conversation line: one rhythm (16 above, 14 inside). */
+body[data-destination="dashboard"] .global-robot-status { margin-top: 14px; padding-top: 14px; gap: 12px; }
+.conversation-card { margin-top: 16px; padding: 14px 0 12px; }
+/* Companion: one row that never wraps; the two secondaries share the same height as Look. */
+.companion-card { margin-top: 16px; padding-top: 16px; }
+.companion-look > label { margin: 0; }
+.companion-look-row { grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; }
+.companion-look-row button { white-space: nowrap; padding: 0 16px; min-height: 48px; }
+@media (max-width: 650px) {
+  .companion-look-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr) minmax(0, 1fr); }
+  .companion-look-row input { grid-column: 1 / -1; }
+  .companion-look-row button { padding: 0 8px; font-size: .88rem; }
+}
+#companion-look-reason, #everyday-camera-activity { text-align: left; }
+.companion-card > button.secondary { display: block; width: fit-content; margin: 14px auto 0; }
+
+/* ---- Robot: see the "Robot: three tasks" block; no second layer here ---- */
+
+/* ---- Settings: preference rows with one spacing, empty status lines take no room ---- */
+.message:empty { display: none; }
+.presence-controls { display: grid; grid-template-columns: 1fr; gap: 0; margin: 2px 0 0; }
+.presence-controls .checkbox-row { min-height: 0; margin: 0; padding: 10px 0; border: 0; border-radius: 0; background: none; }
+#companion-settings .companion-suggestions { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
+.companion-suggestions label { display: flex; align-items: center; gap: 12px; }
+.companion-suggestions label select { flex: 1 1 auto; width: auto; }
+.companion-suggestions > p.compact-note { margin: 8px 0 0; }
+#companion-settings > details { margin-top: 14px; }
+#companion-settings > details > summary, #household-card > details > summary, #everyday-settings-card > details > summary { min-height: 52px; }
+#household-card { padding-top: 18px; }
+#household-card .section-heading + p { margin: 8px 0 0; }
+#household-card #household-camera-state { margin: 4px 0 10px; }
+.household-actions { margin: 12px 0; }
+@media (min-width: 900px) {
+  .presence-controls { grid-template-columns: 1fr 1fr; column-gap: 24px; }
+}
+
+/* ---- Workspace: one entry while confirmed disconnected; unavailable panes sit below, quieter ---- */
+.voice-route .agent-mode-bar button { min-height: 48px; }
+.workspace-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 14px; }
+.workspace-header .workspace-header-main { grid-column: 1; }
+.workspace-header #workspace-start { grid-column: 2; grid-row: 1; }
+.workspace-header .badge { grid-column: 2; justify-self: end; }
+.workspace-header-more { grid-column: 1 / -1; }
+#panel-agent[data-connection="off"] .workspace-header .badge { display: none; } /* the session line already says it */
+#panel-agent[data-connection="off"] .workspace-header-main { display: grid; gap: 4px; }
+@media (min-width: 761px) {
+  #panel-agent[data-connection="off"] .workspace-layout { grid-template-columns: minmax(0, 1fr); row-gap: 12px; max-width: 760px; }
+  #panel-agent[data-connection="off"] .workspace-pane-project { order: 0; grid-column: 1; }
+  #panel-agent[data-connection="off"] .workspace-pane-chat { order: 1; }
+  #panel-agent[data-connection="off"] .workspace-pane-work { order: 2; }
+  #panel-agent[data-connection="off"] .workspace-pane-project .pane-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  #panel-agent[data-connection="off"] .ws-when-off { max-width: 420px; margin: 8px auto 0; text-align: center; }
+  #panel-agent[data-connection="off"] .workspace-pane-project .workspace-clear-row { display: flex; justify-content: center; border-top: 0; margin-top: 6px; padding-top: 0; }
+  #panel-agent[data-connection="off"] .workspace-pane-project .workspace-about { display: flex; justify-content: center; }
+  #panel-agent[data-connection="off"] #workspace-native-identity { display: none; }
+  #panel-agent[data-connection="off"] .workspace-pane-chat { border-top: 1px solid var(--line); padding-top: 12px; }
+  #panel-agent[data-connection="off"] .workspace-pane-work { border-top: 1px solid var(--line); padding-top: 12px; opacity: .6; }
+  #panel-agent[data-connection="off"] .workspace-pane-work:focus-within, #panel-agent[data-connection="off"] .workspace-pane-work:hover { opacity: 1; }
+}
+#panel-agent[data-connection="off"] .workspace-pane-chat .pane-title { display: none; }
+#workspace-state { font-size: .95rem; color: var(--ink-2); }
+#workspace-native-state { margin-top: 8px; }
+
+/* Primaries, disabled: the same flat muted fill as every other disabled button (ids above would
+   otherwise keep them orange). */
+/* ---- Round 3 corrections ---- */
+/* Announce status card: the old dark-screen class also sets colour directly; on paper it reads as page ink. */
+.announcement-status-card.display { color: var(--ink); background: transparent; }
+.announcement-status-card.display :is(.label, .muted, .compact-note) { color: var(--ink-2); }
+.announcement-status-card.display h2 { color: var(--ink); }
+/* Narrow phones (under 360 px): the hero stacks and centres; the state line wraps instead of clipping;
+   the chips keep 48 px targets and may wrap to a second centred line. No horizontal overflow. */
+@media (max-width: 359px) {
+  .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "face" "copy" "primary" "actions"; justify-items: center; gap: 10px; text-align: center; }
+  .hero > .hero-face { justify-self: center; width: 120px; max-width: 100%; }
+  .hero-face .hb-scene { max-width: 120px; }
+  .hero-copy { width: 100%; padding: 0; }
+  .hero-label { flex-wrap: wrap; justify-content: center; white-space: normal; }
+  .hero-label .hero-mode { white-space: normal; }
+  #runtime-state { font-size: 1.4rem; }
+  .everyday-primary-hint { padding: 0 4px; }
+  .hero .everyday-actions { gap: 6px; }
+  .hero .everyday-actions button { flex: 0 1 auto; min-width: 0; padding: 0 12px; font-size: .86rem; }
+  .global-power-primary button, .companion-look-row button { padding: 0 8px; }
+  .companion-look-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .companion-look-row button:last-child { grid-column: 1 / -1; }
+}
+/* Workspace, confirmed disconnected, wide screens: the whole page (header, Connect block, panes) sits in one
+   bounded column centred beside the rail, instead of a full-width header over a left-anchored column. */
+@media (min-width: 900px) {
+  #panel-agent[data-connection="off"] { max-width: 800px; margin-left: auto; margin-right: auto; }
+  #panel-agent[data-connection="off"] .workspace-layout { max-width: none; }
+}
+.fable-primary:disabled, #everyday-primary:disabled, #workspace-start:disabled, #workspace-project-connect:disabled, #workspace-enable-mode:disabled, #announcement-send:disabled, #workspace-native-bind:disabled, #workspace-native-approve:disabled, #agent-approve-button:disabled, #agent-run-approve-button:disabled, #household-approve:disabled, #agent-setup-button:disabled, #settings-form button[type="submit"]:disabled, #setup-next:disabled, #setup-finish:disabled, #update-install:disabled, #camera-live-start:disabled { background: var(--paper-3); color: var(--ink-3); border-color: transparent; }

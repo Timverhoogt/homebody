@@ -94,7 +94,7 @@ def test_shared_power_and_stop_use_visible_feedback(browser_page, outcome):
         "**/api/robot/stop",
         lambda route: route.fulfill(json={"robot_stopped": True, "active_cancelled": True}),
     )
-    page.locator("#global-robot-stop").click()
-    page.wait_for_function("document.querySelector('#global-stop-message').textContent === 'Movement stopped'")
-    assert page.locator("#global-stop-message").is_visible()
+    page.locator("#robot-stop-button").click()
+    page.wait_for_function("document.querySelector('#robot-message').textContent === 'Movement stopped'")
+    assert page.locator("#robot-message").is_visible()
     assert not errors

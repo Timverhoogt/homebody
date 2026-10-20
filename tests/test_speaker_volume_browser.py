@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
+from settings_ui_helpers import choose
 
 
 @pytest.fixture
@@ -60,6 +61,7 @@ def browser_page():
         page.route("**/*", respond)
         page.goto("http://homebody.test")
         page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
+        choose(page,"voice")
         yield page, state, calls, behavior
         browser.close()
 

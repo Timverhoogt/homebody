@@ -192,11 +192,11 @@ def test_scroll_top_middle_bottom_never_hides_controls(ui, scheme):
       return items[items.length - 1].getBoundingClientRect().bottom; }""")
     assert last_bottom <= _row_top(page), (last_bottom, _row_top(page))
     _shot(page, f"scrolled-bottom-390-{scheme}")
-    # Robot: power section with the moved controls, Stop movement there, Meeting · Sleep folded.
+    # Robot: compact power plus one movement Stop under Look; Meeting · Sleep stays folded.
     page.click("#tab-robot")
     page.evaluate("window.scrollTo(0, 0)")
     for selector in ("#robot-power #global-power-awake", "#robot-power #global-power-standby",
-                     "#robot-power #global-robot-stop", "#robot-power #global-power-controls > summary"):
+                     "#robot-stop-button", "#robot-power #global-power-controls > summary"):
         assert page.locator(selector).is_visible(), selector
     assert not page.locator("#global-power-controls").evaluate("el => el.open")
     _overflow(page)

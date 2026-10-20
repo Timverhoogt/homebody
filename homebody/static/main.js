@@ -964,6 +964,8 @@ function renderPowerNow(powerMode, runtime) {
   $("compact-power-detail").textContent = powerTransitionPending
     ? "Change requested · waiting for Reachy to confirm"
     : details[powerMode] || "Mode not reported";
+  // Presentation only: the healthy Awake subtitle repeats the Motors fact beside it, so CSS hides it.
+  $("compact-power-detail").dataset.routine = String(!powerTransitionPending && powerMode === "awake" && runtime.motors_enabled === true);
   if (changed) window.HomebodyMotion?.enter(element);
 }
 
@@ -1206,13 +1208,22 @@ function updateStatus(payload, sequence = statusSequence) {
   const readinessText = powerTransitionPending
     ? "Changing motor power — manual presets are paused"
     : robotBusy
-      ? "Moving — press Stop action to cancel active and queued movement"
-      : powerMode === "standby"
-        ? "Standby — a movement command wakes Reachy first"
-        : powerMode === "awake"
-          ? "Awake — bounded remote movement is enabled"
-          : `${powerMode} — manual movement unavailable`;
+      ? "Moving — press Stop movement to cancel active and queued movement"
+      : motorsEnabled !== true && motorsEnabled !== false
+        ? "Motor state unavailable · check the connection before moving"
+        : powerMode === "standby"
+          ? "Standby — a movement command wakes Reachy first"
+          : powerMode === "awake"
+            ? "Awake — bounded remote movement is enabled"
+            : `${powerMode} — manual movement unavailable`;
   $("robot-readiness").textContent = readinessText;
+  // UI-only: the Movement details fold opens (and is never auto-closed) when the state needs reading —
+  // motors unknown, a runtime or action error, or a mode where manual movement is unavailable.
+  const movementNeedsAttention = (motorsEnabled !== true && motorsEnabled !== false)
+    || Boolean(runtime.last_error) || Boolean(runtime.robot_action_last_error)
+    || !["awake", "standby"].includes(powerMode);
+  $("movement-details").dataset.attention = String(movementNeedsAttention);
+  if (movementNeedsAttention) $("movement-details").open = true;
   const motorAnnouncement = `${motorStateText}. ${readinessText}`;
   if (motorAnnouncement !== lastMotorAnnouncement) {
     $("motor-state-live").textContent = motorAnnouncement;
@@ -1561,6 +1572,9 @@ async function refreshStatus() {
     $("compact-power-mode").textContent = "Unknown · offline";
     $("compact-power-mode").dataset.mode = "unknown";
     $("compact-power-detail").textContent = "Live status unavailable · power controls paused";
+    $("compact-power-detail").dataset.routine = "false";
+    $("movement-details").dataset.attention = "true";
+    $("movement-details").open = true;
     $("motor-state").textContent = "Motor state unavailable";
     $("motor-state-dot").className = "motor-state-dot error";
     $("robot-readiness").textContent = "Remote controls disabled until live status returns";
@@ -1953,7 +1967,7 @@ $("initiative-preferences-reset").addEventListener("click", () => {
 const PRESENTATION_NEEDS = {
   shared: ["Turn on Shared physical context in this card.", "Go to switch",
     { tab: "agent", companion: true, id: "shared-physical-context-enabled" }],
-  camera: ["Turn on On-demand camera in Settings › Embodiment and privacy.", "Go to setting",
+  camera: ["Turn on Camera access for AI in Settings › Privacy & access.", "Go to setting",
     { tab: "settings", id: "camera_enabled" }],
   initiative: ["Turn on Use initiative policy in Initiative & Offers.", "Go to switch",
     { tab: "agent", companion: true, id: "initiative-policy-enabled" }],
@@ -1963,18 +1977,22 @@ const PRESENTATION_NEEDS = {
     { tab: "dashboard", id: "tab-agent" }],
   awake: ["Reachy must be Awake with motors on: use Wake up on the Robot page.", "Go to Wake up",
     { tab: "robot", id: "global-power-awake" }],
-  face: ["Turn off Local face following in Settings › Embodiment and privacy.", "Go to setting",
+  face: ["Turn off Local face following in Settings › Everyday.", "Go to setting",
     { tab: "settings", id: "face_tracking_enabled" }],
   kids: ["Kids Mode is active or locked; presenting is unavailable.", "", null],
 };
 
 function goToControl({ tab, companion, id }) {
-  activateTab(companion ? "settings" : tab, false, true);
+  const destination = companion ? "settings" : tab;
+  activateTab(destination, false, true);
+  // Settings has its own category navigation: it selects the category, opens disclosures and focuses.
+  if (destination === "settings" && window.HomebodySettings?.reveal(id)) return;
   if (companion) $("companion-advanced").open = true;
   const control = $(id);
   if (!control) return;
-  const details = control.closest("details");
-  if (details && !details.open) details.open = true;
+  for (let parent = control.parentElement; parent; parent = parent.parentElement) {
+    if (parent.tagName === "DETAILS") parent.open = true;
+  }
   control.scrollIntoView({ block: "center" });
   control.focus({ preventScroll: true });
 }

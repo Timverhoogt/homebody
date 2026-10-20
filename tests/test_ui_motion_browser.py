@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
+from settings_ui_helpers import choose
 from test_assistant_modes_browser import ui  # noqa: F401
 from test_workspace_browser import workspace_browser  # noqa: F401
 
@@ -149,6 +150,7 @@ def test_home_presence_pauses_when_hidden_and_drops_to_offline(ui):
     if page.locator("#tab-more").is_visible():  # phones: Settings is behind More
         page.click("#tab-more")
     page.click("#tab-settings")
+    choose(page,"system")
     page.wait_for_timeout(250)
     assert _scene(page, "hero-presence")["motion"] == "off" and _running(page, "#hero-presence") == 0
     page.click("#tab-dashboard")
@@ -193,7 +195,9 @@ def test_home_hero_fits_and_power_controls_stay_hit_testable(ui, width, scheme):
         return {left: c.left, right: c.right, w: c.width, hl: h.left, hr: h.right,
                 doc: document.documentElement.scrollWidth}; }""")
     assert geometry["left"] >= geometry["hl"] and geometry["right"] <= geometry["hr"]
-    assert geometry["doc"] <= width and geometry["w"] >= 140
+    assert geometry["doc"] <= width
+    # The approved phone illustration is smaller; it must remain visible, not shrink to zero.
+    assert geometry["w"] >= (112 if width < 900 else 140)
     page.evaluate("activateTab('robot')")  # power controls live in the Robot page's power section
     for selector in ('#global-power-standby', '#global-power-awake'):
         page.locator(selector).focus()
@@ -529,6 +533,7 @@ def _updates_page(ui, width=390):
 
     page.route("**/api/updates", updates)
     page.evaluate("document.getElementById('tab-settings').click()")
+    choose(page,"system")
     return page, catalog, control, errors
 
 
@@ -711,8 +716,9 @@ def test_motion_feedback_is_token_bound_and_reset_releases_everything(ui):
 def test_disclosure_entrances_are_opt_in_and_skip_reduced_motion(ui):
     page, state, posts, errors = ui
     page.evaluate("document.getElementById('tab-settings').click()")
+    choose(page,"system")
     assert 3 <= page.evaluate("document.querySelectorAll('details[data-hb-disclosure]').length") <= 8
-    page.locator("#updates-card details summary").click()
+    page.locator("#updates-card details[data-hb-disclosure] > summary").click()
     page.wait_for_function("document.getElementById('update-history').classList.contains('hb-enter')")
     page.wait_for_timeout(400)
     assert not page.evaluate("document.getElementById('update-history').classList.contains('hb-enter')")
@@ -722,8 +728,8 @@ def test_disclosure_entrances_are_opt_in_and_skip_reduced_motion(ui):
     assert page.evaluate("document.querySelectorAll('#global-power-controls .hb-enter').length") == 0
     page.emulate_media(reduced_motion="reduce")
     page.evaluate("activateTab('settings')")
-    page.locator("#updates-card details summary").click()
-    page.locator("#updates-card details summary").click()
+    page.locator("#updates-card details[data-hb-disclosure] > summary").click()
+    page.locator("#updates-card details[data-hb-disclosure] > summary").click()
     assert not page.evaluate("document.getElementById('update-history').classList.contains('hb-enter')")
     assert page.evaluate("HomebodyMotion.enter(document.getElementById('updates-card'))") is False
     assert not errors

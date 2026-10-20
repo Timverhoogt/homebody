@@ -13,11 +13,11 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=115">
-  <link rel="stylesheet" href="/static/scene.css?v=115">
-  <link rel="stylesheet" href="/static/onboarding.css?v=115">
-  <link rel="stylesheet" href="/static/shell.css?v=115">
-  <link rel="stylesheet" href="/static/fable.css?v=115">
+  <link rel="stylesheet" href="/static/style.css?v=121">
+  <link rel="stylesheet" href="/static/scene.css?v=121">
+  <link rel="stylesheet" href="/static/onboarding.css?v=121">
+  <link rel="stylesheet" href="/static/shell.css?v=121">
+  <link rel="stylesheet" href="/static/fable.css?v=121">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -48,7 +48,7 @@
       <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.3L12 16l-4.9 2.6 1.1-5.3-4-3.7 5.4-.6z"/></symbol>
       <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M4 10v4h3l7 4V6l-7 4z"/><path d="M17.5 9.5a3.5 3.5 0 0 1 0 5"/><path d="M7 14l1 5h2.5"/></symbol>
       <symbol id="i-robot" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="4"/><path d="M9 8 7.5 4.5M15 8l1.5-3.5"/><path d="M9.5 13.5h.01M14.5 13.5h.01"/></symbol>
-      <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24"><path d="m9.5 3-.5 2a8 8 0 0 0-1.6.9l-2-.6L3 9.5l1.5 1.4a8 8 0 0 0 0 1.8L3 14.1l2.4 4.2 2-.6a8 8 0 0 0 1.6.9l.5 2h5l.5-2a8 8 0 0 0 1.6-.9l2 .6 2.4-4.2-1.5-1.4a8 8 0 0 0 0-1.8L21 9.5l-2.4-4.2-2 .6A8 8 0 0 0 15 5l-.5-2z"/><circle cx="12" cy="11.8" r="3"/></symbol>
       <symbol id="i-more" viewBox="0 0 24 24"><path d="M6 12h.01M12 12h.01M18 12h.01"/></symbol>
       <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></symbol>
       <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="4" width="6" height="10" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3"/></symbol>
@@ -227,7 +227,7 @@
 
       <section class="card conversation-card" data-empty="true">
         <!-- Empty until the runtime reports a transcript or reply; then the two turns replace this line. -->
-        <p id="conversation-empty" class="conversation-empty">Nothing said yet. Say <b>Hey Reachy</b> and the last exchange appears here.</p>
+        <p id="conversation-empty" class="conversation-empty">Say <b>Hey Reachy</b> to begin.</p>
         <div><p class="label">Last heard</p><p id="last-transcript" class="quote">—</p></div>
         <div><p class="label">Last response</p><p id="last-response" class="quote">—</p></div>
         <p class="muted compact-note power-note">Standby keeps local wake detection active. Meeting and Sleep stop voice capture; Reachy folds safely before torque is released.</p>
@@ -256,7 +256,7 @@
       <div id="agent-companion-view" class="everyday-companion-view">
       <section id="companion-card" class="card companion-card" aria-labelledby="companion-heading">
         <div class="section-heading">
-          <div><p class="label">Companion</p><h2 id="companion-heading">Look and notice</h2></div>
+          <div><p class="label">Companion</p><h2 id="companion-heading">Ask about what Reachy sees</h2></div>
           <span id="companion-activity" class="badge">Unknown</span>
         </div>
 
@@ -459,7 +459,7 @@
         <div class="kids-hero-copy">
           <p class="label">Kids Mode · Supervised play</p>
           <h2>What shall we play?</h2>
-          <p class="kids-lead">Stories, games and make-believe, together.</p>
+          <p class="kids-lead">Games, stories and make-believe.</p>
           <div id="kids-hero-actions" class="kids-hero-actions">
             <button type="button" id="kids-host-setup-link" class="kids-host-start" aria-controls="kids-setup">Start playing</button>
             <button type="button" id="kids-single-link" class="secondary" aria-controls="kids-activity-picker">Just one game</button>
@@ -537,7 +537,7 @@
 
       <section id="kids-activity-picker" class="card kids-activity-card">
         <div class="section-heading">
-          <div><p class="label">Or · One activity</p><h2>Pick a single game instead</h2><p class="muted compact-note">Uses the age, length and language above. Reachy stays in this one game; End works the same.</p></div>
+          <div><p class="label">Or · One activity</p><h2>Choose one game</h2><p class="muted compact-note">Uses your play settings. End stops play.</p></div>
           <span id="kids-activity-badge" class="badge">Buddy chat</span>
         </div>
         <div class="kids-activities" role="radiogroup" aria-label="Kids Mode activity">
@@ -573,15 +573,14 @@
 
     <div id="panel-announce" class="tab-panel" role="tabpanel" aria-labelledby="tab-announce" data-panel="announce" hidden>
       <header class="page-heading"><h1>Announce</h1><p>Send a message for Reachy to speak.</p></header>
-      <button type="button" id="announce-back" class="fable-back"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg>Back to Everyday</button>
+      <button type="button" id="announce-back" class="fable-back"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg>Everyday</button>
       <section class="card announcement-card">
         <div class="section-heading">
-          <div><p class="label">Text to speech</p><h2>Reachy announcements</h2></div>
+          <div><p class="label">Text to speech</p><h2>What should Reachy say?</h2></div>
           <span id="announcement-badge" class="badge">Ready</span>
         </div>
-        <p class="muted">Type exactly what Reachy should say. Speech is synthesized through the private Hermes bridge; provider credentials never enter this app.</p>
 
-        <label for="announcement-text">Announcement text</label>
+        <label for="announcement-text" class="sr-only">Announcement text</label>
         <textarea id="announcement-text" maxlength="15000" rows="6" placeholder="Dinner is ready. Please come downstairs."></textarea>
         <div class="announcement-meta"><span id="announcement-count">0 / 15,000</span><span>Ctrl/⌘ + Enter to announce</span></div>
 
@@ -592,36 +591,42 @@
           <button type="button" class="secondary announcement-template" data-announcement-template="This is a test announcement from Homebody.">Test</button>
         </div>
 
-        <div class="grid-two announcement-options">
-          <label>TTS provider
-            <select id="announcement-provider"><option value="">Use app voice setting</option></select>
-          </label>
-          <label>TTS model
-            <select id="announcement-model"><option value="">Use app model</option></select>
-          </label>
-          <label>Voice
-            <select id="announcement-voice"><option value="">Use app voice</option></select>
-          </label>
-          <label>Physical behavior
-            <select id="announcement-behavior">
-              <option value="wake_and_return">Wake, speak, then fold to Standby</option>
-              <option value="voice_only">Voice only · do not change power state</option>
-              <option value="wake_and_stay">Wake, speak, and remain Awake</option>
-            </select>
-          </label>
-          <label>Repeat
-            <input id="announcement-repeat" type="number" min="1" max="10" step="1" value="1" />
-          </label>
-          <label>Pause between repeats (seconds)
-            <input id="announcement-pause" type="number" min="0" max="60" step="0.5" value="1" />
-          </label>
-        </div>
+        <!-- Movement is always visible: the behaviour choice says what Reachy will physically do. Voice
+             provider, model, repeat and pause are advanced and fold away; the app defaults apply. -->
+        <label class="announcement-behavior-row">Reachy will
+          <select id="announcement-behavior">
+            <option value="wake_and_return">Wake, speak, then fold to Standby</option>
+            <option value="voice_only">Voice only · do not change power state</option>
+            <option value="wake_and_stay">Wake, speak, and remain Awake</option>
+          </select>
+        </label>
 
         <div class="actions announcement-actions">
           <button type="button" id="announcement-send"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg>Announce now</button>
           <button type="button" id="announcement-stop" class="danger"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop &amp; clear queue</button>
         </div>
         <p id="announcement-message" class="message" role="status" aria-live="polite"></p>
+
+        <details class="announcement-options-disclosure">
+          <summary>Voice and repeat options</summary>
+          <div class="grid-two announcement-options">
+            <label>TTS provider
+              <select id="announcement-provider"><option value="">Use app voice setting</option></select>
+            </label>
+            <label>TTS model
+              <select id="announcement-model"><option value="">Use app model</option></select>
+            </label>
+            <label>Voice
+              <select id="announcement-voice"><option value="">Use app voice</option></select>
+            </label>
+            <label>Repeat
+              <input id="announcement-repeat" type="number" min="1" max="10" step="1" value="1" />
+            </label>
+            <label>Pause between repeats (seconds)
+              <input id="announcement-pause" type="number" min="0" max="60" step="0.5" value="1" />
+            </label>
+          </div>
+        </details>
       </section>
 
       <section class="card announcement-status-card display">
@@ -643,35 +648,17 @@
       <!-- Power lives here: main.js moves the live status row, Wake / Standby / Stop movement, Meeting · Sleep
            and their messages into this section at start-up. Everyday forwards its one primary action here. -->
       <section id="robot-power" class="card robot-power" aria-label="Reachy power"></section>
-      <section class="card robot-control-card" aria-busy="false" data-action-busy="false">
+      <!-- Composition: Look is the page's focal block. The d-pad sits centred in the first viewport with the one
+           Stop under it and the live motor line as its caption. Gestures are a quieter row below; precision folds. -->
+      <section class="card robot-control-card" aria-busy="false" data-action-busy="false" aria-label="Look and gestures">
         <div class="section-heading">
-          <div><h2>Move Reachy</h2></div>
+          <div><h2>Look</h2><p class="muted compact-note">Turn Reachy’s head. Keep the space around it clear.</p></div>
           <span id="robot-mode-badge" class="badge" hidden>—</span>
         </div>
-        <p class="muted">Keep space clear around Reachy. Movement is unavailable in Meeting and Sleep.</p>
 
-        <div class="motor-command-bar display">
-          <div class="motor-state-summary">
-            <span id="motor-state-dot" class="motor-state-dot" aria-hidden="true"></span>
-            <div>
-              <span class="label">Motor state</span>
-              <strong id="motor-state">Checking motor state…</strong>
-              <p id="robot-readiness" class="motor-readiness">Standby — movement will wake Reachy</p>
-              <span id="motor-state-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
-            </div>
-          </div>
-          <div class="motor-safety-actions" aria-label="Motor power and action controls">
-            <div class="legacy-power-controls" hidden><button type="button" id="motor-wake-button" data-power="awake">Wake &amp; enable</button>
-            <button type="button" id="motor-standby-button" data-power="standby" class="secondary">Fold &amp; disable</button></div>
-            <button type="button" id="robot-stop-button" class="danger" aria-describedby="robot-stop-help">Stop action</button>
-            <p id="robot-stop-help" class="motor-stop-help">Stops movement, not voice. Folding is allowed to finish.</p>
-          </div>
-        </div>
-        <p id="robot-message" class="message" role="status" aria-live="polite"></p>
-
-        <div class="robot-control-grid">
-          <div class="control-group">
-            <div class="control-group-heading"><div><h3>Look direction</h3><p class="muted compact-note">Choose where Reachy looks.</p></div><span class="control-chip">Head</span></div>
+        <div class="look-stage">
+          <div class="control-group look-group">
+            <div class="control-group-heading sr-only"><div><h3>Look direction</h3></div></div>
             <div id="look-d-pad" class="d-pad" role="group" aria-label="Head direction controls">
               <button type="button" class="secondary direction-up-left manual-control" data-robot-action="look" data-robot-value="up_left" aria-label="Look up and left">↖</button>
               <button type="button" class="secondary direction-up manual-control" data-robot-action="look" data-robot-value="up" aria-label="Look up">↑</button>
@@ -685,6 +672,32 @@
             </div>
           </div>
 
+          <div class="motor-command-bar">
+            <div class="motor-safety-actions" aria-label="Motor power and action controls">
+              <div class="legacy-power-controls" hidden><button type="button" id="motor-wake-button" data-power="awake">Wake &amp; enable</button>
+              <button type="button" id="motor-standby-button" data-power="standby" class="secondary">Fold &amp; disable</button></div>
+              <button type="button" id="robot-stop-button" class="danger" aria-describedby="robot-stop-help"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop movement</button>
+              <p id="robot-stop-help" class="motor-stop-help">Stops movement, not voice. Folding is allowed to finish.</p>
+            </div>
+            <!-- Movement details: the live motor text and readiness line. main.js opens this fold (and never
+                 closes it) when the state needs reading: unknown motors, errors, offline, Meeting / Sleep. -->
+            <details id="movement-details" class="movement-details" data-attention="false">
+              <summary>Movement details</summary>
+              <div class="motor-state-summary">
+                <span id="motor-state-dot" class="motor-state-dot" aria-hidden="true"></span>
+                <div>
+                  <span class="label">Motor state</span>
+                  <strong id="motor-state">Checking motor state…</strong>
+                  <p id="robot-readiness" class="motor-readiness">Standby — movement will wake Reachy</p>
+                </div>
+              </div>
+            </details>
+            <span id="motor-state-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
+          </div>
+          <p id="robot-message" class="message" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="robot-gestures" role="group" aria-label="Gestures">
           <div class="control-group expression-group">
             <div class="control-group-heading"><div><h3>Expression preset</h3><p class="muted compact-note">A short gesture; voice keeps playing.</p></div><span class="control-chip">Head + antennas</span></div>
             <label for="emotion-select" class="sr-only">Emotion</label>
@@ -704,7 +717,17 @@
             </select>
             <button type="button" id="emotion-button" class="manual-control">Perform selected expression</button>
           </div>
+
+          <div class="control-group dance-group">
+            <div class="control-group-heading"><div><h3>Dance preset</h3><p class="muted compact-note">Clear space before starting a dance.</p></div><span class="control-chip">Full body</span></div>
+            <div class="actions robot-actions">
+              <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="short"><span>Short</span><small>Compact</small></button>
+              <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="groovy"><span>Groovy</span><small>Medium</small></button>
+              <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="energetic" data-confirm="Energetic uses wide body, head, and antenna movement. Confirm that Reachy has clear space."><span>Energetic</span><small>Wide</small></button>
+            </div>
+          </div>
         </div>
+        <p class="muted action-status">Last action: <strong id="last-robot-action">—</strong><span id="robot-action-error"></span></p>
 
         <details class="control-group precision-group disclosure">
           <summary class="control-group-heading">
@@ -762,18 +785,8 @@
               </div>
             </div>
           </div>
-          <p class="muted compact-note">Limits: X ±15 mm, Y/Z ±20 mm, roll ±15°, pitch ±25°, precision head yaw ±35°, base yaw ±120° (inside the SDK’s ±160° safety limit). Base steps of 30° or 60° require clear-space confirmation. Stop action freezes the current pose.</p>
+          <p class="muted compact-note">Limits: X ±15 mm, Y/Z ±20 mm, roll ±15°, pitch ±25°, precision head yaw ±35°, base yaw ±120° (inside the SDK’s ±160° safety limit). Base steps of 30° or 60° require clear-space confirmation. Stop movement freezes the current pose.</p>
         </details>
-
-        <div class="control-group dance-group">
-          <div class="control-group-heading"><div><h3>Dance preset</h3><p class="muted compact-note">Clear space before starting a dance.</p></div><span class="control-chip">Full body</span></div>
-          <div class="actions robot-actions">
-            <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="short"><span>Short</span><small>Compact</small></button>
-            <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="groovy"><span>Groovy</span><small>Medium</small></button>
-            <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="energetic" data-confirm="Energetic uses wide body, head, and antenna movement. Confirm that Reachy has clear space."><span>Energetic</span><small>Wide</small></button>
-          </div>
-        </div>
-        <p class="muted action-status">Last action: <strong id="last-robot-action">—</strong><span id="robot-action-error"></span></p>
       </section>
 
       <details class="card bluetooth-card disclosure-card">
@@ -849,11 +862,10 @@
 
       <section class="card camera-card">
         <div class="section-heading">
-          <div><h2>Reachy camera</h2></div>
+          <div><h2>Camera</h2><p class="muted compact-note">Live video stays between this device and Reachy.</p></div>
           <div class="camera-status-cluster"><span id="camera-lens" class="camera-lens" aria-hidden="true"></span><span id="camera-live-status" class="badge">Off</span></div>
         </div>
-        <p id="camera-connectivity-message" class="muted" role="status">Pair an Owner device to check camera transport. No camera starts during pairing.</p>
-        <p class="muted">Live video stays between this device and Reachy. With camera controls on, drag to look around and release to hold.</p>
+        <p id="camera-connectivity-message" class="muted compact-note" role="status">Pair an Owner device to check camera transport. No camera starts during pairing.</p>
         <div id="camera-viewer" class="camera-viewer">
           <video id="reachy-camera-video" autoplay playsinline muted aria-label="Live Reachy camera feed"></video>
           <div class="camera-vision-overlay" aria-hidden="true">
@@ -921,8 +933,8 @@
           <div><dt>Control response</dt><dd id="camera-diag-control">No commands sent</dd></div>
           <div><dt>Direct connection</dt><dd id="camera-diag-ice">Not connected</dd></div></dl>
           <p class="muted compact-note">Frame freshness is time since this browser received a decoded frame, not full camera-to-screen latency. Details stay on this device.</p>
+          <p class="muted compact-note">The live viewer is opt-in, works only while Reachy is Awake, and stops when you leave this tab, background the app, enter Meeting, or enter Sleep. Movement holds automatically when decoded video stops arriving. HTTPS is a reduced-rate backup; it starts in Careful speed.</p>
         </details>
-        <p class="muted compact-note">The live viewer is opt-in, works only while Reachy is Awake, and stops when you leave this tab, background the app, enter Meeting, or enter Sleep. Movement holds automatically when decoded video stops arriving. HTTPS is a reduced-rate backup; it starts in Careful speed.</p>
         <form id="local-vision-ask" class="local-vision-ask" hidden>
           <label for="local-vision-question">Ask the local vision model</label>
           <div class="local-vision-row">
@@ -953,27 +965,52 @@
     </div>
 
     <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" hidden>
-      <header class="page-heading"><h1>Settings</h1><p>Configure voice, behaviour and connections.</p></header>
-      <nav class="settings-index" aria-label="Settings sections">
-        <a href="#companion-settings"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>Presence and suggestions</span></a>
-        <a href="#household-card"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>Household permissions<small>Camera, movement and connection</small></span></a>
-        <a href="#voice-card"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Voice and agent<small>Bridge, language, voice, embodiment, camera, local vision, MCP, Home Assistant</small></span></a>
-        <a href="#agent-setup-card"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg><span>Connect your agent<small>One-time setup message</small></span></a>
-        <a href="#speaker-card"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg><span>Speaker</span></a>
-        <a href="#updates-card"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg><span>Updates</span></a>
-        <a href="#lifecycle-card"><svg class="icon" aria-hidden="true"><use href="#i-power"/></svg><span>App and host</span></a>
-      </nav>
-      <section class="card" id="companion-settings"><h2>Presence and suggestions</h2>
-<dl class="companion-grid">
-          <div><dt>Presence</dt><dd id="companion-presence">Unknown</dd></div>
-          <div><dt>Camera</dt><dd id="companion-camera">Unknown</dd></div>
-          <div><dt>Microphone</dt><dd id="companion-microphone">Unknown</dd></div>
-        </dl>
+      <header class="page-heading"><h1>Settings</h1></header>
+      <!-- One category is visible at a time (settings-layout.js). Fields that live outside the
+           <form id="settings-form"> element stay associated with it through form="settings-form";
+           one Save stores the whole payload. Navigation only toggles [hidden], opens <details> and
+           moves focus: it never saves, grants, connects or starts media. -->
+      <div class="settings-shell">
+        <nav class="settings-nav" aria-label="Settings categories">
+          <label class="settings-nav-picker"><span>Category</span>
+            <select id="settings-category-select" aria-label="Settings category">
+              <option value="everyday">Everyday</option>
+              <option value="voice">Voice &amp; sound</option>
+              <option value="privacy">Privacy &amp; access</option>
+              <option value="connections">Connections</option>
+              <option value="system">System</option>
+            </select>
+          </label>
+          <ul class="settings-nav-list">
+            <li><button type="button" class="settings-nav-item" data-settings-nav="everyday"><strong>Everyday</strong><small>Conversation, motion, presence</small></button></li>
+            <li><button type="button" class="settings-nav-item" data-settings-nav="voice"><strong>Voice &amp; sound</strong><small>Speaker, language, voice engine</small></button></li>
+            <li><button type="button" class="settings-nav-item" data-settings-nav="privacy"><strong>Privacy &amp; access</strong><small>Camera, household, Everyday permissions</small></button></li>
+            <li><button type="button" class="settings-nav-item" data-settings-nav="connections"><strong>Connections</strong><small>Agent bridge, vision, MCP, Home Assistant</small></button></li>
+            <li><button type="button" class="settings-nav-item" data-settings-nav="system"><strong>System</strong><small>Updates, devices, app and host</small></button></li>
+          </ul>
+        </nav>
+        <div class="settings-content">
+      <section id="settings-everyday" class="settings-category" data-settings-category="everyday" aria-labelledby="settings-everyday-title" hidden>
+        <h2 id="settings-everyday-title" class="settings-category-title">Everyday</h2>
+        <section class="settings-block" id="conversation-settings" aria-labelledby="conversation-title">
+          <h3 id="conversation-title">Conversation and motion</h3>
+          <label class="toggle-row"><span><strong>Continued conversation</strong><small>Listen for a follow-up after each answer</small></span><input id="continuous_conversation" name="continuous_conversation" type="checkbox" form="settings-form" /></label>
+          <label class="toggle-row"><span><strong>Interruption</strong><small>Pipeline wake-phrase interruption or natural Realtime barge-in</small></span><input id="barge_in_enabled" name="barge_in_enabled" type="checkbox" checked form="settings-form" /></label>
+          <label class="toggle-row"><span><strong>Voice-state motion</strong><small>Listening, thinking, and speaking poses</small></span><input id="motion_enabled" name="motion_enabled" type="checkbox" checked form="settings-form" /></label>
+          <label class="toggle-row"><span><strong>Local face following</strong><small>Follow locally during conversations, including Kids when motion is on. Separate from AI camera access; nothing is uploaded, identified or saved.</small></span><input id="face_tracking_enabled" name="face_tracking_enabled" type="checkbox" form="settings-form" /></label>
+          <p id="face-tracking-status" class="muted compact-note" role="status">Off.</p>
+          <details id="movement-tuning" class="settings-disclosure"><summary>Movement tuning</summary>
+          <label class="toggle-row"><span><strong>Turn toward wake phrase</strong><small>Use one local microphone-array direction estimate after wake</small></span><input id="doa_enabled" name="doa_enabled" type="checkbox" form="settings-form" /></label>
+          <label>Face-following weight<input id="face_tracking_weight" name="face_tracking_weight" type="range" min="0" max="1" step="0.05" value="0.65" form="settings-form" /><small>Blend local face tracking with Reachy's voice and action motion.</small></label>
+          </details>
+          <p class="muted compact-note">These apply after Save settings, below.</p>
+        </section>
+        <section class="settings-block" id="companion-settings" aria-labelledby="companion-settings-title"><h3 id="companion-settings-title">Presence and suggestions</h3>
 <div class="presence-controls">
             <label class="checkbox-row"><input type="checkbox" id="presence-enabled" />
-              <span><strong>Notice room presence</strong><small>Use the trusted sensor, without identifying anyone.</small></span></label>
+              <span><strong>Notice room presence</strong><small>Uses your room sensor. No identification.</small></span></label>
             <label class="checkbox-row"><input type="checkbox" id="presence-acknowledgement-enabled" />
-              <span><strong>Acknowledge arrivals silently</strong><small>One small head movement when already Awake; never wakes or powers motors.</small></span></label>
+              <span><strong>Acknowledge arrivals silently</strong><small>A small nod when Awake. Never wakes Reachy.</small></span></label>
           </div>
 <p id="presence-message" class="message" role="status" aria-live="polite"></p>
 <div class="companion-suggestions">
@@ -984,10 +1021,15 @@
               <option value="more_often">More often</option>
             </select>
           </label>
-          <p id="companion-why" class="muted compact-note">Why: not checked yet.</p>
-          <p class="muted compact-note">Off disables unsolicited suggestions only. Conversation, timers and reminders you asked for still work.</p>
+          <p class="muted compact-note">Off keeps requested conversations, timers and reminders working. Presence and suggestion choices save as soon as you change them.</p>
         </div>
-<details id="companion-details"><summary>Details and source enrollment</summary>
+<details id="companion-details"><summary>Sources &amp; activity</summary>
+<dl class="companion-grid">
+          <div><dt>Presence</dt><dd id="companion-presence">Unknown</dd></div>
+          <div><dt>Camera</dt><dd id="companion-camera">Unknown</dd></div>
+          <div><dt>Microphone</dt><dd id="companion-microphone">Unknown</dd></div>
+        </dl>
+          <p id="companion-why" class="muted compact-note">Why: not checked yet.</p>
           <p id="companion-sources-status" class="muted compact-note">Source catalog not loaded yet.</p>
           <ul id="companion-setup-needed" class="presentation-requirements" aria-label="Host setup still needed"></ul>
           <div id="companion-enroll" class="companion-enroll" hidden>
@@ -1016,10 +1058,10 @@
           </div>
           <ol id="companion-receipts" class="agent-activity"><li>No companion activity yet</li></ol>
         </details>
-<details id="companion-advanced"><summary>Advanced companion controls and diagnostics</summary>
-      <section class="card presence-card" aria-labelledby="presence-heading">
+<details id="companion-advanced"><summary>Advanced presence options</summary>
+      <section class="settings-subsection presence-card" aria-labelledby="presence-heading">
         <div class="section-heading">
-          <div><p class="label">Presence</p><h2 id="presence-heading">Proactive Presence</h2></div>
+          <div><h4 id="presence-heading">Proactive Presence</h4></div>
           <span id="presence-badge" class="badge">Off</span>
         </div>
         <p class="muted">Reachy can accept trusted local presence signals and acknowledge them with one subtle movement when already Awake.</p>
@@ -1032,9 +1074,9 @@
         <p class="presence-boundary"><span aria-hidden="true">●</span> Silent acknowledgement only · no proactive speech</p>
       </section>
 
-      <section class="card initiative-card" aria-labelledby="initiative-heading">
+      <section class="settings-subsection initiative-card" aria-labelledby="initiative-heading">
         <div class="section-heading">
-          <div><p class="label">Helpful timing</p><h2 id="initiative-heading">Initiative & Offers</h2></div>
+          <div><h4 id="initiative-heading">Initiative & Offers</h4></div>
           <span id="initiative-badge" class="badge">Off</span>
         </div>
         <p class="muted">A deterministic gate decides whether Reachy should remain silent, acknowledge physically, or prepare an offer candidate.</p>
@@ -1098,9 +1140,9 @@
         <p id="initiative-message" class="message" role="status" aria-live="polite"></p>
       </section>
 
-      <section class="card presentation-card" aria-labelledby="presentation-heading">
+      <section class="settings-subsection presentation-card" aria-labelledby="presentation-heading">
         <div class="section-heading">
-          <div><p class="label">Shared context</p><h2 id="presentation-heading">Show Reachy something</h2></div>
+          <div><h4 id="presentation-heading">Show Reachy something</h4></div>
           <span id="presentation-badge" class="badge">Off</span>
         </div>
         <p class="muted">Start a short window only when you intentionally hold an object or text in the center of Reachy's view.</p>
@@ -1133,9 +1175,25 @@
       </section>
       </details>
 </section>
-<section id="household-card" class="card household-card" aria-labelledby="household-heading" hidden>
+      </section>
+
+      <section id="settings-privacy" class="settings-category" data-settings-category="privacy" aria-labelledby="settings-privacy-title" hidden>
+        <h2 id="settings-privacy-title" class="settings-category-title">Privacy &amp; access</h2>
+        <section class="settings-block" aria-labelledby="action-access-title"><h3 id="action-access-title">Agent movement access</h3>
+          <label class="toggle-row"><span><strong>Reachy action tools</strong><small>Realtime may look, express emotions, and dance. Manual controls remain local.</small></span><input id="robot_tools_enabled" name="robot_tools_enabled" type="checkbox" checked form="settings-form" /></label>
+        </section>
+        <section class="settings-block" id="camera-access-settings" aria-labelledby="camera-access-title">
+          <h3 id="camera-access-title">Camera access</h3>
+          <details class="settings-disclosure"><summary>How camera privacy works</summary><p>Nothing here starts capture. A look happens only on an explicit request, and that one frame goes to the bridge's vision provider unless a local vision model is set under Connections. Homebody keeps no images; what a cloud provider retains is governed by that provider. Local face following (Everyday) is separate and never uploads.</p></details>
+          <label class="toggle-row"><span><strong>Camera access for AI</strong><small>Allow explicit looks and short camera sessions in any voice engine. Never starts capture, the live viewer or tracking by itself. Also covers Kids Chat Show and Tell (one announced photo when a child asks), which you can turn off on the Kids page.</small></span><input id="camera_enabled" name="camera_enabled" type="checkbox" form="settings-form" /></label>
+          <label class="toggle-row"><span><strong>Local live camera</strong><small>Allow this UI to connect directly to Reachy's local WebRTC video while Awake</small></span><input id="camera_feed_enabled" name="camera_feed_enabled" type="checkbox" form="settings-form" /></label>
+          <label class="toggle-row"><span><strong>Camera movement controls</strong><small>Optional supervised joystick over the live feed. Off by default; release holds the current view.</small></span><input id="camera_controls_enabled" name="camera_controls_enabled" type="checkbox" form="settings-form" /></label>
+          <label>Joystick hand<select id="camera_controls_handedness" name="camera_controls_handedness" form="settings-form"><option value="right">Right</option><option value="left">Left</option></select><small>Place the thumb control on the selected side of the live image.</small></label>
+          <p class="muted compact-note">These apply after Save settings, below.</p>
+        </section>
+<section id="household-card" class="settings-block household-card" aria-labelledby="household-heading" hidden>
         <div class="section-heading">
-          <div><p class="label">Household</p><h2 id="household-heading">Household permissions</h2></div>
+          <div><h3 id="household-heading" tabindex="-1">Household permissions</h3></div>
           <span id="household-badge" class="badge">Checking…</span>
         </div>
         <p id="household-state" role="status" aria-live="polite">Checking the saved household choices…</p>
@@ -1161,7 +1219,7 @@
           <button type="button" id="household-revoke" class="danger">Revoke household approval</button>
         </div>
         <details id="household-connection"><summary>Standalone household connection</summary>
-          <p>Everyday uses this independent service. Keep the existing bridge for Kids, pipeline STT/TTS and Workspace. No Hermes agent runtime is needed by the standalone service.</p>
+          <p>Everyday uses this service. Kids, speech and Workspace keep their existing bridge.</p>
           <label>Household HTTPS URL <input id="household-url" type="url" autocomplete="off" placeholder="https://household.example.net"></label>
           <label>Robot credential <input id="household-credential" type="password" autocomplete="new-password" placeholder="Leave blank to retain saved credential"></label>
           <label><input id="household-durable" type="checkbox"> Renew external-tool connection while this adult authority remains valid</label>
@@ -1177,24 +1235,9 @@
         </details>
         <p id="household-message" class="muted compact-note" role="status" aria-live="polite">Saving never takes a picture or starts listening.</p>
       </section>
-                    <p id="assistant-mode-notice" class="message warning-note" role="status" hidden>Ordinary questions now use Everyday. Choose Workspace for project work. <button type="button" id="assistant-mode-notice-ack" class="secondary">OK</button></p>
-<section id="everyday-card" class="card everyday-card" aria-labelledby="everyday-heading">
-        <div class="section-heading">
-          <div><p class="label">Everyday</p><h2 id="everyday-heading">Quick help at home</h2></div>
-          <span id="everyday-badge" class="badge">Checking…</span>
-        </div>
-        <p id="everyday-summary">Checking permitted home help…</p>
-
-
-        <div id="everyday-companion" class="everyday-companion"></div>
-        <p id="everyday-message" class="muted compact-note" role="status" aria-live="polite"></p>
-      </section>
-<section class="card" id="everyday-settings-card"><h2>Everyday capabilities</h2>
-        <dl class="everyday-facts everyday-voice-fact">
-          <div><dt>Selected voice engine</dt><dd id="everyday-voice">—</dd></div>
-        </dl>
-        <p id="everyday-voice-note" class="muted">Selection is not an active voice session.</p>
-        <details id="everyday-permissions"><summary>Manage permissions</summary>
+<section class="settings-block" id="everyday-settings-card" aria-labelledby="everyday-settings-title"><h3 id="everyday-settings-title">What Everyday can use</h3>
+        <p class="muted compact-note">A read-only summary of what the Everyday assistant may use right now. Allowed does not mean active: privacy, power and Kids rules still apply.</p>
+        <details id="everyday-permissions"><summary>Show permissions</summary>
           <div class="everyday-permission-groups">
             <section aria-labelledby="everyday-robot-heading">
               <h3 id="everyday-robot-heading">Robot &amp; camera</h3>
@@ -1209,31 +1252,44 @@
               <h3 id="everyday-household-heading">Household &amp; timers</h3>
               <p id="everyday-household">Not reported.</p>
               <p id="everyday-devices">—</p>
-              <p class="muted">Device allowlists and timer delivery are managed on the agent host.</p>
+              <p class="muted">Manage devices and timer delivery on your agent host.</p>
             </section>
             <section aria-labelledby="everyday-information-heading">
               <h3 id="everyday-information-heading">Information</h3>
               <p id="everyday-information">Not reported.</p>
               <p id="everyday-search">Public lookup status not reported.</p>
-              <p class="muted">Public lookup is optional and configured on the agent host; opening this page never enables it.</p>
+              <p class="muted">Manage public lookup on your agent host.</p>
             </section>
           </div>
-          <p class="muted">Permissions are not activity. Requests still follow power, privacy and Kids Mode rules.</p>
-          <details id="everyday-technical-details"><summary>Providers and device details</summary>
+          <details id="everyday-technical-details"><summary>Connection &amp; technical details</summary>
+            <section id="everyday-card" class="settings-subsection everyday-card" aria-labelledby="everyday-heading">
+              <div class="section-heading">
+                <div><h4 id="everyday-heading">Connection status</h4></div>
+                <span id="everyday-badge" class="badge">Checking…</span>
+              </div>
+              <p id="everyday-summary">Checking permitted home help…</p>
+              <div id="everyday-companion" class="everyday-companion"></div>
+              <p id="everyday-message" class="muted compact-note" role="status" aria-live="polite"></p>
+            </section>
             <dl class="everyday-facts">
+              <div><dt>Selected voice engine</dt><dd id="everyday-voice">—</dd></div>
               <div><dt>Weather</dt><dd id="everyday-weather">—</dd></div>
               <div><dt>Text backend — not the voice model</dt><dd id="everyday-model">—</dd></div>
               <div><dt>Time source</dt><dd id="everyday-time">—</dd></div>
             </dl>
+            <p id="everyday-voice-note" class="muted">Selection is not an active voice session.</p>
             <p class="muted">A home weather source does not mean spoken answers stay off cloud voice services.</p>
             <p class="muted">Technical entity IDs permitted for home controls and status:</p>
             <pre id="everyday-device-ids">—</pre>
           </details>
         </details>
       </section>
-      <section class="setup-review-entry"><button id="setup-review-open" type="button" class="secondary">Review setup / repair connection</button><p>Resume setup without reinstalling Homebody or resetting owner devices.</p></section>
-      <section class="card" id="speaker-card" aria-labelledby="speaker-title">
-        <p class="label">Sound</p><h2 id="speaker-title">Speaker volume</h2>
+      </section>
+
+      <section id="settings-voice" class="settings-category" data-settings-category="voice" aria-labelledby="settings-voice-title" hidden>
+        <h2 id="settings-voice-title" class="settings-category-title">Voice &amp; sound</h2>
+      <section class="settings-block" id="speaker-card" aria-labelledby="speaker-title">
+        <h3 id="speaker-title">Speaker volume</h3>
         <p id="speaker-confirmed" role="status" aria-live="polite">Speaker · unknown</p>
         <label id="speaker-volume-label" for="speaker-volume"><span>Set volume</span><output id="speaker-draft" for="speaker-volume">—</output></label>
         <input id="speaker-volume" type="range" min="0" max="100" step="1" value="0" disabled />
@@ -1246,35 +1302,121 @@
         <details id="speaker-details"><summary>About volume and mute</summary><p class="muted">0% mutes the speaker, not the microphone. Changes are silent and do not wake Reachy. Apply verifies the actual speaker level. Unmute restores the last measured level; after restarting at 0%, select a volume first.</p></details>
         <p id="speaker-message" class="message" role="status" aria-live="polite"></p>
       </section>
-      <section class="card" id="updates-card" aria-labelledby="updates-title">
-        <p class="label">On your robot</p><h2 id="updates-title">Reachy software updates</h2>
-        <p id="update-current">Checking Reachy's installed version…</p>
-        <p class="muted">Updates Homebody on Reachy and the dashboard it serves. This does not install or update the Android app (APK) on your phone. Installation requires safely folded Standby; settings are preserved. Firmware, the SDK and the agent bridge are not updated.</p>
-        <div class="actions">
-          <button type="button" id="update-check" class="secondary">Check Reachy for updates</button>
-          <button type="button" id="update-preview" class="secondary" disabled>Review Reachy update</button>
-        </div>
-        <div id="update-rail" class="update-rail" aria-hidden="true"></div>
-        <p id="update-status" role="status" aria-live="polite">Reading saved progress…</p>
-        <details data-hb-disclosure><summary>Update history and release notes</summary><div id="update-history"></div></details>
+      <section class="settings-block" id="voice-card" aria-labelledby="voice-title">
+        <h3 id="voice-title">Language and voice engine</h3>
+        <form id="settings-form">
+          <label>Language<input id="language" name="language" value="en" maxlength="12" /></label>
+          <label>Voice engine
+            <select id="conversation_mode" name="conversation_mode">
+              <option value="pipeline">Pipeline · speech-to-text, text model, text-to-speech</option>
+              <option value="realtime">Realtime · OpenAI speech-to-speech</option>
+              <option value="live">GPT-Live preview · OpenAI full-duplex speech</option>
+            </select>
+          </label>
+          <p id="engine-disclosure" class="muted compact-note" role="note"></p>
+          <div id="realtime-settings" class="settings-section">
+            <label>Adult Realtime voice
+              <select id="realtime_voice" name="realtime_voice"><option value="marin">Marin</option><option value="cedar">Cedar</option></select>
+            </label>
+            <details class="settings-disclosure"><summary>Realtime tuning</summary>
+              <div class="grid-two">
+                <label>Realtime model
+                  <select id="realtime_model" name="realtime_model"><option value="gpt-realtime-2.1">gpt-realtime-2.1</option><option value="gpt-realtime-2.1-mini">gpt-realtime-2.1-mini · lower cost</option></select>
+                </label>
+                <label>Turn-taking eagerness
+                  <select id="realtime_semantic_eagerness" name="realtime_semantic_eagerness"><option value="auto">Auto</option><option value="low">Low · waits longer</option><option value="medium">Medium</option><option value="high">High · answers sooner</option></select>
+                </label>
+                <label>Reasoning effort
+                  <select id="realtime_reasoning_effort" name="realtime_reasoning_effort">
+                    <option value="minimal">Minimal</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option>
+                  </select>
+                </label>
+              </div>
+            </details>
+          </div>
+          <div id="live-settings" class="grid-two" hidden>
+            <label>Live model<select id="live_model" name="live_model"><option value="gpt-live-1">gpt-live-1 · preview</option></select></label>
+            <label>Adult GPT-Live voice
+              <select id="live_voice" name="live_voice"><option value="marin">Marin</option><option value="cedar">Cedar</option></select>
+            </label>
+            <label>Session limit (seconds)<input id="live_session_timeout_seconds" name="live_session_timeout_seconds" type="number" min="30" max="900" step="30" value="300" /></label>
+          </div>
+          <p id="kids-speech-scope" class="muted provider-note">Kids always use speech recognition below, even when adult voice uses GPT-Live or Realtime. Kids replies use a dedicated moderated ElevenLabs voice configured on the host. Marin/Cedar affect only new adult speech sessions.</p>
+          <details id="speech-provider-details" class="settings-disclosure">
+            <summary>Speech recognition and spoken voices</summary>
+            <div class="settings-section">
+              <div id="pipeline-settings" class="grid-two">
+                <label>Kids / Pipeline speech recognition
+                  <select id="stt_provider" name="stt_provider"><option value="configured">Hermes configured STT</option><option value="local">Local Whisper</option></select>
+                </label>
+                <label>STT model<select id="stt_model" name="stt_model"><option value="base">base</option></select></label>
+                <label hidden>If Reachy's on-device recognition is unavailable
+                  <select id="stt_robot_fallback" name="stt_robot_fallback"><option value="none">Stop the turn</option><option value="host">Use the Hermes host's local STT once</option></select>
+                </label>
+                <label>Speech voice provider<select id="tts_provider" name="tts_provider"><option value="configured">Hermes configured TTS</option></select></label>
+                <label>TTS model<select id="tts_model" name="tts_model"><option value="eleven_flash_v2_5">eleven_flash_v2_5</option></select></label>
+              </div>
+              <p id="robot-stt-note" class="muted provider-note" hidden></p>
+              <label>Pipeline / greeting / fallback voice<select id="tts_voice" name="tts_voice"><option value="pNInz6obpgDQGcFmaJgB">Adam</option></select></label>
+              <p id="voice-provider" class="muted provider-note">Speech providers are selected independently from the agent model.</p>
+            </div>
+          </details>
+          <details class="settings-disclosure">
+            <summary>Advanced voice timing</summary>
+            <div class="grid-two advanced">
+              <label>End silence (seconds)<input id="end_silence_seconds" type="number" min="0.1" max="5" step="0.1" /></label>
+              <label>Max utterance (seconds)<input id="max_utterance_seconds" type="number" min="1" max="120" step="1" /></label>
+              <label>VAD minimum RMS<input id="vad_min_rms" type="number" min="0.001" max="0.5" step="0.001" /></label>
+              <label>Noise multiplier<input id="vad_noise_multiplier" type="number" min="1" max="20" step="0.1" /></label>
+              <label>Wake threshold<input id="wake_keyword_threshold" type="number" min="0.01" max="1" step="0.01" /></label>
+              <label>Wake score<input id="wake_keyword_score" type="number" min="0" max="10" step="0.1" /></label>
+            </div>
+          </details>
+        </form>
       </section>
-      <section id="agent-connection-details" class="card" tabindex="-1" aria-labelledby="agent-connection-title">
-        <h2 id="agent-connection-title">Agent connection</h2>
+      </section>
+
+      <section id="settings-connections" class="settings-category" data-settings-category="connections" aria-labelledby="settings-connections-title" hidden>
+        <h2 id="settings-connections-title" class="settings-category-title">Connections</h2>
+      <section id="agent-connection-details" class="settings-block" tabindex="-1" aria-labelledby="agent-connection-title">
+        <h3 id="agent-connection-title">Agent connection</h3>
         <p id="agent-connection-detail">Waiting for a fresh connection check.</p>
-        <p class="muted">Connection is independent of robot power and privacy. Checking never starts speech, microphones, cameras or motors.</p>
-        <button type="button" id="agent-connection-retry" class="secondary">Retry connection check</button>
+        <div class="actions"><button type="button" id="agent-connection-retry" class="secondary">Retry connection check</button></div>
+        <p class="muted compact-note">A connection check is silent. It never wakes Reachy or starts media.</p>
       </section>
-      <section class="card" id="agent-setup-card">
-        <p class="label">Easiest setup</p>
-        <h2>Connect your agent</h2>
-        <p class="muted">Let Hermes Agent or OpenClaw set itself up. Homebody gives you a short message with a one-time code. Paste it to your agent on its computer, and it installs the bridge, creates a restricted Reachy profile and connects. Reachy saves the connection only after testing it.</p>
+      <section class="settings-block" id="bridge-settings" aria-labelledby="bridge-title">
+        <h3 id="bridge-title">Agent bridge</h3>
+        <p class="muted">The companion bridge runs on the machine hosting Hermes Agent or OpenClaw. The API key is the bridge's <code>API_SERVER_KEY</code>, the same key your agent uses.</p>
+        <label>Bridge URL
+          <input id="bridge_url" name="bridge_url" type="url" placeholder="http://hermes.local:8643" required form="settings-form" />
+        </label>
+        <label>API key
+          <input id="api_key" name="api_key" type="password" placeholder="Leave masked value unchanged" autocomplete="off" form="settings-form" />
+        </label>
+        <label>Current API key <span class="muted">(skip if paired as Owner)</span>
+          <input id="current_api_key" name="current_api_key" type="password" placeholder="Only needed when not paired as Owner" autocomplete="off" form="settings-form" />
+        </label>
+        <label>Agent model
+          <select id="model" name="model" form="settings-form"><option value="hermes-agent">Hermes default model</option></select>
+          <small id="model-help">Agents and model routes come from your bridge: Hermes Agent, OpenClaw, or both.</small>
+        </label>
+        <div class="actions">
+          <button type="button" id="test-button" class="secondary" form="settings-form">Test connection</button>
+        </div>
+        <p class="muted compact-note">Test uses the values above without saving. Save settings, below, stores them.</p>
+      </section>
+      <details id="agent-setup-details" class="settings-disclosure">
+        <summary>Connect a new agent · one-time setup</summary>
+      <section id="agent-setup-card" aria-labelledby="agent-setup-title">
+        <h4 id="agent-setup-title">Connect your agent</h4>
+        <p class="muted">Create a one-time setup message and paste it to Hermes or OpenClaw on its computer. The agent installs a restricted bridge; Reachy tests it before saving.</p>
         <div class="grid-two">
           <label>Your agent
             <select id="agent-setup-backend"><option value="hermes">Hermes Agent</option><option value="openclaw">OpenClaw</option></select>
           </label>
           <label class="toggle-row"><span><strong>Also let my agent use Reachy</strong><small>Adds Reachy as an MCP tool for your agent: speak a message, show an emotion, check status.</small></span><input id="agent-setup-mcp" type="checkbox" /></label>
         </div>
-        <small class="muted">If a bridge API key is already set and you are not paired as Owner, enter it under <em>Current API key</em> below first.</small>
+        <small class="muted">If a bridge API key is already set and you are not paired as Owner, enter it under <em>Current API key</em> above first.</small>
         <div class="actions">
           <button type="button" id="agent-setup-button">Create setup message</button>
           <button type="button" id="agent-setup-cancel" class="secondary" hidden>Cancel setup</button>
@@ -1288,174 +1430,85 @@
         </div>
         <p id="agent-setup-status" class="message" role="status" aria-live="polite"></p>
       </section>
+      <section class="setup-review-entry"><button id="setup-review-open" type="button" class="secondary">Review setup / repair connection</button><p>Keep your installation and paired devices.</p></section>
+      </details>
 
-      <section class="card" id="voice-card">
-        <p class="label">Configuration</p>
-        <h2>Agent connection and voice</h2>
-        <p class="muted">Run the companion bridge on the machine hosting Hermes Agent or OpenClaw (or both), then enter its trusted LAN URL and API key. The API key is the bridge's <code>API_SERVER_KEY</code> environment variable — the same key your agent uses to reach the bridge.</p>
-        <form id="settings-form">
-          <label>Voice engine <span class="muted">(Advanced · separate from Everyday/Workspace)</span>
-            <select id="conversation_mode" name="conversation_mode">
-              <option value="pipeline">Pipeline · speech-to-text, text model, text-to-speech</option>
-              <option value="realtime">Realtime · OpenAI speech-to-speech</option>
-              <option value="live">GPT-Live preview · OpenAI full-duplex speech</option>
-            </select>
-          </label>
-          <p id="engine-disclosure" class="muted compact-note" role="note"></p>
-          <label>Bridge URL
-            <input id="bridge_url" name="bridge_url" type="url" placeholder="http://hermes.local:8643" required />
-          </label>
-          <label>API key
-            <input id="api_key" name="api_key" type="password" placeholder="Leave masked value unchanged" autocomplete="off" />
-          </label>
-          <label>Current API key <span class="muted">(skip if paired as Owner)</span>
-            <input id="current_api_key" name="current_api_key" type="password" placeholder="Only needed when not paired as Owner" autocomplete="off" />
-          </label>
-          <div class="grid-two">
-            <label>Agent model
-              <select id="model" name="model"><option value="hermes-agent">Hermes default model</option></select>
-              <small id="model-help">Agents and model routes come from your bridge: Hermes Agent, OpenClaw, or both.</small>
-            </label>
-            <label>Language<input id="language" name="language" value="en" maxlength="12" /></label>
-          </div>
-          <div id="realtime-settings" class="grid-two">
-            <label>Realtime model
-              <select id="realtime_model" name="realtime_model"><option value="gpt-realtime-2.1">gpt-realtime-2.1</option><option value="gpt-realtime-2.1-mini">gpt-realtime-2.1-mini · lower cost</option></select>
-            </label>
-            <label>Turn-taking eagerness
-              <select id="realtime_semantic_eagerness" name="realtime_semantic_eagerness"><option value="auto">Auto</option><option value="low">Low · waits longer</option><option value="medium">Medium</option><option value="high">High · answers sooner</option></select>
-            </label>
-            <label>Adult Realtime voice
-              <select id="realtime_voice" name="realtime_voice"><option value="marin">Marin</option><option value="cedar">Cedar</option></select>
-            </label>
-            <label>Reasoning effort
-              <select id="realtime_reasoning_effort" name="realtime_reasoning_effort">
-                <option value="minimal">Minimal</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option>
-              </select>
-            </label>
-          </div>
-          <div id="live-settings" class="grid-two" hidden>
-            <label>Live model<select id="live_model" name="live_model"><option value="gpt-live-1">gpt-live-1 · preview</option></select></label>
-            <label>Adult GPT-Live voice
-              <select id="live_voice" name="live_voice"><option value="marin">Marin</option><option value="cedar">Cedar</option></select>
-            </label>
-            <label>Session limit (seconds)<input id="live_session_timeout_seconds" name="live_session_timeout_seconds" type="number" min="30" max="900" step="30" value="300" /></label>
-          </div>
-          <p id="kids-speech-scope" class="muted provider-note">Kids always use speech recognition below, even when adult voice uses GPT-Live or Realtime. Kids replies use a dedicated moderated ElevenLabs voice configured on the host. Marin/Cedar affect only new adult speech sessions.</p>
-          <div id="pipeline-settings" class="grid-two">
-            <label>Kids / Pipeline speech recognition
-              <select id="stt_provider" name="stt_provider"><option value="configured">Hermes configured STT</option><option value="local">Local Whisper</option></select>
-            </label>
-            <label>STT model<select id="stt_model" name="stt_model"><option value="base">base</option></select></label>
-            <label hidden>If Reachy's on-device recognition is unavailable
-              <select id="stt_robot_fallback" name="stt_robot_fallback"><option value="none">Stop the turn</option><option value="host">Use the Hermes host's local STT once</option></select>
-            </label>
-            <label>Speech voice provider<select id="tts_provider" name="tts_provider"><option value="configured">Hermes configured TTS</option></select></label>
-            <label>TTS model<select id="tts_model" name="tts_model"><option value="eleven_flash_v2_5">eleven_flash_v2_5</option></select></label>
-          </div>
-          <p id="robot-stt-note" class="muted provider-note" hidden></p>
-          <label>Pipeline / greeting / fallback voice<select id="tts_voice" name="tts_voice"><option value="pNInz6obpgDQGcFmaJgB">Adam</option></select></label>
-          <p id="voice-provider" class="muted provider-note">Speech providers are selected independently from the agent model.</p>
+      <details class="settings-disclosure" id="local-vision-details">
+        <summary>Local vision and AI acceleration</summary>
+        <div class="settings-section">
+          <p class="muted">Answer camera questions with a vision model on your own hardware, such as Ollama, llama.cpp or vLLM on a Jetson Orin Nano or a GPU PC. The frame stays on your network and only the text answer reaches the conversation.</p>
+          <label class="toggle-row"><span><strong>Use a local vision model</strong><small>Realtime camera requests and the camera card's Ask button use this model instead of sending the image to the cloud. Needs Camera access for AI (Privacy &amp; access).</small></span><input id="local_vision_enabled" name="local_vision_enabled" type="checkbox" form="settings-form" /></label>
+          <label>Vision server URL<input id="local_vision_url" name="local_vision_url" type="url" inputmode="url" placeholder="http://127.0.0.1:11434/v1" form="settings-form" /><small>An OpenAI-compatible endpoint. Ollama's default is http://127.0.0.1:11434/v1.</small></label>
+          <label>Vision model<input id="local_vision_model" name="local_vision_model" type="text" placeholder="qwen2.5vl:3b" form="settings-form" /><small>For example qwen2.5vl:3b or gemma3:4b in Ollama.</small></label>
+          <label>On-device AI accelerator<select id="local_ai_accelerator" name="local_ai_accelerator" form="settings-form"><option value="auto">Automatic</option><option value="cpu">CPU only</option></select><small>Automatic uses TensorRT or CUDA on a Jetson, Core ML on a Mac, or DirectML on Windows when installed, and falls back to the CPU. Used by local gesture detection from its next start.</small></label>
+          <div class="actions"><button type="button" id="local-vision-test-button" class="secondary" form="settings-form">Test vision server</button></div>
+          <p id="local-vision-message" class="message" role="status" aria-live="polite"></p>
+        </div>
+      </details>
 
-          <details>
-            <summary>Embodiment and privacy</summary>
-            <div class="settings-section">
-              <label class="toggle-row"><span><strong>Continued conversation</strong><small>Listen for a follow-up after each answer</small></span><input id="continuous_conversation" name="continuous_conversation" type="checkbox" /></label>
-              <label class="toggle-row"><span><strong>Voice-state motion</strong><small>Listening, thinking, and speaking poses</small></span><input id="motion_enabled" name="motion_enabled" type="checkbox" checked /></label>
-              <label class="toggle-row"><span><strong>Reachy action tools</strong><small>Realtime may look, express emotions, and dance. Manual controls remain local.</small></span><input id="robot_tools_enabled" name="robot_tools_enabled" type="checkbox" checked /></label>
-              <label class="toggle-row"><span><strong>Local face following</strong><small>Follow a face on the robot during an active conversation only, including Kids Mode sessions with motion on. Separate from Camera access for AI: nothing is uploaded, identified or saved</small></span><input id="face_tracking_enabled" name="face_tracking_enabled" type="checkbox" /></label>
-              <p id="face-tracking-status" class="muted compact-note" role="status">Off.</p>
-              <label>Face-following weight<input id="face_tracking_weight" name="face_tracking_weight" type="range" min="0" max="1" step="0.05" value="0.65" /><small>Blend local face tracking with Reachy's voice and action motion.</small></label>
-              <label class="toggle-row"><span><strong>Turn toward wake phrase</strong><small>Use one local microphone-array direction estimate after wake</small></span><input id="doa_enabled" name="doa_enabled" type="checkbox" /></label>
-              <label class="toggle-row"><span><strong>Interruption</strong><small>Pipeline wake-phrase interruption or natural Realtime barge-in</small></span><input id="barge_in_enabled" name="barge_in_enabled" type="checkbox" checked /></label>
-
-              <label class="toggle-row"><span><strong>Camera access for AI</strong><small>Allow explicit looks and short camera sessions in any voice engine. Never starts capture, the live viewer or tracking by itself. Also covers Kids Chat Show and Tell (one announced photo when a child asks; processed by the bridge’s vision provider), which you can turn off on the Kids page.</small></span><input id="camera_enabled" name="camera_enabled" type="checkbox" /></label>
-              <label class="toggle-row"><span><strong>Local live camera</strong><small>Allow this UI to connect directly to Reachy's local WebRTC video while Awake</small></span><input id="camera_feed_enabled" name="camera_feed_enabled" type="checkbox" /></label>
-              <label class="toggle-row"><span><strong>Camera movement controls</strong><small>Optional supervised joystick over the live feed. Off by default; release holds the current view.</small></span><input id="camera_controls_enabled" name="camera_controls_enabled" type="checkbox" /></label>
-              <label>Joystick hand<select id="camera_controls_handedness" name="camera_controls_handedness"><option value="right">Right</option><option value="left">Left</option></select><small>Place the thumb control on the selected side of the live image.</small></label>
-            </div>
-          </details>
-
-          <details>
-            <summary>Local vision and AI acceleration</summary>
-            <div class="settings-section">
-              <p class="muted">Answer camera questions with a vision model on your own hardware, such as Ollama, llama.cpp or vLLM on a Jetson Orin Nano or a GPU PC. The frame stays on your network and only the text answer reaches the conversation.</p>
-              <label class="toggle-row"><span><strong>Use a local vision model</strong><small>Realtime camera requests and the camera card's Ask button use this model instead of sending the image to the cloud. Needs On-demand camera.</small></span><input id="local_vision_enabled" name="local_vision_enabled" type="checkbox" /></label>
-              <label>Vision server URL<input id="local_vision_url" name="local_vision_url" type="url" inputmode="url" placeholder="http://127.0.0.1:11434/v1" /><small>An OpenAI-compatible endpoint. Ollama's default is http://127.0.0.1:11434/v1.</small></label>
-              <label>Vision model<input id="local_vision_model" name="local_vision_model" type="text" placeholder="qwen2.5vl:3b" /><small>For example qwen2.5vl:3b or gemma3:4b in Ollama.</small></label>
-              <label>On-device AI accelerator<select id="local_ai_accelerator" name="local_ai_accelerator"><option value="auto">Automatic</option><option value="cpu">CPU only</option></select><small>Automatic uses TensorRT or CUDA on a Jetson, Core ML on a Mac, or DirectML on Windows when installed, and falls back to the CPU. Used by local gesture detection from its next start.</small></label>
-              <div class="actions"><button type="button" id="local-vision-test-button" class="secondary">Test vision server</button></div>
-              <p id="local-vision-message" class="message" role="status" aria-live="polite"></p>
-            </div>
-          </details>
-
-          <details>
-            <summary>Agent access (MCP)</summary>
-            <div class="settings-section">
-              <p class="muted">Let your own AI agents (Hermes Agent, OpenClaw, Claude and other MCP clients) use Reachy: say a message aloud, show an emotion, or describe what it sees. Every request follows the same Meeting, Sleep, privacy and Kids Mode rules as voice and this app, and agents can never wake Reachy for a gesture.</p>
-              <label class="toggle-row"><span><strong>Allow agent access</strong><small>Serves an MCP endpoint on this app. Off by default; agents also need the token below.</small></span><input id="mcp_enabled" name="mcp_enabled" type="checkbox" /></label>
-              <label class="toggle-row"><span><strong>Let agents ask what Reachy sees</strong><small>Answered by your local vision model; agents receive text, never images. Needs the local vision model and On-demand camera.</small></span><input id="mcp_vision_enabled" name="mcp_vision_enabled" type="checkbox" /></label>
-              <label>MCP endpoint<input id="mcp-endpoint" type="text" readonly /><small>Add this as a remote (HTTP) MCP server in your agent, with the header <code>Authorization: Bearer &lt;token&gt;</code>.</small></label>
-              <div class="actions">
-                <button type="button" id="mcp-token-button" class="secondary">Create new token</button>
-                <button type="button" id="mcp-revoke-button" class="danger">Revoke token</button>
-              </div>
-              <label id="mcp-token-row" hidden>New token (shown once)<input id="mcp-token" type="text" readonly /><small>Copy it into your agent now. Creating a new token disconnects agents that use the old one.</small></label>
-              <p id="mcp-message" class="message" role="status" aria-live="polite"></p>
-              <h3>Hosted agents (ChatGPT dots, Grok Bot)</h3>
-              <p class="muted">Agents that run in their vendor's cloud sign in with OAuth, and you approve each request below, on your home network. They sign in on a separate listener that serves only <code>/mcp</code> and the sign-in pages, so point your HTTPS tunnel at that listener, never at this dashboard. See <em>docs/agent-access-mcp.md</em>.</p>
-              <label>Public HTTPS address<input id="mcp_public_url" name="mcp_public_url" type="url" placeholder="https://reachy.example.com" autocomplete="off" maxlength="300" /><small>The tunnel's address, without a path. Changing it signs every hosted agent out.</small></label>
-              <div class="grid-two">
-                <label>Sign-in listener address<input id="mcp_public_bind" name="mcp_public_bind" type="text" placeholder="127.0.0.1" autocomplete="off" maxlength="64" /><small>Keep 127.0.0.1 when the tunnel runs on this computer; use 0.0.0.0 only if it runs elsewhere on a trusted network.</small></label>
-                <label>Sign-in listener port<input id="mcp_public_port" name="mcp_public_port" type="number" min="1024" max="65535" step="1" value="8043" /><small>Point the tunnel at this port, for example http://127.0.0.1:8043.</small></label>
-              </div>
-              <p id="mcp-listener-status" class="muted compact-note" role="status" aria-live="polite"></p>
-              <label class="toggle-row"><span><strong>Let hosted agents sign in (OAuth)</strong><small>Needs agent access and the public address. Changing this needs the current API key (or pair as Owner).</small></span><input id="mcp_oauth_enabled" name="mcp_oauth_enabled" type="checkbox" /></label>
-              <div class="actions">
-                <button type="button" id="mcp-oauth-disconnect-button" class="danger">Disconnect all hosted agents</button>
-              </div>
-              <h3>Waiting for your approval</h3>
-              <p class="muted compact-note">When an agent asks to connect, it appears here. Check that the code and return address match what its sign-in page shows, then approve that one request. If you did not start it, deny it.</p>
-              <ul id="mcp-oauth-pending" class="mcp-pending-list" aria-label="Hosted agents waiting for approval"></ul>
-              <ul id="mcp-oauth-agents" class="muted" aria-label="Hosted agents"></ul>
-            </div>
-          </details>
-
-          <details>
-            <summary>Home Assistant</summary>
-            <div class="settings-section">
-              <p class="muted">Expose Reachy as the existing ESPHome device on your trusted LAN. The bridge is off by default and requires an app restart after changes.</p>
-              <label class="toggle-row"><span><strong>ESPHome device bridge</strong><small>Publish compatible Reachy telemetry and entities to Home Assistant on TCP 6053</small></span><input id="home_assistant_enabled" name="home_assistant_enabled" type="checkbox" /></label>
-              <label class="toggle-row"><span><strong>Home Assistant robot controls</strong><small>Allow the dedicated Awake switch to run guarded wake/standby transitions and permit bounded motion only while Reachy is Awake</small></span><input id="home_assistant_controls_enabled" name="home_assistant_controls_enabled" type="checkbox" /></label>
-              <label class="toggle-row"><span><strong>Home Assistant camera</strong><small>Allow explicit ESPHome snapshots outside Meeting, Sleep, and Kids Mode</small></span><input id="home_assistant_camera_enabled" name="home_assistant_camera_enabled" type="checkbox" /></label>
-              <label class="toggle-row"><span><strong>Home Assistant Assist satellite</strong><small>Let Home Assistant own wake-to-response audio instead of Hermes voice; experimental until supervised acceptance passes</small></span><input id="home_assistant_assist_enabled" name="home_assistant_assist_enabled" type="checkbox" /></label>
-              <label>ESPHome API port<input id="home_assistant_port" name="home_assistant_port" type="number" min="1024" max="65535" step="1" value="6053" /><small>Keep 6053 unless another service already uses it.</small></label>
-              <p id="home-assistant-status" class="muted">Bridge disabled</p>
-            </div>
-          </details>
-
-          <details>
-            <summary>Advanced voice timing</summary>
-            <div class="grid-two advanced">
-              <label>End silence (seconds)<input id="end_silence_seconds" type="number" min="0.1" max="5" step="0.1" /></label>
-              <label>Max utterance (seconds)<input id="max_utterance_seconds" type="number" min="1" max="120" step="1" /></label>
-              <label>VAD minimum RMS<input id="vad_min_rms" type="number" min="0.001" max="0.5" step="0.001" /></label>
-              <label>Noise multiplier<input id="vad_noise_multiplier" type="number" min="1" max="20" step="0.1" /></label>
-              <label>Wake threshold<input id="wake_keyword_threshold" type="number" min="0.01" max="1" step="0.01" /></label>
-              <label>Wake score<input id="wake_keyword_score" type="number" min="0" max="10" step="0.1" /></label>
-            </div>
-          </details>
+      <details class="settings-disclosure" id="mcp-details">
+        <summary>Agent access (MCP)</summary>
+        <div class="settings-section">
+          <p class="muted">Let your own AI agents (Hermes Agent, OpenClaw, Claude and other MCP clients) use Reachy: say a message aloud, show an emotion, or describe what it sees. Every request follows the same Meeting, Sleep, privacy and Kids Mode rules as voice and this app, and agents can never wake Reachy for a gesture.</p>
+          <label class="toggle-row"><span><strong>Allow agent access</strong><small>Serves an MCP endpoint on this app. Off by default; agents also need the token below.</small></span><input id="mcp_enabled" name="mcp_enabled" type="checkbox" form="settings-form" /></label>
+          <label class="toggle-row"><span><strong>Let agents ask what Reachy sees</strong><small>Answered by your local vision model; agents receive text, never images. Needs the local vision model and Camera access for AI.</small></span><input id="mcp_vision_enabled" name="mcp_vision_enabled" type="checkbox" form="settings-form" /></label>
+          <label>MCP endpoint<input id="mcp-endpoint" type="text" readonly form="settings-form" /><small>Add this as a remote (HTTP) MCP server in your agent, with the header <code>Authorization: Bearer &lt;token&gt;</code>.</small></label>
           <div class="actions">
-            <button type="button" id="test-button" class="secondary">Test connection</button>
-            <button type="submit">Save settings</button>
+            <button type="button" id="mcp-token-button" class="secondary" form="settings-form">Create new token</button>
+            <button type="button" id="mcp-revoke-button" class="danger" form="settings-form">Revoke token</button>
           </div>
-          <p id="form-message" class="message" role="status"></p>
-        </form>
+          <label id="mcp-token-row" hidden>New token (shown once)<input id="mcp-token" type="text" readonly form="settings-form" /><small>Copy it into your agent now. Creating a new token disconnects agents that use the old one.</small></label>
+          <p id="mcp-message" class="message" role="status" aria-live="polite"></p>
+          <h4>Hosted agents (ChatGPT dots, Grok Bot)</h4>
+          <p class="muted">Agents that run in their vendor's cloud sign in with OAuth, and you approve each request below, on your home network. They sign in on a separate listener that serves only <code>/mcp</code> and the sign-in pages, so point your HTTPS tunnel at that listener, never at this dashboard. See <em>docs/agent-access-mcp.md</em>.</p>
+          <label>Public HTTPS address<input id="mcp_public_url" name="mcp_public_url" type="url" placeholder="https://reachy.example.com" autocomplete="off" maxlength="300" form="settings-form" /><small>The tunnel's address, without a path. Changing it signs every hosted agent out.</small></label>
+          <div class="grid-two">
+            <label>Sign-in listener address<input id="mcp_public_bind" name="mcp_public_bind" type="text" placeholder="127.0.0.1" autocomplete="off" maxlength="64" form="settings-form" /><small>Keep 127.0.0.1 when the tunnel runs on this computer; use 0.0.0.0 only if it runs elsewhere on a trusted network.</small></label>
+            <label>Sign-in listener port<input id="mcp_public_port" name="mcp_public_port" type="number" min="1024" max="65535" step="1" value="8043" form="settings-form" /><small>Point the tunnel at this port, for example http://127.0.0.1:8043.</small></label>
+          </div>
+          <p id="mcp-listener-status" class="muted compact-note" role="status" aria-live="polite"></p>
+          <label class="toggle-row"><span><strong>Let hosted agents sign in (OAuth)</strong><small>Needs agent access and the public address. Changing this needs the current API key (or pair as Owner).</small></span><input id="mcp_oauth_enabled" name="mcp_oauth_enabled" type="checkbox" form="settings-form" /></label>
+          <div class="actions">
+            <button type="button" id="mcp-oauth-disconnect-button" class="danger" form="settings-form">Disconnect all hosted agents</button>
+          </div>
+          <h4>Waiting for your approval</h4>
+          <p class="muted compact-note">When an agent asks to connect, it appears here. Check that the code and return address match what its sign-in page shows, then approve that one request. If you did not start it, deny it.</p>
+          <ul id="mcp-oauth-pending" class="mcp-pending-list" aria-label="Hosted agents waiting for approval"></ul>
+          <ul id="mcp-oauth-agents" class="muted" aria-label="Hosted agents"></ul>
+        </div>
+      </details>
+
+      <details class="settings-disclosure" id="home-assistant-details">
+        <summary>Home Assistant</summary>
+        <div class="settings-section">
+          <p class="muted">Expose Reachy as the existing ESPHome device on your trusted LAN. The bridge is off by default and requires an app restart after changes.</p>
+          <label class="toggle-row"><span><strong>ESPHome device bridge</strong><small>Publish compatible Reachy telemetry and entities to Home Assistant on TCP 6053</small></span><input id="home_assistant_enabled" name="home_assistant_enabled" type="checkbox" form="settings-form" /></label>
+          <label class="toggle-row"><span><strong>Home Assistant robot controls</strong><small>Allow the dedicated Awake switch to run guarded wake/standby transitions and permit bounded motion only while Reachy is Awake</small></span><input id="home_assistant_controls_enabled" name="home_assistant_controls_enabled" type="checkbox" form="settings-form" /></label>
+          <label class="toggle-row"><span><strong>Home Assistant camera</strong><small>Allow explicit ESPHome snapshots outside Meeting, Sleep, and Kids Mode</small></span><input id="home_assistant_camera_enabled" name="home_assistant_camera_enabled" type="checkbox" form="settings-form" /></label>
+          <label class="toggle-row"><span><strong>Home Assistant Assist satellite</strong><small>Let Home Assistant own wake-to-response audio instead of Hermes voice; experimental until supervised acceptance passes</small></span><input id="home_assistant_assist_enabled" name="home_assistant_assist_enabled" type="checkbox" form="settings-form" /></label>
+          <label>ESPHome API port<input id="home_assistant_port" name="home_assistant_port" type="number" min="1024" max="65535" step="1" value="6053" form="settings-form" /><small>Keep 6053 unless another service already uses it.</small></label>
+          <p id="home-assistant-status" class="muted">Bridge disabled</p>
+        </div>
+      </details>
+      <p id="assistant-mode-notice" class="message warning-note" role="status" hidden>Ordinary questions now use Everyday. Choose Workspace for project work. <button type="button" id="assistant-mode-notice-ack" class="secondary">OK</button></p>
       </section>
 
-      <section class="card danger-zone" id="lifecycle-card">
-        <p class="label">Danger zone</p>
-        <h2>App and host lifecycle</h2>
+      <section id="settings-system" class="settings-category" data-settings-category="system" aria-labelledby="settings-system-title" hidden>
+        <h2 id="settings-system-title" class="settings-category-title">System</h2>
+      <section class="settings-block" id="updates-card" aria-labelledby="updates-title">
+        <h3 id="updates-title">Reachy software updates</h3>
+        <p id="update-current">Checking Reachy's installed version…</p>
+        <div class="actions">
+          <button type="button" id="update-check" class="secondary">Check Reachy for updates</button>
+          <button type="button" id="update-preview" class="secondary" disabled>Review Reachy update</button>
+        </div>
+        <div id="update-rail" class="update-rail" aria-hidden="true"></div>
+        <p id="update-status" role="status" aria-live="polite">Reading saved progress…</p>
+        <details><summary>Update requirements &amp; scope</summary><p>Updates Homebody and this dashboard and keeps your settings. Reachy must be safely folded in Standby. Android, firmware, SDK and agent bridge updates are separate.</p></details>
+        <details data-hb-disclosure><summary>Update history and release notes</summary><div id="update-history"></div></details>
+      </section>
+      <section class="settings-block danger-zone" id="lifecycle-card" aria-labelledby="lifecycle-title">
+        <h3 id="lifecycle-title">App and host</h3>
         <p class="muted">Stopping the app requires Reachy Control to start it again. Shutting down the robot computer disconnects this page until it is powered back on.</p>
         <p class="muted compact-note">Running on: <strong id="host-summary">Checking…</strong></p>
         <div class="actions danger-actions">
@@ -1463,6 +1516,18 @@
           <button type="button" id="shutdown-button" class="danger" hidden>Shut down robot computer</button>
         </div>
       </section>
+      </section>
+
+      <div id="settings-save" class="settings-save" hidden>
+        <div class="actions">
+          <button type="submit" id="settings-save-button" form="settings-form">Save settings</button>
+        </div>
+        <p id="form-message" class="message" role="status"></p>
+        <p class="muted compact-note">Saves unsaved preferences across categories.</p>
+        <details class="settings-disclosure"><summary>What Save includes</summary><p>Presence and suggestions save as you change them. Speaker volume and household approval have separate controls. Other unsaved preferences are saved together, including changes on another category.</p></details>
+      </div>
+        </div>
+      </div>
     </div>
   </main>
   <dialog id="update-dialog" aria-labelledby="update-dialog-title">
@@ -1480,23 +1545,24 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=115"></script>
-  <script src="/static/scene.js?v=115"></script>
-  <script src="/static/motion.js?v=115"></script>
-  <script src="/static/onboarding.js?v=115"></script>
-  <script src="/static/owner.js?v=115"></script>
+  <script src="/static/notifications.js?v=121"></script>
+  <script src="/static/scene.js?v=121"></script>
+  <script src="/static/motion.js?v=121"></script>
+  <script src="/static/onboarding.js?v=121"></script>
+  <script src="/static/owner.js?v=121"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=115"></script>
-  <script src="/static/agent-connection.js?v=115"></script>
-  <script src="/static/workspace-thread.js?v=115"></script>
-  <script src="/static/native-workspace.js?v=115"></script>
-  <script src="/static/workspace.js?v=115"></script>
-  <script src="/static/ispy-input.js?v=115"></script>
-  <script src="/static/companion.js?v=115"></script>
-  <script src="/static/main.js?v=115"></script>
-  <script src="/static/updates.js?v=115"></script>
-  <script src="/static/volume.js?v=115"></script>
-  <script src="/static/assistant-modes.js?v=115"></script>
-  <script src="/static/household.js?v=115"></script>
+  <script src="/static/camera.js?v=121"></script>
+  <script src="/static/agent-connection.js?v=121"></script>
+  <script src="/static/workspace-thread.js?v=121"></script>
+  <script src="/static/native-workspace.js?v=121"></script>
+  <script src="/static/workspace.js?v=121"></script>
+  <script src="/static/ispy-input.js?v=121"></script>
+  <script src="/static/companion.js?v=121"></script>
+  <script src="/static/settings-layout.js?v=121"></script>
+  <script src="/static/main.js?v=121"></script>
+  <script src="/static/updates.js?v=121"></script>
+  <script src="/static/volume.js?v=121"></script>
+  <script src="/static/assistant-modes.js?v=121"></script>
+  <script src="/static/household.js?v=121"></script>
 </body>
 </html>

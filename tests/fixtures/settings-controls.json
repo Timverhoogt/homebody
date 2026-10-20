@@ -1,0 +1,898 @@
+[
+  {
+    "id": "presence-enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "presence-acknowledgement-enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "companion-suggestions-level",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "companion-calendar",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "companion-calendar-lead",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "companion-calendar-disclosure",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "companion-device",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "companion-device-value",
+    "tag": "INPUT",
+    "type": "text",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "companion-device-offer",
+    "tag": "INPUT",
+    "type": "text",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "companion-device-accepted",
+    "tag": "INPUT",
+    "type": "text",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "companion-enroll-save",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "companion-enroll-clear",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "initiative-policy-enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "initiative-mode",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "initiative-preferences-reset",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "initiative-quiet-hours-enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "initiative-quiet-hours-start",
+    "tag": "INPUT",
+    "type": "time",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "initiative-quiet-hours-end",
+    "tag": "INPUT",
+    "type": "time",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "initiative-hourly-budget",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "initiative-daily-budget",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "contextual-offers-enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "contextual-offer-response-window",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "contextual-offer-yes",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "contextual-offer-later",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "contextual-offer-no",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "shared-physical-context-enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "presentation-window-seconds",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "presentation-start",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "presentation-stop",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-camera_on_request",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-following_and_movement",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-voice_power_controls",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-kids_ispy_camera",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-ack",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-approve",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-camera-off",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-revoke",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-url",
+    "tag": "INPUT",
+    "type": "url",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-credential",
+    "tag": "INPUT",
+    "type": "password",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-durable",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-connection-ack",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-connection-save",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-connection-validate",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-connection-connect",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "household-connection-disconnect",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "speaker-volume",
+    "tag": "INPUT",
+    "type": "range",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "speaker-apply",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "speaker-mute",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "speaker-refresh",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "agent-connection-retry",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "agent-setup-backend",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "agent-setup-mcp",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "agent-setup-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "agent-setup-cancel",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "agent-setup-message",
+    "tag": "TEXTAREA",
+    "type": "textarea",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "agent-setup-copy",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "conversation_mode",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "conversation_mode",
+    "form": "settings-form"
+  },
+  {
+    "id": "bridge_url",
+    "tag": "INPUT",
+    "type": "url",
+    "name": "bridge_url",
+    "form": "settings-form"
+  },
+  {
+    "id": "api_key",
+    "tag": "INPUT",
+    "type": "password",
+    "name": "api_key",
+    "form": "settings-form"
+  },
+  {
+    "id": "current_api_key",
+    "tag": "INPUT",
+    "type": "password",
+    "name": "current_api_key",
+    "form": "settings-form"
+  },
+  {
+    "id": "model",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "model",
+    "form": "settings-form"
+  },
+  {
+    "id": "language",
+    "tag": "INPUT",
+    "type": "text",
+    "name": "language",
+    "form": "settings-form"
+  },
+  {
+    "id": "realtime_model",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "realtime_model",
+    "form": "settings-form"
+  },
+  {
+    "id": "realtime_semantic_eagerness",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "realtime_semantic_eagerness",
+    "form": "settings-form"
+  },
+  {
+    "id": "realtime_voice",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "realtime_voice",
+    "form": "settings-form"
+  },
+  {
+    "id": "realtime_reasoning_effort",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "realtime_reasoning_effort",
+    "form": "settings-form"
+  },
+  {
+    "id": "live_model",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "live_model",
+    "form": "settings-form"
+  },
+  {
+    "id": "live_voice",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "live_voice",
+    "form": "settings-form"
+  },
+  {
+    "id": "live_session_timeout_seconds",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "live_session_timeout_seconds",
+    "form": "settings-form"
+  },
+  {
+    "id": "stt_provider",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "stt_provider",
+    "form": "settings-form"
+  },
+  {
+    "id": "stt_model",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "stt_model",
+    "form": "settings-form"
+  },
+  {
+    "id": "stt_robot_fallback",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "stt_robot_fallback",
+    "form": "settings-form"
+  },
+  {
+    "id": "tts_provider",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "tts_provider",
+    "form": "settings-form"
+  },
+  {
+    "id": "tts_model",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "tts_model",
+    "form": "settings-form"
+  },
+  {
+    "id": "tts_voice",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "tts_voice",
+    "form": "settings-form"
+  },
+  {
+    "id": "continuous_conversation",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "continuous_conversation",
+    "form": "settings-form"
+  },
+  {
+    "id": "motion_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "motion_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "robot_tools_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "robot_tools_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "face_tracking_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "face_tracking_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "face_tracking_weight",
+    "tag": "INPUT",
+    "type": "range",
+    "name": "face_tracking_weight",
+    "form": "settings-form"
+  },
+  {
+    "id": "doa_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "doa_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "barge_in_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "barge_in_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "camera_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "camera_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "camera_feed_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "camera_feed_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "camera_controls_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "camera_controls_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "camera_controls_handedness",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "camera_controls_handedness",
+    "form": "settings-form"
+  },
+  {
+    "id": "local_vision_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "local_vision_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "local_vision_url",
+    "tag": "INPUT",
+    "type": "url",
+    "name": "local_vision_url",
+    "form": "settings-form"
+  },
+  {
+    "id": "local_vision_model",
+    "tag": "INPUT",
+    "type": "text",
+    "name": "local_vision_model",
+    "form": "settings-form"
+  },
+  {
+    "id": "local_ai_accelerator",
+    "tag": "SELECT",
+    "type": "select-one",
+    "name": "local_ai_accelerator",
+    "form": "settings-form"
+  },
+  {
+    "id": "local-vision-test-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "mcp_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "mcp_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "mcp_vision_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "mcp_vision_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "mcp-endpoint",
+    "tag": "INPUT",
+    "type": "text",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "mcp-token-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "mcp-revoke-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "mcp-token",
+    "tag": "INPUT",
+    "type": "text",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "mcp_public_url",
+    "tag": "INPUT",
+    "type": "url",
+    "name": "mcp_public_url",
+    "form": "settings-form"
+  },
+  {
+    "id": "mcp_public_bind",
+    "tag": "INPUT",
+    "type": "text",
+    "name": "mcp_public_bind",
+    "form": "settings-form"
+  },
+  {
+    "id": "mcp_public_port",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "mcp_public_port",
+    "form": "settings-form"
+  },
+  {
+    "id": "mcp_oauth_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "mcp_oauth_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "mcp-oauth-disconnect-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "home_assistant_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "home_assistant_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "home_assistant_controls_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "home_assistant_controls_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "home_assistant_camera_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "home_assistant_camera_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "home_assistant_assist_enabled",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "name": "home_assistant_assist_enabled",
+    "form": "settings-form"
+  },
+  {
+    "id": "home_assistant_port",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "home_assistant_port",
+    "form": "settings-form"
+  },
+  {
+    "id": "end_silence_seconds",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "max_utterance_seconds",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "vad_min_rms",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "vad_noise_multiplier",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "wake_keyword_threshold",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "wake_keyword_score",
+    "tag": "INPUT",
+    "type": "number",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "test-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": "settings-form"
+  },
+  {
+    "id": "setup-review-open",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "assistant-mode-notice-ack",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "update-check",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "update-preview",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "owner-logout",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "owner-devices-refresh",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "install-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "app-off-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "shutdown-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "agent-conversation-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "agent-enable-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "voice-stop-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "agent-stop-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  },
+  {
+    "id": "agent-approve-button",
+    "tag": "BUTTON",
+    "type": "button",
+    "name": "",
+    "form": null
+  }
+]

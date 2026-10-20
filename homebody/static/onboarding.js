@@ -96,8 +96,7 @@
   });
   el('setup-settings').addEventListener('click', () => {
     dialog.close(); el('tab-settings').click();
-    el('bridge_url').closest('details')?.setAttribute('open','');
-    el('bridge_url').scrollIntoView({block:'center', behavior:'instant'}); el('bridge_url').focus();
+    window.HomebodySettings?.reveal('bridge_url');
   });
   el('setup-restart-consent').addEventListener('change', render);
   el('setup-finish').addEventListener('click', () => {

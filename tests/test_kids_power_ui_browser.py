@@ -56,7 +56,7 @@ def test_first_kids_screen_leads_with_play_together_and_reviewed_setup(ui, width
     page.screenshot(path=str(SHOTS / f"kids-first-{width}-{scheme}.png"))
     hero = page.locator(".kids-hero")
     assert hero.locator("h2").inner_text() == "What shall we play?"
-    assert "stories, games and make-believe" in hero.inner_text().lower()
+    assert "games, stories and make-believe" in hero.inner_text().lower()
     assert hero.locator("#kids-stage .hb-scene").is_visible()  # Reachy's stage leads, above the question
     assert "Choose an activity below" not in page.locator("#panel-kids").inner_text()
     # The idle stage previews the host world, still (no loop) until a session really starts.
@@ -213,7 +213,8 @@ def test_power_pending_is_not_rendered_as_confirmed_and_stop_stays_reachable(ui)
     assert page.locator("#global-power-awake").get_attribute("aria-busy") == "true"
     assert page.locator("#global-power-awake").get_attribute("aria-pressed") == "false"
     page.locator("#global-robot-status").screenshot(path=str(SHOTS / "power-pending-390-light.png"))
-    stop = page.evaluate(HIT, "global-robot-stop")
+    page.locator("#robot-stop-button").scroll_into_view_if_needed()
+    stop = page.evaluate(HIT, "robot-stop-button")
     assert stop["hit"] and not stop["disabled"]
     # Fetch success with an unconfirmed mode is an error, not a completed change.
     held[0].fulfill(json={"runtime": {"power_mode": "standby"}})

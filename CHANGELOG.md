@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.46] — Task-focused Robot and Settings
+
+- Put the complete Look controls and one clearly named Stop movement first on Robot; pair Look and Camera on desktop and keep power compact.
+- Fold routine motor diagnostics while automatically exposing unknown, failed and offline readiness; preserve Stop and truthful state messages.
+- Rebuild Settings as five separate categories: Everyday, Voice & sound, Privacy & access, Connections and System. Use a desktop side list and a compact phone picker.
+- Pull common preferences out of the technical configuration form; make tuning, providers, setup and diagnostics secondary. Separate movement grants from ordinary motion behaviour.
+- Preserve drafts, existing Save payloads and form ownership across categories; reveal hidden validation failures and repair deep links without activating devices.
+- Refine the shared adult UI, spacing and the Settings cog. Keep privacy, camera, motion and backend behaviour unchanged.
+
 ## [0.5.45] — Finish everyday UI decluttering
 
 - Keep Everyday focused on conversation and looking: move presence preferences, source enrollment, advanced diagnostics and capability summaries into Settings.

@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
+from settings_ui_helpers import choose
 
 SHOTS = Path(".artifacts/update-dialog")
 RELEASED = ("!document.getElementById('update-dialog').open"
@@ -346,7 +347,8 @@ def test_newest_completion_once_without_rotation_or_auto_ack(browser):
     assert fx.posts == []
     assert all(not h["acknowledged"] for h in body["history"])
     page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
-    page.locator("#updates-card details > summary").first.click()
+    choose(page,"system")
+    page.locator("#updates-card details[data-hb-disclosure] > summary").click()
     assert page.locator("#update-history > details").count() == 2
     page.locator("#update-history > details > summary").first.click()
     fx.refresh()
