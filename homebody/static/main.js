@@ -964,6 +964,8 @@ function renderPowerNow(powerMode, runtime) {
   $("compact-power-detail").textContent = powerTransitionPending
     ? "Change requested · waiting for Reachy to confirm"
     : details[powerMode] || "Mode not reported";
+  // Presentation only: the healthy Awake subtitle repeats the Motors fact beside it, so CSS hides it.
+  $("compact-power-detail").dataset.routine = String(!powerTransitionPending && powerMode === "awake" && runtime.motors_enabled === true);
   if (changed) window.HomebodyMotion?.enter(element);
 }
 
@@ -1206,13 +1208,22 @@ function updateStatus(payload, sequence = statusSequence) {
   const readinessText = powerTransitionPending
     ? "Changing motor power — manual presets are paused"
     : robotBusy
-      ? "Moving — press Stop action to cancel active and queued movement"
-      : powerMode === "standby"
-        ? "Standby — a movement command wakes Reachy first"
-        : powerMode === "awake"
-          ? "Awake — bounded remote movement is enabled"
-          : `${powerMode} — manual movement unavailable`;
+      ? "Moving — press Stop movement to cancel active and queued movement"
+      : motorsEnabled !== true && motorsEnabled !== false
+        ? "Motor state unavailable · check the connection before moving"
+        : powerMode === "standby"
+          ? "Standby — a movement command wakes Reachy first"
+          : powerMode === "awake"
+            ? "Awake — bounded remote movement is enabled"
+            : `${powerMode} — manual movement unavailable`;
   $("robot-readiness").textContent = readinessText;
+  // UI-only: the Movement details fold opens (and is never auto-closed) when the state needs reading —
+  // motors unknown, a runtime or action error, or a mode where manual movement is unavailable.
+  const movementNeedsAttention = (motorsEnabled !== true && motorsEnabled !== false)
+    || Boolean(runtime.last_error) || Boolean(runtime.robot_action_last_error)
+    || !["awake", "standby"].includes(powerMode);
+  $("movement-details").dataset.attention = String(movementNeedsAttention);
+  if (movementNeedsAttention) $("movement-details").open = true;
   const motorAnnouncement = `${motorStateText}. ${readinessText}`;
   if (motorAnnouncement !== lastMotorAnnouncement) {
     $("motor-state-live").textContent = motorAnnouncement;
@@ -1561,6 +1572,9 @@ async function refreshStatus() {
     $("compact-power-mode").textContent = "Unknown · offline";
     $("compact-power-mode").dataset.mode = "unknown";
     $("compact-power-detail").textContent = "Live status unavailable · power controls paused";
+    $("compact-power-detail").dataset.routine = "false";
+    $("movement-details").dataset.attention = "true";
+    $("movement-details").open = true;
     $("motor-state").textContent = "Motor state unavailable";
     $("motor-state-dot").className = "motor-state-dot error";
     $("robot-readiness").textContent = "Remote controls disabled until live status returns";

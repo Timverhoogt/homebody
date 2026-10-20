@@ -322,41 +322,137 @@ body[data-destination="kids"] .global-robot-status :is(.status-row, #global-powe
   .kids-hero .kids-stage { max-width: 360px; width: 360px; }
 }
 
-/* ---------- Robot ---------- */
-/* One state, read once: the power section (Reachy is …, mic/camera/motors, Wake / Standby / Stop movement)
-   is the Robot page's hero. The motor readiness line under Move Reachy is a single quiet row with Stop action
-   beside it: the live motor text stays visible (it can carry an error), the duplicate big heading goes. */
+/* ---------- Robot: three tasks (Look, Camera, Power), one state ----------
+   Composition, top to bottom: a one-line state header ("Reachy is Awake", the facts line, Wake up / Standby
+   as one compact pair at the right, Meeting · Sleep folded under them); then Look as the focal block, the
+   d-pad centred in the first viewport with the single Stop under it and the live motor line as its caption;
+   Camera beside Look on wide screens, directly under it on phones; Gestures as a quieter row; precision,
+   controller and GPIO fold. #global-robot-stop is not shown here: it calls the same stopRobotMovement as
+   #robot-stop-button, which is the one Stop under the d-pad. Its id and handler stay in the DOM. */
+.robot-power { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 32px; align-items: center; margin-top: 4px; padding: 12px 0 18px; border-top: 0; border-bottom: 1px solid var(--line); }
+.robot-power .status-row { display: grid; grid-column: 1; grid-row: 1; gap: 6px; min-width: 0; }
+/* style.css spans .global-adult-controls across the old grid; here it is the right-hand group, row 1. */
+.robot-power .global-adult-controls { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; }
+.robot-power .power-now-detail[data-routine="true"] { display: none; }
+.robot-power .power-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.robot-power .power-now .label { font-size: .72rem; }
+.robot-power .power-now-mode { font-family: var(--serif); font-size: clamp(1.9rem, 4vw, 2.4rem); line-height: 1.05; }
+.robot-power .power-now-detail { display: block; flex: 1 1 100%; margin: 0; color: var(--ink-2); font-size: .95rem; }
+.robot-power .compact-status-line { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-size: .85rem; color: var(--ink-2); }
+.robot-power .compact-status-line > div { display: inline-flex; align-items: baseline; gap: 6px; padding: 0; border: 0; }
+.robot-power .compact-status-line > div + div::before { content: "·"; color: var(--ink-3); margin-right: 8px; }
+.robot-power .compact-status-line dt { font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; }
+.robot-power .compact-status-line dt .icon { display: none; }
+.robot-power .compact-status-line dd { margin: 0; font-size: .85rem; font-weight: 500; color: var(--ink); }
+.robot-power .global-adult-controls { display: grid; grid-template-columns: 1fr; justify-items: center; gap: 4px; padding: 0; border: 0; }
+.robot-power .global-power-primary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; min-width: 280px; max-width: 320px; }
+.robot-power .global-power-primary button { width: 100%; max-width: none; flex: none; min-height: 48px; }
+#panel-robot #global-robot-stop { display: none; }
+.robot-power #global-power-controls { width: 100%; max-width: 320px; margin: 0; padding: 0; border: 0; }
+.robot-power #global-power-controls summary { justify-content: center; gap: 8px; min-height: 40px; color: var(--ink-2); font-weight: 500; font-size: .86rem; }
+.robot-power #global-power-controls summary::after { width: 22px; height: 22px; font-size: .8rem; }
+.robot-power .power-hint { margin: 4px 0 10px; font-size: .86rem; color: var(--ink-2); text-align: center; }
+.robot-power #global-power-controls .actions { display: flex; justify-content: center; gap: 8px; }
+.robot-power #global-power-controls .actions button { flex: 1 1 0; min-width: 0; }
+.robot-power .message { grid-column: 1 / -1; margin: 0; }
+.robot-power .message:empty { display: none; }
+#motor-wake-button, #motor-standby-button { display: none; }
+
+/* Look: the focal block. */
+#panel-robot > .robot-control-card { margin-top: 0; padding-top: 18px; border-top: 0; }
 .robot-control-card .section-heading h2 { font-size: 1.5rem; }
-.motor-command-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; margin-top: 6px; padding: 12px 0 10px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--ink); box-shadow: none; }
-.motor-state-summary { flex: 1 1 260px; gap: 10px; align-items: flex-start; }
+.look-stage { display: grid; justify-items: center; gap: 16px; padding: 18px 0 8px; }
+.control-group { border: 0; padding: 0; background: transparent; }
+.look-group { width: 100%; }
+.d-pad { width: min(100%, 256px); grid-template: repeat(3, 76px) / repeat(3, 1fr); gap: 8px; margin: 0 auto; }
+.d-pad button, .d-pad button.secondary { min-height: 76px; border-radius: 50%; background: var(--paper-2); color: var(--ink); border: 1px solid var(--line); font-family: var(--sans); font-size: 1.35rem; box-shadow: none; }
+.d-pad button:hover:not(:disabled) { background: var(--paper-3); }
+.d-pad button:disabled { opacity: .45; }
+.d-pad .direction-center, .d-pad button.secondary.direction-center { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.motor-command-bar { display: grid; justify-items: center; gap: 8px; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ink); }
+.motor-safety-actions { display: grid; justify-items: center; gap: 4px; width: 100%; }
+.motor-safety-actions #robot-stop-button { min-width: 220px; min-height: 48px; }
+.motor-stop-help { margin: 0; font-size: .78rem; color: var(--ink-3); text-align: center; }
+.robot-control-card[aria-busy="true"] #robot-stop-button { background: var(--danger); color: #fff5f2; }
+.movement-details { width: 100%; max-width: 440px; margin: 2px 0 0; padding: 0; border: 0; }
+.movement-details > summary { justify-content: center; gap: 8px; min-height: 40px; font-size: .86rem; font-weight: 500; color: var(--ink-3); }
+.movement-details > summary::after { width: 22px; height: 22px; font-size: .8rem; }
+.movement-details[data-attention="true"] > summary { color: var(--ink-2); font-weight: 600; }
+.motor-state-summary { display: flex; justify-content: center; align-items: flex-start; gap: 8px; max-width: 40ch; margin: 2px auto 8px; text-align: center; }
 .motor-state-summary > div { display: grid; gap: 2px; }
 .motor-state-summary .label { display: none; }
-.motor-state-summary strong { margin: 0; font-family: var(--sans); font-size: .95rem; font-weight: 600; line-height: 1.35; }
-.motor-state-dot { width: 9px; height: 9px; margin-top: 7px; box-shadow: none; }
+.motor-state-summary strong { margin: 0; font-family: var(--sans); font-size: .9rem; font-weight: 600; line-height: 1.35; }
+.motor-state-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; box-shadow: none; }
 .motor-readiness { margin: 0; font-family: var(--sans); font-size: .85rem; color: var(--ink-2); }
-.motor-safety-actions { display: grid; grid-template-columns: 1fr; justify-items: center; gap: 4px; flex: 0 0 auto; }
-@media (max-width: 650px) { .motor-safety-actions { width: 100%; } .motor-safety-actions button { width: auto; min-width: 180px; } }
-.motor-safety-actions button { min-height: 44px; }
-.motor-stop-help { margin: 0; font-size: .78rem; color: var(--ink-3); text-align: center; }
-.robot-control-card[aria-busy="true"] .motor-command-bar { box-shadow: none; }
-.robot-control-card[aria-busy="true"] #robot-stop-button { background: var(--danger); color: #fff5f2; }
-.control-group { border: 0; padding: 16px 0 0; }
-.control-group-heading h3 { font-size: 1.2rem; }
+.look-stage .message { width: 100%; max-width: 440px; }
+.look-stage .message:empty { display: none; }
+
+/* Gestures: one quieter row under Look. */
+.robot-gestures { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 14px; padding-top: 16px; border-top: 1px solid var(--line); }
+.robot-gestures .control-group-heading { margin-bottom: 8px; }
+.robot-gestures h3 { font-size: 1.15rem; }
 .control-chip { border: 1px solid var(--line-strong); border-radius: 999px; background: transparent; color: var(--ink-3); }
-.d-pad { width: min(100%, 220px); }
-.d-pad button { border-radius: 50%; background: var(--paper); color: var(--ink); border: 1px solid var(--line-strong); font-size: 1.2rem; }
-.d-pad button:disabled { opacity: .55; }
-.d-pad .direction-center { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.preset-button { border-radius: 999px; }
+.expression-group { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; }
+.expression-group .control-group-heading { grid-column: 1 / -1; }
+.expression-group select, .expression-group #emotion-button { min-height: 48px; }
+.robot-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+.preset-button { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; min-height: 48px; height: auto; padding: 0 16px; border-radius: 999px; background: transparent; text-align: center; }
+.preset-button small { font-family: var(--sans); font-size: .74rem; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
 .robot-control-card .action-status { margin: 14px 0 0; font-size: .85rem; }
+.precision-group { margin-top: 10px; }
 .precision-axis-card { border-radius: var(--radius); background: var(--paper-2); border: 0; }
+
+/* Camera: viewing is its own task, opt-in; Start live camera is the only orange fill on the page. */
 .camera-viewer { border-radius: var(--radius-card); }
-.camera-actions button, .camera-report-actions button { min-height: 44px; }
+.camera-viewer:not(.live):not(:fullscreen):not(.camera-app-fullscreen) { height: 150px; min-height: 150px; margin-top: 14px; border-radius: 18px; }
+.camera-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 520px; margin: 14px auto 0; }
+.camera-actions button, .camera-report-actions button { width: 100%; min-height: 44px; padding: 0 10px; font-size: .88rem; }
+.camera-actions #camera-live-start { grid-column: 1 / -1; min-height: 52px; font-size: 1rem; }
+.camera-report-actions button { width: auto; }
+.camera-feed-health { margin: 8px 0 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: .85rem; text-align: center; }
+.camera-card > .compact-note { margin-top: 10px; }
+.camera-diagnostics { margin-top: 12px; }
+.camera-diagnostics > summary { font-size: .92rem; }
+.camera-diagnostics > div.camera-report-actions { margin: 8px 0; }
+.camera-diagnostics dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 10px 0; font-size: .88rem; }
+.camera-diagnostics dl > div { display: contents; }
+.camera-diagnostics dt { color: var(--ink-2); }
+.camera-diagnostics dd { margin: 0; }
+.camera-diagnostics .compact-note { font-size: .84rem; }
+#panel-robot > .global-robot-status { margin-top: 28px; }
+
+/* Phones: one column in task order — state, Look, Camera, Gestures/precision, hardware, voice strip. */
+@media (max-width: 899px) {
+  #panel-robot:not([hidden]) { display: flex; flex-direction: column; }
+  #panel-robot > .camera-card { order: 3; }
+  #panel-robot > :is(.bluetooth-card, .gpio-card) { order: 4; }
+  #panel-robot > .global-robot-status { order: 5; }
+}
+@media (max-width: 650px) {
+  .robot-power { grid-template-columns: 1fr; gap: 10px; padding-bottom: 14px; }
+  .robot-power .global-adult-controls { grid-column: 1; grid-row: 2; justify-self: stretch; padding-top: 2px; }
+  .robot-power .global-power-primary { min-width: 0; max-width: 440px; }
+  .robot-power .global-power-primary button { font-size: .9rem; padding: 0 10px; }
+  .robot-power .global-power-primary button .icon { display: none; }
+  .robot-power #global-power-controls { max-width: 440px; }
+  .look-stage { padding-top: 14px; }
+  .d-pad { width: min(100%, 240px); grid-template-rows: repeat(3, 72px); }
+  .d-pad button, .d-pad button.secondary { min-height: 72px; }
+  .expression-group { grid-template-columns: 1fr; }
+  .expression-group #emotion-button { width: 100%; }
+  .camera-viewer:not(.live):not(:fullscreen):not(.camera-app-fullscreen) { height: 120px; min-height: 120px; }
+}
+
+/* Wide screens: state header across; Look left, Camera right, then the folded hardware under Camera. */
 @media (min-width: 900px) {
-  #panel-robot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-flow: dense; column-gap: 48px; align-items: start; }
-  #panel-robot > :is(.page-heading, .global-robot-status, .agent-approval-sheet) { grid-column: 1 / -1; }
-  #panel-robot > .robot-control-card { grid-column: 1; grid-row: span 3; }
-  #panel-robot > :is(.camera-card, .bluetooth-card, .gpio-card) { grid-column: 2; }
+  #panel-robot:not([hidden]) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 56px; align-items: start; }
+  #panel-robot > :is(.page-heading, .robot-power, .global-robot-status, .agent-approval-sheet) { grid-column: 1 / -1; }
+  #panel-robot > .robot-control-card { grid-column: 1; grid-row: 3 / span 3; }
+  #panel-robot > .camera-card { grid-column: 2; grid-row: 3; margin-top: 0; padding-top: 18px; border-top: 0; }
+  #panel-robot > .bluetooth-card { grid-column: 2; grid-row: 4; }
+  #panel-robot > .gpio-card { grid-column: 2; grid-row: 5; }
+  #panel-robot > .global-robot-status { grid-row: 6; }
+  .look-stage { padding-top: 24px; }
 }
 
 /* ---------- Settings: a list first, then plain sections ---------- */
@@ -459,18 +555,6 @@ body[data-destination="dashboard"] .global-robot-status { margin-top: 10px; padd
 body[data-destination="dashboard"] .global-robot-status #voice-stop-button { display: none; }
 body[data-destination="dashboard"] .global-robot-status .voice-route { border-top: 0; padding-top: 0; }
 .voice-route .assistant-mode-state { font-size: .85rem; }
-/* Power on Robot: status row, Wake / Standby / Stop movement, Meeting · Sleep. */
-.robot-power { display: grid; gap: 10px; padding: 12px 0 8px; }
-.robot-power .status-row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
-.robot-power .power-now-mode { font-family: var(--serif); font-size: 1.3rem; }
-.robot-power .power-now-detail { display: block; color: var(--ink-2); font-size: .85rem; }
-.robot-power .compact-status-line dd { font-weight: 600; }
-.robot-power .global-adult-controls { display: grid; gap: 8px; padding-top: 4px; }
-.robot-power .global-power-primary button, .robot-power summary { min-height: 48px; }
-.robot-power .message:empty { display: none; }
-#panel-robot > .global-robot-status { margin-top: 24px; }
-/* The power section above already carries Wake / Standby; the motor bar keeps only Stop action. */
-#motor-wake-button, #motor-standby-button { display: none; }
 /* Bottom row clearance: the page scrolls past the last control and any text box. */
 @media (max-width: 650px) {
   main { padding-bottom: calc(var(--fable-row) + 40px + env(safe-area-inset-bottom)); scroll-padding-bottom: calc(var(--fable-row) + 24px); }
@@ -673,41 +757,7 @@ details.card > summary.section-heading h2 { font-size: 1.25rem; }
 details.card > summary.section-heading .label { display: none; }
 .card details:first-child { border-top: 0; }
 
-/* ---------- Robot: power section as the hero ---------- */
-.robot-power { display: grid; gap: 12px; margin-top: 8px; padding: 8px 0 18px; border-top: 0; }
-.robot-power .status-row { display: grid; gap: 10px; }
-.robot-power .power-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
-.robot-power .power-now .label { font-size: .72rem; }
-.robot-power .power-now-mode { font-family: var(--serif); font-size: clamp(1.9rem, 4vw, 2.4rem); line-height: 1.05; }
-.robot-power .power-now-detail { display: block; flex: 1 1 100%; margin: 0; color: var(--ink-2); font-size: .95rem; }
-.robot-power .compact-status-line { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 2px 0 0; }
-.robot-power .compact-status-line > div { padding: 0; border: 0; }
-.robot-power .compact-status-line dt { font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; }
-.robot-power .compact-status-line dt .icon { width: 1em; height: 1em; }
-.robot-power .compact-status-line dd { margin: 2px 0 0; font-size: .92rem; font-weight: 500; color: var(--ink); }
-.robot-power .global-adult-controls { display: grid; justify-items: center; gap: 6px; padding-top: 6px; }
-.robot-power .global-power-primary { width: 100%; }
-.robot-power #global-power-controls { width: 100%; border-top: 0; }
-.robot-power #global-power-controls summary { justify-content: center; gap: 8px; min-height: 44px; color: var(--ink-2); font-weight: 500; font-size: .9rem; }
-.robot-power #global-power-controls summary::after { width: 24px; height: 24px; font-size: .85rem; }
-.robot-power .power-hint { margin: 4px 0 10px; font-size: .88rem; text-align: center; }
-#panel-robot > .robot-control-card { margin-top: 10px; }
-#panel-robot > .camera-card { margin-top: 22px; }
-#panel-robot > .global-robot-status { margin-top: 28px; }
-.camera-viewer:not(.live):not(:fullscreen):not(.camera-app-fullscreen) { height: 96px; min-height: 96px; margin-top: 12px; border-radius: 16px; }
-.camera-feed-health { margin: 10px 0 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: .85rem; text-align: center; }
-.camera-card > .compact-note { margin-top: 12px; }
-.camera-diagnostics { margin-top: 12px; }
-.camera-diagnostics > summary { font-size: .92rem; }
-.camera-diagnostics dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 10px 0; font-size: .88rem; }
-.camera-diagnostics dl > div { display: contents; }
-.camera-diagnostics dt { color: var(--ink-2); }
-.camera-diagnostics dd { margin: 0; }
-@media (max-width: 650px) {
-  .global-power-primary button { font-size: .88rem; padding: 0 10px; }
-  .global-power-primary button .icon { display: none; }
-  #global-power-controls .actions { display: flex; }
-}
+/* Robot layout rules live in the "Robot: three tasks" block above. */
 
 /* ---------- Announce: write, choose what Reachy does, send ---------- */
 .fable-back { margin: 6px 0 0; padding: 0 14px 0 10px; min-height: 40px; font-size: .88rem; color: var(--ink-2); border-color: var(--line); }
@@ -834,34 +884,7 @@ body[data-destination="dashboard"] .global-robot-status { margin-top: 14px; padd
 #companion-look-reason, #everyday-camera-activity { text-align: left; }
 .companion-card > button.secondary { display: block; width: fit-content; margin: 14px auto 0; }
 
-/* ---- Robot: telemetry as one quiet line, a fixed power grid, a 2 + 1 camera grid ---- */
-.robot-power { gap: 10px; padding-bottom: 14px; }
-.robot-power .power-now-detail { font-size: .92rem; }
-.robot-power .compact-status-line { gap: 4px 14px; margin-top: 0; font-size: .85rem; color: var(--ink-2); }
-.robot-power .compact-status-line > div { display: inline-flex; align-items: baseline; gap: 6px; }
-.robot-power .compact-status-line dt { font-size: .62rem; }
-.robot-power .compact-status-line dt .icon { display: none; }
-.robot-power .compact-status-line dd { font-size: .85rem; font-weight: 500; }
-.robot-power .compact-status-line > div + div::before { content: "·"; color: var(--ink-3); margin-right: 8px; }
-.robot-power .global-adult-controls { gap: 4px; padding-top: 10px; }
-.robot-power .global-power-primary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; max-width: 440px; margin: 0 auto; }
-.robot-power .global-power-primary button { max-width: none; width: 100%; flex: none; }
-.robot-power .global-power-primary #global-robot-stop { grid-column: 1 / -1; }
-.robot-power #global-power-controls summary { min-height: 40px; font-size: .86rem; }
-.robot-power #global-power-controls .actions { justify-content: center; }
-.robot-power #global-power-controls .actions button { flex: 0 1 auto; min-width: 160px; }
-.robot-control-card { margin-top: 6px; }
-.robot-control-card .section-heading h2 { font-size: 1.4rem; }
-.motor-command-bar { margin-top: 4px; padding: 10px 0 8px; gap: 8px 16px; }
-.motor-safety-actions { gap: 2px; }
-.motor-safety-actions button { min-height: 42px; padding: 0 16px; font-size: .88rem; }
-.motor-stop-help { font-size: .74rem; }
-#panel-robot .camera-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 520px; margin: 14px auto 0; }
-#panel-robot .camera-actions button { width: 100%; padding: 0 10px; font-size: .88rem; }
-#panel-robot .camera-actions #camera-live-start { grid-column: 1 / -1; min-height: 52px; font-size: 1rem; }
-.camera-feed-health { margin-top: 8px; }
-.camera-diagnostics > div.camera-report-actions { margin: 8px 0; }
-.camera-diagnostics .compact-note { font-size: .84rem; }
+/* ---- Robot: see the "Robot: three tasks" block; no second layer here ---- */
 
 /* ---- Settings: preference rows with one spacing, empty status lines take no room ---- */
 .message:empty { display: none; }

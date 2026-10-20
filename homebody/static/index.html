@@ -13,11 +13,11 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=117">
-  <link rel="stylesheet" href="/static/scene.css?v=117">
-  <link rel="stylesheet" href="/static/onboarding.css?v=117">
-  <link rel="stylesheet" href="/static/shell.css?v=117">
-  <link rel="stylesheet" href="/static/fable.css?v=117">
+  <link rel="stylesheet" href="/static/style.css?v=118">
+  <link rel="stylesheet" href="/static/scene.css?v=118">
+  <link rel="stylesheet" href="/static/onboarding.css?v=118">
+  <link rel="stylesheet" href="/static/shell.css?v=118">
+  <link rel="stylesheet" href="/static/fable.css?v=118">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -648,34 +648,17 @@
       <!-- Power lives here: main.js moves the live status row, Wake / Standby / Stop movement, Meeting · Sleep
            and their messages into this section at start-up. Everyday forwards its one primary action here. -->
       <section id="robot-power" class="card robot-power" aria-label="Reachy power"></section>
-      <section class="card robot-control-card" aria-busy="false" data-action-busy="false">
+      <!-- Composition: Look is the page's focal block. The d-pad sits centred in the first viewport with the one
+           Stop under it and the live motor line as its caption. Gestures are a quieter row below; precision folds. -->
+      <section class="card robot-control-card" aria-busy="false" data-action-busy="false" aria-label="Look and gestures">
         <div class="section-heading">
-          <div><h2>Move Reachy</h2><p class="muted compact-note">Keep space around Reachy clear.</p></div>
+          <div><h2>Look</h2><p class="muted compact-note">Turn Reachy’s head. Keep the space around it clear.</p></div>
           <span id="robot-mode-badge" class="badge" hidden>—</span>
         </div>
 
-        <div class="motor-command-bar">
-          <div class="motor-state-summary">
-            <span id="motor-state-dot" class="motor-state-dot" aria-hidden="true"></span>
-            <div>
-              <span class="label">Motor state</span>
-              <strong id="motor-state">Checking motor state…</strong>
-              <p id="robot-readiness" class="motor-readiness">Standby — movement will wake Reachy</p>
-              <span id="motor-state-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
-            </div>
-          </div>
-          <div class="motor-safety-actions" aria-label="Motor power and action controls">
-            <div class="legacy-power-controls" hidden><button type="button" id="motor-wake-button" data-power="awake">Wake &amp; enable</button>
-            <button type="button" id="motor-standby-button" data-power="standby" class="secondary">Fold &amp; disable</button></div>
-            <button type="button" id="robot-stop-button" class="danger" aria-describedby="robot-stop-help">Stop action</button>
-            <p id="robot-stop-help" class="motor-stop-help">Stops movement, not voice. Folding is allowed to finish.</p>
-          </div>
-        </div>
-        <p id="robot-message" class="message" role="status" aria-live="polite"></p>
-
-        <div class="robot-control-grid">
-          <div class="control-group">
-            <div class="control-group-heading"><div><h3>Look direction</h3><p class="muted compact-note">Move the head.</p></div><span class="control-chip">Head</span></div>
+        <div class="look-stage">
+          <div class="control-group look-group">
+            <div class="control-group-heading sr-only"><div><h3>Look direction</h3></div></div>
             <div id="look-d-pad" class="d-pad" role="group" aria-label="Head direction controls">
               <button type="button" class="secondary direction-up-left manual-control" data-robot-action="look" data-robot-value="up_left" aria-label="Look up and left">↖</button>
               <button type="button" class="secondary direction-up manual-control" data-robot-action="look" data-robot-value="up" aria-label="Look up">↑</button>
@@ -689,6 +672,32 @@
             </div>
           </div>
 
+          <div class="motor-command-bar">
+            <div class="motor-safety-actions" aria-label="Motor power and action controls">
+              <div class="legacy-power-controls" hidden><button type="button" id="motor-wake-button" data-power="awake">Wake &amp; enable</button>
+              <button type="button" id="motor-standby-button" data-power="standby" class="secondary">Fold &amp; disable</button></div>
+              <button type="button" id="robot-stop-button" class="danger" aria-describedby="robot-stop-help"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop movement</button>
+              <p id="robot-stop-help" class="motor-stop-help">Stops movement, not voice. Folding is allowed to finish.</p>
+            </div>
+            <!-- Movement details: the live motor text and readiness line. main.js opens this fold (and never
+                 closes it) when the state needs reading: unknown motors, errors, offline, Meeting / Sleep. -->
+            <details id="movement-details" class="movement-details" data-attention="false">
+              <summary>Movement details</summary>
+              <div class="motor-state-summary">
+                <span id="motor-state-dot" class="motor-state-dot" aria-hidden="true"></span>
+                <div>
+                  <span class="label">Motor state</span>
+                  <strong id="motor-state">Checking motor state…</strong>
+                  <p id="robot-readiness" class="motor-readiness">Standby — movement will wake Reachy</p>
+                </div>
+              </div>
+            </details>
+            <span id="motor-state-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
+          </div>
+          <p id="robot-message" class="message" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="robot-gestures" role="group" aria-label="Gestures">
           <div class="control-group expression-group">
             <div class="control-group-heading"><div><h3>Expression preset</h3><p class="muted compact-note">A short gesture; voice keeps playing.</p></div><span class="control-chip">Head + antennas</span></div>
             <label for="emotion-select" class="sr-only">Emotion</label>
@@ -708,7 +717,17 @@
             </select>
             <button type="button" id="emotion-button" class="manual-control">Perform selected expression</button>
           </div>
+
+          <div class="control-group dance-group">
+            <div class="control-group-heading"><div><h3>Dance preset</h3><p class="muted compact-note">Clear space before starting a dance.</p></div><span class="control-chip">Full body</span></div>
+            <div class="actions robot-actions">
+              <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="short"><span>Short</span><small>Compact</small></button>
+              <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="groovy"><span>Groovy</span><small>Medium</small></button>
+              <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="energetic" data-confirm="Energetic uses wide body, head, and antenna movement. Confirm that Reachy has clear space."><span>Energetic</span><small>Wide</small></button>
+            </div>
+          </div>
         </div>
+        <p class="muted action-status">Last action: <strong id="last-robot-action">—</strong><span id="robot-action-error"></span></p>
 
         <details class="control-group precision-group disclosure">
           <summary class="control-group-heading">
@@ -766,18 +785,8 @@
               </div>
             </div>
           </div>
-          <p class="muted compact-note">Limits: X ±15 mm, Y/Z ±20 mm, roll ±15°, pitch ±25°, precision head yaw ±35°, base yaw ±120° (inside the SDK’s ±160° safety limit). Base steps of 30° or 60° require clear-space confirmation. Stop action freezes the current pose.</p>
+          <p class="muted compact-note">Limits: X ±15 mm, Y/Z ±20 mm, roll ±15°, pitch ±25°, precision head yaw ±35°, base yaw ±120° (inside the SDK’s ±160° safety limit). Base steps of 30° or 60° require clear-space confirmation. Stop movement freezes the current pose.</p>
         </details>
-
-        <div class="control-group dance-group">
-          <div class="control-group-heading"><div><h3>Dance preset</h3><p class="muted compact-note">Clear space before starting a dance.</p></div><span class="control-chip">Full body</span></div>
-          <div class="actions robot-actions">
-            <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="short"><span>Short</span><small>Compact</small></button>
-            <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="groovy"><span>Groovy</span><small>Medium</small></button>
-            <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="energetic" data-confirm="Energetic uses wide body, head, and antenna movement. Confirm that Reachy has clear space."><span>Energetic</span><small>Wide</small></button>
-          </div>
-        </div>
-        <p class="muted action-status">Last action: <strong id="last-robot-action">—</strong><span id="robot-action-error"></span></p>
       </section>
 
       <details class="card bluetooth-card disclosure-card">
@@ -1483,24 +1492,24 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=117"></script>
-  <script src="/static/scene.js?v=117"></script>
-  <script src="/static/motion.js?v=117"></script>
-  <script src="/static/onboarding.js?v=117"></script>
-  <script src="/static/owner.js?v=117"></script>
+  <script src="/static/notifications.js?v=118"></script>
+  <script src="/static/scene.js?v=118"></script>
+  <script src="/static/motion.js?v=118"></script>
+  <script src="/static/onboarding.js?v=118"></script>
+  <script src="/static/owner.js?v=118"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=117"></script>
-  <script src="/static/agent-connection.js?v=117"></script>
-  <script src="/static/workspace-thread.js?v=117"></script>
-  <script src="/static/native-workspace.js?v=117"></script>
-  <script src="/static/workspace.js?v=117"></script>
-  <script src="/static/ispy-input.js?v=117"></script>
-  <script src="/static/companion.js?v=117"></script>
-  <script src="/static/settings-layout.js?v=117"></script>
-  <script src="/static/main.js?v=117"></script>
-  <script src="/static/updates.js?v=117"></script>
-  <script src="/static/volume.js?v=117"></script>
-  <script src="/static/assistant-modes.js?v=117"></script>
-  <script src="/static/household.js?v=117"></script>
+  <script src="/static/camera.js?v=118"></script>
+  <script src="/static/agent-connection.js?v=118"></script>
+  <script src="/static/workspace-thread.js?v=118"></script>
+  <script src="/static/native-workspace.js?v=118"></script>
+  <script src="/static/workspace.js?v=118"></script>
+  <script src="/static/ispy-input.js?v=118"></script>
+  <script src="/static/companion.js?v=118"></script>
+  <script src="/static/settings-layout.js?v=118"></script>
+  <script src="/static/main.js?v=118"></script>
+  <script src="/static/updates.js?v=118"></script>
+  <script src="/static/volume.js?v=118"></script>
+  <script src="/static/assistant-modes.js?v=118"></script>
+  <script src="/static/household.js?v=118"></script>
 </body>
 </html>

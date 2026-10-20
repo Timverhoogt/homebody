@@ -36,10 +36,32 @@ All of them live at the end of `fable.css` under "Fable alpha" and apply to ever
 
 ## Page by page
 
-- **Robot.** The power section is the page's hero: "Reachy is *Awake*", the mic / camera / motors facts
-  as one quiet row, then Wake up / Standby / Stop movement centred, then Meeting · Sleep folded. Under
-  Move Reachy the old dark "Motor state" block became one readiness line (dot, live motor text,
-  readiness) with Stop action beside it. The live motor text stays visible so a real error still shows.
+- **Robot.** Recomposed around three tasks with one state (composition pass after 81d0767):
+  1. *State header*, one line: "Reachy is *Awake*" with its detail and the mic · camera · motors facts on
+     the left; Wake up / Standby as one compact pair on the right (stacked under the state on phones),
+     Meeting · Sleep folded beneath them. It is a header, not a hero: nothing is pushed below the fold.
+  2. *Look*, the focal block and the first thing in the viewport: the d-pad centred (76 px round keys,
+     ink centre), the one Stop action under it, and the live motor text + readiness as a centred caption.
+     The motor text still carries real errors; busy fills Stop red. `#global-robot-stop` is hidden on
+     Robot because it calls the same `stopRobotMovement` as `#robot-stop-button` (verified in main.js);
+     its id and handler remain in the DOM. The camera overlay's Stop is a different scope (camera.js
+     emergency stop) and is untouched.
+  3. *Camera*, its own task, beside Look on wide screens and directly under it on phones (CSS order; the
+     DOM order is unchanged). Opt-in as before; Start live camera is the only orange fill on the page.
+  Gestures (expression select + Perform, three dance chips) are one quieter row under Look; precision,
+  Bluetooth and GPIO stay folded. Markup moved: the motor bar now sits under the d-pad inside
+  `.look-stage`, dance joined expression in `.robot-gestures`, and the old "Move Reachy" heading is gone.
+  All Robot layout rules live in one `fable.css` block ("Robot: three tasks"); the three earlier Robot
+  override layers were removed rather than stacked on.
+  Follow-up after the first render: (a) the power group is pinned to column 2, row 1 of the header and
+  right-aligned (`style.css` had spanned `.global-adult-controls` across the grid, which is why it floated
+  centred); (b) the visible Stop is named **Stop movement** everywhere it is referenced, same handler;
+  (c) the motor line and readiness live in a native "Movement details" fold under Stop. `main.js` opens the
+  fold, and never closes it, when motors are unknown, `last_error` or `robot_action_last_error` is set, the
+  mode is not Awake/Standby, or live status is unreachable; healthy Awake / Standby start closed. The
+  healthy-Awake subtitle "Motor torque enabled" is hidden by a `data-routine` flag because the Motors fact
+  beside it says the same thing; transition, unconfirmed, offline and Standby subtitles still show.
+  Asset revision 117 → 118 for this candidate; package stays 0.5.45.
 - **Announce.** Text first, four quick templates, then one visible "Reachy will …" choice that states the
   movement behaviour, then a full-width Announce now with Stop & clear queue under it. Provider, model,
   voice, repeat and pause fold into "Voice and repeat options". Status is a small section below.
