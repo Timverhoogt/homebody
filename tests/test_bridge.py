@@ -292,10 +292,10 @@ def test_ispy_bridge_policy_and_reply_state_are_deterministic() -> None:
     )
     assert answer == "Yes! It was the chair."
     assert (count, complete) == (2, True)
-    with pytest.raises(ValueError):
-        bridge._validate_bridge_ispy_target({**candidate, "object_name": "monitor"}, frame_count=5)
-    with pytest.raises(ValueError):
-        bridge._validate_bridge_ispy_target({**candidate, "bbox": [0.1, 0.1, 0.05, 0.05]}, frame_count=5)
+    assert bridge._validate_bridge_ispy_target(
+        {**candidate, "object_name": "monitor"}, frame_count=5)["object_name"] == "monitor"
+    assert bridge._validate_bridge_ispy_target(
+        {**candidate, "bbox": [0.1, 0.1, 0.05, 0.05]}, frame_count=5)["bbox"] == [0.1, 0.1, 0.05, 0.05]
     assert bridge._ispy_confirmation("Yes, that is right") == "yes"
     assert bridge._ispy_confirmation("No, that is not right") == "no"
     assert bridge._ispy_confirmation("Maybe") == "unknown"
