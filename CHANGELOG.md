@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.45] — Finish everyday UI decluttering
+
+- Keep Everyday focused on conversation and looking: move presence preferences, source enrollment, advanced diagnostics and capability summaries into Settings.
+- Remove duplicate waiting artwork and move the one-time mode explanation out of the conversation.
+- Simplify Robot movement copy and duplicate power controls; keep an idle camera preview compact and put connection reports under details.
+- Shorten Kids play and parent guidance; remove outdated object refusals and the false blanket claim that Kids has no camera access.
+- Preserve Stop actions, permission controls and actual configuration behavior; verify moved controls through visible navigation.
+
 ## [0.5.44] — Everyday settings and runtime repairs
 
 - Trust provider-led I Spy object selection without local category/word blacklists, confidence/size/stability thresholds or a second object-moderation request. Retain usable target structure, provider refusals and session cancellation.

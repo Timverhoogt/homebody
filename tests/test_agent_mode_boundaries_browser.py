@@ -167,7 +167,9 @@ def test_workspace_to_everyday_leaves_only_the_everyday_surface(agent, width):
     assert page.locator("#workspace-gate").is_visible()  # the destination offers one way back in
     page.click("#tab-dashboard")
     assert _visible_project_surface(page) == []
-    assert page.locator("#everyday-card").is_visible()
+    assert page.locator("#everyday-card").is_hidden()
+    assert page.locator("#companion-card").is_visible()
+    assert page.locator("#panel-settings #everyday-card").count() == 1
     assert page.locator("#agent-companion-view").is_visible()  # existing Companion presence stays
     # Stop stays in reach on Everyday: the primary action (Stop during a turn, otherwise the power step)
     # is shown and enabled, and the real Stop speaking it forwards to is enabled.

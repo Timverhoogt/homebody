@@ -232,6 +232,7 @@ def test_enrollment_panel_shows_setup_needed_then_offers_only_catalog_identifier
         "enrollment": {"enabled": False},
     }
     page.route("**/api/companion/sources", lambda route: route.fulfill(json=catalog))
+    page.click('#tab-settings')
     with page.expect_response("**/api/companion/sources"):
         page.click("#companion-details summary")
     page.wait_for_function("document.querySelectorAll('#companion-setup-needed li').length === 1")

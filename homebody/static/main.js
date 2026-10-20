@@ -1275,7 +1275,7 @@ function updateStatus(payload, sequence = statusSequence) {
       ? "Time is up · safe fold verified"
       : String(kidsMode.last_end_reason || "").includes("fold_failed")
         ? "Session ended · safe fold needs parent attention"
-        : "Not started · a grown-up checks the setup first";
+        : "Ready when you are";
   $("kids-progress-bar").style.width = `${remainingPercent}%`;
   const progress = document.querySelector(".kids-progress");
   progress.setAttribute("aria-valuenow", String(Math.round(remainingPercent)));
@@ -1283,9 +1283,9 @@ function updateStatus(payload, sequence = statusSequence) {
     ? showTellCamera
       ? "Show and Tell is taking one announced photo now. Turn off or End now stops it."
       : kidsCameraActive
-      ? "I Spy camera is active for this bounded five-frame search of nearby surroundings only. End now stops capture and folds Reachy."
+      ? "Looking around for I Spy. End stops the search and folds Reachy."
       : `${kidsMode.host?.enabled ? `Play together · ${kidsMode.host.activity ? kidsActivityLabels[kidsMode.host.activity] || "game" : "choosing a game"}` : kidsActivityLabels[kidsProfile.activity] || "Kids activity"} · age ${kidsProfile.age_band} · ${kidsMode.turns_completed || 0} completed turn${kidsMode.turns_completed === 1 ? "" : "s"} · ${kidsMode.tool_policy === "voice-state-motion-only" ? "gentle voice-state motion only" : "no tools"}`
-    : "Camera, personal Hermes memory, smart-home control, messaging, purchases, and power controls are unavailable to the child session.";
+    : "Choose Play together or a single game below.";
   $("kids-start-button").disabled = kidsActive || kidsLocked || kidsRequestPending || ["meeting", "sleep"].includes(powerMode);
   $("kids-host-start-button").disabled = $("kids-start-button").disabled;
   $("kids-host-camera-consent").disabled = kidsActive || kidsRequestPending;
@@ -1969,7 +1969,7 @@ const PRESENTATION_NEEDS = {
 };
 
 function goToControl({ tab, companion, id }) {
-  activateTab(companion ? "dashboard" : tab, false, true);
+  activateTab(companion ? "settings" : tab, false, true);
   if (companion) $("companion-advanced").open = true;
   const control = $(id);
   if (!control) return;
@@ -2177,7 +2177,7 @@ function renderKidsSession(kidsActive, kidsMode, kidsHost, kidsCameraActive, min
   panel.dataset.kidsSession = kidsActive ? "active" : "idle";
   const hosted = kidsMode.host?.enabled === true;
   $("kids-setup-label").textContent = !kidsActive ? (kidsPreviewSingle ? "Grown-up check · Single activity" : "Grown-up check · Play together") : hosted ? "Play together · live" : "Single activity · live";
-  $("kids-setup-title").textContent = kidsActive ? "Session in progress" : "Review, then start";
+  $("kids-setup-title").textContent = kidsActive ? "Session in progress" : "Choose your play settings";
   const summary = $("kids-live-summary");
   if (!kidsActive) {
     summary.textContent = "";

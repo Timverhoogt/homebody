@@ -13,11 +13,11 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=114">
-  <link rel="stylesheet" href="/static/scene.css?v=114">
-  <link rel="stylesheet" href="/static/onboarding.css?v=114">
-  <link rel="stylesheet" href="/static/shell.css?v=114">
-  <link rel="stylesheet" href="/static/fable.css?v=114">
+  <link rel="stylesheet" href="/static/style.css?v=115">
+  <link rel="stylesheet" href="/static/scene.css?v=115">
+  <link rel="stylesheet" href="/static/onboarding.css?v=115">
+  <link rel="stylesheet" href="/static/shell.css?v=115">
+  <link rel="stylesheet" href="/static/fable.css?v=115">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -177,7 +177,7 @@
         </div>
         <p id="assistant-mode-state" class="assistant-mode-state" role="status" aria-live="polite"><span class="sr-only">Current mode</span> <strong id="assistant-mode-current">Checking…</strong> <span id="assistant-mode-detail" class="muted">Waiting for Reachy to confirm.</span></p>
         <p id="assistant-mode-help" class="sr-only">Everyday never uses your agent memory, projects or coding tools. Workspace may take longer.</p>
-        <p id="assistant-mode-notice" class="message warning-note" role="status" hidden>Ordinary questions now use Everyday. Choose Workspace for project work. <button type="button" id="assistant-mode-notice-ack" class="secondary">OK</button></p>
+
         <div class="agent-mode-bar" aria-label="Stop controls">
           <span id="native-work-badge" class="badge" data-status="running" hidden>Project work running</span>
           <button type="button" id="voice-stop-button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop speaking</button>
@@ -249,17 +249,7 @@
         </details>
       </details>
 
-      <section id="everyday-card" class="card everyday-card" aria-labelledby="everyday-heading">
-        <div class="section-heading">
-          <div><p class="label">Everyday</p><h2 id="everyday-heading">Quick help at home</h2></div>
-          <span id="everyday-badge" class="badge">Checking…</span>
-        </div>
-        <p id="everyday-summary">Checking permitted home help…</p>
-        <p id="everyday-camera-activity" class="muted" role="status">Camera session status not reported.</p>
-        <button type="button" class="secondary" data-everyday-setting="household-heading">Permissions &amp; settings</button>
-        <div id="everyday-companion" class="everyday-companion"></div>
-        <p id="everyday-message" class="muted compact-note" role="status" aria-live="polite"></p>
-      </section>
+
 
 
 
@@ -269,19 +259,10 @@
           <div><p class="label">Companion</p><h2 id="companion-heading">Look and notice</h2></div>
           <span id="companion-activity" class="badge">Unknown</span>
         </div>
-        <dl class="companion-grid">
-          <div><dt>Presence</dt><dd id="companion-presence">Unknown</dd></div>
-          <div><dt>Camera</dt><dd id="companion-camera">Unknown</dd></div>
-          <div><dt>Microphone</dt><dd id="companion-microphone">Unknown</dd></div>
-        </dl>
+
         <div class="companion-look">
-          <div class="presence-controls">
-            <label class="checkbox-row"><input type="checkbox" id="presence-enabled" />
-              <span><strong>Notice room presence</strong><small>Use the trusted sensor, without identifying anyone.</small></span></label>
-            <label class="checkbox-row"><input type="checkbox" id="presence-acknowledgement-enabled" />
-              <span><strong>Acknowledge arrivals silently</strong><small>One small head movement when already Awake; never wakes or powers motors.</small></span></label>
-          </div>
-          <p id="presence-message" class="message" role="status" aria-live="polite"></p>
+
+
           <label for="companion-question">Look at this</label>
           <div class="companion-look-row">
             <input id="companion-question" type="text" maxlength="500" placeholder="What does this say?" autocomplete="off" />
@@ -298,164 +279,13 @@
           <p class="muted">Accepted private details stay on this owner screen, never spoken aloud.</p>
           <ul id="companion-private-list"></ul>
         </section>
-        <div class="companion-suggestions">
-          <label for="companion-suggestions-level">Suggestions
-            <select id="companion-suggestions-level">
-              <option value="off">Off</option>
-              <option value="gentle">Gentle</option>
-              <option value="more_often">More often</option>
-            </select>
-          </label>
-          <p id="companion-why" class="muted compact-note">Why: not checked yet.</p>
-          <p class="muted compact-note">Off disables unsolicited suggestions only. Conversation, timers and reminders you asked for still work.</p>
-        </div>
-        <details id="companion-details"><summary>Details and source enrollment</summary>
-          <p id="companion-sources-status" class="muted compact-note">Source catalog not loaded yet.</p>
-          <ul id="companion-setup-needed" class="presentation-requirements" aria-label="Host setup still needed"></ul>
-          <div id="companion-enroll" class="companion-enroll" hidden>
-            <p class="muted compact-note">Only already-authorized host identifiers are offered. Enrolling reads that one calendar or entity on the Hermes host; Reachy only receives rendered read-only offers. Nothing is enrolled until you save.</p>
-            <label>Calendar lead-time
-              <select id="companion-calendar"><option value="">None</option></select>
-            </label>
-            <label>Minutes before an event <input id="companion-calendar-lead" type="number" min="1" max="120" value="10" /></label>
-            <label>Calendar details
-              <select id="companion-calendar-disclosure">
-                <option value="private">Private · dashboard only (default)</option>
-                <option value="spoken">Spoken aloud in the room</option>
-              </select>
-            </label>
-            <label>Home Assistant condition
-              <select id="companion-device"><option value="">None</option></select>
-            </label>
-            <label>When its state equals <input id="companion-device-value" type="text" maxlength="32" placeholder="on" /></label>
-            <label>Reachy asks <input id="companion-device-offer" type="text" maxlength="180" placeholder="The washing machine seems finished; would you like to know when it stopped?" /></label>
-            <label>If you say yes, Reachy says <input id="companion-device-accepted" type="text" maxlength="240" placeholder="Okay. The washer reported done just now; nothing else was changed." /></label>
-            <div class="actions">
-              <button type="button" id="companion-enroll-save" class="secondary">Save enrollment</button>
-              <button type="button" id="companion-enroll-clear" class="secondary">Remove all sources</button>
-            </div>
-            <p id="companion-enroll-message" class="message" role="status" aria-live="polite"></p>
-          </div>
-          <ol id="companion-receipts" class="agent-activity"><li>No companion activity yet</li></ol>
-        </details>
-        <p id="companion-message" class="message" role="status" aria-live="polite"></p>
-      </section>
-      <details id="companion-advanced"><summary>Advanced companion controls and diagnostics</summary>
-      <section class="card presence-card" aria-labelledby="presence-heading">
-        <div class="section-heading">
-          <div><p class="label">Presence</p><h2 id="presence-heading">Proactive Presence</h2></div>
-          <span id="presence-badge" class="badge">Off</span>
-        </div>
-        <p class="muted">Reachy can accept trusted local presence signals and acknowledge them with one subtle movement when already Awake.</p>
 
-        <div class="presence-status-grid">
-          <div><span class="label">State</span><strong id="presence-level">Away</strong></div>
-          <div><span class="label">Latest source</span><strong id="presence-source">None</strong></div>
-          <div><span class="label">Last outcome</span><strong id="presence-outcome">Disabled</strong></div>
-        </div>
-        <p class="presence-boundary"><span aria-hidden="true">●</span> Silent acknowledgement only · no proactive speech</p>
+
+        <p id="everyday-camera-activity" class="muted" role="status" hidden>Camera session status not reported.</p>
+<button type="button" class="secondary" data-everyday-setting="household-heading">Permissions &amp; settings</button>
+<p id="companion-message" class="message" role="status" aria-live="polite"></p>
       </section>
 
-      <section class="card initiative-card" aria-labelledby="initiative-heading">
-        <div class="section-heading">
-          <div><p class="label">Helpful timing</p><h2 id="initiative-heading">Initiative & Offers</h2></div>
-          <span id="initiative-badge" class="badge">Off</span>
-        </div>
-        <p class="muted">A deterministic gate decides whether Reachy should remain silent, acknowledge physically, or prepare an offer candidate.</p>
-        <div class="initiative-primary-controls">
-          <label class="checkbox-row">
-            <input type="checkbox" id="initiative-policy-enabled" />
-            <span><strong>Use initiative policy</strong><small>Applies budgets, timing, confidence, cooldowns, and every runtime safety boundary.</small></span>
-          </label>
-          <label>Engagement mode
-            <select id="initiative-mode">
-              <option value="quiet">Quiet</option>
-              <option value="balanced">Balanced</option>
-              <option value="engaged">Engaged</option>
-            </select>
-          </label>
-        </div>
-        <div class="initiative-status-grid">
-          <div><span class="label">Latest decision</span><strong id="initiative-outcome">Remain silent</strong></div>
-          <div><span class="label">Reason</span><strong id="initiative-reason">Disabled</strong></div>
-          <div><span class="label">Budget</span><strong id="initiative-budget">0 / 0 today</strong></div>
-        </div>
-        <p class="initiative-why"><span class="label">Why did Reachy do that?</span> <span id="initiative-explanation">Nothing has happened yet.</span></p>
-        <details class="initiative-learned">
-          <summary><span><strong>What Reachy learned</strong><small>Timing only, from your yes, no and later answers. Reachy never learns new permissions.</small></span></summary>
-          <ul id="initiative-preferences" class="initiative-preferences" aria-label="Learned initiative preferences"></ul>
-          <button type="button" id="initiative-preferences-reset" class="secondary">Forget everything Reachy learned</button>
-        </details>
-        <details class="initiative-limits">
-          <summary><span><strong>Timing and limits</strong><small>Quiet hours and maximum initiative frequency</small></span></summary>
-          <div class="initiative-limit-grid">
-            <label class="checkbox-row initiative-quiet-toggle">
-              <input type="checkbox" id="initiative-quiet-hours-enabled" />
-              <span><strong>Quiet hours</strong><small>Always remain silent during this local-time window.</small></span>
-            </label>
-            <label>From <input type="time" id="initiative-quiet-hours-start" /></label>
-            <label>Until <input type="time" id="initiative-quiet-hours-end" /></label>
-            <label>Per hour <input type="number" id="initiative-hourly-budget" min="1" max="10" /></label>
-            <label>Per day <input type="number" id="initiative-daily-budget" min="1" max="30" /></label>
-          </div>
-        </details>
-        <div class="contextual-offer-panel">
-          <label class="checkbox-row">
-            <input type="checkbox" id="contextual-offers-enabled" />
-            <span><strong>Contextual offers</strong><small>One concise question from calendar, reminder, timer, selected Home Assistant, weather, or explicitly scoped project context.</small></span>
-          </label>
-          <label>Response window
-            <span class="inline-number"><input type="number" id="contextual-offer-response-window" min="5" max="30" /> seconds</span>
-          </label>
-          <div class="contextual-offer-status" aria-live="polite">
-            <span class="label">Latest offer</span><strong id="contextual-offer-state">Disabled</strong>
-            <p id="contextual-offer-text" class="quote">No offer yet.</p>
-            <small id="contextual-offer-explanation">Allowlisted context only.</small>
-          </div>
-          <div id="contextual-offer-response" class="contextual-offer-response" hidden>
-            <button type="button" id="contextual-offer-yes">Yes</button>
-            <button type="button" id="contextual-offer-later" class="secondary">Later</button>
-            <button type="button" id="contextual-offer-no" class="secondary">No</button>
-          </div>
-        </div>
-        <p class="presence-boundary"><span aria-hidden="true">●</span> Offers never execute an action · yes only reads the prepared help</p>
-        <p id="initiative-message" class="message" role="status" aria-live="polite"></p>
-      </section>
-
-      <section class="card presentation-card" aria-labelledby="presentation-heading">
-        <div class="section-heading">
-          <div><p class="label">Shared context</p><h2 id="presentation-heading">Show Reachy something</h2></div>
-          <span id="presentation-badge" class="badge">Off</span>
-        </div>
-        <p class="muted">Start a short window only when you intentionally hold an object or text in the center of Reachy's view.</p>
-        <div class="presentation-controls">
-          <label class="checkbox-row">
-            <input type="checkbox" id="shared-physical-context-enabled" />
-            <span><strong>Shared physical context</strong><small>Local grayscale change and stability only; no object, face, identity, or text analysis.</small></span>
-          </label>
-          <label>Presentation window
-            <span class="inline-number"><input type="number" id="presentation-window-seconds" min="5" max="30" /> seconds</span>
-          </label>
-        </div>
-        <div class="presentation-status-grid">
-          <div><span class="label">Local camera gate</span><strong id="presentation-state">Disabled</strong></div>
-          <div><span class="label">Time remaining</span><strong id="presentation-remaining">0 seconds</strong></div>
-          <div><span class="label">Latest result</span><strong id="presentation-reason">Disabled</strong></div>
-        </div>
-        <div class="presentation-actions">
-          <button type="button" id="presentation-start" aria-describedby="presentation-readiness" disabled>Start presentation window</button>
-          <button type="button" id="presentation-stop" class="secondary" aria-describedby="presentation-stop-help" disabled>Stop presentation window</button>
-        </div>
-        <div class="presentation-readiness" aria-live="polite">
-          <p id="presentation-readiness" class="presentation-readiness-summary">Readiness not checked yet · Start stays off.</p>
-          <ul id="presentation-requirements" class="presentation-requirements" aria-label="What Start still needs"></ul>
-          <p id="presentation-stop-help" class="muted compact-note">Stop is available only while a window is running.</p>
-        </div>
-        <p class="presence-boundary"><span aria-hidden="true">●</span> Visible and ephemeral · zero frames retained · no cloud vision during this window</p>
-        <p class="muted presentation-help">If Reachy notices a stable presented change, it may ask one bounded offer. Saying Yes only tells you to wake Reachy and explicitly ask it to look; that later request uses the existing one-frame cloud-vision path.</p>
-        <p id="presentation-message" class="message" role="status" aria-live="polite"></p>
-      </section>
-      </details>
 
       </div>
     </div>
@@ -629,24 +459,24 @@
         <div class="kids-hero-copy">
           <p class="label">Kids Mode · Supervised play</p>
           <h2>What shall we play?</h2>
-          <p class="kids-lead">Just start talking. Reachy makes it up with you.</p>
+          <p class="kids-lead">Stories, games and make-believe, together.</p>
           <div id="kids-hero-actions" class="kids-hero-actions">
             <button type="button" id="kids-host-setup-link" class="kids-host-start" aria-controls="kids-setup">Start playing</button>
             <button type="button" id="kids-single-link" class="secondary" aria-controls="kids-activity-picker">Just one game</button>
           </div>
           <div class="kids-status-line">
             <span id="kids-status-badge" class="badge">Off</span>
-            <strong id="kids-timer">Not started · a grown-up checks the setup first</strong>
+            <strong id="kids-timer">Ready when you are</strong>
           </div>
           <div class="kids-progress" role="progressbar" aria-label="Kids Mode time remaining" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="kids-progress-bar"></span></div>
           <!-- Live session detail only (what the session is doing); the standing restrictions are in the grown-up note. -->
-          <p id="kids-session-detail" class="muted compact-note">Camera, personal Hermes memory, smart-home control, messaging, purchases, and power controls are unavailable to the child session.</p>
+          <p id="kids-session-detail" class="muted compact-note">Private files, personal memory, messages and home controls stay separate from Kids play. Camera use follows your play settings.</p>
         </div>
       </section>
 
       <section id="kids-setup" class="card kids-setup-card">
         <div class="section-heading">
-          <div><p id="kids-setup-label" class="label">Grown-up check · Play together</p><h2 id="kids-setup-title">Review, then start</h2></div>
+          <div><p id="kids-setup-label" class="label">Grown-up check · Play together</p><h2 id="kids-setup-title">Choose your play settings</h2></div>
           <span class="badge parent-badge">Grown-up</span>
         </div>
         <div class="kids-review">
@@ -662,21 +492,16 @@
               <select id="kids-language"><option value="en">English</option><option value="nl">Nederlands</option><option value="es">Español</option><option value="de">Deutsch</option><option value="fr">Français</option><option value="it">Italiano</option><option value="pt">Português</option></select>
             </label>
           </div>
-          <label class="toggle-row kids-motion-toggle"><span><strong>Gentle robot motion</strong><small>Allow occasional bounded head and antenna gestures; no wide dance. If Local face following is on in Settings, Reachy also follows a face using the camera on the robot only (nothing uploaded or saved)</small></span><input id="kids-motion-enabled" type="checkbox" checked /></label>
-          <label id="kids-host-camera-row" class="toggle-row"><span><strong>Allow I Spy camera during Play together</strong><small>Optional. Without it Reachy never offers I Spy and tells the child a grown-up must allow the camera first.</small></span><input id="kids-host-camera-consent" type="checkbox" /></label>
-          <div class="kids-safety-grid" aria-label="Kids Mode safeguards">
-            <span><strong>Camera off after search</strong><small>I Spy uses only five transient frames after caregiver opt-in</small></span>
-            <span><strong>No private tools</strong><small>No files, memory, messages, or devices</small></span>
-            <span><strong>Time limit</strong><small>Ends and folds automatically</small></span>
-            <span><strong>Age-aware</strong><small>Short, activity-specific replies</small></span>
-          </div>
+          <label class="toggle-row kids-motion-toggle"><span><strong>Gentle robot motion</strong><small>Small head and antenna gestures. Local face following uses your Settings preference; images stay on the robot.</small></span><input id="kids-motion-enabled" type="checkbox" checked /></label>
+          <label id="kids-host-camera-row" class="toggle-row"><span><strong>Allow I Spy camera during Play together</strong><small>Let Reachy look around for I Spy. Turn off to play without camera searches.</small></span><input id="kids-host-camera-consent" type="checkbox" /></label>
+
         </div>
         <p id="kids-live-summary" class="kids-live-summary"></p>
         <div class="actions kids-actions">
           <button type="button" id="kids-host-start-button" class="kids-host-start">Play together</button>
-          <button type="button" id="kids-stop-button" class="danger" disabled><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>End now &amp; fold safely</button>
+          <button type="button" id="kids-stop-button" class="danger" disabled><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>End &amp; fold</button>
         </div>
-        <p class="muted compact-note kids-host-note">Starts one session with the settings above. Reachy offers two games at a time and switches when the child asks; the time limit stays the same. Saying “stop” always finishes.</p>
+        <p class="muted compact-note kids-host-note">Switch games by asking. Say “stop” or press End to finish.</p>
         <div id="kids-host-controls" class="kids-host-controls" hidden>
           <p class="label">Choose the next game for the child</p>
           <div class="kids-host-choices" role="group" aria-label="Choose the next game">
@@ -691,7 +516,7 @@
         </div>
         <div id="kids-show-tell" class="kids-host-controls" hidden>
           <p class="label">Show and Tell in Kids Chat · <span id="kids-show-tell-state">Off</span></p>
-          <p id="kids-show-tell-disclosure" class="muted compact-note">Uses your “Camera access for AI” approval and stays on until you turn it off here. Reachy never looks by itself: only when the child asks, for example “look at my drawing” or “kijk naar mijn tekening”, or when you press Look now. Reachy first says it will look, then takes one photo of a toy, drawing or build. The photo goes to the Hermes host’s configured vision provider — an external service unless the host set a local vision server — and is not stored. Only a short approved description stays in memory for follow-up chat until a new look, Stop, End or turning this off. Faces, screens, documents and writing are refused. English and Dutch Kids Chat only.</p>
+          <p id="kids-show-tell-disclosure" class="muted compact-note">Ask Reachy to look, or press Look now. It announces one photo, sent to your vision provider (an external service unless configured locally). The photo is not stored by Homebody; a short description supports follow-up chat. Turn off or End clears that context. Uses your Camera access for AI permission; available in English and Dutch.</p>
           <div class="kids-host-choices" role="group" aria-label="Show and Tell">
             <button type="button" class="secondary" id="kids-show-tell-toggle" disabled>Turn off</button>
             <button type="button" class="secondary" id="kids-show-tell-look" disabled>Look now</button>
@@ -704,7 +529,7 @@
             <input id="kids-ispy-guess" type="text" maxlength="80" placeholder="Type an object, hint, or yes/no" autocomplete="off" spellcheck="false" disabled>
             <button id="kids-ispy-guess-send" type="submit" disabled>Guess</button>
           </div>
-          <p class="muted">Or say your guess to Reachy. Typed guesses skip the microphone and transcription; Reachy replies aloud through the same moderated Kids game.</p>
+          <p class="muted">Or say your guess to Reachy; it replies aloud.</p>
           <p id="kids-ispy-guess-message" class="message" role="status" aria-live="polite"></p>
         </form>
         <p id="kids-message" class="message" role="status" aria-live="polite"></p>
@@ -723,7 +548,7 @@
           <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="calm"><span class="kids-activity-icon" aria-hidden="true">≈</span><strong>Calm corner</strong><small>Breathe and slow down</small></button>
           <button type="button" class="kids-activity" role="radio" aria-checked="false" data-kids-activity="ispy"><span class="kids-activity-icon" aria-hidden="true">◉</span><strong>I Spy</strong><small>Look around nearby, then swap guesses</small></button>
         </div>
-        <label id="kids-ispy-consent-row" class="toggle-row" hidden><span><strong>Allow camera for this I Spy start only</strong><small>Five in-memory frames across one bounded ±120° search of nearby surroundings; no recording, storage, target selection involving people, or camera during guessing.</small></span><input id="kids-ispy-camera-consent" type="checkbox" /></label>
+        <label id="kids-ispy-consent-row" class="toggle-row" hidden><span><strong>Allow camera for this I Spy start only</strong><small>Reachy looks around nearby to choose an object. Frames are not saved; the camera stops after the search.</small></span><input id="kids-ispy-camera-consent" type="checkbox" /></label>
         <div class="actions kids-single-actions">
           <button type="button" id="kids-start-button" class="secondary">Start chosen activity</button>
         </div>
@@ -732,10 +557,16 @@
       <!-- One folded note for grown-ups instead of a wall of cards. The facts are unchanged. -->
       <details class="kids-guide-card" id="kids-guide">
         <summary><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg><h2>For grown-ups: how it works</h2><span class="badge">Beta</span></summary>
-        <p class="muted compact-note kids-guide-scope">Camera, personal Hermes memory, smart-home control, messaging, purchases, and power controls are unavailable to the child session.</p>
-        <div class="kids-guide-grid">
-          <div><strong>How to talk</strong><p class="muted">After Reachy's greeting, it listens for the first answer automatically—no wake phrase needed. Kids can keep answering while it is listening. To interrupt or resume after listening stops, say <b>Hey Homebody</b>, <b>Hey Hermes</b>, <b>Okay Nabu</b>, or <b>Hey Reachy</b>. Saying “stop”, or End now, cancels voice and motion and folds Reachy safely.</p></div>
-          <div><strong>Adult supervision</strong><p class="muted">Generative AI can still make mistakes, and Reachy is not an emergency service, therapist or babysitter. Stay close, especially with younger children or sensitive topics. Child speech, and the optional nickname, go to the configured speech recognition, OpenAI moderation/chat and ElevenLabs speech providers; no Hermes memory does not mean those providers keep nothing, so review their terms.</p></div>
+        <p class="muted compact-note kids-guide-scope">Private files, personal memory, messages and home controls stay separate from Kids play. Camera use follows your play settings.</p>
+        <div class="kids-safety-grid" aria-label="Kids Mode safeguards">
+            <span><strong>Short camera use</strong><small>I Spy takes a short search; Show and Tell takes one announced photo.</small></span>
+            <span><strong>No private tools</strong><small>No files, memory, messages, or devices</small></span>
+            <span><strong>Time limit</strong><small>Ends and folds automatically</small></span>
+            <span><strong>Age-aware</strong><small>Short, activity-specific replies</small></span>
+          </div>
+<div class="kids-guide-grid">
+          <div><strong>How to talk</strong><p class="muted">After the greeting, Reachy listens for the first answer automatically—no wake phrase needed. To resume after listening stops, say <b>Hey Reachy</b>, <b>Hey Homebody</b>, <b>Hey Hermes</b> or <b>Okay Nabu</b>. Say “stop” or press End to finish and fold.</p></div>
+          <div><strong>Adult supervision</strong><p class="muted">Stay nearby: AI can make mistakes. Speech and the optional nickname go to your configured speech, moderation and chat providers; camera requests use your vision provider. Their retention terms apply. Kids play does not access your private Workspace.</p></div>
         </div>
       </details>
     </div>
@@ -814,10 +645,10 @@
       <section id="robot-power" class="card robot-power" aria-label="Reachy power"></section>
       <section class="card robot-control-card" aria-busy="false" data-action-busy="false">
         <div class="section-heading">
-          <div><p class="label">Remote motor control</p><h2>Move Reachy</h2></div>
-          <span id="robot-mode-badge" class="badge">—</span>
+          <div><h2>Move Reachy</h2></div>
+          <span id="robot-mode-badge" class="badge" hidden>—</span>
         </div>
-        <p class="muted">Use bounded semantic poses and authentic Reachy moves—never raw joints or motor calibration. Meeting and Sleep always block movement.</p>
+        <p class="muted">Keep space clear around Reachy. Movement is unavailable in Meeting and Sleep.</p>
 
         <div class="motor-command-bar display">
           <div class="motor-state-summary">
@@ -830,17 +661,17 @@
             </div>
           </div>
           <div class="motor-safety-actions" aria-label="Motor power and action controls">
-            <button type="button" id="motor-wake-button" data-power="awake">Wake &amp; enable</button>
-            <button type="button" id="motor-standby-button" data-power="standby" class="secondary">Fold &amp; disable</button>
+            <div class="legacy-power-controls" hidden><button type="button" id="motor-wake-button" data-power="awake">Wake &amp; enable</button>
+            <button type="button" id="motor-standby-button" data-power="standby" class="secondary">Fold &amp; disable</button></div>
             <button type="button" id="robot-stop-button" class="danger" aria-describedby="robot-stop-help">Stop action</button>
-            <p id="robot-stop-help" class="motor-stop-help">Stops the active Look, Precision, Expression, or Dance command without stopping voice audio. Safe folding is never interrupted.</p>
+            <p id="robot-stop-help" class="motor-stop-help">Stops movement, not voice. Folding is allowed to finish.</p>
           </div>
         </div>
         <p id="robot-message" class="message" role="status" aria-live="polite"></p>
 
         <div class="robot-control-grid">
           <div class="control-group">
-            <div class="control-group-heading"><div><h3>Look direction</h3><p class="muted compact-note">Nine bounded head poses. Center holds the forward pose.</p></div><span class="control-chip">Head</span></div>
+            <div class="control-group-heading"><div><h3>Look direction</h3><p class="muted compact-note">Choose where Reachy looks.</p></div><span class="control-chip">Head</span></div>
             <div id="look-d-pad" class="d-pad" role="group" aria-label="Head direction controls">
               <button type="button" class="secondary direction-up-left manual-control" data-robot-action="look" data-robot-value="up_left" aria-label="Look up and left">↖</button>
               <button type="button" class="secondary direction-up manual-control" data-robot-action="look" data-robot-value="up" aria-label="Look up">↑</button>
@@ -855,7 +686,7 @@
           </div>
 
           <div class="control-group expression-group">
-            <div class="control-group-heading"><div><h3>Expression preset</h3><p class="muted compact-note">One curated move; voice audio stays independent.</p></div><span class="control-chip">Head + antennas</span></div>
+            <div class="control-group-heading"><div><h3>Expression preset</h3><p class="muted compact-note">A short gesture; voice keeps playing.</p></div><span class="control-chip">Head + antennas</span></div>
             <label for="emotion-select" class="sr-only">Emotion</label>
             <select id="emotion-select">
               <option value="happy">Happy · animated</option>
@@ -935,7 +766,7 @@
         </details>
 
         <div class="control-group dance-group">
-          <div class="control-group-heading"><div><h3>Dance preset</h3><p class="muted compact-note">Recorded Reachy moves. Clear space before medium or wide motion.</p></div><span class="control-chip">Full body</span></div>
+          <div class="control-group-heading"><div><h3>Dance preset</h3><p class="muted compact-note">Clear space before starting a dance.</p></div><span class="control-chip">Full body</span></div>
           <div class="actions robot-actions">
             <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="short"><span>Short</span><small>Compact</small></button>
             <button type="button" class="secondary manual-control preset-button" data-robot-action="dance" data-robot-value="groovy"><span>Groovy</span><small>Medium</small></button>
@@ -1018,18 +849,18 @@
 
       <section class="card camera-card">
         <div class="section-heading">
-          <div><p class="label">Private local viewer</p><h2>Reachy camera</h2></div>
+          <div><h2>Reachy camera</h2></div>
           <div class="camera-status-cluster"><span id="camera-lens" class="camera-lens" aria-hidden="true"></span><span id="camera-live-status" class="badge">Off</span></div>
         </div>
         <p id="camera-connectivity-message" class="muted" role="status">Pair an Owner device to check camera transport. No camera starts during pairing.</p>
-        <p class="muted">A private view from Reachy. Drag to look around; release to hold. Video stays between your device and Reachy; it is never sent to Hermes or OpenAI.</p>
+        <p class="muted">Live video stays between this device and Reachy. With camera controls on, drag to look around and release to hold.</p>
         <div id="camera-viewer" class="camera-viewer">
           <video id="reachy-camera-video" autoplay playsinline muted aria-label="Live Reachy camera feed"></video>
           <div class="camera-vision-overlay" aria-hidden="true">
             <div class="vision-header">
               <div class="vision-identity">
-                <span class="vision-kicker">NOUS // LOCAL OPTIC</span>
-                <strong>HERMES VISION</strong>
+                <span class="vision-kicker">LIVE CAMERA</span>
+                <strong>Reachy</strong>
               </div>
               <div class="vision-telemetry">
                 <span class="vision-live"><i></i>LOCAL</span>
@@ -1045,8 +876,8 @@
             <div class="vision-reticle"><span></span></div>
             <div class="vision-scanline"></div>
             <div class="vision-footer">
-              <span>REACHY MINI // CAM 01</span>
-              <span>PRIVATE LINK // NO CLOUD VIDEO</span>
+              <span>Reachy Mini</span>
+              <span>Private video</span>
             </div>
           </div>
           <button type="button" id="camera-control-fullscreen-exit" class="camera-overlay-exit">Exit fullscreen</button>
@@ -1077,13 +908,13 @@
           <button type="button" id="camera-test-button" class="secondary">Capture one local test frame</button>
         </div>
         <p id="camera-feed-health" class="camera-feed-health" role="status">Camera off · movement requires fresh video</p>
-        <div class="camera-report-actions">
+
+
+
+        <details class="camera-diagnostics" data-hb-disclosure><summary>Connection details</summary><div class="camera-report-actions">
           <button type="button" id="camera-copy-report" class="secondary">Copy connection report</button>
           <span id="camera-report-status" role="status" class="muted compact-note">Phone-friendly · no developer tools needed</span>
-        </div>
-        <p class="muted compact-note">No images, audio, addresses or credentials · report expires after 10 minutes.</p>
-        <textarea id="camera-report-text" aria-label="Connection report to copy" rows="6" readonly hidden></textarea>
-        <details class="camera-diagnostics" data-hb-disclosure><summary>Connection details</summary>
+        </div><p class="muted compact-note">No images, audio, addresses or credentials · report expires after 10 minutes.</p><textarea id="camera-report-text" aria-label="Connection report to copy" rows="6" readonly hidden></textarea>
           <dl><div><dt>Video transport</dt><dd id="camera-diag-transport">Off</dd></div>
           <div><dt>Received video</dt><dd id="camera-diag-video">Not receiving</dd></div>
           <div><dt>Network round trip</dt><dd id="camera-diag-network">Unavailable</dd></div>
@@ -1124,6 +955,7 @@
     <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" hidden>
       <header class="page-heading"><h1>Settings</h1><p>Configure voice, behaviour and connections.</p></header>
       <nav class="settings-index" aria-label="Settings sections">
+        <a href="#companion-settings"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>Presence and suggestions</span></a>
         <a href="#household-card"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>Household permissions<small>Camera, movement and connection</small></span></a>
         <a href="#voice-card"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Voice and agent<small>Bridge, language, voice, embodiment, camera, local vision, MCP, Home Assistant</small></span></a>
         <a href="#agent-setup-card"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg><span>Connect your agent<small>One-time setup message</small></span></a>
@@ -1131,7 +963,177 @@
         <a href="#updates-card"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg><span>Updates</span></a>
         <a href="#lifecycle-card"><svg class="icon" aria-hidden="true"><use href="#i-power"/></svg><span>App and host</span></a>
       </nav>
-      <section id="household-card" class="card household-card" aria-labelledby="household-heading" hidden>
+      <section class="card" id="companion-settings"><h2>Presence and suggestions</h2>
+<dl class="companion-grid">
+          <div><dt>Presence</dt><dd id="companion-presence">Unknown</dd></div>
+          <div><dt>Camera</dt><dd id="companion-camera">Unknown</dd></div>
+          <div><dt>Microphone</dt><dd id="companion-microphone">Unknown</dd></div>
+        </dl>
+<div class="presence-controls">
+            <label class="checkbox-row"><input type="checkbox" id="presence-enabled" />
+              <span><strong>Notice room presence</strong><small>Use the trusted sensor, without identifying anyone.</small></span></label>
+            <label class="checkbox-row"><input type="checkbox" id="presence-acknowledgement-enabled" />
+              <span><strong>Acknowledge arrivals silently</strong><small>One small head movement when already Awake; never wakes or powers motors.</small></span></label>
+          </div>
+<p id="presence-message" class="message" role="status" aria-live="polite"></p>
+<div class="companion-suggestions">
+          <label for="companion-suggestions-level">Suggestions
+            <select id="companion-suggestions-level">
+              <option value="off">Off</option>
+              <option value="gentle">Gentle</option>
+              <option value="more_often">More often</option>
+            </select>
+          </label>
+          <p id="companion-why" class="muted compact-note">Why: not checked yet.</p>
+          <p class="muted compact-note">Off disables unsolicited suggestions only. Conversation, timers and reminders you asked for still work.</p>
+        </div>
+<details id="companion-details"><summary>Details and source enrollment</summary>
+          <p id="companion-sources-status" class="muted compact-note">Source catalog not loaded yet.</p>
+          <ul id="companion-setup-needed" class="presentation-requirements" aria-label="Host setup still needed"></ul>
+          <div id="companion-enroll" class="companion-enroll" hidden>
+            <p class="muted compact-note">Only already-authorized host identifiers are offered. Enrolling reads that one calendar or entity on the Hermes host; Reachy only receives rendered read-only offers. Nothing is enrolled until you save.</p>
+            <label>Calendar lead-time
+              <select id="companion-calendar"><option value="">None</option></select>
+            </label>
+            <label>Minutes before an event <input id="companion-calendar-lead" type="number" min="1" max="120" value="10" /></label>
+            <label>Calendar details
+              <select id="companion-calendar-disclosure">
+                <option value="private">Private · dashboard only (default)</option>
+                <option value="spoken">Spoken aloud in the room</option>
+              </select>
+            </label>
+            <label>Home Assistant condition
+              <select id="companion-device"><option value="">None</option></select>
+            </label>
+            <label>When its state equals <input id="companion-device-value" type="text" maxlength="32" placeholder="on" /></label>
+            <label>Reachy asks <input id="companion-device-offer" type="text" maxlength="180" placeholder="The washing machine seems finished; would you like to know when it stopped?" /></label>
+            <label>If you say yes, Reachy says <input id="companion-device-accepted" type="text" maxlength="240" placeholder="Okay. The washer reported done just now; nothing else was changed." /></label>
+            <div class="actions">
+              <button type="button" id="companion-enroll-save" class="secondary">Save enrollment</button>
+              <button type="button" id="companion-enroll-clear" class="secondary">Remove all sources</button>
+            </div>
+            <p id="companion-enroll-message" class="message" role="status" aria-live="polite"></p>
+          </div>
+          <ol id="companion-receipts" class="agent-activity"><li>No companion activity yet</li></ol>
+        </details>
+<details id="companion-advanced"><summary>Advanced companion controls and diagnostics</summary>
+      <section class="card presence-card" aria-labelledby="presence-heading">
+        <div class="section-heading">
+          <div><p class="label">Presence</p><h2 id="presence-heading">Proactive Presence</h2></div>
+          <span id="presence-badge" class="badge">Off</span>
+        </div>
+        <p class="muted">Reachy can accept trusted local presence signals and acknowledge them with one subtle movement when already Awake.</p>
+
+        <div class="presence-status-grid">
+          <div><span class="label">State</span><strong id="presence-level">Away</strong></div>
+          <div><span class="label">Latest source</span><strong id="presence-source">None</strong></div>
+          <div><span class="label">Last outcome</span><strong id="presence-outcome">Disabled</strong></div>
+        </div>
+        <p class="presence-boundary"><span aria-hidden="true">●</span> Silent acknowledgement only · no proactive speech</p>
+      </section>
+
+      <section class="card initiative-card" aria-labelledby="initiative-heading">
+        <div class="section-heading">
+          <div><p class="label">Helpful timing</p><h2 id="initiative-heading">Initiative & Offers</h2></div>
+          <span id="initiative-badge" class="badge">Off</span>
+        </div>
+        <p class="muted">A deterministic gate decides whether Reachy should remain silent, acknowledge physically, or prepare an offer candidate.</p>
+        <div class="initiative-primary-controls">
+          <label class="checkbox-row">
+            <input type="checkbox" id="initiative-policy-enabled" />
+            <span><strong>Use initiative policy</strong><small>Applies budgets, timing, confidence, cooldowns, and every runtime safety boundary.</small></span>
+          </label>
+          <label>Engagement mode
+            <select id="initiative-mode">
+              <option value="quiet">Quiet</option>
+              <option value="balanced">Balanced</option>
+              <option value="engaged">Engaged</option>
+            </select>
+          </label>
+        </div>
+        <div class="initiative-status-grid">
+          <div><span class="label">Latest decision</span><strong id="initiative-outcome">Remain silent</strong></div>
+          <div><span class="label">Reason</span><strong id="initiative-reason">Disabled</strong></div>
+          <div><span class="label">Budget</span><strong id="initiative-budget">0 / 0 today</strong></div>
+        </div>
+        <p class="initiative-why"><span class="label">Why did Reachy do that?</span> <span id="initiative-explanation">Nothing has happened yet.</span></p>
+        <details class="initiative-learned">
+          <summary><span><strong>What Reachy learned</strong><small>Timing only, from your yes, no and later answers. Reachy never learns new permissions.</small></span></summary>
+          <ul id="initiative-preferences" class="initiative-preferences" aria-label="Learned initiative preferences"></ul>
+          <button type="button" id="initiative-preferences-reset" class="secondary">Forget everything Reachy learned</button>
+        </details>
+        <details class="initiative-limits">
+          <summary><span><strong>Timing and limits</strong><small>Quiet hours and maximum initiative frequency</small></span></summary>
+          <div class="initiative-limit-grid">
+            <label class="checkbox-row initiative-quiet-toggle">
+              <input type="checkbox" id="initiative-quiet-hours-enabled" />
+              <span><strong>Quiet hours</strong><small>Always remain silent during this local-time window.</small></span>
+            </label>
+            <label>From <input type="time" id="initiative-quiet-hours-start" /></label>
+            <label>Until <input type="time" id="initiative-quiet-hours-end" /></label>
+            <label>Per hour <input type="number" id="initiative-hourly-budget" min="1" max="10" /></label>
+            <label>Per day <input type="number" id="initiative-daily-budget" min="1" max="30" /></label>
+          </div>
+        </details>
+        <div class="contextual-offer-panel">
+          <label class="checkbox-row">
+            <input type="checkbox" id="contextual-offers-enabled" />
+            <span><strong>Contextual offers</strong><small>One concise question from calendar, reminder, timer, selected Home Assistant, weather, or explicitly scoped project context.</small></span>
+          </label>
+          <label>Response window
+            <span class="inline-number"><input type="number" id="contextual-offer-response-window" min="5" max="30" /> seconds</span>
+          </label>
+          <div class="contextual-offer-status" aria-live="polite">
+            <span class="label">Latest offer</span><strong id="contextual-offer-state">Disabled</strong>
+            <p id="contextual-offer-text" class="quote">No offer yet.</p>
+            <small id="contextual-offer-explanation">Allowlisted context only.</small>
+          </div>
+          <div id="contextual-offer-response" class="contextual-offer-response" hidden>
+            <button type="button" id="contextual-offer-yes">Yes</button>
+            <button type="button" id="contextual-offer-later" class="secondary">Later</button>
+            <button type="button" id="contextual-offer-no" class="secondary">No</button>
+          </div>
+        </div>
+        <p class="presence-boundary"><span aria-hidden="true">●</span> Offers never execute an action · yes only reads the prepared help</p>
+        <p id="initiative-message" class="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="card presentation-card" aria-labelledby="presentation-heading">
+        <div class="section-heading">
+          <div><p class="label">Shared context</p><h2 id="presentation-heading">Show Reachy something</h2></div>
+          <span id="presentation-badge" class="badge">Off</span>
+        </div>
+        <p class="muted">Start a short window only when you intentionally hold an object or text in the center of Reachy's view.</p>
+        <div class="presentation-controls">
+          <label class="checkbox-row">
+            <input type="checkbox" id="shared-physical-context-enabled" />
+            <span><strong>Shared physical context</strong><small>Local grayscale change and stability only; no object, face, identity, or text analysis.</small></span>
+          </label>
+          <label>Presentation window
+            <span class="inline-number"><input type="number" id="presentation-window-seconds" min="5" max="30" /> seconds</span>
+          </label>
+        </div>
+        <div class="presentation-status-grid">
+          <div><span class="label">Local camera gate</span><strong id="presentation-state">Disabled</strong></div>
+          <div><span class="label">Time remaining</span><strong id="presentation-remaining">0 seconds</strong></div>
+          <div><span class="label">Latest result</span><strong id="presentation-reason">Disabled</strong></div>
+        </div>
+        <div class="presentation-actions">
+          <button type="button" id="presentation-start" aria-describedby="presentation-readiness" disabled>Start presentation window</button>
+          <button type="button" id="presentation-stop" class="secondary" aria-describedby="presentation-stop-help" disabled>Stop presentation window</button>
+        </div>
+        <div class="presentation-readiness" aria-live="polite">
+          <p id="presentation-readiness" class="presentation-readiness-summary">Readiness not checked yet · Start stays off.</p>
+          <ul id="presentation-requirements" class="presentation-requirements" aria-label="What Start still needs"></ul>
+          <p id="presentation-stop-help" class="muted compact-note">Stop is available only while a window is running.</p>
+        </div>
+        <p class="presence-boundary"><span aria-hidden="true">●</span> Visible and ephemeral · zero frames retained · no cloud vision during this window</p>
+        <p class="muted presentation-help">If Reachy notices a stable presented change, it may ask one bounded offer. Saying Yes only tells you to wake Reachy and explicitly ask it to look; that later request uses the existing one-frame cloud-vision path.</p>
+        <p id="presentation-message" class="message" role="status" aria-live="polite"></p>
+      </section>
+      </details>
+</section>
+<section id="household-card" class="card household-card" aria-labelledby="household-heading" hidden>
         <div class="section-heading">
           <div><p class="label">Household</p><h2 id="household-heading">Household permissions</h2></div>
           <span id="household-badge" class="badge">Checking…</span>
@@ -1175,7 +1177,19 @@
         </details>
         <p id="household-message" class="muted compact-note" role="status" aria-live="polite">Saving never takes a picture or starts listening.</p>
       </section>
-      <section class="card" id="everyday-settings-card"><h2>Everyday capabilities</h2>
+                    <p id="assistant-mode-notice" class="message warning-note" role="status" hidden>Ordinary questions now use Everyday. Choose Workspace for project work. <button type="button" id="assistant-mode-notice-ack" class="secondary">OK</button></p>
+<section id="everyday-card" class="card everyday-card" aria-labelledby="everyday-heading">
+        <div class="section-heading">
+          <div><p class="label">Everyday</p><h2 id="everyday-heading">Quick help at home</h2></div>
+          <span id="everyday-badge" class="badge">Checking…</span>
+        </div>
+        <p id="everyday-summary">Checking permitted home help…</p>
+
+
+        <div id="everyday-companion" class="everyday-companion"></div>
+        <p id="everyday-message" class="muted compact-note" role="status" aria-live="polite"></p>
+      </section>
+<section class="card" id="everyday-settings-card"><h2>Everyday capabilities</h2>
         <dl class="everyday-facts everyday-voice-fact">
           <div><dt>Selected voice engine</dt><dd id="everyday-voice">—</dd></div>
         </dl>
@@ -1466,23 +1480,23 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=114"></script>
-  <script src="/static/scene.js?v=114"></script>
-  <script src="/static/motion.js?v=114"></script>
-  <script src="/static/onboarding.js?v=114"></script>
-  <script src="/static/owner.js?v=114"></script>
+  <script src="/static/notifications.js?v=115"></script>
+  <script src="/static/scene.js?v=115"></script>
+  <script src="/static/motion.js?v=115"></script>
+  <script src="/static/onboarding.js?v=115"></script>
+  <script src="/static/owner.js?v=115"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=114"></script>
-  <script src="/static/agent-connection.js?v=114"></script>
-  <script src="/static/workspace-thread.js?v=114"></script>
-  <script src="/static/native-workspace.js?v=114"></script>
-  <script src="/static/workspace.js?v=114"></script>
-  <script src="/static/ispy-input.js?v=114"></script>
-  <script src="/static/companion.js?v=114"></script>
-  <script src="/static/main.js?v=114"></script>
-  <script src="/static/updates.js?v=114"></script>
-  <script src="/static/volume.js?v=114"></script>
-  <script src="/static/assistant-modes.js?v=114"></script>
-  <script src="/static/household.js?v=114"></script>
+  <script src="/static/camera.js?v=115"></script>
+  <script src="/static/agent-connection.js?v=115"></script>
+  <script src="/static/workspace-thread.js?v=115"></script>
+  <script src="/static/native-workspace.js?v=115"></script>
+  <script src="/static/workspace.js?v=115"></script>
+  <script src="/static/ispy-input.js?v=115"></script>
+  <script src="/static/companion.js?v=115"></script>
+  <script src="/static/main.js?v=115"></script>
+  <script src="/static/updates.js?v=115"></script>
+  <script src="/static/volume.js?v=115"></script>
+  <script src="/static/assistant-modes.js?v=115"></script>
+  <script src="/static/household.js?v=115"></script>
 </body>
 </html>

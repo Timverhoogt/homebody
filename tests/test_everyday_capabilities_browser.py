@@ -66,6 +66,8 @@ def test_compact_permissions_geometry_and_navigation(ui, width, scheme, scale):
     assert page.locator("#everyday-technical-details").get_attribute("open") is None
     assert page.locator("#everyday-card input").count() == 0  # not a second settings form
     SHOTS.mkdir(parents=True, exist_ok=True)
+    assert page.locator('#everyday-card').is_hidden()
+    page.click('#tab-settings')
     # Isolated card crops hide fixed chrome only during capture; real hit-testing below retains it.
     page.locator("#everyday-card").screenshot(
         path=str(SHOTS / f"compact-{width}-{scheme}-{scale}.png"),
