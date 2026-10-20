@@ -13,11 +13,11 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
-  <link rel="stylesheet" href="/static/style.css?v=113">
-  <link rel="stylesheet" href="/static/scene.css?v=113">
-  <link rel="stylesheet" href="/static/onboarding.css?v=113">
-  <link rel="stylesheet" href="/static/shell.css?v=113">
-  <link rel="stylesheet" href="/static/fable.css?v=113">
+  <link rel="stylesheet" href="/static/style.css?v=114">
+  <link rel="stylesheet" href="/static/scene.css?v=114">
+  <link rel="stylesheet" href="/static/onboarding.css?v=114">
+  <link rel="stylesheet" href="/static/shell.css?v=114">
+  <link rel="stylesheet" href="/static/fable.css?v=114">
 </head>
 <body>
   <section id="owner-pair-panel" class="owner-access" aria-labelledby="owner-pair-title">
@@ -254,96 +254,14 @@
           <div><p class="label">Everyday</p><h2 id="everyday-heading">Quick help at home</h2></div>
           <span id="everyday-badge" class="badge">Checking…</span>
         </div>
-        <dl class="everyday-facts everyday-voice-fact">
-          <div><dt>Selected voice engine</dt><dd id="everyday-voice">—</dd></div>
-        </dl>
-        <p id="everyday-voice-note" class="muted">Selection is not an active voice session.</p>
         <p id="everyday-summary">Checking permitted home help…</p>
         <p id="everyday-camera-activity" class="muted" role="status">Camera session status not reported.</p>
-        <details id="everyday-permissions"><summary>Manage permissions</summary>
-          <div class="everyday-permission-groups">
-            <section aria-labelledby="everyday-robot-heading">
-              <h3 id="everyday-robot-heading">Robot &amp; camera</h3>
-              <p id="everyday-robot-permissions">Not reported.</p>
-              <p id="everyday-camera-permission">Not reported.</p>
-              <div class="everyday-permission-links">
-                <button type="button" class="secondary" data-everyday-setting="robot_tools_enabled">Robot settings</button>
-                <button type="button" class="secondary" data-everyday-setting="camera_enabled">Camera permission</button>
-              </div>
-            </section>
-            <section aria-labelledby="everyday-household-heading">
-              <h3 id="everyday-household-heading">Household &amp; timers</h3>
-              <p id="everyday-household">Not reported.</p>
-              <p id="everyday-devices">—</p>
-              <p class="muted">Device allowlists and timer delivery are managed on the agent host.</p>
-            </section>
-            <section aria-labelledby="everyday-information-heading">
-              <h3 id="everyday-information-heading">Information</h3>
-              <p id="everyday-information">Not reported.</p>
-              <p id="everyday-search">Public lookup status not reported.</p>
-              <p class="muted">Public lookup is optional and configured on the agent host; opening this page never enables it.</p>
-            </section>
-          </div>
-          <p class="muted">Permissions are not activity. Requests still follow power, privacy and Kids Mode rules.</p>
-          <details id="everyday-technical-details"><summary>Providers and device details</summary>
-            <dl class="everyday-facts">
-              <div><dt>Weather</dt><dd id="everyday-weather">—</dd></div>
-              <div><dt>Text backend — not the voice model</dt><dd id="everyday-model">—</dd></div>
-              <div><dt>Time source</dt><dd id="everyday-time">—</dd></div>
-            </dl>
-            <p class="muted">A home weather source does not mean spoken answers stay off cloud voice services.</p>
-            <p class="muted">Technical entity IDs permitted for home controls and status:</p>
-            <pre id="everyday-device-ids">—</pre>
-          </details>
-        </details>
+        <button type="button" class="secondary" data-everyday-setting="household-heading">Permissions &amp; settings</button>
         <div id="everyday-companion" class="everyday-companion"></div>
-        <p id="everyday-message" class="muted compact-note" role="status" aria-live="polite">Names and providers are set on the Hermes host; keys and coordinates never reach this page.</p>
+        <p id="everyday-message" class="muted compact-note" role="status" aria-live="polite"></p>
       </section>
 
-      <section id="household-card" class="card household-card" aria-labelledby="household-heading" hidden>
-        <div class="section-heading">
-          <div><p class="label">Household</p><h2 id="household-heading">Household permissions</h2></div>
-          <span id="household-badge" class="badge">Checking…</span>
-        </div>
-        <p id="household-state" role="status" aria-live="polite">Checking the saved household choices…</p>
-        <p id="household-camera-state" class="muted">Camera access not reported.</p>
-        <details id="household-review"><summary>Review and approve</summary>
-          <h3 id="household-disclosure-heading">What happens</h3>
-          <ul id="household-disclosure" aria-labelledby="household-disclosure-heading"></ul>
-          <p id="household-excluded" class="muted"></p>
-          <fieldset id="household-choices" class="household-choices">
-            <legend>Choose what this household allows</legend>
-            <label class="household-choice"><input type="checkbox" id="household-camera_on_request"> <span><strong>Camera on request</strong> — one still frame when someone asks something visual</span></label>
-            <label class="household-choice"><input type="checkbox" id="household-following_and_movement"> <span><strong>Following and movement</strong> — face following and gestures on Reachy</span></label>
-            <label class="household-choice"><input type="checkbox" id="household-voice_power_controls"> <span><strong>Voice power controls</strong> — “go to sleep”, “standby”</span></label>
-            <label class="household-choice"><input type="checkbox" id="household-kids_ispy_camera"> <span><strong>Kids I Spy camera</strong> — only in a Kids session a grown-up started; needs Camera on request</span></label>
-          </fieldset>
-          <label class="household-choice household-ack"><input type="checkbox" id="household-ack"> <span>I have read this, including that speech and visual requests can be processed by cloud services.</span></label>
-          <div class="household-actions">
-            <button type="button" id="household-approve" disabled>Save household choices</button>
-          </div>
-        </details>
-        <div class="household-actions">
-          <button type="button" id="household-camera-off" class="secondary">Turn camera off</button>
-          <button type="button" id="household-revoke" class="danger">Revoke household approval</button>
-        </div>
-        <details id="household-connection"><summary>Standalone household connection</summary>
-          <p>Everyday uses this independent service. Keep the existing bridge for Kids, pipeline STT/TTS and Workspace. No Hermes agent runtime is needed by the standalone service.</p>
-          <label>Household HTTPS URL <input id="household-url" type="url" autocomplete="off" placeholder="https://household.example.net"></label>
-          <label>Robot credential <input id="household-credential" type="password" autocomplete="new-password" placeholder="Leave blank to retain saved credential"></label>
-          <label><input id="household-durable" type="checkbox"> Renew external-tool connection while this adult authority remains valid</label>
-          <p>Standby can connect with tools inactive; connection never grants wake, camera or movement. For active tools, enable external tools in Settings, start a separately approved adult Everyday session, then reconnect explicitly. Each call checks current permissions. Stop, privacy, Kids or changed permissions disconnect; reconnect never wakes or captures. After revocation or app restart, use Connect again. Transport errors have bounded retries.</p>
-          <label><input id="household-connection-ack" type="checkbox"> I approve this host and connection policy. Saving does not start listening or grant camera permission.</label>
-          <div class="household-actions">
-            <button type="button" id="household-connection-save">Save connection</button>
-            <button type="button" id="household-connection-validate">Validate service</button>
-            <button type="button" id="household-connection-connect">Connect external tools</button>
-            <button type="button" id="household-connection-disconnect">Disconnect</button>
-          </div>
-          <p id="household-connection-message" role="status" aria-live="polite"></p>
-        </details>
-        <p id="household-message" class="muted compact-note" role="status" aria-live="polite">Saving never takes a picture or starts listening.</p>
-      </section>
+
 
       <div id="agent-companion-view" class="everyday-companion-view">
       <section id="companion-card" class="card companion-card" aria-labelledby="companion-heading">
@@ -1206,12 +1124,99 @@
     <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" hidden>
       <header class="page-heading"><h1>Settings</h1><p>Configure voice, behaviour and connections.</p></header>
       <nav class="settings-index" aria-label="Settings sections">
+        <a href="#household-card"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>Household permissions<small>Camera, movement and connection</small></span></a>
         <a href="#voice-card"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Voice and agent<small>Bridge, language, voice, embodiment, camera, local vision, MCP, Home Assistant</small></span></a>
         <a href="#agent-setup-card"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg><span>Connect your agent<small>One-time setup message</small></span></a>
         <a href="#speaker-card"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg><span>Speaker</span></a>
         <a href="#updates-card"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg><span>Updates</span></a>
         <a href="#lifecycle-card"><svg class="icon" aria-hidden="true"><use href="#i-power"/></svg><span>App and host</span></a>
       </nav>
+      <section id="household-card" class="card household-card" aria-labelledby="household-heading" hidden>
+        <div class="section-heading">
+          <div><p class="label">Household</p><h2 id="household-heading">Household permissions</h2></div>
+          <span id="household-badge" class="badge">Checking…</span>
+        </div>
+        <p id="household-state" role="status" aria-live="polite">Checking the saved household choices…</p>
+        <p id="household-camera-state" class="muted">Camera access not reported.</p>
+        <details id="household-review"><summary>Review and approve</summary>
+          <h3 id="household-disclosure-heading">What happens</h3>
+          <ul id="household-disclosure" aria-labelledby="household-disclosure-heading"></ul>
+          <p id="household-excluded" class="muted"></p>
+          <fieldset id="household-choices" class="household-choices">
+            <legend>Choose what this household allows</legend>
+            <label class="household-choice"><input type="checkbox" id="household-camera_on_request"> <span><strong>Camera on request</strong> — one still frame when someone asks something visual</span></label>
+            <label class="household-choice"><input type="checkbox" id="household-following_and_movement"> <span><strong>Following and movement</strong> — face following and gestures on Reachy</span></label>
+            <label class="household-choice"><input type="checkbox" id="household-voice_power_controls"> <span><strong>Voice power controls</strong> — “go to sleep”, “standby”</span></label>
+            <label class="household-choice"><input type="checkbox" id="household-kids_ispy_camera"> <span><strong>Kids I Spy camera</strong> — only in a Kids session a grown-up started; needs Camera on request</span></label>
+          </fieldset>
+          <label class="household-choice household-ack"><input type="checkbox" id="household-ack"> <span>I have read this, including that speech and visual requests can be processed by cloud services.</span></label>
+          <div class="household-actions">
+            <button type="button" id="household-approve" disabled>Save household choices</button>
+          </div>
+        </details>
+        <div class="household-actions">
+          <button type="button" id="household-camera-off" class="secondary">Turn camera off</button>
+          <button type="button" id="household-revoke" class="danger">Revoke household approval</button>
+        </div>
+        <details id="household-connection"><summary>Standalone household connection</summary>
+          <p>Everyday uses this independent service. Keep the existing bridge for Kids, pipeline STT/TTS and Workspace. No Hermes agent runtime is needed by the standalone service.</p>
+          <label>Household HTTPS URL <input id="household-url" type="url" autocomplete="off" placeholder="https://household.example.net"></label>
+          <label>Robot credential <input id="household-credential" type="password" autocomplete="new-password" placeholder="Leave blank to retain saved credential"></label>
+          <label><input id="household-durable" type="checkbox"> Renew external-tool connection while this adult authority remains valid</label>
+          <p>Standby can connect with tools inactive; connection never grants wake, camera or movement. For active tools, enable external tools in Settings, start a separately approved adult Everyday session, then reconnect explicitly. Each call checks current permissions. Stop, privacy, Kids or changed permissions disconnect; reconnect never wakes or captures. After revocation or app restart, use Connect again. Transport errors have bounded retries.</p>
+          <label><input id="household-connection-ack" type="checkbox"> I approve this host and connection policy. Saving does not start listening or grant camera permission.</label>
+          <div class="household-actions">
+            <button type="button" id="household-connection-save">Save connection</button>
+            <button type="button" id="household-connection-validate">Validate service</button>
+            <button type="button" id="household-connection-connect">Connect external tools</button>
+            <button type="button" id="household-connection-disconnect">Disconnect</button>
+          </div>
+          <p id="household-connection-message" role="status" aria-live="polite"></p>
+        </details>
+        <p id="household-message" class="muted compact-note" role="status" aria-live="polite">Saving never takes a picture or starts listening.</p>
+      </section>
+      <section class="card" id="everyday-settings-card"><h2>Everyday capabilities</h2>
+        <dl class="everyday-facts everyday-voice-fact">
+          <div><dt>Selected voice engine</dt><dd id="everyday-voice">—</dd></div>
+        </dl>
+        <p id="everyday-voice-note" class="muted">Selection is not an active voice session.</p>
+        <details id="everyday-permissions"><summary>Manage permissions</summary>
+          <div class="everyday-permission-groups">
+            <section aria-labelledby="everyday-robot-heading">
+              <h3 id="everyday-robot-heading">Robot &amp; camera</h3>
+              <p id="everyday-robot-permissions">Not reported.</p>
+              <p id="everyday-camera-permission">Not reported.</p>
+              <div class="everyday-permission-links">
+                <button type="button" class="secondary" data-everyday-setting="robot_tools_enabled">Robot settings</button>
+                <button type="button" class="secondary" data-everyday-setting="camera_enabled">Camera permission</button>
+              </div>
+            </section>
+            <section aria-labelledby="everyday-household-heading">
+              <h3 id="everyday-household-heading">Household &amp; timers</h3>
+              <p id="everyday-household">Not reported.</p>
+              <p id="everyday-devices">—</p>
+              <p class="muted">Device allowlists and timer delivery are managed on the agent host.</p>
+            </section>
+            <section aria-labelledby="everyday-information-heading">
+              <h3 id="everyday-information-heading">Information</h3>
+              <p id="everyday-information">Not reported.</p>
+              <p id="everyday-search">Public lookup status not reported.</p>
+              <p class="muted">Public lookup is optional and configured on the agent host; opening this page never enables it.</p>
+            </section>
+          </div>
+          <p class="muted">Permissions are not activity. Requests still follow power, privacy and Kids Mode rules.</p>
+          <details id="everyday-technical-details"><summary>Providers and device details</summary>
+            <dl class="everyday-facts">
+              <div><dt>Weather</dt><dd id="everyday-weather">—</dd></div>
+              <div><dt>Text backend — not the voice model</dt><dd id="everyday-model">—</dd></div>
+              <div><dt>Time source</dt><dd id="everyday-time">—</dd></div>
+            </dl>
+            <p class="muted">A home weather source does not mean spoken answers stay off cloud voice services.</p>
+            <p class="muted">Technical entity IDs permitted for home controls and status:</p>
+            <pre id="everyday-device-ids">—</pre>
+          </details>
+        </details>
+      </section>
       <section class="setup-review-entry"><button id="setup-review-open" type="button" class="secondary">Review setup / repair connection</button><p>Resume setup without reinstalling Homebody or resetting owner devices.</p></section>
       <section class="card" id="speaker-card" aria-labelledby="speaker-title">
         <p class="label">Sound</p><h2 id="speaker-title">Speaker volume</h2>
@@ -1461,23 +1466,23 @@
   </dialog>
   <span id="notification-status" class="sr-only" role="status" aria-atomic="true"></span>
   <span id="notification-alert" class="sr-only" role="alert" aria-atomic="true"></span>
-  <script src="/static/notifications.js?v=113"></script>
-  <script src="/static/scene.js?v=113"></script>
-  <script src="/static/motion.js?v=113"></script>
-  <script src="/static/onboarding.js?v=113"></script>
-  <script src="/static/owner.js?v=113"></script>
+  <script src="/static/notifications.js?v=114"></script>
+  <script src="/static/scene.js?v=114"></script>
+  <script src="/static/motion.js?v=114"></script>
+  <script src="/static/onboarding.js?v=114"></script>
+  <script src="/static/owner.js?v=114"></script>
   <script src="/static/gstwebrtc-api.js"></script>
-  <script src="/static/camera.js?v=113"></script>
-  <script src="/static/agent-connection.js?v=113"></script>
-  <script src="/static/workspace-thread.js?v=113"></script>
-  <script src="/static/native-workspace.js?v=113"></script>
-  <script src="/static/workspace.js?v=113"></script>
-  <script src="/static/ispy-input.js?v=113"></script>
-  <script src="/static/companion.js?v=113"></script>
-  <script src="/static/main.js?v=113"></script>
-  <script src="/static/updates.js?v=113"></script>
-  <script src="/static/volume.js?v=113"></script>
-  <script src="/static/assistant-modes.js?v=113"></script>
-  <script src="/static/household.js?v=113"></script>
+  <script src="/static/camera.js?v=114"></script>
+  <script src="/static/agent-connection.js?v=114"></script>
+  <script src="/static/workspace-thread.js?v=114"></script>
+  <script src="/static/native-workspace.js?v=114"></script>
+  <script src="/static/workspace.js?v=114"></script>
+  <script src="/static/ispy-input.js?v=114"></script>
+  <script src="/static/companion.js?v=114"></script>
+  <script src="/static/main.js?v=114"></script>
+  <script src="/static/updates.js?v=114"></script>
+  <script src="/static/volume.js?v=114"></script>
+  <script src="/static/assistant-modes.js?v=114"></script>
+  <script src="/static/household.js?v=114"></script>
 </body>
 </html>

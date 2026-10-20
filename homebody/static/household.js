@@ -50,6 +50,7 @@
     }
     const done = body.completed === true;
     byId("household-badge").textContent = done ? "Approved" : "Not set up";
+    byId("household-review").querySelector("summary").textContent = done ? "Change permissions" : "Review and approve";
     const when = done && Number(body.completed_at) > 0 ? ` on ${new Date(body.completed_at * 1000).toLocaleDateString()}` : "";
     byId("household-state").textContent = done
       ? `Approved${when}. Reachy uses these choices without asking again in each conversation.`

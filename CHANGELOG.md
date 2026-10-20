@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.44] — Everyday settings separation
+
+- Move household permissions, standalone connection setup and Everyday provider/device details into Settings, reachable through one Everyday settings link. Preserve existing permission, camera-off and revoke actions.
+- Remove successful-state host implementation copy from Everyday; retain actionable failures. Already-approved households now show “Change permissions”.
+- Exercise actual navigation and permission controls in light/dark phone layouts.
+
 ## [0.5.43] — Workspace connection flow
 
 - Project now offers Connect before showing repository/session controls, with pending, retry and empty-catalogue states. Mode-selection feedback is inline rather than an overlapping success toast.

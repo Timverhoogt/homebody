@@ -45,6 +45,9 @@ def serve(page, config, *, apply_status=200):
     page.click("#tab-dashboard")
     page.evaluate("HomebodyHousehold.reload()")
     page.wait_for_function("document.getElementById('household-badge').textContent !== 'Checking…'")
+    assert page.locator("#household-card").is_hidden()
+    page.click("[data-everyday-setting=household-heading]")
+    assert page.locator("#panel-settings").is_visible()
     return state
 
 
