@@ -57,7 +57,9 @@ def test_on_by_default_within_camera_approval_with_disclosure_and_no_approval_st
     assert page.locator("#kids-show-tell").is_visible()
     assert label(page) == "On · ready in this Kids Chat"
     disclosure = page.locator("#kids-show-tell-disclosure").inner_text()
-    assert "external service" in disclosure and "not stored" in disclosure and "never looks by itself" in disclosure
+    assert "external service" in disclosure and "not stored" in disclosure
+    assert "Ask Reachy to look, or press Look now" in disclosure
+    assert "Camera access for AI permission" in disclosure
     assert page.locator("#kids-show-tell-toggle").text_content() == "Turn off"
     assert not page.is_disabled("#kids-show-tell-look")
     assert page.locator("#kids-show-tell-allow").count() == 0  # no per-session Allow control exists

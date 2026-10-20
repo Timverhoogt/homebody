@@ -352,8 +352,9 @@ def test_everyday_companion_reuses_the_component(ui):
     page.wait_for_timeout(500)
     for scheme in ("light", "dark"):
         page.emulate_media(color_scheme=scheme)
-        page.locator("#everyday-card").scroll_into_view_if_needed()
-        _shot(page, f"everyday-companion-{scheme}", clip=page.locator("#everyday-card").bounding_box())
+        assert page.locator("#everyday-companion").is_hidden()  # no second waiting illustration
+        page.locator("#hero-presence").scroll_into_view_if_needed()
+        _shot(page, f"everyday-companion-{scheme}", clip=page.locator("#hero-presence").bounding_box())
     # Same component, one implementation: every mount, Kids and adult, comes from HomebodyScene.
     mounts = page.evaluate("""() => [...document.querySelectorAll('.hb-scene')]
         .map(s => `${s.parentElement.id}:${s.dataset.variant}:${s.dataset.scene}`).sort()""")

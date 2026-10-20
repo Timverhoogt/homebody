@@ -139,11 +139,12 @@ def test_phone_scrolled_and_disconnected_states_are_tidy(ui):
     assert page.locator("#agent-connection-label").text_content().strip() != ""
     # Companion verbosity: the static suggestion paragraph is gone, the "why" hint stays short and real.
     assert page.locator(".companion-suggestions > p.compact-note:not(#companion-why)").first.is_hidden()
-    assert page.locator("#companion-why").is_visible()
+    assert page.locator("#companion-why").is_hidden()
+    assert page.locator("#panel-settings #companion-why").count() == 1
     # Scrolled: the Look row is reachable and never under the fixed row.
     page.locator("#companion-look").scroll_into_view_if_needed()
     page.evaluate("document.getElementById('companion-look').scrollIntoView({block: 'center'})")
-    for selector in ("#companion-look", "#companion-stop", "#companion-details > summary"):
+    for selector in ("#companion-look", "#companion-stop"):
         assert _clear_of_row(page, selector), selector
     _shot(page, "everyday-scrolled-390")
     # Disconnected: status unavailable → the hero and strip say so, nothing claims a route or a reply.

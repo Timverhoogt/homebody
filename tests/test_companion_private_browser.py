@@ -15,8 +15,9 @@ def test_primary_companion_is_compact_and_advanced_is_optional(ui, width, theme)
     page.set_viewport_size({"width": width, "height": 1000})
     page.emulate_media(color_scheme=theme)
     open_card(page, state)
-    assert page.locator("#presence-enabled").is_visible()
-    assert page.locator("#presence-acknowledgement-enabled").is_visible()
+    assert page.locator("#presence-enabled").is_hidden()
+    assert page.locator("#presence-acknowledgement-enabled").is_hidden()
+    assert page.locator("#panel-settings #presence-enabled").count() == 1
     assert not page.locator("#companion-advanced").evaluate("el => el.open")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     for selector in ("#companion-look", "#companion-follow-up", "#companion-stop"):

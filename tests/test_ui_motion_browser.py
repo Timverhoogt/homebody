@@ -770,7 +770,9 @@ def test_scrolled_controls_clear_sticky_bars_and_keep_48px_targets(workspace_bro
         page.evaluate("s => HomebodyWorkspace.pane(document.querySelector(s).closest('.workspace-pane').id"
                       ".replace('workspace-pane-', ''))", selector)
         height = page.evaluate("s => document.querySelector(s).getBoundingClientRect().height", selector)
-        assert height >= 48, (selector, height)
+        # Chromium can report 47.999969px for a CSS 48px target after transforms.
+        # Compare at CSS subpixel precision, not floating-point subtraction noise.
+        assert round(height, 3) >= 48, (selector, height)
     # Keyboard focus from far below lands each enabled control clear of the sticky top bar, the sticky
     # Workspace segments and the fixed phone tab bar (these controls live in the Project pane).
     page.evaluate("HomebodyWorkspace.pane('project')")

@@ -16,7 +16,8 @@ SHOTS = Path(__file__).resolve().parents[1] / ".artifacts" / "browser-screens" /
 def open_legacy_companion_diagnostics(request):
     # These cases test the retained advanced detector, not the new primary one-look flow.
     page, *_ = request.getfixturevalue("ui")
-    page.evaluate("document.getElementById('companion-advanced').open = true")
+    page.click("#tab-settings")
+    page.locator("#companion-advanced > summary").click()
 
 
 def needs(page):
@@ -54,7 +55,7 @@ def test_greyed_start_lists_unmet_requirements_and_navigates_without_writes(ui, 
     page.set_viewport_size({"width": width, "height": 900})
     SHOTS.mkdir(parents=True, exist_ok=True)
     user_reported_state(state)
-    page.click("#tab-dashboard")
+    page.click("#tab-settings")
     refresh(page)
     page.wait_for_function("document.querySelectorAll('#presentation-requirements li').length > 0")
     assert page.locator("#presentation-start").is_disabled()
@@ -78,15 +79,16 @@ def test_greyed_start_lists_unmet_requirements_and_navigates_without_writes(ui, 
     assert page.locator("#camera_enabled").evaluate("el => el.closest('details').open")
     assert page.locator("#camera_enabled").is_checked() is False
     page.screenshot(path=str(SHOTS / f"8-presentation-nav-camera-{width}.png"))
-    page.click("#tab-dashboard")
+    page.click("#tab-settings")
     page.click("#presentation-requirements li[data-need='workspace'] button")
     page.wait_for_function("document.activeElement && document.activeElement.id === 'tab-agent'")
+    page.click('#tab-settings')
     page.click("#presentation-requirements li[data-need='initiative'] button")
     page.wait_for_function("document.activeElement && document.activeElement.id === 'initiative-policy-enabled'")
     page.click("#presentation-requirements li[data-need='awake'] button")
     page.wait_for_function("document.activeElement && document.activeElement.id === 'global-power-awake'")
     assert page.locator("#panel-robot").is_visible()  # Wake up lives on the Robot page
-    page.evaluate("activateTab('dashboard', false, true)")  # back to the presentation card, navigation only
+    page.evaluate("activateTab('settings', false, true)")  # back to the presentation card, navigation only
     assert posts == before, "navigation must not save settings, wake Reachy or start a window"
 
     # Every gate satisfied: Start becomes available; the server still re-checks on press.
@@ -106,7 +108,7 @@ def test_face_following_blocks_and_unreachable_status_is_unknown(ui):  # noqa: F
     state["config"].update(camera_enabled=True, initiative_policy_enabled=True, contextual_offers_enabled=True)
     state["runtime"].update(power_mode="awake", motors_enabled=True, face_tracking_active=True)
     state["runtime"]["agent"]["profile"] = "agent"
-    page.evaluate("activateTab('dashboard', false, true)")  # navigation only: a tab tap would switch the route back
+    page.evaluate("activateTab('settings', false, true)")  # navigation only: a tab tap would switch the route back
     refresh(page)
     page.wait_for_function("document.querySelectorAll('#presentation-requirements li').length === 1")
     assert needs(page) == ["face"] and page.locator("#presentation-start").is_disabled()
@@ -143,7 +145,7 @@ def test_face_following_blocks_and_unreachable_status_is_unknown(ui):  # noqa: F
 def test_initial_and_unknown_configuration_never_implies_ready(ui):  # noqa: F811
     page, state, _posts, errors = ui
     # The fixture's initial config carries no presentation keys: unknown, not ready.
-    page.click("#tab-dashboard")
+    page.click("#tab-settings")
     quiesce(page)
     assert page.evaluate("refreshStatus()") is True
     assert "unknown" in page.locator("#presentation-readiness").inner_text()
@@ -162,7 +164,7 @@ def test_owner_revocation_discards_admitted_ready_reply_even_after_pairing_again
     state["config"].update(camera_enabled=True, initiative_policy_enabled=True, contextual_offers_enabled=True)
     state["runtime"].update(power_mode="awake", motors_enabled=True)
     state["runtime"]["agent"]["profile"] = "agent"
-    page.evaluate("activateTab('dashboard', false, true)")  # navigation only: a tab tap would switch the route back
+    page.evaluate("activateTab('settings', false, true)")  # navigation only: a tab tap would switch the route back
     quiesce(page)
     assert page.evaluate("refreshStatus()") is True
     assert not page.locator("#presentation-start").is_disabled()  # genuinely ready before revocation

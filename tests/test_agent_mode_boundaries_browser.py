@@ -167,7 +167,9 @@ def test_workspace_to_everyday_leaves_only_the_everyday_surface(agent, width):
     assert page.locator("#workspace-gate").is_visible()  # the destination offers one way back in
     page.click("#tab-dashboard")
     assert _visible_project_surface(page) == []
-    assert page.locator("#everyday-card").is_visible()
+    assert page.locator("#everyday-card").is_hidden()
+    assert page.locator("#companion-card").is_visible()
+    assert page.locator("#panel-settings #everyday-card").count() == 1
     assert page.locator("#agent-companion-view").is_visible()  # existing Companion presence stays
     # Stop stays in reach on Everyday: the primary action (Stop during a turn, otherwise the power step)
     # is shown and enabled, and the real Stop speaking it forwards to is enabled.
@@ -277,8 +279,12 @@ def test_clear_is_confirmed_names_its_scope_and_asks_to_reopen(agent):
     assert "native-fixture" in page.inner_text("#workspace-native-identity")
     assert not any(p.endswith("/clear") for _m, p in state["requests"])
     page.click("#workspace-clear")
-    page.click("#workspace-clear-confirm-button")
-    page.wait_for_function("document.getElementById('workspace-state').textContent.includes('Open project again')")
+    with page.expect_response(lambda response: response.url.endswith('/api/agent/workspace/clear')
+                              and response.request.method == 'POST') as cleared:
+        page.click("#workspace-clear-confirm-button")
+    assert cleared.value.ok
+    # A regular poll may replace the temporary explanation; verify durable state.
+    page.wait_for_function("document.getElementById('panel-agent').dataset.connection === 'off'")
     assert [p for _m, p in state["requests"] if p.endswith("/clear")] == ["/api/agent/workspace/clear"]
     assert confirm.is_hidden()
     assert "native-fixture" not in page.inner_text("#workspace-native-identity")

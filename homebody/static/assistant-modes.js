@@ -176,6 +176,7 @@
     if (lookupKnown) summary.push('public lookup');
     text('everyday-summary', `${summary.join(' · ')}. No project tools or agent memory.`);
     const activity = local.activity || {};
+    document.getElementById('everyday-camera-activity').hidden = activity.camera_session_active !== true;
     if (activity.camera_session_active === false) {
       text('everyday-camera-activity', 'No temporary camera session reported.');
     } else if (activity.camera_session_active === true) {

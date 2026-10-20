@@ -12,14 +12,13 @@ def test_robot_tab_contains_explicit_local_live_camera_controls() -> None:
     assert 'id="reachy-camera-video"' in html
     assert 'class="camera-vision-overlay"' in html
     assert 'id="camera-vision-timecode"' in html
-    assert "HERMES VISION" in html
-    assert "LOCAL OPTIC" in html
-    assert "PRIVATE LINK" in html
+    assert "LIVE CAMERA" in html
+    assert "Private video" in html
     assert 'id="camera-live-start"' in html
     assert 'id="camera-live-stop"' in html
     assert 'id="camera-live-fullscreen"' in html
     assert 'id="camera_feed_enabled"' in html
-    assert "never sent to Hermes or OpenAI" in html
+    assert "Live video stays between this device and Reachy" in html
     assert html.index('/static/gstwebrtc-api.js') < html.index('/static/camera.js')
     assert html.index('/static/camera.js') < html.index('/static/main.js')
 

@@ -517,3 +517,18 @@ body[data-destination="agent"] .voice-route .agent-mode-bar #agent-stop-button {
 .update-notice { border-radius: var(--radius-card); }
 .agent-approval-sheet { border: 1.5px solid var(--orange); border-radius: var(--radius-card); padding: 16px 18px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Secondary administration lives in Settings; Robot stays action-first. */
+.legacy-power-controls[hidden], #robot-mode-badge[hidden] { display: none !important; }
+#companion-settings > * + * { margin-top: 18px; }
+.camera-viewer:not(.live):not(:fullscreen):not(.camera-app-fullscreen) {
+  height: 100px; min-height: 100px; aspect-ratio: auto;
+}
+.camera-viewer:not(.live) .camera-placeholder { gap: 8px; }
+.camera-viewer:not(.live) .camera-placeholder-icon { font-size: 18px; }
+#kids-setup .kids-review { margin-bottom: 12px; }
+#kids-show-tell-disclosure { max-width: 65ch; }
+
+/* The primary Everyday hero already carries the live state. */
+#everyday-companion { display: none; }
+body:not([data-destination="dashboard"]):not([data-destination="agent"]) .voice-route .assistant-mode-state { display: none !important; }

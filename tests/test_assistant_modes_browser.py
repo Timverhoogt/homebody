@@ -117,7 +117,8 @@ def test_modes_stop_controls_and_everyday_disclosure(ui, width):
     assert "desk light" in page.locator("#everyday-device-ids").text_content()
     assert not page.locator("#everyday-technical-details").get_attribute("open")
     assert page.locator("#native-work-badge").is_visible()  # durable work visible as a badge in Everyday
-    assert page.locator("#assistant-mode-notice").is_visible()
+    assert page.locator("#assistant-mode-notice").is_hidden()
+    assert page.locator("#panel-settings #assistant-mode-notice").count() == 1
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     SHOTS.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(SHOTS / f"agent-everyday-{width}.png"), full_page=True)
@@ -136,6 +137,7 @@ def test_modes_stop_controls_and_everyday_disclosure(ui, width):
     page.wait_for_function("document.getElementById('agent-message').textContent.includes('Everyday active')")
     assert ("/api/agent/profile", {"profile": "conversation", "preserve_work": True}) in posts
 
+    page.click("#tab-settings")
     page.click("#assistant-mode-notice-ack")
     page.wait_for_function("document.getElementById('assistant-mode-notice').hidden")
     assert ("/api/settings", {"assistant_mode_notice": ""}) in posts
