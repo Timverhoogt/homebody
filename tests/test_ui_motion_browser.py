@@ -195,7 +195,9 @@ def test_home_hero_fits_and_power_controls_stay_hit_testable(ui, width, scheme):
         return {left: c.left, right: c.right, w: c.width, hl: h.left, hr: h.right,
                 doc: document.documentElement.scrollWidth}; }""")
     assert geometry["left"] >= geometry["hl"] and geometry["right"] <= geometry["hr"]
-    assert geometry["doc"] <= width and geometry["w"] >= 140
+    assert geometry["doc"] <= width
+    # The approved phone illustration is smaller; it must remain visible, not shrink to zero.
+    assert geometry["w"] >= (112 if width < 900 else 140)
     page.evaluate("activateTab('robot')")  # power controls live in the Robot page's power section
     for selector in ('#global-power-standby', '#global-power-awake'):
         page.locator(selector).focus()
@@ -716,7 +718,7 @@ def test_disclosure_entrances_are_opt_in_and_skip_reduced_motion(ui):
     page.evaluate("document.getElementById('tab-settings').click()")
     choose(page,"system")
     assert 3 <= page.evaluate("document.querySelectorAll('details[data-hb-disclosure]').length") <= 8
-    page.locator("#updates-card details summary").click()
+    page.locator("#updates-card details[data-hb-disclosure] > summary").click()
     page.wait_for_function("document.getElementById('update-history').classList.contains('hb-enter')")
     page.wait_for_timeout(400)
     assert not page.evaluate("document.getElementById('update-history').classList.contains('hb-enter')")
@@ -726,8 +728,8 @@ def test_disclosure_entrances_are_opt_in_and_skip_reduced_motion(ui):
     assert page.evaluate("document.querySelectorAll('#global-power-controls .hb-enter').length") == 0
     page.emulate_media(reduced_motion="reduce")
     page.evaluate("activateTab('settings')")
-    page.locator("#updates-card details summary").click()
-    page.locator("#updates-card details summary").click()
+    page.locator("#updates-card details[data-hb-disclosure] > summary").click()
+    page.locator("#updates-card details[data-hb-disclosure] > summary").click()
     assert not page.evaluate("document.getElementById('update-history').classList.contains('hb-enter')")
     assert page.evaluate("HomebodyMotion.enter(document.getElementById('updates-card'))") is False
     assert not errors

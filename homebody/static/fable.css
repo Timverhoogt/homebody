@@ -349,7 +349,7 @@ body[data-destination="kids"] .global-robot-status :is(.status-row, #global-powe
 .robot-power .global-power-primary button { width: 100%; max-width: none; flex: none; min-height: 48px; }
 #panel-robot #global-robot-stop { display: none; }
 .robot-power #global-power-controls { width: 100%; max-width: 320px; margin: 0; padding: 0; border: 0; }
-.robot-power #global-power-controls summary { justify-content: center; gap: 8px; min-height: 40px; color: var(--ink-2); font-weight: 500; font-size: .86rem; }
+.robot-power #global-power-controls summary { justify-content: center; gap: 8px; min-height: 48px; color: var(--ink-2); font-weight: 500; font-size: .86rem; }
 .robot-power #global-power-controls summary::after { width: 22px; height: 22px; font-size: .8rem; }
 .robot-power .power-hint { margin: 4px 0 10px; font-size: .86rem; color: var(--ink-2); text-align: center; }
 .robot-power #global-power-controls .actions { display: flex; justify-content: center; gap: 8px; }
@@ -954,7 +954,7 @@ body[data-destination="dashboard"] .global-robot-status { margin-top: 14px; padd
    the chips keep 48 px targets and may wrap to a second centred line. No horizontal overflow. */
 @media (max-width: 359px) {
   .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "face" "copy" "primary" "actions"; justify-items: center; gap: 10px; text-align: center; }
-  .hero > .hero-face { justify-self: center; }
+  .hero > .hero-face { justify-self: center; width: 120px; max-width: 100%; }
   .hero-face .hb-scene { max-width: 120px; }
   .hero-copy { width: 100%; padding: 0; }
   .hero-label { flex-wrap: wrap; justify-content: center; white-space: normal; }

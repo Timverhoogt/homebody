@@ -348,7 +348,7 @@ def test_newest_completion_once_without_rotation_or_auto_ack(browser):
     assert all(not h["acknowledged"] for h in body["history"])
     page.evaluate("document.getElementById('tab-settings').click()")  # behind More on phones
     choose(page,"system")
-    page.locator("#updates-card details > summary").first.click()
+    page.locator("#updates-card details[data-hb-disclosure] > summary").click()
     assert page.locator("#update-history > details").count() == 2
     page.locator("#update-history > details > summary").first.click()
     fx.refresh()

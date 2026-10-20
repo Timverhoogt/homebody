@@ -68,7 +68,7 @@ def test_greyed_start_lists_unmet_requirements_and_navigates_without_writes(ui, 
     assert "only while a window is running" in page.locator("#presentation-stop-help").inner_text()
     assert page.locator("#presentation-stop").is_disabled()
     rows = page.locator("#presentation-requirements").inner_text()
-    assert "On-demand camera" in rows and "Use initiative policy" in rows and "Contextual offers" in rows
+    assert "Camera access for AI" in rows and "Use initiative policy" in rows and "Contextual offers" in rows
     assert "Workspace" in rows and "Wake up" in rows  # visible control names from the page source
     assert "Workspace" in page.locator("#tab-agent").inner_text()  # the tab is the route control now
     page.locator(".presentation-card").scroll_into_view_if_needed()
@@ -79,7 +79,8 @@ def test_greyed_start_lists_unmet_requirements_and_navigates_without_writes(ui, 
     page.click("#presentation-requirements li[data-need='camera'] button")
     page.wait_for_function("document.activeElement && document.activeElement.id === 'camera_enabled'")
     assert not page.locator("#panel-settings").is_hidden()
-    assert page.locator("#camera_enabled").evaluate("el => el.closest('details').open")
+    assert page.locator('#settings-privacy').is_visible()
+    assert page.locator('#camera_enabled').is_visible()
     assert page.locator("#camera_enabled").is_checked() is False
     page.screenshot(path=str(SHOTS / f"8-presentation-nav-camera-{width}.png"))
     page.click("#tab-settings")
