@@ -90,8 +90,13 @@ def test_show_bind_voice_route_clear_reopen_and_stale_replies(route_browser, wid
     assert held, "read poll was not issued"
     page.evaluate("HomebodyWorkspace.pane('project')")
     page.click("#workspace-clear")
-    page.click("#workspace-clear-confirm-button")
-    wait_text(page, "workspace-state", "Open project again")
+    with page.expect_response(lambda response: response.url.endswith('/api/agent/workspace/clear')
+                              and response.request.method == 'POST') as cleared:
+        page.click("#workspace-clear-confirm-button")
+    assert cleared.value.ok
+    # A normal display poll may replace the one-shot Clear explanatory message.
+    # Assert the acknowledged operation and durable disconnected state instead.
+    page.wait_for_function("document.getElementById('panel-agent').dataset.connection === 'off'")
     held[0].fulfill(json={k: v for k, v in native.items() if not k.startswith("_")})
     page.wait_for_timeout(80)
     assert "Not sent to a project" in text(page, "workspace-mode-route")
