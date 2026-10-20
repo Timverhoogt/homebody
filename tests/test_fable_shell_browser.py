@@ -184,12 +184,13 @@ def test_robot_and_settings_keep_every_control_reachable(ui, width):
     _no_overflow(page)
     _shot(page, f"robot-{width}-light", full_page=True)
     page.click("#tab-settings")
-    links = page.locator(".settings-index a")
-    assert links.count() == 4
-    assert page.locator('.settings-index a[href="#settings-everyday"]').count() == 1
+    links = page.locator("[data-settings-nav]")
+    assert links.count() == 5
+    assert page.locator('[data-settings-nav="everyday"]').count() == 1
     for i in range(links.count()):
-        target = links.nth(i).get_attribute("href").lstrip("#")
-        assert page.locator(f"#{target}").count() == 1, target
+        target = links.nth(i).get_attribute("data-settings-nav")
+        assert page.locator(f'[data-settings-category="{target}"]').count() == 1, target
+    assert page.locator('[data-settings-category]:visible').count() == 1
     for selector in ("#settings-form", "#speaker-card", "#updates-card", "#agent-setup-card", "#app-off-button",
                      "#household-card, #everyday-card"):
         assert page.locator(selector).count() >= 1, selector

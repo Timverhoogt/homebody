@@ -44,8 +44,8 @@ Production: `homebody/static/index.html` plus `fable.css`, which is loaded last 
   choosing one never starts anything), End and fold, and one folded grown-up note.
 - Robot: Wake / Fold / Stop, look pad, expressions, dances, camera; precision, gamepad and physical
   buttons folded.
-- Settings: an index list, then the unchanged sections (`#voice-card`, `#agent-setup-card`,
-  `#speaker-card`, `#updates-card`, `#lifecycle-card`).
+- Settings: one visible category at a time (Everyday, Voice & sound, Privacy & access, Connections,
+  System) with a side list on wide screens and a select on phones; see `docs/settings-structure.md`.
 
 ## Tests
 

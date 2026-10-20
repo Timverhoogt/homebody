@@ -938,12 +938,8 @@
     const tab = document.querySelector('[data-tab="settings"]');
     if (!tab || tab.hidden) return;
     tab.click();
-    const setting = byId("camera_controls_enabled");
-    for (let parent = setting.parentElement; parent; parent = parent.parentElement) {
-      if (parent.tagName === "DETAILS") parent.open = true;
-    }
-    setting.scrollIntoView({ block: "center" });
-    setting.focus({ preventScroll: true });
+    // Settings navigation only: selects Privacy & access and focuses the opt-in without changing it.
+    window.HomebodySettings?.reveal("camera_controls_enabled");
   }
 
   async function fullscreen() {

@@ -33,9 +33,7 @@
   }
   badge.addEventListener("click", () => {
     document.getElementById("tab-settings").click();
-    const section = document.getElementById("agent-connection-details");
-    section.focus();
-    section.scrollIntoView({block: "center", behavior: "auto"});
+    window.HomebodySettings?.reveal("agent-connection-details");
   });
   retry.addEventListener("click", async () => {
     update({state: "checking", label: currentLabel, detail: "Checking the current agent connection…"});

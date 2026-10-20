@@ -455,21 +455,64 @@ body[data-destination="kids"] .global-robot-status :is(.status-row, #global-powe
   .look-stage { padding-top: 24px; }
 }
 
-/* ---------- Settings: a list first, then plain sections ---------- */
-.settings-index { display: grid; margin-top: 10px; border-top: 1px solid var(--line); }
-.settings-index a { display: flex; align-items: center; gap: 14px; min-height: 54px; padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; font-weight: 600; }
-.settings-index a small { display: block; font-weight: 400; color: var(--ink-2); font-size: .85rem; }
-.settings-index a .icon { color: var(--ink-2); width: 1.3em; height: 1.3em; margin: 0; }
-.settings-index a span { flex: 1; }
-.settings-index a::after { content: "›"; color: var(--ink-3); font-size: 1.3rem; }
-.setup-review-entry { margin-top: 14px; }
-#panel-settings .card > .label { display: none; }
-#panel-settings .card h2 { font-size: 1.4rem; margin-bottom: 4px; }
-#panel-settings .card { scroll-margin-top: 16px; }
-#panel-settings .settings-section { padding: 6px 0; }
+/* ---------- Settings: one visible category; side list on wide screens, picker on phones ----------
+   Categories are plain <section hidden> blocks toggled by settings-layout.js; nothing here sets
+   display on them, so the [hidden] attribute keeps its meaning. */
+.settings-shell { display: grid; gap: 16px; margin-top: 6px; min-width: 0; }
+.settings-nav-picker { display: grid; gap: 6px; }
+.settings-nav-picker > span { font-size: .8rem; font-weight: 600; color: var(--ink-2); }
+.settings-nav-list { display: none; list-style: none; margin: 0; padding: 0; }
+.settings-nav-list li { margin: 0; }
+.settings-nav-item, .settings-nav-item:hover { display: block; width: 100%; min-width: 0; min-height: 48px; margin: 0; padding: 8px 12px; border: 0; border-radius: 10px; background: transparent; box-shadow: none; color: var(--ink); text-align: left; font: inherit; font-size: .95rem; line-height: 1.3; letter-spacing: normal; text-transform: none; }
+.settings-nav-item:hover { background: var(--paper-2); }
+.settings-nav-item strong { display: block; font-weight: 600; }
+.settings-nav-item small { display: block; margin-top: 2px; color: var(--ink-2); font-size: .8rem; font-weight: 400; }
+.settings-nav-item.active { background: var(--paper-2); box-shadow: inset 3px 0 0 var(--orange); }
+.settings-nav-item:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.settings-content { min-width: 0; }
+.settings-category { min-width: 0; }
+.settings-category-title { font-family: var(--serif); font-size: 1.55rem; font-weight: 400; letter-spacing: -.01em; margin: 0 0 2px; }
+.settings-block { margin: 0; padding: 14px 0 18px; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; min-width: 0; scroll-margin-top: 16px; }
+.settings-block > h3, .settings-block .section-heading h3 { font-family: var(--serif); font-size: 1.2rem; font-weight: 400; letter-spacing: -.01em; margin: 0; }
+.settings-block h4, .settings-subsection h4 { font-family: var(--serif); font-size: 1.05rem; font-weight: 400; margin: 0; }
+.settings-block > h3 + p, .settings-block > .section-heading + p { margin-top: 6px; }
+.settings-block > label, .settings-block > .grid-two, .settings-block form > label, .settings-block form > .grid-two, .settings-block form > details { margin-top: 12px; }
+.settings-block .toggle-row, .settings-block .checkbox-row { padding: 8px 0; }
+.settings-block .toggle-row + .toggle-row { border-top: 1px solid var(--line); }
+.settings-subsection { margin-top: 12px; padding: 12px 0 4px; border-top: 1px solid var(--line); min-width: 0; }
+.settings-subsection .section-heading { margin-bottom: 6px; }
+.settings-disclosure { margin-top: 8px; min-width: 0; }
+.settings-disclosure > summary { min-height: 48px; font-weight: 600; }
 #panel-settings details > summary { min-height: 48px; font-weight: 600; }
-.danger-zone { border-top-color: var(--danger); }
-@media (min-width: 900px) { #panel-settings { max-width: 720px; } }
+#panel-settings .settings-section { display: grid; gap: 14px; padding: 8px 0 4px; min-width: 0; }
+#panel-settings .settings-section > .actions { margin-top: 4px; }
+/* Cards that main.js moves into System (remembered devices, home-screen shortcut) read as plain blocks. */
+#panel-settings .settings-category > .card { margin: 0; padding: 14px 0 18px; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; }
+#panel-settings .settings-category > .card h2 { font-size: 1.2rem; }
+#panel-settings .settings-category > .card > .label, #panel-settings .settings-category > .card .section-heading .label { display: none; }
+#lifecycle-card { border-top-color: var(--danger); }
+#lifecycle-card h3 { color: var(--danger); }
+.settings-save { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.settings-save .actions { margin: 0; }
+.settings-save .message:empty { display: none; }
+#panel-settings .setup-review-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 14px; padding: 12px 0 8px; margin: 0; }
+#panel-settings .setup-review-entry p { margin: 0; color: var(--ink-2); font-size: .88rem; }
+#companion-settings > * + * { margin-top: 14px; }
+#companion-settings .presence-controls { margin: 4px 0 8px; }
+#companion-settings .companion-suggestions { margin-top: 8px; }
+#companion-settings > details { margin-top: 4px; }
+#companion-details .companion-grid { margin: 8px 0 10px; }
+#everyday-permissions > summary { font-size: .95rem; }
+#everyday-permissions .everyday-permission-groups { display: grid; gap: 14px; margin-top: 12px; }
+#everyday-permissions .everyday-permission-groups h3 { font-family: var(--sans); font-size: .95rem; font-weight: 600; margin: 0 0 2px; }
+#everyday-permissions .everyday-permission-groups p { margin: 2px 0; font-size: .92rem; }
+@media (min-width: 900px) {
+  #panel-settings { max-width: 960px; }
+  .settings-shell { grid-template-columns: 220px minmax(0, 1fr); column-gap: 44px; align-items: start; }
+  .settings-nav { position: sticky; top: 12px; }
+  .settings-nav-picker { display: none; }
+  .settings-nav-list { display: grid; gap: 2px; }
+}
 
 /* ---------- Announce ---------- */
 .announcement-card .section-heading h2 { font-size: 1.5rem; }
@@ -623,42 +666,10 @@ body[data-destination="agent"] .voice-route .agent-mode-bar button { flex: 1 1 a
 #kids-setup .kids-review { margin-bottom: 12px; }
 #kids-show-tell-disclosure { max-width: 65ch; }
 
-/* Settings: four task groups (built by settings-layout.js). The index is a row of chips; each group is a
-   hairline section whose summary is the heading, and the cards inside are plain subsections. */
-#panel-settings .settings-index { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px 0 6px; border: 0; }
-#panel-settings .settings-index a { flex: 0 1 auto; min-height: 40px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: .88rem; font-weight: 600; color: var(--ink); }
-#panel-settings .settings-index a::after { content: none; }
-.settings-group { margin: 0; padding: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; scroll-margin-top: 16px; min-width: 0; }
-.settings-group > summary { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 0; }
-.settings-group > summary strong { font-family: var(--serif); font-size: 1.5rem; font-weight: 400; letter-spacing: -.01em; }
-.settings-group > summary small { flex: 1 1 auto; margin: 0; color: var(--ink-2); font-size: .88rem; font-weight: 400; }
-.settings-group > .card { margin: 0; padding: 6px 0 18px; border: 0; border-radius: 0; box-shadow: none; }
-.settings-group > .card + .card { border-top: 1px solid var(--line); padding-top: 18px; }
-.settings-group > .card > h2, .settings-group > .card .section-heading h2 { font-size: 1.15rem; }
-.settings-group > .card > .label { display: none; }
-#panel-settings .card > h2 + p, #panel-settings .card > .section-heading + p { margin-top: 6px; }
-#panel-settings .settings-section { display: grid; gap: 14px; padding: 8px 0 4px; }
-#panel-settings .settings-section > .actions { margin-top: 4px; }
-#panel-settings form > label, #panel-settings form > .grid-two { margin-top: 12px; }
-#panel-settings .card .card { margin-top: 14px; padding: 12px 0 4px; border-top: 1px solid var(--line); }
-#panel-settings .card .card h2 { font-size: 1.1rem; }
-#panel-settings .toggle-row, #panel-settings .checkbox-row { padding: 8px 0; }
-#companion-settings .presence-controls { margin: 4px 0 8px; }
-#companion-settings .companion-suggestions { margin-top: 8px; }
-#companion-settings > details { margin-top: 4px; }
-#everyday-permissions > summary { font-size: .95rem; }
-#everyday-permissions .everyday-permission-groups { display: grid; gap: 14px; margin-top: 12px; }
-#everyday-permissions .everyday-permission-groups h3 { font-family: var(--sans); font-size: .95rem; font-weight: 600; margin: 0 0 2px; }
-#everyday-permissions .everyday-permission-groups p { margin: 2px 0; font-size: .92rem; }
-#everyday-technical-details > .card { box-shadow: none; border: 0; padding: 12px 0; }
-#panel-settings .setup-review-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 14px; padding: 8px 0 18px; }
-#panel-settings .setup-review-entry p { margin: 0; color: var(--ink-2); font-size: .88rem; }
-#panel-settings .danger-zone { border-top: 0; }
-#panel-settings #lifecycle-card h2 { color: var(--danger); }
-@media (max-width: 760px) {
-  #panel-settings .settings-index a { font-size: .84rem; padding: 0 14px; }
-  .settings-group > summary strong { font-size: 1.3rem; }
-  .settings-group > summary small { display: none; }
+/* Settings category rules live in the "Settings" block above (one visible category, no card nesting). */
+@media (max-width: 400px) {
+  #panel-settings .grid-two { grid-template-columns: 1fr; }
+  #panel-settings .settings-category-title { font-size: 1.4rem; }
 }
 
 /* The primary Everyday hero already carries the live state. */
@@ -900,7 +911,6 @@ body[data-destination="dashboard"] .global-robot-status { margin-top: 14px; padd
 #household-card .section-heading + p { margin: 8px 0 0; }
 #household-card #household-camera-state { margin: 4px 0 10px; }
 .household-actions { margin: 12px 0; }
-.settings-group > .card + .card { margin-top: 6px; }
 @media (min-width: 900px) {
   .presence-controls { grid-template-columns: 1fr 1fr; column-gap: 24px; }
 }

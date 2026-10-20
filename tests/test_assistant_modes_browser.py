@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
+from settings_ui_helpers import choose
 
 SHOTS = Path(__file__).resolve().parents[1] / ".artifacts" / "browser-screens"
 CAPABILITIES = {
@@ -138,7 +139,7 @@ def test_modes_stop_controls_and_everyday_disclosure(ui, width):
     assert ("/api/agent/profile", {"profile": "conversation", "preserve_work": True}) in posts
 
     page.click("#tab-settings")
-    page.locator("#settings-connections > summary").click()
+    choose(page,"connections")
     page.click("#assistant-mode-notice-ack")
     page.wait_for_function("document.getElementById('assistant-mode-notice').hidden")
     assert ("/api/settings", {"assistant_mode_notice": ""}) in posts
@@ -194,7 +195,8 @@ def test_advanced_engine_settings_save_exact_values_and_keep_existing_controls(u
     page, state, posts, errors = ui
     page.set_viewport_size({"width": width, "height": 900})
     page.click("#tab-settings")
-    page.locator("#settings-connections > summary").click()
+    choose(page,"voice")
+    page.locator("#speech-provider-details > summary").click()
     page.wait_for_function("document.getElementById('conversation_mode').value === 'realtime'")
     # A saved non-default Realtime model is preserved as a selectable value, not silently replaced.
     assert page.locator("#realtime_model").input_value() == "gpt-4o-realtime-preview"
@@ -208,7 +210,7 @@ def test_advanced_engine_settings_save_exact_values_and_keep_existing_controls(u
     assert "billed" in page.locator("#engine-disclosure").inner_text()
     page.select_option("#live_voice", "cedar")
     page.fill("#live_session_timeout_seconds", "600")
-    page.locator("#settings-form button[type=submit]").first.click()
+    page.locator("#settings-save-button").click()
     page.wait_for_function("document.getElementById('form-message').textContent === 'Saved'")
     saved = [body for path, body in posts if path == "/api/settings"][-1]
     assert (saved["conversation_mode"], saved["live_model"], saved["live_voice"]) == ("live", "gpt-live-1", "cedar")

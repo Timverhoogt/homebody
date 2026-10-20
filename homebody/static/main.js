@@ -1967,7 +1967,7 @@ $("initiative-preferences-reset").addEventListener("click", () => {
 const PRESENTATION_NEEDS = {
   shared: ["Turn on Shared physical context in this card.", "Go to switch",
     { tab: "agent", companion: true, id: "shared-physical-context-enabled" }],
-  camera: ["Turn on On-demand camera in Settings › Embodiment and privacy.", "Go to setting",
+  camera: ["Turn on Camera access for AI in Settings › Privacy & access.", "Go to setting",
     { tab: "settings", id: "camera_enabled" }],
   initiative: ["Turn on Use initiative policy in Initiative & Offers.", "Go to switch",
     { tab: "agent", companion: true, id: "initiative-policy-enabled" }],
@@ -1977,13 +1977,16 @@ const PRESENTATION_NEEDS = {
     { tab: "dashboard", id: "tab-agent" }],
   awake: ["Reachy must be Awake with motors on: use Wake up on the Robot page.", "Go to Wake up",
     { tab: "robot", id: "global-power-awake" }],
-  face: ["Turn off Local face following in Settings › Embodiment and privacy.", "Go to setting",
+  face: ["Turn off Local face following in Settings › Everyday.", "Go to setting",
     { tab: "settings", id: "face_tracking_enabled" }],
   kids: ["Kids Mode is active or locked; presenting is unavailable.", "", null],
 };
 
 function goToControl({ tab, companion, id }) {
-  activateTab(companion ? "settings" : tab, false, true);
+  const destination = companion ? "settings" : tab;
+  activateTab(destination, false, true);
+  // Settings has its own category navigation: it selects the category, opens disclosures and focuses.
+  if (destination === "settings" && window.HomebodySettings?.reveal(id)) return;
   if (companion) $("companion-advanced").open = true;
   const control = $(id);
   if (!control) return;

@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 import pytest
+from settings_ui_helpers import choose
 from test_assistant_modes_browser import ui  # noqa: F401
 
 SHOTS = Path(os.getenv("HOMEBODY_TEST_SCREENSHOTS", ".artifacts/screenshots")) / "field-cleanup"
@@ -115,7 +116,7 @@ def test_shortcut_and_device_controls_live_in_settings_and_webview_hides_install
     assert page.locator("#panel-settings #install-card").count() == 1
     assert page.locator("#panel-settings #owner-device-controls").count() == 1
     page.click("#tab-settings")
-    page.locator('.settings-index a[href="#settings-system"]').click()
+    choose(page,'system')
     card = page.locator("#install-card")
     assert card.is_visible()  # ordinary Chromium: the shortcut card is available in Settings
     assert page.locator("#install-help").count() == 1
