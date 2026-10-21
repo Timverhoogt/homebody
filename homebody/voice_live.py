@@ -12,6 +12,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import replace
 
 from .audio import resample_linear
 from .config import AppConfig
@@ -278,17 +279,18 @@ class LiveVoiceMixin:
                     self.launch_everyday_tool(
                         payload.get("name"),
                         payload.get("arguments"),
-                        fence=fence,
+                        # Refresh only handoff timing, never original session/Stop authority.
+                        fence=(replace(fence, radio_generation=self.everyday_tool_fence().radio_generation)
+                               if payload.get("name") == "start_reachy_radio" else fence),
                         call_id=identifier,
                         deliver=lambda result, call_id=identifier: session.send_everyday_result(call_id, result),
                         is_current=lambda: not closed.is_set() and not self._turn_stop_requested(),
                         scope=EverydayCallbackScope(transcript="".join(heard), visual=visual),
                     )
                 elif kind == "session.input_transcript.delta":
-                    if radio_ready_at is not None or radio_result_at is not None:
-                        getattr(self, "_radio_defer_handoff", lambda: None)()
-                        radio_ready_at = radio_result_at = radio_last_audio_at = None
-                        _LOGGER.info("Radio voice handoff deferred for newer speech")
+                    # Retire earlier handoff epochs even before their worker becomes ready.
+                    getattr(self, "_radio_defer_handoff", lambda: None)()
+                    radio_ready_at = radio_result_at = radio_last_audio_at = None
                     last_activity = time.monotonic()
                     heard.append(str(payload.get("delta") or ""))
                     self._set_status(
