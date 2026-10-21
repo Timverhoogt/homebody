@@ -47,7 +47,8 @@ def completed_everyday_call(kind: str, payload: dict) -> tuple[str, str, object]
 
 
 def configured_local_tools(config: AppConfig) -> list[str]:
-    names = ["get_reachy_status", "get_reachy_volume", "set_reachy_volume", "stop_reachy_camera"]
+    names = ["get_reachy_status", "get_reachy_volume", "set_reachy_volume", "stop_reachy_camera",
+             "start_reachy_radio", "stop_reachy_radio", "get_reachy_radio"]
     if config.power_tools_enabled:
         names.append("set_reachy_power_mode")
     if config.camera_enabled:
@@ -78,6 +79,8 @@ POST_LOOK_REFUSAL = (
 )
 _DIRECT_ACTION_REPLY = {
     "set_reachy_volume": "Okay, the volume is changed.",
+    "start_reachy_radio": "The lo-fi radio is ready. Starting it on my speaker.",
+    "stop_reachy_radio": "The radio is stopping.",
     "dance_reachy": "Okay.",
     "move_reachy_head": "Okay.",
     "express_reachy_emotion": "Okay.",
@@ -159,6 +162,100 @@ class EverydayRuntimeMixin:
         self._everyday_seen: set[tuple[EverydayFence, str]] = set()
         self._everyday_pending: set[threading.Event] = set()
         self._everyday_worker_slot = threading.BoundedSemaphore(1)
+        self._radio = None
+        self._radio_voice_active = False
+        self._radio_handoff = False
+
+    def _stop_radio(self) -> None:
+        with self._everyday_lock:
+            self._radio_handoff = False
+            player = self._radio
+        if player is not None:
+            player.stop()
+
+    def _radio_status(self) -> dict:
+        with self._everyday_lock:
+            player = self._radio
+        return player.status() if player is not None else {"state": "stopped", "audible_verified": False}
+
+    def _radio_handoff_ready(self) -> bool:
+        with self._everyday_lock:
+            return self._radio_handoff
+
+    def _radio_voice_begin(self) -> None:
+        with self._everyday_lock:
+            self._radio_voice_active = True
+            self._radio_handoff = False
+            player = self._radio
+        if player is not None:
+            player.pause()  # Refuse voice if an old SDK push has not drained.
+
+    def _radio_voice_end(self) -> None:
+        with self._everyday_lock:
+            self._radio_voice_active = False
+            self._radio_handoff = False
+        if self._effective_power_mode() != "standby":
+            self._radio_resume_idle()
+
+    def _radio_resume_idle(self) -> None:
+        # Standby's normal end-of-turn fold stops the shared SDK audio pipeline.
+        # Resume audio only AFTER verified safe folding, never wake motors for radio.
+        with self._motor_transition_lock:
+            with self._everyday_lock:
+                player = self._radio
+                if player is None or player.cancelled.is_set() or not player.thread.is_alive():
+                    return
+                if self._radio_voice_active or self._privacy_requested.is_set():
+                    return
+                mode = self._effective_power_mode()
+                if mode in {"meeting", "sleep"} or self._kids_active or self._kids_locked:
+                    return
+                if mode == "standby" and (self._motors_enabled is not False or not self._head_safely_folded):
+                    player.stop()
+                    return
+                self._resume_playback_after_wake()  # Audio gate only, no motion helper or motor command.
+                player.resume()
+
+    def _start_radio(self, fence: EverydayFence) -> dict:
+        from .radio import RadioPlayer
+
+        # Playback outlives a normal voice session, not Stop/profile/privacy.
+        # Never bind its lifetime to the transport's local_closed event.
+        def allowed() -> bool:
+            return bool(
+                not self.stop_event.is_set() and self.control_ready
+                and self._conversation_stop_generation == fence.stop_generation
+                and self._capability_profile == "conversation"
+                and not self._privacy_requested.is_set()
+                and not self._kids_active and not self._kids_locked
+                and self._effective_power_mode() not in {"meeting", "sleep"}
+            )
+
+        self._require_everyday_current(fence)
+        with self._everyday_lock:
+            if not allowed():
+                raise RuntimeError("Radio request was stopped")
+            old = self._radio
+            if old is not None and old.thread.is_alive():
+                if old.cancelled.is_set():
+                    raise RuntimeError("Previous radio output is still stopping; try again shortly")
+                self._radio_handoff = self._radio_voice_active
+                return {"ok": True, **old.status()}
+            player = RadioPlayer(self._playback, self._output_sample_rate, allowed=allowed)
+            self._radio = player  # Stop can cancel even while the decoder connects.
+        result = player.start()
+        try:
+            self._require_everyday_current(fence)
+            with self._everyday_lock:
+                if not allowed() or player.cancelled.is_set():
+                    raise RuntimeError("Radio request was stopped")
+                self._radio_handoff = self._radio_voice_active
+            if not self._radio_voice_active:
+                self._radio_resume_idle()
+        except RuntimeError:
+            player.stop()
+            raise
+        return {"ok": True, **result}
 
     def revoke_everyday_camera(self) -> None:
         with self._everyday_lock:
@@ -169,6 +266,7 @@ class EverydayRuntimeMixin:
             teardown("camera_session_stopped")
 
     def _revoke_everyday_actions(self) -> None:
+        self._stop_radio()
         with self._everyday_lock:
             self._everyday_camera_until = 0.0
             self._everyday_camera_generation += 1
@@ -225,6 +323,7 @@ class EverydayRuntimeMixin:
                 "volume": True,
             },
             "activity": {
+                "radio": self._radio_status(),
                 "camera_session_active": remaining > 0,
                 "camera_request_active": busy,
                 "camera_remaining_seconds": math.ceil(remaining),
@@ -282,6 +381,13 @@ class EverydayRuntimeMixin:
                     result = self.speaker_volume()
                 self._require_everyday_current(fence)
                 return {"ok": True, **result}
+            if name == "get_reachy_radio":
+                return {"ok": True, **self._radio_status()}
+            if name == "start_reachy_radio":
+                return self._start_radio(fence)
+            if name == "stop_reachy_radio":
+                self._stop_radio()
+                return {"ok": True, **self._radio_status()}
             if name == "set_reachy_volume":
                 with self._motor_transition_lock, self._kids_lock:
                     self._require_everyday_current(fence)

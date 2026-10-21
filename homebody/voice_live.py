@@ -349,6 +349,8 @@ class LiveVoiceMixin:
                 with self._status_lock:
                     self._status.turns_completed += 1
                 timings.end()
+                if getattr(self, "_radio_handoff_ready", lambda: False)():
+                    return  # Record the reply, then close cloud microphone before radio resumes.
                 timings.begin("live", mode, warm=True)
                 self._set_status("listening", "Waiting for a follow-up")
                 if self._motion is not None:

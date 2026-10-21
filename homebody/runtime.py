@@ -660,6 +660,7 @@ class HermesVoiceRuntime(
 
     def _teardown_runtime(self) -> None:
         """Stop every runtime worker and media stream; safe after a partial start."""
+        self._stop_radio()
         self._voice_workspace.clear()
         robot_stt, self._robot_stt = getattr(self, "_robot_stt", None), None
         if robot_stt is not None:
@@ -811,6 +812,11 @@ class HermesVoiceRuntime(
             if announcement_active:
                 _LOGGER.debug("Ignoring wake word while an announcement owns the voice channel")
                 continue
+            try:
+                self._radio_voice_begin()  # Drain radio before native wake/earcon can use the speaker.
+            except RuntimeError as exc:
+                self._set_status("waiting_for_wake_word", str(exc))
+                continue
             with self._motor_transition_lock:
                 if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
                     continue
@@ -883,7 +889,16 @@ class HermesVoiceRuntime(
                     # measured release with no enable since, so one End never sleeps twice.
                     self._report_automatic_fold(*self._fold_unless_released())
 
+                self._radio_resume_idle()
+
     def _run_selected_voice_conversation(self, config: AppConfig, keyword: str) -> None:
+        self._radio_voice_begin()
+        try:
+            self._run_selected_voice_with_radio_paused(config, keyword)
+        finally:
+            self._radio_voice_end()
+
+    def _run_selected_voice_with_radio_paused(self, config: AppConfig, keyword: str) -> None:
         """Route locked child sessions before every adult conversation provider."""
         if output_quarantined(self):
             # Common gate for every engine and mode: no earcon, session, playback or microphone

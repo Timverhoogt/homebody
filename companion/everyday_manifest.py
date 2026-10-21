@@ -32,6 +32,13 @@ def _spec(
 
 
 _SPECS = [
+    _spec(
+        "start_reachy_radio",
+        "Turn on the radio: play the default lo-fi station through Reachy's own speaker. "
+        "Only on request. No URL argument; yields to voice and stops on Stop/privacy.",
+    ),
+    _spec("stop_reachy_radio", "Turn off the radio playing through Reachy's own speaker."),
+    _spec("get_reachy_radio", "Read actual local radio status; enqueued is not proof of audibility."),
     _spec("get_reachy_status", "Read Reachy's actual local power, privacy and device status."),
     _spec(
         "set_reachy_power_mode",

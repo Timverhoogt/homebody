@@ -310,6 +310,8 @@ _CONTROL_MODES = {"sleep": "Sleep", "standby": "Standby"}
 _CONTROL_UNAVAILABLE = "That control is not available in this conversation. Nothing was changed."
 _ACTION_DONE = {
     "set_reachy_volume": "Okay, the volume is changed.",
+    "start_reachy_radio": "The lo-fi radio is ready. Starting it on my speaker.",
+    "stop_reachy_radio": "The radio is stopping.",
     "dance_reachy": "Okay.",
     "move_reachy_head": "Okay.",
     "express_reachy_emotion": "Okay.",

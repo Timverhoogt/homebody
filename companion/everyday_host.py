@@ -49,6 +49,8 @@ MUTATIONS = frozenset(
         "start_reachy_camera",
         "stop_reachy_camera",
         "set_reachy_volume",
+        "start_reachy_radio",
+        "stop_reachy_radio",
         "move_reachy_head",
         "express_reachy_emotion",
         "dance_reachy",
