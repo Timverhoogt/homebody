@@ -222,7 +222,7 @@ def test_standby_radio_resumes_audio_only_after_safe_fold(monkeypatch):
 def test_station_unavailable_returns_honest_error(monkeypatch):
     class Offline:
         def __init__(self, rate):
-            raise RuntimeError("Radio stream ended or could not be decoded")
+            raise radio.RadioFailure("stream_decode_failed")
 
     p = radio.RadioPlayer(Output(), 48000, allowed=lambda: True, decoder_factory=Offline)
     with pytest.raises(RuntimeError, match="could not be decoded"):

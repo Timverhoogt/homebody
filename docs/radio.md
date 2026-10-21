@@ -39,6 +39,20 @@ that service directly, disclosing its network address, not conversation content.
 
 ## Runtime and deployment
 
+From 0.5.49, Live handoff also handles a preface that finishes before the local
+radio result, with no second spoken reply. It waits for the backend result and
+drained audio, allows a short continuation grace, and bounds a missing
+continuation rather than leaving radio paused until the conversation timeout.
+New speech defers that handoff. Categorical logs distinguish connecting, decoded,
+paused, resumed, first SDK enqueue, failure and worker cleanup without utterances
+or native exception bodies.
+
+On a headless Linux daemon sandbox, `GSETTINGS_BACKEND=memory` in the service
+environment avoids desktop dconf cache writes under a hidden `/run/user`.
+Keep explicit desktop settings and the existing sandbox permissions intact.
+This is a deployment configuration, not an automatic change to an owner's
+desktop or a remedy for an expired Hugging Face cloud login.
+
 The decoder uses optional PyGObject/GStreamer `uridecodebin`/`appsink`, with the
 robot's existing MP3 and HTTPS source plugins. Unsupported hosts return an explicit
 unavailable error; the app does not install packages or open another audio device.

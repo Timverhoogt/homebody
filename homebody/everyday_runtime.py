@@ -181,7 +181,8 @@ class EverydayRuntimeMixin:
 
     def _radio_handoff_ready(self) -> bool:
         with self._everyday_lock:
-            return self._radio_handoff
+            return bool(self._radio_handoff and self._radio is not None
+                        and not self._radio.cancelled.is_set() and not self._radio.error)
 
     def _radio_voice_begin(self) -> None:
         with self._everyday_lock:
@@ -193,6 +194,10 @@ class EverydayRuntimeMixin:
             player = self._radio
         if player is not None:
             player.pause()  # Refuse voice if an old SDK push has not drained.
+
+    def _radio_defer_handoff(self) -> None:
+        with self._everyday_lock:
+            self._radio_handoff = False  # New user speech keeps the current voice owner.
 
     def _radio_voice_end(self) -> None:
         with self._everyday_lock:
