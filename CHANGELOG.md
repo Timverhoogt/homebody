@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.47] — Settings spacing
+
+- Remove doubled gaps between Voice settings disclosure rows.
+- Give Save settings and its helper consistent spacing and align the desktop Save action with its form.
+- Remove the duplicated divider above Stop speaking without changing its controls.
+- Refresh the dashboard asset cache. Voice, permissions, saved settings and Android APK are unchanged.
+
 ## [0.5.46] — Task-focused Robot and Settings
 
 - Put the complete Look controls and one clearly named Stop movement first on Robot; pair Look and Camera on desktop and keep power compact.
