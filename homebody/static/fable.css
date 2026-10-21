@@ -476,7 +476,11 @@ body[data-destination="kids"] .global-robot-status :is(.status-row, #global-powe
 .settings-block > h3, .settings-block .section-heading h3 { font-family: var(--serif); font-size: 1.2rem; font-weight: 400; letter-spacing: -.01em; margin: 0; }
 .settings-block h4, .settings-subsection h4 { font-family: var(--serif); font-size: 1.05rem; font-weight: 400; margin: 0; }
 .settings-block > h3 + p, .settings-block > .section-heading + p { margin-top: 6px; }
-.settings-block > label, .settings-block > .grid-two, .settings-block form > label, .settings-block form > .grid-two, .settings-block form > details { margin-top: 12px; }
+.settings-block > label, .settings-block > .grid-two { margin-top: 12px; }
+/* The form already supplies a row gap: child margins doubled each gap. */
+#settings-form { row-gap: 12px; margin-top: 16px; }
+#settings-form > .settings-disclosure { margin-top: 0; }
+#settings-form > .provider-note { margin: 0; }
 .settings-block .toggle-row, .settings-block .checkbox-row { padding: 8px 0; }
 .settings-block .toggle-row + .toggle-row { border-top: 1px solid var(--line); }
 .settings-subsection { margin-top: 12px; padding: 12px 0 4px; border-top: 1px solid var(--line); min-width: 0; }
@@ -492,9 +496,14 @@ body[data-destination="kids"] .global-robot-status :is(.status-row, #global-powe
 #panel-settings .settings-category > .card > .label, #panel-settings .settings-category > .card .section-heading .label { display: none; }
 #lifecycle-card { border-top-color: var(--danger); }
 #lifecycle-card h3 { color: var(--danger); }
-.settings-save { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
-.settings-save .actions { margin: 0; }
+.settings-save { display: grid; gap: 12px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.settings-save .actions, .settings-save > .compact-note, .settings-save > .message, .settings-save > .settings-disclosure { margin: 0; }
+.settings-save .actions { justify-content: flex-start; }
 .settings-save .message:empty { display: none; }
+.settings-save > .settings-disclosure > p { margin: 4px 0 12px; }
+/* One footer divider, not the status surface and its nested voice-route rule. */
+body[data-destination="settings"] .global-robot-status { margin-top: 16px; padding-top: 16px; }
+body[data-destination="settings"] .global-robot-status .voice-route { border-top: 0; padding-top: 0; }
 #panel-settings .setup-review-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 14px; padding: 12px 0 8px; margin: 0; }
 #panel-settings .setup-review-entry p { margin: 0; color: var(--ink-2); font-size: .88rem; }
 #companion-settings > * + * { margin-top: 14px; }
