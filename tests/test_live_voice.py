@@ -154,7 +154,8 @@ def audio(n):
     return RealtimeEvent("session.output_audio.delta", {"n": n})
 
 
-def test_live_loop_plays_until_queue_drains_and_records_turn(monkeypatch):
+@pytest.mark.parametrize("radio_handoff", [False, True])
+def test_live_loop_plays_until_queue_drains_and_records_turn(monkeypatch, radio_handoff):
     clock = {"t": 100.0}
     monkeypatch.setattr("homebody.voice_live.time.monotonic", lambda: clock["t"])
     session = FakeLiveSession([
@@ -165,6 +166,7 @@ def test_live_loop_plays_until_queue_drains_and_records_turn(monkeypatch):
         [], [], [], [RealtimeEvent("session.closed", {})],
     ])
     runtime = LiveHarness(session)
+    runtime._radio_handoff_ready = lambda: radio_handoff
     original = runtime._read_16k_frame
 
     def advancing():
@@ -178,6 +180,8 @@ def test_live_loop_plays_until_queue_drains_and_records_turn(monkeypatch):
     assert ("assistant", "It is noon.") in runtime.workspace and ("user", "what time") in runtime.workspace
     assert runtime._status.turns_completed == 1
     assert session.order == ["start", "clear_audio", "close"]
+    if radio_handoff:
+        assert session.script  # Closed after confirmation drained, not a five-minute follow-up timeout.
     first = runtime._voice_timings.snapshot()[0]
     assert first["engine"] == "live" and first["mode"] == "everyday" and first["warm"] is False
     assert {"session_ready", "tool_requested", "tool_result", "first_provider_audio",
@@ -211,7 +215,14 @@ def test_engine_routing_never_silently_falls_back(config, expected):
         _run_realtime_conversation=lambda c: calls.append("realtime"),
         _run_conversation=lambda c: calls.append("pipeline"),
     )
+    fake._radio_voice_begin = lambda: calls.append("radio_pause")
+    fake._radio_voice_end = lambda: calls.append("radio_resume")
+    fake._run_selected_voice_with_radio_paused = lambda c, k: (
+        HermesVoiceRuntime._run_selected_voice_with_radio_paused(fake, c, k)
+    )
     HermesVoiceRuntime._run_selected_voice_conversation(fake, AppConfig(**config), "hey")
+    assert calls.pop(0) == "radio_pause"
+    assert calls.pop() == "radio_resume"
     assert calls == [expected]
 
 

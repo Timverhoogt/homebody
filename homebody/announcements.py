@@ -232,6 +232,7 @@ class AnnouncementsMixin:
                 self._status.announcement_current_preview = item.text[:240]
                 self._status.announcement_last_error = ""
             woke_for_announcement = False
+            radio_paused = False
             client: HermesBridgeClient | None = None
             try:
                 with self._voice_activity_lock:
@@ -239,6 +240,9 @@ class AnnouncementsMixin:
                         continue
                     if self._ack_output_quarantined():
                         raise RuntimeError("Audio output is busy; announcement not played")
+                    if getattr(self, "_radio", None) is not None:
+                        self._radio_voice_begin()
+                        radio_paused = True
                     mode = self._effective_power_mode()
                     if mode in {"meeting", "sleep"} or self._privacy_requested.is_set():
                         raise RuntimeError("Announcement was blocked by the current privacy mode")
@@ -380,6 +384,9 @@ class AnnouncementsMixin:
                     if self._announcement_current is item:
                         self._announcement_current = None
                     self._announcement_active.clear()
+                if radio_paused:
+                    self._radio_voice_end()
+                    self._radio_resume_idle()
                 self._announcement_queue.task_done()
                 with self._status_lock:
                     self._status.announcement_busy = False

@@ -170,6 +170,12 @@ _HEAD = {"left": "left", "right": "right", "up": "up", "down": "down", "links": 
 _ACTIONS: tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], tuple[str, dict] | None]], ...] = tuple(
     (re.compile(_LEAD_RE + "(?:" + pattern + ")" + _CONTROL_TAIL, re.IGNORECASE), build)
     for pattern, build in (
+        (r"(?:turn|switch|put) on (?:the )?radio|(?:turn|switch) (?:the )?radio on|"
+         r"play (?:the )?(?:lo[ -]?fi )?radio|zet (?:de )?radio aan",
+         lambda m: ("start_reachy_radio", {})),
+        (r"(?:turn|switch) off (?:the )?radio|(?:turn|switch) (?:the )?radio off|"
+         r"stop (?:the )?radio|zet (?:de )?radio uit",
+         lambda m: ("stop_reachy_radio", {})),
         (r"(?:(?:set|turn|change|put) )?(?:the |your )?volume (?:to |at )?(?P<n>\d{1,3})(?: ?%| percent)?",
          lambda m: ("set_reachy_volume", {"volume": int(m["n"])}) if int(m["n"]) <= 100 else None),
         (r"(?:zet )?(?:het |je )?volume (?:op |naar )?(?P<n>\d{1,3})(?: ?%| procent)?",

@@ -773,6 +773,8 @@ class RealtimeVoiceMixin:
                     generation_done = False
                     playback.reset()
                     timings.end()
+                    if getattr(self, "_radio_handoff_ready", lambda: False)():
+                        break  # Return to local wake detection before radio resumes.
                     timings.begin("realtime", timing_mode, warm=True)
                     self._set_status("listening", "Waiting for a follow-up")
                     if self._motion is not None:

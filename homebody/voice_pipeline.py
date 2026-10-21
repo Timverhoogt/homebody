@@ -660,6 +660,8 @@ class PipelineVoiceMixin:
                     self._status.turns_completed += 1
                 if typed_input is not None:
                     break  # One submitted guess; never open the microphone for a follow-up.
+                if getattr(self, "_radio_handoff_ready", lambda: False)():
+                    break
                 if interrupted:
                     first_turn = False
                     continue
