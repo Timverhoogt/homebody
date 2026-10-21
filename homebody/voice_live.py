@@ -12,6 +12,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import replace
 
 from .audio import resample_linear
 from .config import AppConfig
@@ -227,6 +228,9 @@ class LiveVoiceMixin:
         said: list[str] = []
         last_activity = time.monotonic()
         dropped_audio = False
+        radio_ready_at = None
+        radio_result_at = None
+        radio_last_audio_at = None
         while not self.stop_event.is_set() and not self._turn_stop_requested():
             if self._privacy_requested.is_set() or self._effective_power_mode() in {"meeting", "sleep"}:
                 return
@@ -275,13 +279,18 @@ class LiveVoiceMixin:
                     self.launch_everyday_tool(
                         payload.get("name"),
                         payload.get("arguments"),
-                        fence=fence,
+                        # Refresh only handoff timing, never original session/Stop authority.
+                        fence=(replace(fence, radio_generation=self.everyday_tool_fence().radio_generation)
+                               if payload.get("name") == "start_reachy_radio" else fence),
                         call_id=identifier,
                         deliver=lambda result, call_id=identifier: session.send_everyday_result(call_id, result),
                         is_current=lambda: not closed.is_set() and not self._turn_stop_requested(),
                         scope=EverydayCallbackScope(transcript="".join(heard), visual=visual),
                     )
                 elif kind == "session.input_transcript.delta":
+                    # Retire earlier handoff epochs even before their worker becomes ready.
+                    getattr(self, "_radio_defer_handoff", lambda: None)()
+                    radio_ready_at = radio_result_at = radio_last_audio_at = None
                     last_activity = time.monotonic()
                     heard.append(str(payload.get("delta") or ""))
                     self._set_status(
@@ -297,6 +306,8 @@ class LiveVoiceMixin:
                         self._set_status("thinking", "Checking that for you")
                     elif state in {"answered", "not_ready", "failed"}:
                         timings.mark("tool_result")  # backend returned; only "answered" is a verified reply
+                        if getattr(self, "_radio_handoff_ready", lambda: False)():
+                            radio_result_at = time.monotonic()
                         if state == "not_ready":
                             self._set_status("thinking", "Project session not open")
                 elif kind in {"bridge.look_request", "bridge.look_follow_up_request"}:
@@ -317,6 +328,7 @@ class LiveVoiceMixin:
                         continue
                     now = time.monotonic()
                     timings.mark("first_provider_audio", at=now)
+                    radio_last_audio_at = now
                     if playback.audible(now) and playback.queued_until - now > _MAX_QUEUED_SECONDS:
                         if not dropped_audio:
                             _LOGGER.warning("Live output queue full; dropping audio beyond %ss", _MAX_QUEUED_SECONDS)
@@ -349,9 +361,25 @@ class LiveVoiceMixin:
                 with self._status_lock:
                     self._status.turns_completed += 1
                 timings.end()
-                if getattr(self, "_radio_handoff_ready", lambda: False)():
-                    return  # Record the reply, then close cloud microphone before radio resumes.
                 timings.begin("live", mode, warm=True)
                 self._set_status("listening", "Waiting for a follow-up")
                 if self._motion is not None:
                     self._motion.listening()
+            # Live may speak its preface BEFORE the radio callback finishes and never
+            # speak again. Handoff cannot depend solely on the speaking -> idle edge.
+            # Wait for the backend result and drain PCM, with a short grace for a new
+            # confirmation. A missing continuation must not leave radio paused for
+            # the full conversation timeout.
+            if getattr(self, "_radio_handoff_ready", lambda: False)():
+                now = time.monotonic()
+                if radio_ready_at is None:
+                    radio_ready_at = now
+                drained = not speaking and not playback.audible(now)
+                confirmed = radio_result_at is not None and (
+                    (radio_last_audio_at is not None and radio_last_audio_at >= radio_result_at)
+                    or now - radio_result_at >= 1.0
+                )
+                if drained and confirmed:
+                    _LOGGER.info("Radio voice handoff completed (engine=live result_received=%s)",
+                                 radio_result_at is not None)
+                    return

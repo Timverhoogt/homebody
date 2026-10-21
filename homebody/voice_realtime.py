@@ -768,7 +768,11 @@ class RealtimeVoiceMixin:
                         break
                 if self._turn_stop_requested():
                     break
-                if generation_done and speaking and not playback.audible(time.monotonic()):
+                if (
+                    generation_done
+                    and (speaking or getattr(self, "_radio_handoff_ready", lambda: False)())
+                    and not playback.audible(time.monotonic())
+                ):
                     speaking = False
                     generation_done = False
                     playback.reset()

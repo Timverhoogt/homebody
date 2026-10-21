@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.49] — Radio voice handoff repair
+
+- Fix Live radio remaining decoded but paused when its spoken preface finishes before the radio tool returns and no second reply follows. Hand off after the result and drained audio, with bounded continuation grace, rather than waiting for another speaking-to-idle edge.
+- Preserve newer user speech during the handoff, Stop/privacy cancellation and speaker ownership. Handle a text-only completed Realtime confirmation as well.
+- Add categorical radio readiness, pause/resume, enqueue, failure and cleanup diagnostics. Native exception bodies, conversation text and arbitrary error codes never enter radio logs/status; queued PCM remains distinct from verified audibility.
+
 ## [0.5.48] — Everyday lo-fi radio
 
 - Say “turn on the radio” in Everyday to play laut.fm Lofi through Reachy's own speaker; “turn off the radio” stops it. Pipeline, Realtime and Live share one bounded local tool contract.

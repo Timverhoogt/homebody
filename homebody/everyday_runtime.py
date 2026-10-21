@@ -141,6 +141,7 @@ class EverydayFence:
     cancelled: threading.Event | None = field(default=None, compare=False, hash=False)
     # Camera Stop invalidates old camera requests, without retiring unrelated tools.
     camera_generation: int = field(default=0, compare=False)
+    radio_generation: int = field(default=0, compare=False)
 
 
 class _ActionCancellation:
@@ -166,6 +167,7 @@ class EverydayRuntimeMixin:
         self._radio_voice_active = False
         self._radio_voice_owners: set[int] = set()
         self._radio_handoff = False
+        self._radio_handoff_generation = 0
 
     def _stop_radio(self) -> None:
         with self._everyday_lock:
@@ -181,7 +183,8 @@ class EverydayRuntimeMixin:
 
     def _radio_handoff_ready(self) -> bool:
         with self._everyday_lock:
-            return self._radio_handoff
+            return bool(self._radio_handoff and self._radio is not None
+                        and not self._radio.cancelled.is_set() and not self._radio.error)
 
     def _radio_voice_begin(self) -> None:
         with self._everyday_lock:
@@ -193,6 +196,11 @@ class EverydayRuntimeMixin:
             player = self._radio
         if player is not None:
             player.pause()  # Refuse voice if an old SDK push has not drained.
+
+    def _radio_defer_handoff(self) -> None:
+        with self._everyday_lock:
+            self._radio_handoff_generation += 1
+            self._radio_handoff = False  # New user speech keeps the current voice owner.
 
     def _radio_voice_end(self) -> None:
         with self._everyday_lock:
@@ -245,7 +253,8 @@ class EverydayRuntimeMixin:
             if old is not None and old.thread.is_alive():
                 if old.cancelled.is_set():
                     raise RuntimeError("Previous radio output is still stopping; try again shortly")
-                self._radio_handoff = self._radio_voice_active
+                self._radio_handoff = (self._radio_voice_active
+                                       and fence.radio_generation == self._radio_handoff_generation)
                 return {"ok": True, **old.status()}
             player = RadioPlayer(self._playback, self._output_sample_rate, allowed=allowed)
             self._radio = player  # Stop can cancel even while the decoder connects.
@@ -255,7 +264,8 @@ class EverydayRuntimeMixin:
             with self._everyday_lock:
                 if not allowed() or player.cancelled.is_set():
                     raise RuntimeError("Radio request was stopped")
-                self._radio_handoff = self._radio_voice_active
+                self._radio_handoff = (self._radio_voice_active
+                                       and fence.radio_generation == self._radio_handoff_generation)
             if not self._radio_voice_active:
                 self._radio_resume_idle()
         except RuntimeError:
@@ -287,7 +297,8 @@ class EverydayRuntimeMixin:
             agent = self._agent_session_generation
         with self._everyday_lock:
             camera = self._everyday_camera_generation
-        return EverydayFence(stop, agent, cancelled, camera)
+            radio = self._radio_handoff_generation
+        return EverydayFence(stop, agent, cancelled, camera, radio)
 
     def _require_everyday_current(self, fence: EverydayFence) -> AppConfig:
         if (
