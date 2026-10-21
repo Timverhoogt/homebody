@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.48] — Everyday lo-fi radio
+
+- Say “turn on the radio” in Everyday to play laut.fm Lofi through Reachy's own speaker; “turn off the radio” stops it. Pipeline, Realtime and Live share one bounded local tool contract.
+- Yield music to voice and announcements, close the voice session after the confirmation, and resume Standby audio only after the normal safe fold without waking motors for music.
+- Bind each voice pause to its owner so late announcement cleanup cannot resume music under a newer conversation. Stop, privacy, Kids, explicit power changes and profile changes cancel radio.
+- Use the robot's optional existing GStreamer decoder, fixed HTTPS station and existing speaker volume/mute. Report unavailable streams honestly; decoded/queued audio is not proof of audibility. See [radio behaviour and physical-test limits](docs/radio.md).
+
 ## [0.5.47] — Settings spacing
 
 - Remove doubled gaps between Voice settings disclosure rows.

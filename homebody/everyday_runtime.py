@@ -164,6 +164,7 @@ class EverydayRuntimeMixin:
         self._everyday_worker_slot = threading.BoundedSemaphore(1)
         self._radio = None
         self._radio_voice_active = False
+        self._radio_voice_owners: set[int] = set()
         self._radio_handoff = False
 
     def _stop_radio(self) -> None:
@@ -184,6 +185,9 @@ class EverydayRuntimeMixin:
 
     def _radio_voice_begin(self) -> None:
         with self._everyday_lock:
+            # Wake admission and dispatch may pause twice on the same owner thread.
+            # Older announcement cleanup must not relinquish a newer voice owner.
+            self._radio_voice_owners.add(threading.get_ident())
             self._radio_voice_active = True
             self._radio_handoff = False
             player = self._radio
@@ -192,8 +196,10 @@ class EverydayRuntimeMixin:
 
     def _radio_voice_end(self) -> None:
         with self._everyday_lock:
-            self._radio_voice_active = False
-            self._radio_handoff = False
+            self._radio_voice_owners.discard(threading.get_ident())
+            self._radio_voice_active = bool(self._radio_voice_owners)
+            if not self._radio_voice_active:
+                self._radio_handoff = False
         if self._effective_power_mode() != "standby":
             self._radio_resume_idle()
 
