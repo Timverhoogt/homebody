@@ -14,6 +14,7 @@ class Simulation:
         self.send_cost, self.read_cost = send_cost, read_cost
         self.sizes, self.seconds = sizes, seconds
         self.records = []
+        self.pcm = []
         self.reads = 0
         self.clears = 0
         self.clear_boundaries = []
@@ -54,6 +55,7 @@ class Simulation:
             def push_audio_sample(self, samples):
                 sim.now += sim.send_cost
                 sim.records.append((sim.now, len(samples) / 16000, float(samples[0])))
+                sim.pcm.append(samples.copy())
 
             def clear(self):
                 sim.clears += 1
@@ -103,7 +105,31 @@ def test_small_source_jitter_and_variable_chunks_keep_continuity(monkeypatch):
     assert reserve <= 0.2
     # PCM is preserved in order; never drop packets to hide an underrun.
     ids = [v for _, _, v in sim.records]
-    assert ids == sorted(ids) and len(set(ids)) == len(ids)
+    assert ids == sorted(ids)
+    expected = (
+        np.concatenate(
+            [np.full(sim.sizes[(n - 1) % len(sim.sizes)], n / 1000, dtype=np.float32) for n in range(1, sim.reads + 1)]
+        )
+        * 0.5
+    )
+    actual = np.concatenate(sim.pcm)
+    np.testing.assert_array_equal(actual, expected[: actual.size])
+
+
+def test_tiny_first_fragment_is_coalesced_without_gaps_or_lost_pcm(monkeypatch):
+    sim = Simulation(monkeypatch, sizes=(100, 15999, 640), seconds=10)
+    sim.run()
+    assert sim.gaps_and_max_reserve()[0] == pytest.approx(0, abs=1e-7)
+    assert sim.gaps_and_max_reserve()[1] <= 0.2
+    assert all(samples.size == 640 for samples in sim.pcm)
+    expected = (
+        np.concatenate(
+            [np.full(sim.sizes[(n - 1) % len(sim.sizes)], n / 1000, dtype=np.float32) for n in range(1, sim.reads + 1)]
+        )
+        * 0.5
+    )
+    actual = np.concatenate(sim.pcm)
+    np.testing.assert_array_equal(actual, expected[: actual.size])
 
 
 def test_long_source_stall_rebases_instead_of_unbounded_catchup(monkeypatch, caplog):
@@ -131,7 +157,7 @@ def test_stop_or_revocation_during_prefill_cannot_enqueue(monkeypatch, boundary)
     assert sim.clears == 0
 
 
-@pytest.mark.parametrize("sizes", [(640,), (16000,)])
+@pytest.mark.parametrize("sizes", [(640,), (16000,), (100, 15999, 640)])
 def test_pause_resume_during_pacing_retires_pre_pause_chunk(monkeypatch, sizes):
     sim = Simulation(monkeypatch, sizes=sizes)
     retired = []

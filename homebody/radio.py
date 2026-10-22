@@ -170,6 +170,7 @@ class RadioPlayer:
         pending = deque()
         pending_samples = 0
         prefill = True
+        step = max(1, self.sample_rate // 25)
         stage = "decoder_start_failed"
         _LOGGER.info("Radio connecting (sample_rate=%d)", self.sample_rate)
         try:
@@ -188,7 +189,11 @@ class RadioPlayer:
                     queued_until = None
                     prefill = True
                     pacing_generation = generation
-                if paused or not pending or (prefill and pending_samples / self.sample_rate < _RESERVE_SECONDS):
+                if (
+                    paused
+                    or pending_samples < step
+                    or (prefill and pending_samples / self.sample_rate < _RESERVE_SECONDS)
+                ):
                     stage = "stream_decode_failed"
                     samples = decoder.read()
                     now = time.monotonic()
@@ -213,12 +218,11 @@ class RadioPlayer:
                         # is retained for a later resume; avoid a busy decoder loop.
                         self.cancelled.wait(min(samples.size / self.sample_rate, 0.04))
                         continue
-                    step = max(1, self.sample_rate // 25)
                     pending.extend(samples[offset : offset + step] for offset in range(0, samples.size, step))
                     pending_samples += samples.size
                     # The deque is bounded by the reserve plus one validated <=1 s
                     # decoder buffer. Actually collect PCM, not merely sleep.
-                    if prefill and pending_samples / self.sample_rate < _RESERVE_SECONDS:
+                    if pending_samples < step or (prefill and pending_samples / self.sample_rate < _RESERVE_SECONDS):
                         continue
                 prefill = False
                 now = time.monotonic()
@@ -240,7 +244,19 @@ class RadioPlayer:
                         continue
                     if self.allowed():
                         stage = "output_failed"
-                        chunk = pending.popleft()
+                        # Decoder fragments need not align to sends. Coalesce even
+                        # a tiny first/restart fragment into a full <=40 ms chunk;
+                        # otherwise one SDK call can outlast that fragment's audio.
+                        parts = []
+                        remaining = step
+                        while remaining:
+                            fragment = pending.popleft()
+                            take = min(remaining, fragment.size)
+                            parts.append(fragment[:take])
+                            if take < fragment.size:
+                                pending.appendleft(fragment[take:])
+                            remaining -= take
+                        chunk = parts[0] if len(parts) == 1 else np.concatenate(parts)
                         pending_samples -= chunk.size
                         self.dirty = True
                         sent_at = time.monotonic()
