@@ -9,12 +9,16 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 
 import numpy as np
 
 STATION_NAME = "laut.fm Lofi"
 STATION_URL = "https://stream.laut.fm/lofi"
+# Software scheduling targets, not measurements of the opaque hardware queue.
+_RESERVE_SECONDS = 0.12
+
 _LOGGER = logging.getLogger(__name__)
 _ERRORS = {
     "decoder_unavailable": "Radio needs the optional GStreamer audio decoder on this robot",
@@ -50,7 +54,9 @@ class GstRadioDecoder:
         self.pipeline = Gst.parse_launch(
             'uridecodebin uri="' + STATION_URL + '" ! audioconvert ! audioresample ! '
             f"audio/x-raw,format=F32LE,rate={sample_rate},channels=1 ! "
-            "appsink name=radio_sink emit-signals=false sync=true max-buffers=2 drop=true"
+            # Let our sample-count clock pace playback. Backpressure, not dropping,
+            # preserves PCM continuity when decoding briefly outruns consumption.
+            "appsink name=radio_sink emit-signals=false sync=false max-buffers=4 drop=false"
         )
         self.sink = self.pipeline.get_by_name("radio_sink")
         if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
@@ -87,6 +93,7 @@ class RadioPlayer:
         self.cancelled = threading.Event()
         self.ready = threading.Event()
         self.paused = True
+        self._playback_generation = 0
         self.state = "connecting"
         self.error = ""
         self.error_code = ""
@@ -127,6 +134,7 @@ class RadioPlayer:
     def pause(self) -> None:
         with self.lock:
             self.paused = True
+            self._playback_generation += 1
         _LOGGER.info("Radio playback paused for voice")
         if not self.push_lock.acquire(timeout=2):
             raise RuntimeError("Radio output is still in flight; try again shortly")
@@ -140,6 +148,8 @@ class RadioPlayer:
     def resume(self) -> None:
         with self.lock:
             if not self.cancelled.is_set():
+                if self.paused:
+                    self._playback_generation += 1
                 self.paused = False
                 _LOGGER.info("Radio playback resumed")
 
@@ -155,6 +165,11 @@ class RadioPlayer:
 
     def _run(self) -> None:
         decoder = None
+        queued_until = None
+        pacing_generation = None
+        pending = deque()
+        pending_samples = 0
+        prefill = True
         stage = "decoder_start_failed"
         _LOGGER.info("Radio connecting (sample_rate=%d)", self.sample_rate)
         try:
@@ -164,40 +179,79 @@ class RadioPlayer:
                 if not self.allowed():
                     self.cancelled.set()
                     break
-                stage = "stream_decode_failed"
-                samples = decoder.read()
-                now = time.monotonic()
-                if samples is None or not samples.size:
-                    if now - last_sample > 8:
-                        raise RadioFailure("stream_timeout")
-                    continue
-                last_sample = now
-                if samples.size > self.sample_rate or not np.isfinite(samples).all():
-                    raise RadioFailure("invalid_audio")
                 with self.lock:
-                    if self.paused or not self.enqueued:
-                        self.state = "ready"
-                if not self.ready.is_set():
-                    _LOGGER.info("Radio stream decoded and ready")
-                self.ready.set()  # Decoded PCM readiness, not proof of audible playback.
-                # Use <=40 ms chunks and wall-clock pacing; SDK queue depth is opaque.
-                for offset in range(0, samples.size, max(1, self.sample_rate // 25)):
-                    chunk = samples[offset : offset + max(1, self.sample_rate // 25)]
-                    with self.push_lock:
+                    generation = self._playback_generation
+                    paused = self.paused
+                if generation != pacing_generation:
+                    pending.clear()
+                    pending_samples = 0
+                    queued_until = None
+                    prefill = True
+                    pacing_generation = generation
+                if paused or not pending or (prefill and pending_samples / self.sample_rate < _RESERVE_SECONDS):
+                    stage = "stream_decode_failed"
+                    samples = decoder.read()
+                    now = time.monotonic()
+                    if samples is None or not samples.size:
+                        if now - last_sample > 8:
+                            raise RadioFailure("stream_timeout")
+                        continue
+                    last_sample = now
+                    if samples.size > self.sample_rate or not np.isfinite(samples).all():
+                        raise RadioFailure("invalid_audio")
+                    with self.lock:
+                        if self.paused or not self.enqueued:
+                            self.state = "ready"
+                        current = generation == self._playback_generation
+                    if not self.ready.is_set():
+                        _LOGGER.info("Radio stream decoded and ready")
+                    self.ready.set()  # Decoder readiness is not acoustic acceptance.
+                    if not current:
+                        continue
+                    if paused:
+                        # Consume/discard while voice owns the speaker. No old PCM
+                        # is retained for a later resume; avoid a busy decoder loop.
+                        self.cancelled.wait(min(samples.size / self.sample_rate, 0.04))
+                        continue
+                    step = max(1, self.sample_rate // 25)
+                    pending.extend(samples[offset : offset + step] for offset in range(0, samples.size, step))
+                    pending_samples += samples.size
+                    # The deque is bounded by the reserve plus one validated <=1 s
+                    # decoder buffer. Actually collect PCM, not merely sleep.
+                    if prefill and pending_samples / self.sample_rate < _RESERVE_SECONDS:
+                        continue
+                prefill = False
+                now = time.monotonic()
+                if queued_until is not None and now > queued_until + 0.001:
+                    _LOGGER.info("Radio rebuffering after producer stall")
+                    queued_until = None
+                    prefill = True
+                    continue  # Refill instead of an unbounded catch-up burst.
+                delay = max(0.0, queued_until - _RESERVE_SECONDS - now) if queued_until is not None else 0.0
+                # Wait outside speaker ownership: pause/clear remains responsive.
+                if self.cancelled.wait(delay):
+                    break
+                with self.push_lock:
+                    with self.lock:
+                        play = (
+                            not self.paused and not self.cancelled.is_set() and generation == self._playback_generation
+                        )
+                    if not play:
+                        continue
+                    if self.allowed():
+                        stage = "output_failed"
+                        chunk = pending.popleft()
+                        pending_samples -= chunk.size
+                        self.dirty = True
+                        sent_at = time.monotonic()
+                        self.playback.push_audio_sample(np.clip(chunk, -1, 1) * 0.5)
+                        queued_until = max(sent_at, queued_until or sent_at) + chunk.size / self.sample_rate
                         with self.lock:
-                            play = not self.paused and not self.cancelled.is_set()
-                        if play and self.allowed():
-                            stage = "output_failed"
-                            self.dirty = True
-                            self.playback.push_audio_sample(np.clip(chunk, -1, 1) * 0.5)
-                            with self.lock:
-                                if not self.enqueued:
-                                    _LOGGER.info("Radio first PCM enqueued (audibility_unverified=true)")
-                                self.enqueued += chunk.size
-                                self.state = "playing"
-                    # Pace even while paused so decoding cannot race through the live input.
-                    if self.cancelled.wait(chunk.size / self.sample_rate):
-                        break
+                            if not self.enqueued:
+                                _LOGGER.info("Radio first PCM enqueued (audibility_unverified=true)")
+                            self.enqueued += chunk.size
+                            self.state = "playing"
+
         except Exception as exc:
             self._fail(exc.code if isinstance(exc, RadioFailure) else stage)
         finally:

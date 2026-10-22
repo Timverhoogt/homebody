@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.50] — Continuous radio pacing
+
+- Prevent synchronous decode/send overhead from adding a gap to every radio chunk: pace against cumulative PCM duration with a small bounded reserve, rather than sleeping a full chunk after each send.
+- Prefill real decoded PCM, preserve stream continuity with bounded GStreamer backpressure instead of dropping buffers, and rebuffer after a long stall without an unbounded catch-up burst.
+- Discard pre-pause buffered PCM on pause/resume, recheck cancellation and original device authority at enqueue, and retain responsive Stop/voice ownership. Estimated buffering is not measured hardware queue depth or verified acoustic quality; voice-to-radio handoff latency is a separate issue.
+
 ## [0.5.49] — Radio voice handoff repair
 
 - Fix Live radio remaining decoded but paused when its spoken preface finishes before the radio tool returns and no second reply follows. Hand off after the result and drained audio, with bounded continuation grace, rather than waiting for another speaking-to-idle edge.
