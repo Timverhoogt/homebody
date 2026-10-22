@@ -27,8 +27,13 @@ that service directly, disclosing its network address, not conversation content.
   invokes a motor command or reenables the voice-motion helper.
 - Volume and mute use the existing speaker controls. Music PCM is attenuated to
   half amplitude without changing saved speaker volume. A muted speaker stays muted.
-- One decoder worker, bounded appsink buffers, at most 40 ms PCM chunks and real-time
-  pacing. Decoder startup/no-data failure is bounded and reported; no reconnect loop.
+- One decoder worker, four backpressured (non-dropping) appsink buffers and at most
+  40 ms PCM sends. A 120 ms decoded prefill and sample-count deadline pacing absorb
+  short source/send jitter without adding send time to every chunk's sleep. The
+  application PCM deque is bounded by that reserve plus one validated decoder buffer
+  of at most one second. Decoder startup/no-data failure is bounded; no reconnect loop.
+  A longer stall causes rebuffering, not an unbounded catch-up burst. Pause/resume
+  discards old queued application PCM before a fresh prefill.
   SDK queue depth is opaque. A held SDK push fences a later voice start and a new
   radio session; Stop cancels immediately and that producer clears any late audio.
 - Camera and microphone permissions are unchanged. Local wake detection still uses
@@ -38,6 +43,13 @@ that service directly, disclosing its network address, not conversation content.
   acoustic echo cancellation require a supervised physical test.
 
 ## Runtime and deployment
+
+From 0.5.50, radio scheduling accounts for decode/send overhead and keeps a small
+bounded software reserve. Its scheduling clock is independent of GStreamer's sink
+clock (`sync=false`); `drop=false` preserves PCM continuity through backpressure.
+Software queue estimates are not measurements of SDK/hardware buffering. Silent
+synthetic and real-stream/fake-speaker probes establish scheduling behavior, not
+acoustic acceptance. This change targets music gaps, not cloud voice handoff latency.
 
 From 0.5.49, Live handoff also handles a preface that finishes before the local
 radio result, with no second spoken reply. It waits for the backend result and
