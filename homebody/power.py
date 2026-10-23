@@ -14,6 +14,12 @@ import time
 import httpx
 
 from .daemon_sleep import DaemonSleepError, run_daemon_sleep
+from .motor_recovery import (
+    MotorRecoveryError,
+    backend_admission_rejected,
+    recover_motor_backend,
+    replace_control_client,
+)
 from .safety_gate import POWER_MODES as _POWER_MODES
 from .wakeword import WAKE_PROMPT as _WAKE_PROMPT
 
@@ -27,9 +33,134 @@ _FOLD_FENCE_REASON = "Robot action was blocked by a safety fold"
 class MotorBackendUnavailable(RuntimeError):
     """Motor command outcome cannot be trusted; do not issue recovery motion."""
 
+    wake_recovery_safe = False
+
+
+def wake_with_backend_recovery(runtime, *, allow_recovery: bool) -> None:
+    """One fresh wake may recover a definitive non-admission, never a timeout."""
+    generation = getattr(runtime, "_turn_stop_generation", None)
+
+    def check():
+        if type(generation) is not int:
+            raise MotorRecoveryError("A fresh wake receipt is required for motor admission")
+        with runtime._conversation_stop_generation_lock:
+            original = generation == runtime._conversation_stop_generation
+        if (
+            not original
+            or runtime._conversation_stop_requested.is_set()
+            or runtime.stop_event.is_set()
+            or runtime._privacy_requested.is_set()
+        ):
+            raise MotorRecoveryError("The original motor wake was cancelled")
+
+    check()
+    repair = getattr(runtime, "_repair_disconnected_motor_client", None)
+    if allow_recovery and callable(repair):
+        repair(expected_generation=generation)
+    check()
+    try:
+        runtime._set_motor_mode(True, wake=True)
+    except MotorBackendUnavailable as exc:
+        if not allow_recovery or not exc.wake_recovery_safe:
+            raise
+        runtime._recover_motor_backend_for_wake(expected_generation=generation)
+        check()
+        runtime._set_motor_mode(True, wake=True)
+
 
 class PowerMixin:
     """Serialized power transitions, safe fold before torque release, and confirmed wake."""
+
+    def _repair_disconnected_motor_client(self, *, expected_generation: int | None = None) -> None:
+        """Finish an orphaned torque-off recovery on an explicit wake, not a timer."""
+        client = getattr(self.robot, "client", None)
+        connected = getattr(client, "is_connected", None)
+        if not callable(connected):
+            return
+        try:
+            if connected():
+                return
+            response = httpx.get("http://127.0.0.1:8000/api/daemon/status", timeout=2.0)
+            response.raise_for_status()
+            status = response.json()
+        except Exception as exc:
+            raise self._motor_backend_unavailable(exc) from exc
+        if not isinstance(status, dict):
+            raise MotorRecoveryError("Motor control status is unverified; no wake was attempted")
+        if status.get("state") == "error" and "backend_status" in status and status["backend_status"] is None:
+            return  # The following enable must receive its definitive pre-admission 503.
+        if status.get("state") != "running" or not isinstance(status.get("backend_status"), dict):
+            raise MotorRecoveryError("Motor control is not ready for a new wake")
+        self._recover_motor_backend_for_wake(rebuild_backend=False, expected_generation=expected_generation)
+
+    def _recover_motor_backend_for_wake(
+        self, *, rebuild_backend: bool = True, expected_generation: int | None = None
+    ) -> None:
+        """Caller holds the motor transition lock; retain the original wake authority."""
+        generation = self._turn_stop_generation if expected_generation is None else expected_generation
+
+        def current():
+            with self._conversation_stop_generation_lock:
+                original = generation == self._conversation_stop_generation
+            return (
+                original
+                and not self._conversation_stop_requested.is_set()
+                and not self.stop_event.is_set()
+                and not self._privacy_requested.is_set()
+                and self._effective_power_mode() not in {"sleep", "meeting"}
+            )
+
+        if not current() or self._native_sleep_uncertain:
+            raise MotorRecoveryError("Motor reconnection is blocked by cancellation or an unverified sleep outcome")
+        actions = self._actions
+        if actions is not None and actions.fence_reason:
+            raise MotorRecoveryError("Motor reconnection is blocked by another movement owner")
+        self._motors_enabled = None
+        self._head_safely_folded = False
+        self._torque_epoch += 1
+        if actions is not None:
+            actions.fence("Motor backend recovery")
+        try:
+            self._stop_face_follow()
+            if self._motion is not None:
+                self._motion.fence_motor_recovery()
+            self._revoke_everyday_actions()
+            self.cancel_agent_work("session_changed")
+            if actions is not None:
+                actions.cancel(backend_available=False)  # No packet to the lost motor controller.
+                if not actions.wait_idle(timeout=2.0):
+                    raise MotorRecoveryError("Old movement work has not drained; motor reconnection refused")
+            self._set_status("recovering_motors", "Reconnecting motor control; no wake movement yet", last_error="")
+            if rebuild_backend:
+                recover_motor_backend(current=current, wait=self.stop_event.wait)
+            if not current():
+                raise MotorRecoveryError("Motor reconnection cancelled; no wake was attempted")
+            response = httpx.get("http://127.0.0.1:8000/api/state/full", timeout=2.0)
+            response.raise_for_status()
+            state = response.json()
+            if state.get("control_mode") != "disabled":
+                raise MotorRecoveryError("Reconnected motor torque is not confirmed disabled")
+            pose = state["head_pose"]
+            if any(
+                type(pose.get(k)) not in {int, float} or not math.isfinite(pose[k])
+                for k in ("x", "y", "z", "roll", "pitch", "yaw")
+            ):
+                raise MotorRecoveryError("Reconnected motor pose is unverified")
+            replace_control_client(self.robot, current=current)
+            if not current():
+                raise MotorRecoveryError("Motor control reconnected, but the original wake was cancelled")
+            self._motors_enabled = False
+            self._head_safely_folded = pose["z"] <= -0.03 and pose["pitch"] >= 0.25
+            _LOGGER.info("Motor backend reconnected for a fresh wake; torque remains disabled")
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise MotorRecoveryError(
+                "Motor reconnection could not verify control readiness; no wake was attempted"
+            ) from exc
+        finally:
+            if actions is not None:
+                actions.unfence()
 
     def _init_power_state(self) -> None:
         self._power_lock = threading.RLock()
@@ -94,8 +225,7 @@ class PowerMixin:
                 with self._power_lock:
                     self._power_mode = mode
                     self._meeting_until = (
-                        time.monotonic() + max(60.0, min(duration_seconds, 8 * 3600.0))
-                        if mode == "meeting" else 0.0
+                        time.monotonic() + max(60.0, min(duration_seconds, 8 * 3600.0)) if mode == "meeting" else 0.0
                     )
                 self._apply_power_mode()
                 # Public child status intentionally hides errors; it is not a control
@@ -204,7 +334,8 @@ class PowerMixin:
         actions = self._actions
         return (
             self._released_torque_epoch == self._torque_epoch
-            and self._motors_enabled is False and self._head_safely_folded
+            and self._motors_enabled is False
+            and self._head_safely_folded
             and not self._native_sleep_uncertain
             and (actions is None or actions.wait_idle(timeout=0.0))
         )
@@ -360,7 +491,8 @@ class PowerMixin:
                 self._set_motor_mode(False)
             except RuntimeError as exc:
                 message = (
-                    str(exc) if isinstance(exc, MotorBackendUnavailable)
+                    str(exc)
+                    if isinstance(exc, MotorBackendUnavailable)
                     else f"Reachy folded safely, but disabling motor torque failed: {exc}"
                 )
                 _LOGGER.error(message)
@@ -524,7 +656,15 @@ class PowerMixin:
         # A second caller can queue Awake using status from before the first wake.
         # Re-read hardware under the lock, rather than trusting that stale app status.
         if enabled and wake and self._motors_enabled is True and not self._head_safely_folded:
-            if self._wake_pose_is_ready():
+            try:
+                already_awake = self._wake_pose_is_ready()
+            except MotorBackendUnavailable as exc:
+                # This measurement preceded every write in this wake attempt.
+                exc.wake_recovery_safe = backend_admission_rejected(
+                    exc.__cause__, method="GET", path="/api/state/full"
+                )
+                raise
+            if already_awake:
                 if self._motion is not None:
                     self._motion.awake()
                 self._resume_playback_after_wake()
@@ -538,7 +678,13 @@ class PowerMixin:
             if isinstance(exc, httpx.TransportError) or (
                 isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code >= 500
             ):
-                raise self._motor_backend_unavailable(exc) from exc
+                failure = self._motor_backend_unavailable(exc)
+                failure.wake_recovery_safe = (
+                    enabled
+                    and wake
+                    and backend_admission_rejected(exc, method="POST", path="/api/motors/set_mode/enabled")
+                )
+                raise failure from exc
             message = f"Could not set Reachy motors to {mode}: {exc}"
             _LOGGER.warning(message)
             raise RuntimeError(message) from exc

@@ -753,7 +753,8 @@ class ReachyRobotActions:
             eased = ratio * ratio * (3.0 - 2.0 * ratio)
             head = (
                 interpolate_head_pose(start_head, target_head, eased)
-                if target_head is not None and start_head is not None else None
+                if target_head is not None and start_head is not None
+                else None
             )
             body = start_body + (target_body - start_body) * eased if target_body is not None else None
             # Pose reads/interpolation may block; recheck before publishing their result.
@@ -819,9 +820,7 @@ class ReachyRobotActions:
                 # set after this action was dequeued still wins, and a fold that has observed
                 # "idle" while fenced cannot be overtaken by a late admission.
                 admitted = (
-                    action.generation == self._generation
-                    and not self._closed.is_set()
-                    and not self._fence_reason
+                    action.generation == self._generation and not self._closed.is_set() and not self._fence_reason
                 )
                 if admitted:
                     self._cancel_requested.clear()
@@ -870,13 +869,13 @@ class ReachyRobotActions:
             if action.on_complete is not None:
                 action.on_complete(result)
 
-    def cancel(self, *, stop_media: bool = True) -> bool:
+    def cancel(self, *, stop_media: bool = True, backend_available: bool = True) -> bool:
         """Stop the active move and discard queued actions for privacy/power transitions."""
         with self._state_lock:
             self._generation += 1
         cancelled_active = self._busy.is_set()
         self._cancel_requested.set()
-        if cancelled_active:
+        if cancelled_active and backend_available:
             try:
                 if stop_media:
                     self.robot.cancel_move()
