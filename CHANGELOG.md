@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.51] — Fresh-wake motor recovery
+
+- Use a compatible daemon's optional torque-off motor-backend recovery after an exact confirmed pre-admission failure, only on a new wake request; never restart Hermes, the Jetson or the entire daemon from Wake.
+- Retire stale motion, tool/action and cloud work, verify finite disabled state and a fresh control connection, then recheck the original Stop/privacy/session authority before ordinary wake. Never retry ambiguous writes or revive a cancelled request.
+- Keep healthy waking unchanged and fail closed on unsupported daemons. Stock SDK 1.9.0 requires separately installed compatibility support; Homebody does not modify SDK/native packages or motor firmware. See [compatibility and supervised acceptance](docs/motor-recovery.md).
+
 ## [0.5.50] — Continuous radio pacing
 
 - Prevent synchronous decode/send overhead from adding a gap to every radio chunk: pace against cumulative PCM duration with a small bounded reserve, rather than sleeping a full chunk after each send.
