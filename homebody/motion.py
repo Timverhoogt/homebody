@@ -75,11 +75,26 @@ class VoiceMotion:
             self._power_suspended = False
             self._suspended = False
 
+    def fence_motor_recovery(self) -> None:
+        """Retire old cues locally, without sending a pose or resetting media."""
+        with self._lock:
+            self._power_suspended = True
+            self._suspended = True
+            self._wobble_generation += 1
+            # Keep the SDK callback non-null; the next fresh speaking generation
+            # replaces it instead of reusing the retired callback's lease.
+            self._wobbling = False
+
     def _set_wobbling(self, enabled: bool) -> None:
         """Enable once; disable only after playback teardown, not between cues."""
         with self._lock:
-            if (not self.enabled or self._suspended or self._power_suspended or enabled == self._wobbling
-                    or (self._playback is not None and self._playback.blocked)):
+            if (
+                not self.enabled
+                or self._suspended
+                or self._power_suspended
+                or enabled == self._wobbling
+                or (self._playback is not None and self._playback.blocked)
+            ):
                 return
             # SDK 1.9's GStreamer callback reads the wobbler concurrently.
             # Clearing it during live playback can make its second read None.
@@ -103,8 +118,11 @@ class VoiceMotion:
         from reachy_mini.io.protocol import SetSpeechOffsetsCmd
 
         with self._lock:
-            if (self._power_suspended or generation != self._wobble_generation
-                    or (self._playback is not None and self._playback.blocked)):
+            if (
+                self._power_suspended
+                or generation != self._wobble_generation
+                or (self._playback is not None and self._playback.blocked)
+            ):
                 return
             try:
                 self.robot.client.send_command(SetSpeechOffsetsCmd(offsets=list(offsets)))
@@ -131,8 +149,12 @@ class VoiceMotion:
         duration: float = 0.35,
     ) -> None:
         with self._lock:
-            if (not self.enabled or self._suspended or self._power_suspended
-                    or (self._playback is not None and self._playback.blocked)):
+            if (
+                not self.enabled
+                or self._suspended
+                or self._power_suspended
+                or (self._playback is not None and self._playback.blocked)
+            ):
                 return
             try:
                 head = create_head_pose(pitch=pitch, roll=roll, yaw=yaw, degrees=True)

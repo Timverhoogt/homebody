@@ -30,7 +30,7 @@ from .kids_runtime import KidsModeMixin
 from .manual_control import ManualControlMixin
 from .motion import VoiceMotion
 from .playback_gate import PlaybackGate
-from .power import PowerMixin
+from .power import PowerMixin, wake_with_backend_recovery
 from .presence import PresenceObservation
 from .proactive import ProactiveMixin
 from .realtime_client import RealtimeBridgeSession
@@ -359,8 +359,11 @@ class HermesVoiceRuntime(
         """
         generation = self._voice_turn_awake_generation
         if (
-            generation is None or self._motors_enabled is not True or self._head_safely_folded
-            or self.stop_event.is_set() or self._privacy_requested.is_set()
+            generation is None
+            or self._motors_enabled is not True
+            or self._head_safely_folded
+            or self.stop_event.is_set()
+            or self._privacy_requested.is_set()
         ):
             return False
         with self._conversation_stop_generation_lock:
@@ -407,10 +410,18 @@ class HermesVoiceRuntime(
         with self._agent_lock:
             payload["agent"] = self._agent_status_unlocked()
         # Read before _kids_lock: the gate snapshots that lock itself (categorical booleans only).
-        show_tell = self._show_tell_public() if hasattr(self, "_show_tell_gate") else {
-            "camera_approved": False, "enabled": False, "session": False, "available": False, "looking": False,
-            "queued": False,
-        }
+        show_tell = (
+            self._show_tell_public()
+            if hasattr(self, "_show_tell_gate")
+            else {
+                "camera_approved": False,
+                "enabled": False,
+                "session": False,
+                "available": False,
+                "looking": False,
+                "queued": False,
+            }
+        )
         with self._kids_lock:
             remaining = max(0, int(self._kids_ends_at - time.monotonic())) if self._kids_active else 0
             kids_payload = {
@@ -832,7 +843,7 @@ class HermesVoiceRuntime(
                 else:
                     self._accept_wake_turn()
                 try:
-                    self._set_motor_mode(True, wake=True)
+                    wake_with_backend_recovery(self, allow_recovery=keyword != "kids_start")
                 except RuntimeError as exc:
                     self._set_status("power_transition_error", str(exc), last_error=str(exc))
                     self._signal_error()
