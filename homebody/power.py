@@ -36,9 +36,11 @@ class MotorBackendUnavailable(RuntimeError):
     wake_recovery_safe = False
 
 
-def wake_with_backend_recovery(runtime, *, allow_recovery: bool) -> None:
+def wake_with_backend_recovery(runtime, *, allow_recovery: bool, expected_generation: int | None = None) -> None:
     """One fresh wake may recover a definitive non-admission, never a timeout."""
-    generation = getattr(runtime, "_turn_stop_generation", None)
+    generation = (
+        getattr(runtime, "_turn_stop_generation", None) if expected_generation is None else expected_generation
+    )
 
     def check():
         if type(generation) is not int:
@@ -185,6 +187,7 @@ class PowerMixin:
         *,
         duration_seconds: float = 0.0,
         cancel_announcements: bool = True,
+        allow_motor_recovery: bool = False,
     ) -> dict[str, object]:
         """Change the voice lifecycle as one serialized, hardware-checked transition."""
         if self._runtime_started and not self._control_ready.is_set():
@@ -192,6 +195,11 @@ class PowerMixin:
         mode = mode.strip().lower()
         if mode not in _POWER_MODES:
             raise ValueError(f"Unsupported power mode: {mode}")
+        wake_generation = None
+        if mode == "awake" and allow_motor_recovery:
+            # Capture at admission, not after lock waits; never rebase voice work.
+            with self._conversation_stop_generation_lock:
+                wake_generation = self._conversation_stop_generation
         privacy_transition = mode in {"meeting", "sleep"}
         if privacy_transition:
             # Publish revocation before waiting on an in-progress scan/wake. A second
@@ -221,13 +229,25 @@ class PowerMixin:
                     self._voice_workspace.clear()
                     self._request_conversation_stop()
                 else:
-                    self._conversation_stop_requested.clear()
+                    with self._conversation_stop_generation_lock:
+                        if wake_generation is not None and wake_generation != self._conversation_stop_generation:
+                            raise MotorRecoveryError("The original manual motor wake was cancelled")
+                        self._conversation_stop_requested.clear()
                 with self._power_lock:
+                    if wake_generation is not None:
+                        if self._pending_privacy_transitions:
+                            raise MotorRecoveryError("Manual motor wake was cancelled by a pending privacy transition")
+                        # A fresh Awake can leave completed Sleep/Meeting. A new
+                        # concurrent privacy transition remains authoritative.
+                        self._privacy_requested.clear()
                     self._power_mode = mode
                     self._meeting_until = (
                         time.monotonic() + max(60.0, min(duration_seconds, 8 * 3600.0)) if mode == "meeting" else 0.0
                     )
-                self._apply_power_mode()
+                if wake_generation is None:
+                    self._apply_power_mode()
+                else:
+                    self._apply_power_mode(wake_generation=wake_generation)
                 # Public child status intentionally hides errors; it is not a control
                 # receipt. Read the internal transition result before returning success.
                 with self._status_lock:
@@ -505,10 +525,10 @@ class PowerMixin:
         """Use Reachy Control's daemon routine, including its exact cleanup/motion."""
         run_daemon_sleep()
 
-    def _apply_power_mode(self) -> None:
+    def _apply_power_mode(self, *, wake_generation: int | None = None) -> None:
         """Apply the selected mode without overlapping another motor transition."""
         with self._motor_transition_lock:
-            self._apply_power_mode_unlocked()
+            self._apply_power_mode_unlocked(wake_generation=wake_generation)
 
     def _reconcile_power_mode(self) -> None:
         """Wake-loop catch-up (e.g. timed Meeting expiry), decided under the motor lock.
@@ -524,7 +544,7 @@ class PowerMixin:
             if mode != applied_mode:
                 self._apply_power_mode()  # reentrant: still inside this lock section
 
-    def _apply_power_mode_unlocked(self) -> None:
+    def _apply_power_mode_unlocked(self, *, wake_generation: int | None = None) -> None:
         mode = self._effective_power_mode()
         remaining = 0
         with self._power_lock:
@@ -592,9 +612,12 @@ class PowerMixin:
             )
         else:
             try:
-                self._set_motor_mode(True, wake=True)
+                if wake_generation is None:
+                    self._set_motor_mode(True, wake=True)
+                else:
+                    wake_with_backend_recovery(self, allow_recovery=True, expected_generation=wake_generation)
             except RuntimeError as exc:
-                if isinstance(exc, MotorBackendUnavailable):
+                if isinstance(exc, (MotorBackendUnavailable, MotorRecoveryError)):
                     # The same dead backend cannot safely fold. In particular a
                     # timeout may have admitted the first write: never replay it.
                     folded, recovery_error = False, ""

@@ -2174,6 +2174,7 @@ class Homebody(ReachyMiniApp):
                 runtime = self._runtime.set_power_mode(
                     request.mode,
                     duration_seconds=request.duration_minutes * 60.0,
+                    allow_motor_recovery=True,
                 )
                 return {"ok": True, "runtime": runtime}
             except ValueError as exc:

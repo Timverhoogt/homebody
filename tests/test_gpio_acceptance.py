@@ -141,7 +141,9 @@ class Robot:
         self.power_mode, self.folded, self.state = "awake", False, "listening"
         return "listen"
 
-    def set_power_mode(self, mode: str, duration_seconds: float = 0.0) -> dict[str, object]:
+    def set_power_mode(
+        self, mode: str, duration_seconds: float = 0.0, *, allow_motor_recovery: bool = False
+    ) -> dict[str, object]:
         self.power_mode = mode
         self.folded = mode in {"standby", "sleep", "meeting"}
         self.state = "waiting_for_wake_word"

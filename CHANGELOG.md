@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.52] — Dashboard wake recovery
+
+- Route an authenticated dashboard Awake request through fresh-wake motor recovery; 0.5.51's manual power path bypassed that handler and could still report unavailable after motor power returned.
+- Capture the manual request's original Stop generation before waiting for motor control, independently of voice-turn receipts. Stop/privacy or a newer accepted wake cannot reauthorize the old request, and cancelled recovery never initiates fallback folding.
+- Keep automatic power callers recovery-disabled and preserve strict torque-off capability checks, ambiguous-write refusal, media ownership and separate physical acceptance. No SDK/native update is included.
+
 ## [0.5.51] — Fresh-wake motor recovery
 
 - Use a compatible daemon's optional torque-off motor-backend recovery after an exact confirmed pre-admission failure, only on a new wake request; never restart Hermes, the Jetson or the entire daemon from Wake.
