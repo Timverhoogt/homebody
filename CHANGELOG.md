@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.53] — Fair I Spy guesses
+
+- Judge object identity rather than exact answer phrasing: optional colours and toy qualifiers, natural questions, synonyms and diminutives do not require repeating the stored label.
+- Give the judge the current target's retained descriptive context as untrusted JSON, separately from its rules, so a supported alternative toy identification is not rejected solely because vision chose an imperfect label. Preserve moderation, target/turn authority and negative controls for unrelated or contradictory guesses.
+- Ask vision for basic object names, colour separately, and honest toy identification from overall shape rather than wheels alone. Add boolean-only judge diagnostics without retaining child transcripts. See [behaviour and verification limits](docs/ispy-natural-guesses.md).
+- Confirm correct guesses without repeating a potentially mistaken visual label; retain the selected target for unsuccessful-round reveals and keep all speech moderated.
+
 ## [0.5.52] — Dashboard wake recovery
 
 - Route an authenticated dashboard Awake request through fresh-wake motor recovery; 0.5.51's manual power path bypassed that handler and could still report unavailable after motor power returned.

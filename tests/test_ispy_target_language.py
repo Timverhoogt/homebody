@@ -116,7 +116,12 @@ def test_dutch_name_survives_all_reveal_paths_and_speech_approval(monkeypatch, t
         "input": text, "session_id": SESSION,
         "profile": {"age_band": "7-9", "activity": "ispy", "language": "nl"},
     }))).text)
-    assert "stoel" in payload["text"] and "chair" not in payload["text"]
+    if matched:
+        # A correct alternative name must not be contradicted by repeating a fallible vision label.
+        assert "goed gezien" in payload["text"] and "stoel" not in payload["text"]
+    else:
+        assert "stoel" in payload["text"]
+    assert "chair" not in payload["text"]
     assert payload["ispy_phase"] == "awaiting_view"
     assert payload["ispy_next_action"] == "prepare_player_view"
     assert harness.bridge._kids_sessions[SESSION]["ispy_view_token"] == payload["ispy_view_token"]

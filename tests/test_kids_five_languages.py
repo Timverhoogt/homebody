@@ -334,7 +334,7 @@ def test_en_nl_keep_original_fields_and_unsafe_new_language_hints_are_dropped(mo
         assert pool[0][f"hints_{language}"] == [hint]
 
 
-def test_ispy_reply_classification_and_clues_are_localized_and_en_nl_unchanged(monkeypatch):
+def test_ispy_reply_classification_and_clues_are_localized(monkeypatch):
     module, _bridge = load_bridge(monkeypatch)
     target = dict(CHAIR, colour="red", hints_es=["Rebota"], hints_de=["Es springt"], hints_pt=["Salta"])
     answer = module._ispy_reply(target, language="es", matched=False, previous_count=0)[0]
@@ -350,7 +350,7 @@ def test_ispy_reply_classification_and_clues_are_localized_and_en_nl_unchanged(m
     assert module._ispy_confirmation("sí", "es") == "yes" and module._ispy_confirmation("si", "en") == "unknown"
     assert module._ispy_confirmation("não", "pt") == "no"
     assert module._ispy_colour_clue(target, "de") == "Ich sehe was, was du nicht siehst, und das ist rot."
-    assert module._ispy_reply(target, language="nl", matched=True, previous_count=0)[0] == "Ja! Het was de chair."
+    assert module._ispy_reply(target, language="nl", matched=True, previous_count=0)[0] == "Ja, goed gezien!"
     assert module._ispy_colour_clue(target, "en") == "I spy with my little eye, something that is red."
 
 
