@@ -8,6 +8,8 @@ Jetson, or the entire Reachy daemon to recover a backend.
 
 1. Restore the motor power/connection.
 2. Give a new wake request. Simply returning power must not wake Reachy.
+   In 0.5.52 and later, this includes the authenticated dashboard's **Awake**
+   action as well as the spoken-wake path. 0.5.51 omitted manual power recovery.
 3. If the daemon confirms its old motor backend has failed and disappeared,
    Homebody may request one torque-off reconstruction.
 4. Only after measured readiness, disabled torque and a fresh control connection
@@ -19,6 +21,14 @@ speech or conversation work. A failed or ambiguous motor write is never retried.
 If power is still absent, recovery fails without waking. After verified clean
 cleanup, a **later explicit request** can try again; there is no background retry.
 Unknown cleanup or unexpected enabled/mixed torque requires inspection instead.
+
+A dashboard request captures its own immutable Stop generation before waiting
+for the motor lock; it does not borrow or overwrite a voice turn's receipt.
+A Stop while queued or recovering still cancels that original request, even if
+a newer wake has cleared the shared Stop event. A completed Sleep/Meeting can
+be exited by a fresh explicit Awake, but a concurrent pending privacy transition
+wins. Automatic power callers do not gain recovery permission from this change.
+Cancellation/readiness refusal never falls back to a new fold or torque write.
 
 ## Compatibility is explicit
 

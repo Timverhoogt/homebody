@@ -484,7 +484,7 @@ def test_power_transitions_are_serialized_across_clients() -> None:
     max_active = 0
     errors: list[Exception] = []
 
-    def apply() -> None:
+    def apply(*, wake_generation=None) -> None:
         nonlocal active, max_active
         with state_lock:
             active += 1
