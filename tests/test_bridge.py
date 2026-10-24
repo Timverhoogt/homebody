@@ -290,7 +290,7 @@ def test_ispy_bridge_policy_and_reply_state_are_deterministic() -> None:
     answer, count, _hints, complete = bridge._ispy_reply(
         target, language="en", matched=True, previous_count=1
     )
-    assert answer == "Yes! It was the chair."
+    assert answer == "Yes, that's the one!"
     assert (count, complete) == (2, True)
     assert bridge._validate_bridge_ispy_target(
         {**candidate, "object_name": "monitor"}, frame_count=5)["object_name"] == "monitor"
