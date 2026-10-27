@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.54] — Safe shutdown connection recovery
+
+- Reconnect a confirmed absent motor backend once through the daemon's torque-off-only capability when an Owner explicitly confirms host shutdown; never route shutdown through Awake or recover ambiguous writes.
+- Skip motor enabling and native sleep movement when fresh readings already confirm the exact SDK-safe folded pose and disabled torque. Recovered upright or uncertain hardware refuses instead of moving.
+- Preserve the original Stop receipt across quiescence, lock waits, recovery and serialized OS scheduling. Keep refusals in applied Sleep/privacy so reconciliation cannot automatically fold after a failed recovery.
+- Retain healthy native folding, Owner/CSRF/Kids locks and the independent root helper's admission and execute-time safety checks. No SDK/native/firmware or host privilege changes are included. Physical button acceptance remains a separate supervised check.
+
 ## [0.5.53] — Fair I Spy guesses
 
 - Judge object identity rather than exact answer phrasing: optional colours and toy qualifiers, natural questions, synonyms and diminutives do not require repeating the stored label.
