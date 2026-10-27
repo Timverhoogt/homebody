@@ -1,6 +1,36 @@
-# Dedicated robot computer shutdown: candidate repair
+# Dedicated robot computer shutdown
 
-## What was wrong, and what is not established
+## Lost-backend shutdown recovery
+
+The confirmed Owner shutdown route now uses a dedicated serialized shutdown
+operation rather than routing through Awake or blindly enabling torque for Sleep.
+It revokes voice/camera/action work and retains one immutable Stop receipt from
+admission through lock waits, reconstruction, fresh measurement and OS scheduling.
+Stop or another power transition before scheduling cancels the old request.
+Scheduling is serialized with Stop admission; a later Stop does not cancel an
+already acknowledged OS poweroff timer.
+
+- A freshly measured SDK-safe folded pose with disabled torque skips all motor
+  enabling and native sleep movement.
+- Only exact local GET `/api/state/full` 503 `Backend not running` permits one
+  reconstruction, using the existing advertised torque-off-only recovery ABI.
+  Recovery independently requires ERROR with absent backend. Transport failures,
+  unknown outcomes and other HTTP errors never cause retries.
+- Reconstructed hardware must already be folded inside the helper's exact SDK
+  sleep-distance gate with finite readings and disabled torque. An upright or
+  uncertain recovered robot refuses: recovery never leads into a fold or wake.
+- A healthy, unreconstructed upright robot retains the normal native Sleep
+  behavior, followed by fresh safe-state verification. No new SDK/native package,
+  daemon restart, media client construction or control-socket replacement occurs.
+- Refusals keep Sleep/privacy applied so the wake loop cannot turn a failed
+  recovery into an automatic folding attempt. Existing root helper admission and
+  execute-time checks are unchanged; runtime checks never replace root checks.
+
+`tests/test_shutdown_recovery.py` exercises actual runtime guards with synthetic
+hardware. `tests/test_owner_shutdown.py` exercises the real middleware and handler
+with that runtime. These tests do not establish deployed physical acceptance.
+
+## Historical helper repair: what was wrong, and what was not established
 
 The 0.5.19 handler folded via the runtime, started a Python timer and immediately
 returned `ok / shutting_down`. Later it tried `sudo -n systemctl poweroff` and only

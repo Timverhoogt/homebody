@@ -19,8 +19,10 @@ def app(monkeypatch, tmp_path):
     monkeypatch.setattr(main, 'host', lambda: SimpleNamespace(shutdown_supported=True, label='NVIDIA Jetson'))
     robot = Homebody(False)
     events = []
-    runtime = SimpleNamespace(control_ready=True, kids_controls_locked=False,
-                              set_power_mode=lambda mode: events.append(mode))
+    from test_shutdown_recovery import prepared
+
+    runtime, _, _ = prepared(monkeypatch)
+    runtime._clear_streamed_audio = lambda: events.append('sleep')
     robot._runtime = runtime
     def ipc(op):
         events.append(op)
@@ -64,7 +66,7 @@ def test_tailnet_owner_csrf_origin_and_readiness(app):
 @pytest.mark.parametrize('locked', [False, True])
 def test_confirmation_and_kids_management_lock(app, locked):
     robot, client, headers, events = paired(app)
-    robot._runtime.kids_controls_locked = locked
+    robot._runtime._kids_locked = locked
     result = client.post('/api/shutdown',json={'confirm':'no'},headers=headers)
     assert result.status_code == (423 if locked else 400)
     assert not events
@@ -80,12 +82,11 @@ def test_no_false_success_and_preflight_before_fold(app, monkeypatch, runtime):
     if runtime == 'absent':
         robot._runtime = None
     elif runtime == 'starting':
-        robot._runtime.control_ready = False
+        robot._runtime._control_ready.clear()
     elif runtime == 'fold_failure':
-        def fail(mode):
-            events.append(mode)
+        def fail():
             raise RuntimeError('fold unconfirmed')
-        robot._runtime.set_power_mode = fail
+        monkeypatch.setattr('homebody.shutdown_runtime._read_state', fail)
     original = host_shutdown.request
     def ipc(op):
         if runtime == 'missing_helper' or (runtime == 'refused' and op == 'SCHEDULE'):

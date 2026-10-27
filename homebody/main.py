@@ -2241,18 +2241,18 @@ class Homebody(ReachyMiniApp):
                 ) from exc
             if self._runtime is None or not self._runtime.control_ready:
                 raise HTTPException(status_code=409, detail="Runtime not ready; shutdown was not scheduled")
+            from .shutdown_runtime import request_host_shutdown
+
             try:
-                self._runtime.set_power_mode("sleep")
-            except (RuntimeError, ValueError) as exc:
-                raise HTTPException(status_code=409, detail=str(exc)) from exc
-            try:
-                receipt = host_shutdown.request("SCHEDULE")
+                receipt = request_host_shutdown(self._runtime, lambda: host_shutdown.request("SCHEDULE"))
             except host_shutdown.ShutdownRefused as exc:
                 raise HTTPException(
                     status_code=503, detail=str(exc), headers={"X-Homebody-Shutdown": "refused"}
                 ) from exc
             except host_shutdown.ShutdownUnknown as exc:
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
+            except (RuntimeError, ValueError) as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
             return {"ok": True, **receipt}
 
     def _build_public_app(self) -> FastAPI:
