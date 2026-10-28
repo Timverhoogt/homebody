@@ -4,6 +4,7 @@ import importlib.util
 import io
 import urllib.error
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from test_mcp_server import TOKEN, build, enabled_config
@@ -22,7 +23,7 @@ def route_to(client, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[n
             raise urllib.error.HTTPError(request.full_url, response.status_code, "error", {}, None)
         return io.BytesIO(response.content)
 
-    monkeypatch.setattr(mcp_check.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(mcp_check.urllib.request, "build_opener", lambda *handlers: SimpleNamespace(open=urlopen))
 
 
 def test_check_reports_status_and_actions(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

@@ -24,6 +24,16 @@ class CheckFailed(Exception):
     pass
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A diagnostic credential belongs only to the endpoint the operator selected."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise CheckFailed("MCP endpoint redirected; use its approved direct URL.")
+
+
+MAX_RESPONSE_BYTES = 1024 * 1024
+
+
 def rpc(url: str, token: str, method: str, params: dict | None = None, *, request_id: int | None = 1) -> dict:
     message: dict = {"jsonrpc": "2.0", "method": method}
     if params is not None:
@@ -41,23 +51,37 @@ def rpc(url: str, token: str, method: str, params: dict | None = None, *, reques
             "MCP-Protocol-Version": PROTOCOL_VERSION,
         },
     )
+    # Never send a caller token through inherited proxies or to redirect destinations.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - the user supplies the URL
-            body = response.read()
+        with opener.open(request, timeout=30) as response:
+            body = response.read(MAX_RESPONSE_BYTES + 1)
     except urllib.error.HTTPError as exc:
         hints = {
             401: "the token was refused. Create a new one in Settings → Agent access (MCP).",
             403: "the request was refused (cross-origin, or an owner setting).",
             404: "agent access is off, or no token exists yet. Turn it on in Settings → Agent access (MCP).",
         }
-        raise CheckFailed(f"HTTP {exc.code}: {hints.get(exc.code, exc.reason)}") from exc
-    except urllib.error.URLError as exc:
-        raise CheckFailed(f"could not reach {url}: {exc.reason}") from exc
+        raise CheckFailed(f"HTTP {exc.code}: {hints.get(exc.code, 'MCP request failed.')}") from exc
+    except (urllib.error.URLError, OSError) as exc:
+        raise CheckFailed("Could not reach the MCP endpoint; check the approved URL and connection.") from exc
+    if len(body) > MAX_RESPONSE_BYTES:
+        raise CheckFailed("MCP response exceeds the size limit.")
     if request_id is None:
         return {}
-    payload = json.loads(body)
+    try:
+        payload = json.loads(body)
+    except (ValueError, UnicodeError) as exc:
+        raise CheckFailed("Invalid MCP response JSON.") from exc
+    if (
+        not isinstance(payload, dict) or payload.get("jsonrpc") != "2.0"
+        or type(payload.get("id")) is not type(request_id) or payload.get("id") != request_id
+    ):
+        raise CheckFailed("Invalid MCP response envelope.")
     if "error" in payload:
-        raise CheckFailed(f"{method} failed: {payload['error'].get('message')}")
+        raise CheckFailed("MCP request failed; the server returned an error.")
+    if not isinstance(payload.get("result"), dict):
+        raise CheckFailed("Invalid MCP response result.")
     return payload["result"]
 
 
