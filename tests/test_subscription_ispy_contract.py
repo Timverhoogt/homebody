@@ -29,9 +29,9 @@ def test_valid_native_multi_pool_is_randomized_and_not_always_bookshelf(monkeypa
     [wire] = calls
     assert wire["reasoning"] == {"effort": "none"}
     pool = wire["text"]["format"]["schema"]["properties"]["candidates"]
-    assert pool["minItems"] == 1 and pool["maxItems"] == 4
+    assert pool["minItems"] == 0 and pool["maxItems"] == 4  # an empty pool is a model refusal
     assert wire["extra_body"]["input"][0]["content"][0]["type"] == "input_text"
-    assert "at most 4 different" in wire["extra_body"]["input"][0]["content"][0]["text"]
+    assert "Choose up to 4 distinct visible objects" in wire["extra_body"]["input"][0]["content"][0]["text"]
     assert len(wire["extra_body"]["input"][0]["content"]) == 6  # prompt + five synthetic frames
     assert harness.bridge._kids_sessions[SESSION]["ispy_target"]["object_name"] == expected
 
@@ -48,13 +48,20 @@ def test_real_adapter_rounds_avoid_recent_targets_and_dedupe_bookshelf_aliases(m
 
 
 def test_one_legitimate_candidate_is_playable_even_after_repetition(monkeypatch):
-    harness, calls, _ = subscription_harness(monkeypatch, {"candidates": [candidate("person"), CHAIR]})
+    harness, calls, _ = subscription_harness(monkeypatch, {"candidates": [CHAIR]})
     assert [harness.run()["target"]["object_name"] for _ in range(3)] == ["chair"] * 3
     assert len(calls) == 3
 
 
-def test_zero_eligible_objects_never_fabricates_an_alternative(monkeypatch):
-    harness, calls, _ = subscription_harness(monkeypatch, {"candidates": [candidate("person"), candidate("knife")]})
+def test_model_selected_objects_are_not_overridden_by_a_local_name_blacklist(monkeypatch):
+    harness, calls, _ = subscription_harness(monkeypatch, {"candidates": [candidate("person"), CHAIR]})
+    assert [harness.run()["target"]["object_name"] for _ in range(3)] == ["person", "chair", "person"]
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize("pool", [[], [candidate("chair", frame_index=999)]])
+def test_zero_usable_objects_never_fabricates_an_alternative(monkeypatch, pool):
+    harness, calls, _ = subscription_harness(monkeypatch, {"candidates": pool})
     with pytest.raises(harness.module.web.HTTPBadGateway):
         harness.run()
     assert len(calls) == 1 and harness.moderated == []

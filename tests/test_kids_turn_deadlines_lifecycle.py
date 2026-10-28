@@ -218,8 +218,9 @@ def test_subscription_ispy_fails_closed_when_the_schema_cannot_be_enforced(monke
     [
         ({"candidates": []}, "no candidates", "candidates=0"),
         ({"items": [CHAIR]}, "invalid candidate pool", "candidates=-1"),
-        ({"candidates": [candidate("person"), candidate("phone"), candidate("knife"),
-                         candidate("vase", confidence=0.4)]}, "no safe candidate", "candidates=4"),
+        ({"candidates": [candidate("person", confidence=True), candidate("phone", frame_index=999),
+                         candidate("knife", bbox=[0, 0, 0, 0]),
+                         candidate("vase", visible_frame_count=0)]}, "no usable candidate", "candidates=4"),
         ({"candidates": [CHAIR] * 17}, "oversized candidate pool", "candidates=17"),
     ],
 )
