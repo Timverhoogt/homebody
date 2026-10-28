@@ -67,14 +67,18 @@ Do not interpret scanner warning labels as verified vulnerabilities:
   including the new `homebody/bridge/realtime_lifecycle.py`.
 - This wheel retains the baseline version solely for local packaging tests; it is not the
   canonical published 0.5.54 artifact and must not replace that release.
-- Complete unit identities were collected and reconciled across bounded runs, replacing
-  complete rerun modules rather than adding duplicate test counts: **3,792 cases = 3,776 passed,
-  11 failed, 5 skipped**, with no missing or extra identities.
-- All 11 failures reproduce on unmodified baseline main with the same complete dependency
-  environment. Five expect candidate-language hint moderation during selection; the other six
-  expect older candidate-pool bounds or local object eligibility vetoes. Reconcile these tests
-  against the accepted model-judgment/speech-screening contract separately; do not restore local
-  object blacklists or erase failures merely to obtain a green run.
+- At the initial checkpoint, complete unit identities were reconciled across bounded runs,
+  replacing complete rerun modules rather than adding duplicate test counts: **3,792 cases =
+  3,776 passed, 11 failed, 5 skipped**, with no missing or extra identities. This is historical
+  evidence, not the final candidate's result.
+- All 11 initial failures reproduced on unmodified baseline main with the same complete
+  dependency environment. The test-only follow-up reconciles those older expectations with
+  the accepted model-judgment/speech-screening contract: localized hints are checked at actual
+  outgoing speech moderation, with successful approval, refused-hint rollback, exact-text and
+  single-use capability assertions. Model refusal and structurally invalid metadata remain
+  fail-closed. Repetition and model-selected names are tested independently, without restoring
+  local object blacklists or changing runtime Kids policy. Final gate receipts supersede the
+  initial failing checkpoint.
 - Four skipped native discussion E2E cases require a Hermes source exposing that native
   discussion contract, absent from the currently installed source. The fifth skip is an optional
   non-shipped probe. The normal unit environment had further dependency skips; a separate
@@ -83,8 +87,9 @@ Do not interpret scanner warning labels as verified vulnerabilities:
   completed bounded batches, not that timed-out attempt. The second batch also requires the
   existing `test_check_profiles` namespace initialization before the native adapter imports;
   otherwise Hermes' `tools` namespace can shadow a later Homebody helper import.
-- Browser, independent release review, real backend, acoustic and physical acceptance were not
-  run. This is not a release-ready or fully green candidate.
+- At the initial checkpoint, browser, independent release review, real backend, acoustic and
+  physical acceptance had not run. Premerge completion requires exact-head repository CI and
+  independent review; source merge does not authorize an immutable release or robot installation.
 
 Machine-readable receipts, logs and JUnit remain untracked in `.artifacts/desloppify/` and
 `.artifacts/test-runs/`. `reconciled-unit-results.json` names the exact contributing reports and
@@ -92,8 +97,8 @@ unchanged-main failure comparison.
 
 ## Next bounded work
 
-1. Reconcile and strengthen the 11 baseline contract tests against current intended I Spy
-   behavior, retaining moderation, provider refusal, cancellation and no-fabrication checks.
+1. Keep dependency-complete native contract tests exercised so missing local dependencies cannot
+   conceal future drift; preserve speech moderation, provider refusal, cancellation and no-fabrication.
 2. Extract route families from `homebody/main.py` and the bridge one family at a time, preserving
    route inventory, auth middleware, late-result fencing and package/direct-script imports.
 3. Fix confirmed dictionary-shape/error-handling issues in those paths, then rescan only to

@@ -271,7 +271,8 @@ def test_turn_rejects_unsupported_language_and_any_language_change(monkeypatch):
 
 
 @pytest.mark.parametrize("language", NEW)
-def test_native_subscription_wire_schema_requires_session_language_hints(monkeypatch, language):
+@pytest.mark.parametrize("refuse_hint", [False, True])
+def test_native_subscription_wire_schema_requires_session_language_hints(monkeypatch, language, refuse_hint):
     from test_kids_turn_deadlines_lifecycle import subscription_harness
 
     with_hints = dict(CHAIR, **{f"hints_{language}": ["Ok"]})
@@ -284,7 +285,28 @@ def test_native_subscription_wire_schema_requires_session_language_hints(monkeyp
     assert f"hints_{language}" in items["required"] and f"hints_{language}" in items["properties"]
     assert wire["text"]["format"]["strict"] is True
     assert f"hints_{language}" not in harness.module._ISPY_TARGET_SCHEMA["required"]  # original untouched
-    assert any("Ok" in text for text in harness.moderated)  # session-language hints are screened too
+    assert target[f"hints_{language}"] == ["Ok"]
+    # Object selection trusts the model; the actual outgoing hint is screened before speech approval.
+    assert harness.moderated == []
+    hint_request = Request({
+        "session_id": SESSION, "input": "hint",
+        "profile": {"age_band": "7-9", "activity": "ispy", "language": language},
+    })
+    harness.flagged = ("Ok",) if refuse_hint else ()
+    reply = json.loads(asyncio.run(harness.bridge.kids_chat(hint_request)).text)
+    assert any("Ok" in text for text in harness.moderated)
+    assert reply["screened"] is True and reply["speech_approval"]
+    if refuse_hint:
+        assert reply["text"] == harness.module._kids_copy(language, "safety")
+        assert "Ok" not in reply["text"]
+        assert harness.bridge._kids_sessions[SESSION]["ispy_hints_given"] == 0
+    else:
+        assert "Ok" in reply["text"] and reply["text"] in harness.moderated
+        assert harness.bridge._kids_sessions[SESSION]["ispy_hints_given"] == 1
+    # The single-use capability is bound to the approved final text, not the rejected hint.
+    harness.bridge._consume_kids_speech_approval(reply["speech_approval"], SESSION, reply["text"])
+    with pytest.raises(harness.module.web.HTTPForbidden):
+        harness.bridge._consume_kids_speech_approval(reply["speech_approval"], SESSION, reply["text"])
 
 
 @pytest.mark.parametrize("language", NEW)
