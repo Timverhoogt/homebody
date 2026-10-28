@@ -188,7 +188,7 @@ MALFORMED = [
 def test_malformed_moderation_is_unavailable_never_safe(monkeypatch, reply: object) -> None:
     module, bridge = story_bridge(monkeypatch, ModelHttp())
     bridge.http = ModerationHttp(reply, stage=1)
-    del bridge._moderation_flagged  # exercise the real parser
+    monkeypatch.delattr(bridge, "_moderation_flagged")  # exercise the real parser
     with pytest.raises(module.web.HTTPServiceUnavailable):
         asyncio.run(bridge._moderation_flagged("hello", "synthetic"))
 
@@ -198,7 +198,7 @@ def test_malformed_moderation_is_unavailable_never_safe(monkeypatch, reply: obje
 def test_malformed_moderation_in_a_turn_gives_retry_and_no_model_approval(monkeypatch, reply, stage) -> None:
     module, bridge = story_bridge(monkeypatch, ModelHttp())
     bridge.http = ModerationHttp(reply, stage=stage)
-    del bridge._moderation_flagged
+    monkeypatch.delattr(bridge, "_moderation_flagged")
     payload = json.loads(asyncio.run(bridge.kids_chat(chat())).text)
     assert payload["retry"] is True and payload["text"] == module._KIDS_MODEL_RETRY_REPLY["nl"]
     assert len(bridge.http.model_kwargs) == (0 if stage == 1 else 1)
@@ -210,7 +210,7 @@ def test_malformed_moderation_in_a_turn_gives_retry_and_no_model_approval(monkey
 def test_well_formed_moderation_still_screens(monkeypatch) -> None:
     module, bridge = story_bridge(monkeypatch, ModelHttp())
     bridge.http = ModerationHttp({"results": [{"flagged": True}]}, stage=1)
-    del bridge._moderation_flagged
+    monkeypatch.delattr(bridge, "_moderation_flagged")
     assert asyncio.run(bridge._moderation_flagged("x", "synthetic")) is True
     bridge.http = ModerationHttp({"results": [{"flagged": False}]}, stage=1)
     assert asyncio.run(bridge._moderation_flagged("x", "synthetic")) is False
